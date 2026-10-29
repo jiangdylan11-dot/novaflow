@@ -68,7 +68,7 @@
   function accordionApi() {
     const accordion = root?.NovaFlowLeftPanelAccordion
     if (!accordion || typeof accordion.syncExpanded !== 'function') {
-      throw new TypeError('NovaFlow left-panel accordion helper is required')
+      throw new TypeError('Foart left-panel accordion helper is required')
     }
     return accordion
   }

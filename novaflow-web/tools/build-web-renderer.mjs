@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
+import { syncBrandAssets } from './sync-brand-assets.mjs';
 import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
@@ -152,6 +153,7 @@ async function emptyDir(dir) {
 
 export async function buildWebRenderer({ logger, clean = true, minify = false } = {}) {
   const log = logger || (() => {});
+  await syncBrandAssets();
 
   if (clean) {
     await emptyDir(WEB_OUT);
@@ -333,7 +335,7 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   // ------------------------------------------------------------- index.html
   const appPackage = JSON.parse(await readFile(join(ROOT, 'worker/package.json'), 'utf8'));
   if (appPackage.version !== RELEASE_VERSION) throw new Error('Application release version mismatch');
-  await writeFile(join(WEB_OUT, 'release.json'), JSON.stringify({ version: RELEASE_VERSION, product: 'NovaFlow', art: { skillVersion: JSON.parse(await readFile(join(ROOT,'worker/src/art-skills/style-transfer.v1.json'),'utf8')).version, parentSystemSHA256: (await import('../worker/src/flash-art-agent.mjs')).FLASH_ART_AGENT_PARENT_SYSTEM_SHA256, systemSHA256: (await import('../worker/src/flash-art-agent.mjs')).FLASH_ART_AGENT_SYSTEM_SHA256 } }, null, 2) + '\n');
+  await writeFile(join(WEB_OUT, 'release.json'), JSON.stringify({ version: RELEASE_VERSION, product: 'Foart', art: { skillVersion: JSON.parse(await readFile(join(ROOT,'worker/src/art-skills/style-transfer.v1.json'),'utf8')).version, parentSystemSHA256: (await import('../worker/src/flash-art-agent.mjs')).FLASH_ART_AGENT_PARENT_SYSTEM_SHA256, systemSHA256: (await import('../worker/src/flash-art-agent.mjs')).FLASH_ART_AGENT_SYSTEM_SHA256 } }, null, 2) + '\n');
   const html = await readFile(join(SRC, 'index.html'), 'utf8');
   await writeFile(join(WEB_OUT, 'index.html'), rewriteIndexHtml(html), 'utf8');
 
@@ -547,7 +549,7 @@ export function rewriteIndexHtml(html) {
     'html, body, #root { min-width: 0;'
   );
 
-  out = out.replace('<title>NovaFlow</title>', '<title>NovaFlow Web</title>');
+  out = out.replace(/<title>[^<]*<\/title>/, '<title>Foart</title>');
   return out;
 }
 

@@ -838,7 +838,7 @@
     if (!record.active || record.assistantPending) return false
     const optimizePrompt = root?.electronAPI?.promptAssistantOptimizePrompt
     if (typeof optimizePrompt !== 'function') {
-      record.assistantError = '提示词助手仅在 NovaFlow 桌面端可用'
+      record.assistantError = '提示词助手仅在 Foart 桌面端可用'
       record.assistantMessage = ''
       renderFields(record)
       return false

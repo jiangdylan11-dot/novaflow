@@ -220,7 +220,7 @@
   async function processAll() {
     if (state.processing || !state.items.length) return
     const api = window.NovaFlowBackgroundRemoval
-    if (!api?.unmultBlackBackgroundDataUrl) { alert('PNG 去黑能力未加载，请重启 NovaFlow 后重试。'); return }
+    if (!api?.unmultBlackBackgroundDataUrl) { alert('PNG 去黑能力未加载，请重启 Foart 后重试。'); return }
     state.processing = true
     render()
     for (const item of state.items) {

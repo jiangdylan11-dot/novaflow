@@ -32,12 +32,10 @@ export function LoginDialog({ runtime, onSignedIn }: {
     <div className="nf-backdrop">
       <form className="nf-dialog" onSubmit={submit}>
         <div className="nf-brand" style={{ justifyContent: 'center', marginBottom: 2 }}>
-          <span className="nf-brand-mark" />
-          NovaFlow
-          <span className="nf-brand-web">WEB</span>
+          <img className="nf-brand-logo" src="/assets/foart-logo-dark.svg" alt="Foart" />
         </div>
         <p style={{ textAlign: 'center' }}>
-          使用你的 NovaFlow 账号登录。无需安装任何软件，生成在远程 GPU 算力节点上完成。
+          使用你的 Foart 账号登录。无需安装任何软件，生成在远程 GPU 算力节点上完成。
         </p>
 
         <div className="nf-field">

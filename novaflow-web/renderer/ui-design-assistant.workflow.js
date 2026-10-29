@@ -398,7 +398,7 @@
 
   async function runGrokComplete(options,references,checkActive) {
     const api=options.electronAPI||root.electronAPI||{},cpu=api.promptAssistantUiDesignCpu;
-    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整在线看图分析需要更新本地助手并登录 NovaFlow；本次未调用付费分析');
+    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整在线看图分析需要更新本地助手并登录 Foart；本次未调用付费分析');
     const request=[stripTargetStyleContract(options.prompt),options.requirements||''].filter(Boolean).join('\n');
     const callCpu=async payload=>{const r=await cpu({surface:'ui-design',...payload});if(r?.ok===false||!r?.data)throw new Error(r?.error||'UI CPU 组件未返回有效结果');return r.data;};
     const reverse=localApi(options,references);
@@ -491,7 +491,7 @@
     let result
     if (engine === 'grok') {
       const sessionToken = text(await resolveValue(options.getSessionToken, options.sessionToken))
-      if (!sessionToken) throw new Error('请先登录 NovaFlow 账号')
+      if (!sessionToken) throw new Error('请先登录 Foart 账号')
       checkActive()
       const request = {
         token: sessionToken,

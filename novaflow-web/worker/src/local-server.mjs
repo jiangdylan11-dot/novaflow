@@ -40,7 +40,7 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
         gateway.server.emit('request', req, res); return;
       }
       if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/local/')) {
-        if (!safeCompare(req.headers['x-novaflow-local'] || '', secret)) throw fail('请从本地助手点击“启动NovaFlow”连接本机', 401);
+        if (!safeCompare(req.headers['x-novaflow-local'] || '', secret)) throw fail('请从本地助手点击“启动Foart”连接本机', 401);
         const body = req.method === 'POST' ? await bodyOf(req, url.pathname.startsWith(PROMPT_ASSISTANT_PREFIX) ? PROMPT_ASSISTANT_BODY_LIMIT : undefined) : {};
         const s = worker.getState();
         if (req.method === 'GET' && url.pathname === '/local/events') {

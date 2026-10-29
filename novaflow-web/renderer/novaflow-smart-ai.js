@@ -4410,7 +4410,7 @@
     }
     const token = useGrok ? readSessionToken() : "";
     if (useGrok && !token) {
-      state.message = "请先登录NovaFlow账号";
+      state.message = "请先登录Foart账号";
       renderDialog();
       return;
     }

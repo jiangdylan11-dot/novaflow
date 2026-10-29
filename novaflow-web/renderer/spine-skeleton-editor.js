@@ -902,7 +902,7 @@
     })
     return projectChoice
   }
-  const NFPROJ_TYPES = [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }]
+  const NFPROJ_TYPES = [{ description: 'Foart 工程', accept: { 'application/octet-stream': ['.nfproj'] } }]
 
   const EMPTY_PROJECT_MESSAGE = '工程文件为空（0 字节），无法打开，请让对方重新保存后再发送'
 
@@ -1065,7 +1065,7 @@
       handle = await commitProjectFile(directory, handle, bytes)
       projectFile = handle
       projectSaveDirectory = directory
-      status(`${over ? '已覆盖保存' : '已保存 NovaFlow 工程'} ${handle.name}：${count} 个工程${missing.length ? `；缺少 ${missing.length} 张图片，已保留引用和全部编辑内容` : '（之后 Ctrl+S 直接保存，Ctrl+Shift+S 另存为）'}`, 'ok')
+      status(`${over ? '已覆盖保存' : '已保存 Foart 工程'} ${handle.name}：${count} 个工程${missing.length ? `；缺少 ${missing.length} 张图片，已保留引用和全部编辑内容` : '（之后 Ctrl+S 直接保存，Ctrl+Shift+S 另存为）'}`, 'ok')
       return { name: handle.name, count, overwritten: over, missing }
     } catch (err) {
       if (createdEmpty) await discardEmptyCreated(directory, handle).catch(() => {})
@@ -1212,8 +1212,8 @@
     }
     const wasEmpty = !projects.length
     let d
-    try { d = JSON.parse(await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text()) } catch { throw new Error('不是 NovaFlow 工程文件') }
-    if (!d || d.format !== PROJECT_FILE_FORMAT || ![1, 2].includes(d.version) || !Array.isArray(d.projects) || !d.projects.length) throw new Error('不是受支持的 NovaFlow 工程文件')
+    try { d = JSON.parse(await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text()) } catch { throw new Error('不是 Foart 工程文件') }
+    if (!d || d.format !== PROJECT_FILE_FORMAT || ![1, 2].includes(d.version) || !Array.isArray(d.projects) || !d.projects.length) throw new Error('不是受支持的 Foart 工程文件')
     const operation = await chooseProjectOperation('import', options.operation)
     if (!operation) return 0
     let directory = options.directory && options.directory.handle
@@ -1324,7 +1324,7 @@
       ? `；设置姿势没有显示附件，请在工程树选择动画「${attachmentAnimations[0][0]}」查看` : ''
     const offerNote = state.pendingSwapFolder ? `；这些替换图在同级目录「${state.pendingSwapFolder.name}」里，可点「改接目录」` : ''
     status((missing.length ? `已打开 ${d.projects.length} 个工程，缺少 ${missing.length} 张外部图片：${missing.join('、')}；已显示 MISSING 占位，可在对应工程的「图片」节点重新定位目录${offerNote}`
-      : `已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`) + hidden + emptySetup, missing.length || hidden || emptySetup ? 'error' : 'ok')
+      : `已打开 Foart 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`) + hidden + emptySetup, missing.length || hidden || emptySetup ? 'error' : 'ok')
     return d.projects.length
   }
 
@@ -3752,14 +3752,14 @@
       if (saving && o.kind === 'novaflow') {
         body.append(
           h('label', { class: 'fl' }, '工程名称'), nameIn,
-          h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'NovaFlow 工程'))),
+          h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'Foart 工程'))),
           h('div', { class: 'hint' }, `${projects.length} 个工程的骨架、动画和图片路径存成 .nfproj；图片保留在外部文件夹，默认与工程同目录，传给别人时一起复制。`),
-          h('button', { class: 'btn primary big', onclick: runNovaflow }, `保存 NovaFlow 工程（${o.name || '工程'}.nfproj）`))
+          h('button', { class: 'btn primary big', onclick: runNovaflow }, `保存 Foart 工程（${o.name || '工程'}.nfproj）`))
         return
       }
       body.append(
         h('div', { class: 'hint' }, '分别导出勾选的工程，文件名和图集名直接使用工程名。'),
-        saving ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'NovaFlow 工程'))) : null,
+        saving ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'Foart 工程'))) : null,
         SV ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '版本'), h('div', { class: 'seg' }, SV.TARGETS.map(vseg))) : null,
         // SKEL = Spine's binary skeleton (the version chosen above); JSON = text
         h('div', { class: 'pk' }, h('span', { class: 'fl' }, '格式'), h('div', { class: 'seg' }, fseg(false, 'JSON'), fseg(true, 'SKEL'))),

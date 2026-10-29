@@ -51,7 +51,7 @@
   function structureTool() {
     const tool = root && root.NovaFlowUiDesignStructureTool
     if (!tool || typeof tool.normalize !== 'function' || typeof tool.normalizeGraph !== 'function') {
-      throw new Error('NovaFlow UI Design structure tool is not ready')
+      throw new Error('Foart UI Design structure tool is not ready')
     }
     return tool
   }

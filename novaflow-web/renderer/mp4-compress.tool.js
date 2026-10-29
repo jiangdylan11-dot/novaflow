@@ -265,7 +265,7 @@
   async function processAll() {
     if (state.processing || !state.items.length) return
     const api = window.electronAPI
-    if (!api?.compressMp4) { alert('MP4 压缩能力未加载，请重启 NovaFlow 后重试。'); return }
+    if (!api?.compressMp4) { alert('MP4 压缩能力未加载，请重启 Foart 后重试。'); return }
     const missing = state.items.filter((item) => !item.filePath)
     if (missing.length) { alert(`MP4 压缩需要本地文件路径，以下文件缺少原路径：${missing.slice(0, 6).map((item) => item.name).join('、')}${missing.length > 6 ? '…' : ''}`); return }
     bindProgress()
@@ -311,7 +311,7 @@
     const ready = state.items.filter((item) => item.result?.srcPath)
     const api = window.electronAPI
     if (!ready.length || state.exporting) return
-    if (!api?.saveVideoToolOutput) { alert('导出能力未加载，请重启 NovaFlow 后重试。'); return }
+    if (!api?.saveVideoToolOutput) { alert('导出能力未加载，请重启 Foart 后重试。'); return }
     state.exporting = true
     paintControls()
     try {
@@ -332,7 +332,7 @@
     const ready = state.items.filter((item) => item.result?.srcPath && item.filePath && !item.result.keptOriginal)
     const api = window.electronAPI
     if (!ready.length || state.exporting) return
-    if (!api?.overwriteVideoToolOutput) { alert('直接覆盖能力未加载，请重启 NovaFlow 后重试。'); return }
+    if (!api?.overwriteVideoToolOutput) { alert('直接覆盖能力未加载，请重启 Foart 后重试。'); return }
     state.exporting = true
     paintControls()
     try {

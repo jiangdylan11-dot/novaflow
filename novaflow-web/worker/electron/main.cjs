@@ -6,7 +6,9 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const IS_UI_TRIAL = require('../package.json').localUiTrial === true;
-const PRODUCT_NAME = IS_UI_TRIAL ? 'NovaFlow UI 本地试用版' : 'NovaFlow';
+const PRODUCT_NAME = IS_UI_TRIAL ? 'Foart UI 本地试用版' : 'Foart';
+app.setName(PRODUCT_NAME);
+app.setAppUserModelId('com.novaflow.worker');
 const customDataDir = process.env?.NOVAFLOW_ASSISTANT_DATA_DIR;
 // Keep the existing assistant identity when the visible product is renamed.
 app.setPath('userData', customDataDir ? path.resolve(customDataDir, '..') : path.join(app.getPath('appData'), IS_UI_TRIAL ? 'NovaFlow UI Trial' : 'NovaFlow Worker'));
@@ -174,7 +176,7 @@ async function startWorker() {
   }
   const instance = await ensureWorker();
   await instance.start();
-  progress(95, '正在打开 NovaFlow 登录界面');
+  progress(95, '正在打开 Foart 登录界面');
   await shell.openExternal(instance.openUrl);
   return { ok: true, state: instance.getState() };
 }
@@ -278,7 +280,7 @@ ipcMain.handle('worker:openLogFolder', () => shell.openPath(DATA_DIR));
 ipcMain.handle('worker:openWebsite', () => shell.openExternal('https://novaflow.jiangdylan11.workers.dev/'));
 ipcMain.handle('worker:openLocal', async () => {
   try {
-    if (!worker?.getState().localRunning) throw new Error('请先启动 NovaFlow');
+    if (!worker?.getState().localRunning) throw new Error('请先启动 Foart');
     await shell.openExternal(worker.openUrl);
     return { ok: true };
   } catch (error) { return { ok: false, error: String(error.message || error) }; }
@@ -287,7 +289,7 @@ ipcMain.handle('worker:openLocal', async () => {
 // model - refused while anything draws or waits, then ComfyUI unloads it all.
 ipcMain.handle('worker:freeMemory', async () => {
   try {
-    if (!worker) throw new Error('请先启动 NovaFlow');
+    if (!worker) throw new Error('请先启动 Foart');
     const result = await worker.promptAssistant.releaseRuntimes();
     if (!result.ok) throw new Error(result.errorCode === 'runtime-generation-busy' ? '正在生成，完成后再释放显存' : result.error);
     if (!result.released) throw new Error('生成服务未运行，无需释放');
@@ -348,7 +350,7 @@ ipcMain.handle('worker:licenseImportText', licenseAction((license, text) => lice
 ipcMain.handle('worker:licenseImportFile', async event => {
   if (!win || event.sender !== win.webContents) return { ok: false, error: 'Invalid assistant window' };
   try {
-    const pick = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'NovaFlow License', extensions: ['nfl', 'json'] }] });
+    const pick = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'Foart License', extensions: ['nfl', 'json'] }] });
     if (pick.canceled || !pick.filePaths?.[0]) return { canceled: true };
     return { ok: true, state: await (await getLicense()).importLicense(await fs.promises.readFile(pick.filePaths[0], 'utf8')) };
   } catch (error) { return { ok: false, error: String(error.message || error), state: error.state }; }

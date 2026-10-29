@@ -96,6 +96,12 @@ input, select, button, textarea {
   letter-spacing: 0.3px;
 }
 
+.nf-brand-logo {
+  width: 92px;
+  height: 34px;
+  object-fit: contain;
+}
+
 .nf-brand-mark {
   width: 22px;
   height: 22px;

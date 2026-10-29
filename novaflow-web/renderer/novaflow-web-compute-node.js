@@ -121,7 +121,7 @@
     const nodes = (reply && Array.isArray(reply.nodes)) ? reply.nodes : [];
     const rows = [];
     if (localAssistant) {
-      rows.push({ id: null, name: '本机', hint: '启动NovaFlow 的这台电脑', status: 'local', locked: false, selected: !current });
+      rows.push({ id: null, name: '本机', hint: '启动Foart 的这台电脑', status: 'local', locked: false, selected: !current });
     } else {
       rows.push({
         id: null,
@@ -250,7 +250,7 @@
       if (!backdrop.isConnected) return;
       note.classList.add('nf-node-warn');
       note.textContent = error && (error.status === 401 || error.status === 403)
-        ? '请先登录 NovaFlow 账号，再选择算力源。'
+        ? '请先登录 Foart 账号，再选择算力源。'
         : '读取算力节点失败：' + String((error && error.message) || error);
       return;
     }

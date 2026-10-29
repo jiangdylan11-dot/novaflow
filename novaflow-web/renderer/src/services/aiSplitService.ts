@@ -350,7 +350,7 @@ const fetchComfyBlob = async (baseUrl: string, path: string) => {
   const normalized = trimBaseUrl(baseUrl)
   if (api?.runtimeRequestBinary) {
     const out = await api.runtimeRequestBinary({ baseUrl: normalized, path, init: { method: 'GET' } })
-    if (!out?.ok || !out?.dataBase64) throw new Error(`NovaFlow AI Runtime file download failed: ${String(out?.status || out?.error || '')}`)
+    if (!out?.ok || !out?.dataBase64) throw new Error(`Foart AI Runtime file download failed: ${String(out?.status || out?.error || '')}`)
     const raw = atob(String(out.dataBase64 || ''))
     const bytes = new Uint8Array(raw.length)
     for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i)
@@ -358,7 +358,7 @@ const fetchComfyBlob = async (baseUrl: string, path: string) => {
   }
   const endpoint = path.startsWith('/') ? path : `/${path}`
   const res = await fetch(new URL(endpoint, normalized).toString(), { method: 'GET' })
-  if (!res.ok) throw new Error(`NovaFlow AI Runtime file download failed: HTTP ${res.status}`)
+  if (!res.ok) throw new Error(`Foart AI Runtime file download failed: HTTP ${res.status}`)
   return await res.blob()
 }
 
@@ -416,7 +416,7 @@ const detectComfyBaseUrl = async () => {
       }
     } catch {}
   }
-  throw new Error('See-through NovaFlow AI Runtime is not connected.')
+  throw new Error('See-through Foart AI Runtime is not connected.')
 }
 
 const assertSeeThroughAvailable = async (baseUrl: string) => {

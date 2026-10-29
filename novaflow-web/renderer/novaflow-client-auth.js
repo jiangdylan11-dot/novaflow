@@ -592,7 +592,7 @@
     const providerMetrics = "";
     const content = `
       <div class="nf-client-auth-head">
-        <div class="nf-client-auth-title">NovaFlow 账号</div>
+        <div class="nf-client-auth-title">Foart 账号</div>
         <div class="nf-client-auth-pill ${pill.cls}">${escapeHtml(pill.text)}</div>
       </div>
       ${loggedIn ? `

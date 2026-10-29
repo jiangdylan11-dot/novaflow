@@ -270,7 +270,7 @@
   async function processAll() {
     if (state.processing || state.exporting || !state.atlases.length || !state.images.length) return
     const api = window.electronAPI
-    if (!api?.convertSpineAtlasWebp) { alert('SPINE 转 WebP 能力未加载，请重启 NovaFlow 后重试。'); return }
+    if (!api?.convertSpineAtlasWebp) { alert('SPINE 转 WebP 能力未加载，请重启 Foart 后重试。'); return }
     state.processing = true
     revokeResults()
     render()
@@ -362,7 +362,7 @@
     const ready = state.images.filter((item) => item.result?.bytes?.length)
     const api = window.electronAPI
     if (!state.resultAtlases.length || !ready.length || state.exporting) return
-    if (!api?.overwriteSpineAtlasWebpOutput) { alert('直接覆盖能力未加载，请重启 NovaFlow 后重试。'); return }
+    if (!api?.overwriteSpineAtlasWebpOutput) { alert('直接覆盖能力未加载，请重启 Foart 后重试。'); return }
     const atlasPathByName = new Map(state.atlases.map((atlas) => [normalizeName(atlas.name), atlas.inputPath || '']))
     const missing = []
     const atlases = state.resultAtlases.map((atlas) => {

@@ -199,7 +199,7 @@
       running: !!stats?.ok,
       connected: !!stats?.ok,
       status: stats?.ok ? 'running' : 'stopped',
-      name: 'NovaFlow AI Runtime',
+      name: 'Foart AI Runtime',
       version: '',
       port: 8188,
       baseUrl: DEFAULT_BASE_URL,

@@ -289,7 +289,7 @@
   async function processAll() {
     if (state.processing || !state.items.length) return
     const api = window.electronAPI
-    if (!api?.convertVideoFormat) { alert('视频格式转换能力未加载，请重启 NovaFlow 后重试。'); return }
+    if (!api?.convertVideoFormat) { alert('视频格式转换能力未加载，请重启 Foart 后重试。'); return }
     const missing = state.items.filter((item) => !item.filePath)
     if (missing.length) { alert(`视频格式转换需要本地文件路径，以下文件缺少原路径：${missing.slice(0, 6).map((item) => item.name).join('、')}${missing.length > 6 ? '…' : ''}`); return }
     bindProgress()
@@ -331,7 +331,7 @@
     const ready = state.items.filter((item) => item.result?.srcPath)
     const api = window.electronAPI
     if (!ready.length || state.exporting) return
-    if (!api?.saveVideoToolOutput) { alert('导出能力未加载，请重启 NovaFlow 后重试。'); return }
+    if (!api?.saveVideoToolOutput) { alert('导出能力未加载，请重启 Foart 后重试。'); return }
     state.exporting = true
     paintControls()
     try {

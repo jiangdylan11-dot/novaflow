@@ -18,7 +18,7 @@ const assistant = await createLocalAssistant({ ...config, dataDir, configPath: j
 });
 const state = await assistant.start();
 // URL shortcut keeps the ephemeral pairing secret out of logs.
-const shortcut = resolve(dataDir, '打开 NovaFlow.url');
+const shortcut = resolve(dataDir, '打开 foart.url');
 await writeFile(shortcut, '[InternetShortcut]\r\nURL=' + assistant.openUrl + '\r\n');
 console.log('本地工作台已启动：' + state.workbenchUrl + '（未分享）');
 console.log('使用本机快捷方式连接：' + shortcut);

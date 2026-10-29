@@ -10,7 +10,7 @@ export function WorkerStrip({ workers }: { workers: WorkerRow[] }) {
       <div className="nf-panel-title">算力节点</div>
       {workers.length === 0 && (
         <div className="nf-meta">
-          还没有算力节点。安装 NovaFlowWorkerSetup.exe 并用注册码接入，即可开始接单。
+          还没有算力节点。安装 foartWorkerSetup.exe 并用注册码接入，即可开始接单。
         </div>
       )}
       {workers.map((w) => (

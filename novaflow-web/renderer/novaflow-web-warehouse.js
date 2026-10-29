@@ -283,7 +283,7 @@
     const link = node('a', null, root.document.body);
     link.href = 'novaflow://warehouse/open?id=' + id + '&sub=' + encodeURIComponent(folderTrail.map(folder => folder.name).join('/'));
     link.click(); link.remove();
-    feedback = '请允许浏览器打开 NovaFlow；需要新版助手。首次定位其他目录时请选择仓库根目录。'; lastError = ''; tell();
+    feedback = '请允许浏览器打开 Foart；需要新版助手。首次定位其他目录时请选择仓库根目录。'; lastError = ''; tell();
     // The native helper removes its proof after opening. Also clean up if the
     // browser prompt was cancelled or the helper is not installed.
     root.setTimeout(() => target.removeEntry(name).catch(() => {}), 180000);

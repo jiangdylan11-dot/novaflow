@@ -311,7 +311,7 @@
         h('button', { class: 'fxm-btn', type: 'button', title: '读一个粒子项目 JSON 文件，加成列表里的一个新粒子系统', onclick: () => importProject() }, '导入'),
         h('button', { class: 'fxm-btn', type: 'button', title: '把当前选中的粒子系统存成 JSON 文件下载到电脑（贴图一起存进去）', onclick: () => saveProject() }, '保存')),
         // 2026-10-16 用户：保存 / 导入要解释一下
-        help('模板库：挑模板，或用「点击存储」把当前效果存进模板库（下次在这里直接选）。导入：读一个粒子项目 JSON 文件（「保存」存的、或粒子页「保存粒子项目」存的），加成一个新粒子系统。保存：把当前选中的粒子系统存成「NovaFlow项目_名字.json」下载到电脑，贴图一起存进去，可以备份或发给别人，用「导入」读回来。')]
+        help('模板库：挑模板，或用「点击存储」把当前效果存进模板库（下次在这里直接选）。导入：读一个粒子项目 JSON 文件（「保存」存的、或粒子页「保存粒子项目」存的），加成一个新粒子系统。保存：把当前选中的粒子系统存成「Foart项目_名字.json」下载到电脑，贴图一起存进去，可以备份或发给别人，用「导入」读回来。')]
     }
     async function importProject() {
       const f = await new Promise((res) => { const i = h('input', { type: 'file', accept: '.json,application/json' }); i.onchange = () => res(i.files && i.files[0]); i.click() })
@@ -327,10 +327,10 @@
     function saveProject() {
       const c = cfg(), name = String(c.systemName || 'particle').replace(/[\\/:*?"<>|\s]+/g, '_')
       const blob = new Blob([JSON.stringify(c, null, 2)], { type: 'application/json' })
-      const a = h('a', { href: URL.createObjectURL(blob), download: `NovaFlow项目_${name}.json` })
+      const a = h('a', { href: URL.createObjectURL(blob), download: `Foart项目_${name}.json` })
       document.body.append(a); a.click(); a.remove()
       setTimeout(() => URL.revokeObjectURL(a.href), 4000)
-      setInfo(`已保存：NovaFlow项目_${name}.json`)
+      setInfo(`已保存：Foart项目_${name}.json`)
     }
 
     // ---------------------------------------------------------------- 模板库弹框（和粒子页同一份模板：卡片动画预览、点击存储、删除、重置）

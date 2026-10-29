@@ -5466,7 +5466,7 @@
   function buildQwenImageOutpaintWorkflow(info, imageName, prefix, delta, options = {}) {
     const required = ['LoadImage', 'ImagePadForOutpaint', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'ImageCrop', 'SaveImage']
     const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行无限扩图。请在本地助手里重新启动 NovaFlow 后再试')
+    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行无限扩图。请在本地助手里重新启动 Foart 后再试')
     const side = (value) => Math.max(0, Math.round(Number(value) || 0))
     const pad = { left: side(delta && delta.left), top: side(delta && delta.top), right: side(delta && delta.right), bottom: side(delta && delta.bottom) }
     const output = options.safeSize || null
@@ -5935,7 +5935,7 @@
   function buildImageAngleAdjustWorkflow(info, imageName, options = {}) {
     const required = ['LoadImage', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行角度调整。请在本地助手里重新启动 NovaFlow 后再试')
+    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行角度调整。请在本地助手里重新启动 Foart 后再试')
     const horizontalAngle = normalizeImageAngleHorizontal(options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options.zoom)
@@ -6741,7 +6741,7 @@
       '',
       '风险提示：',
       '1. 将修复拆图组件的兼容文件。',
-      '2. 可能会重启本机 NovaFlow AI Runtime。',
+      '2. 可能会重启本机 Foart AI Runtime。',
       '3. 如果 Runtime 队列中还有任务，修复会自动拒绝重启。',
       '',
       '是否现在执行自愈修复？'
@@ -7002,7 +7002,7 @@
         }
       } catch {}
     }
-    throw new Error('NovaFlow AI Runtime 未连接')
+    throw new Error('Foart AI Runtime 未连接')
   }
 
   function extractFiles(history) {
@@ -7036,10 +7036,10 @@
       if (tag === 'execution_error' && data) {
         const nodeType = data.node_type ? ` ${data.node_type}` : ''
         const message = String(data.exception_message || data.exception_type || '').trim()
-        return message ? `NovaFlow AI Runtime ${nodeType} 执行失败：${message}` : `NovaFlow AI Runtime ${nodeType} 执行失败`
+        return message ? `Foart AI Runtime ${nodeType} 执行失败：${message}` : `Foart AI Runtime ${nodeType} 执行失败`
       }
     }
-    return 'NovaFlow AI Runtime 执行失败'
+    return 'Foart AI Runtime 执行失败'
   }
 
   function workflowObject(workflow) {
@@ -7170,7 +7170,7 @@
     const clientId = `novaflow_${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`
     const sent = await requestJson(baseUrl, '/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId, prompt: workflowObject(prompt) }) })
     const promptId = String(sent && sent.data && sent.data.prompt_id || '')
-    if (!sent || !sent.ok || !promptId) throw new Error(sent && (sent.error || sent.raw) || 'NovaFlow AI Runtime 下发失败')
+    if (!sent || !sent.ok || !promptId) throw new Error(sent && (sent.error || sent.raw) || 'Foart AI Runtime 下发失败')
     const start = Date.now()
     let files = []
     while (Date.now() - start < (timeoutMs || 300000)) {
@@ -7181,14 +7181,14 @@
       if (files.length) break
       await new Promise((resolve) => setTimeout(resolve, 900))
     }
-    if (!files.length) throw new Error('NovaFlow AI Runtime 没有输出图片')
+    if (!files.length) throw new Error('Foart AI Runtime 没有输出图片')
     const file = files[0]
     const qs = new URLSearchParams()
     qs.set('filename', file.filename)
     if (file.subfolder) qs.set('subfolder', file.subfolder)
     qs.set('type', file.type || 'output')
     const blob = await fetchBlob(baseUrl, `/view?${qs.toString()}`)
-    if (!blob) throw new Error('NovaFlow AI Runtime 输出下载失败')
+    if (!blob) throw new Error('Foart AI Runtime 输出下载失败')
     return await blobToDataUrl(blob)
   }
 
@@ -7231,7 +7231,7 @@
 
   function missingSeedVr2NodeMessage(missing) {
     const list = Array.isArray(missing) && missing.length ? missing.join(', ') : 'SeedVR2'
-    return '算力节点缺少高清放大组件，请在本地助手里重新启动 NovaFlow 后再试'
+    return '算力节点缺少高清放大组件，请在本地助手里重新启动 Foart 后再试'
   }
 
   function missingSeedVr2ModelMessage(modelName) {
@@ -7893,7 +7893,7 @@
     // A node that cannot build the 2.1 graph is an error, never a silent run on another model.
     const requiredNodes = ['LoadImage', 'NovaFlowGGUFBF16Loader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = requiredNodes.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${featureName}。请在本地助手里重新启动 NovaFlow 后再试`)
+    if (!runtime) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${featureName}。请在本地助手里重新启动 Foart 后再试`)
     return { engine: 'qwen-2.1', unetName: runtime.unetName, clipName: runtime.clipName, vaeName: runtime.vaeName, loraName: '' }
   }
 
@@ -8485,14 +8485,14 @@
       workflow['5'] = { class_type: 'MaskToImage', inputs: { mask: ['4', 1] } }
       workflow['6'] = { class_type: 'SaveImage', inputs: { images: ['5', 0], filename_prefix: prefix } }
     } else {
-      throw new Error('NovaFlow AI Runtime 未安装 Alpha 合成保存节点或 MaskToImage 节点')
+      throw new Error('Foart AI Runtime 未安装 Alpha 合成保存节点或 MaskToImage 节点')
     }
     return { workflow, outputMode }
   }
 
 
   function requiredComfyNode(info, name) {
-    if (!info || !info[name]) throw new Error(`NovaFlow AI Runtime 缺少节点：${name}`)
+    if (!info || !info[name]) throw new Error(`Foart AI Runtime 缺少节点：${name}`)
     return info[name]
   }
 
@@ -8502,7 +8502,7 @@
 
   function requireComfyChoice(nodeInfo, key, wanted, label) {
     const choices = comfyChoices(nodeInfo && nodeInfo.input && nodeInfo.input.required && nodeInfo.input.required[key])
-    if (choices.length && !choices.includes(wanted)) throw new Error(`NovaFlow AI Runtime 缺少${label || key}：${wanted}`)
+    if (choices.length && !choices.includes(wanted)) throw new Error(`Foart AI Runtime 缺少${label || key}：${wanted}`)
     return wanted
   }
 
@@ -8514,14 +8514,14 @@
       if (choices.includes(item)) return item
     }
     if (options && options.optional) return ''
-    throw new Error(`NovaFlow AI Runtime 缺少${label || key}：${list.join(' / ')}`)
+    throw new Error(`Foart AI Runtime 缺少${label || key}：${list.join(' / ')}`)
   }
 
   function requireComfyChoiceFrom(nodeInfo, key, wanted, label) {
     const required = nodeInfo && nodeInfo.input && nodeInfo.input.required || {}
     const optional = nodeInfo && nodeInfo.input && nodeInfo.input.optional || {}
     const choices = comfyChoices(required[key] || optional[key])
-    if (choices.length && !choices.includes(wanted)) throw new Error(`NovaFlow AI Runtime missing ${label || key}: ${wanted}`)
+    if (choices.length && !choices.includes(wanted)) throw new Error(`Foart AI Runtime missing ${label || key}: ${wanted}`)
     return wanted
   }
 
@@ -8972,7 +8972,7 @@
   function buildFluxCompletionWorkflow(info, imageName, maskName, prefix, options = {}) {
     const required = ['LoadImage', 'ImageToMask', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'CLIPTextEncode', 'ConditioningZeroOut', 'FluxGuidance', 'InpaintModelConditioning', 'DifferentialDiffusion', 'KSampler', 'VAEDecode', 'SaveImage']
     const missing = required.filter((name) => !info || !info[name])
-    if (missing.length) throw new Error('当前算力节点缺少补图所需的组件。请在本地助手里重新启动 NovaFlow 后再试')
+    if (missing.length) throw new Error('当前算力节点缺少补图所需的组件。请在本地助手里重新启动 Foart 后再试')
     const unetName = requireComfyChoice(info.UNETLoader, 'unet_name', 'fill-dev-OneReward-fp8.safetensors', 'Flux Fill UNET')
     const vaeName = requireComfyChoice(info.VAELoader, 'vae_name', 'ae.safetensors', 'Flux VAE')
     const clipName1 = requireComfyChoiceFrom(info.DualCLIPLoader, 'clip_name1', 'clip_l.safetensors', 'Flux CLIP-L')
@@ -9015,7 +9015,7 @@
     // 局部编辑 and 智能补图 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
     // every node carries it.
     const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
-    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补图'}。请在本地助手里重新启动 NovaFlow 后再试`)
+    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补图'}。请在本地助手里重新启动 Foart 后再试`)
     if (wantsQwen21) {
       // 局部编辑 draws a new seed per run (a rerun gives another result); 智能补图 keeps INPAINT_COMPLETION_SEED.
       const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed)))
@@ -9045,7 +9045,7 @@
   async function defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
     const api = window.NovaFlowSplitInpaintNsfwWorkflow
     if (!api || typeof api.assertRuntimeSupport !== 'function' || typeof api.buildWorkflow !== 'function') {
-      throw new Error('NovaFlow NSFW 修图工作流未加载，请刷新应用后重试')
+      throw new Error('Foart NSFW 修图工作流未加载，请刷新应用后重试')
     }
     const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, true)
     const info = await comfyAllObjectInfo(baseUrl)
@@ -9180,7 +9180,7 @@
     const workflow = await defaultRmbgWorkflow(baseUrl, imageName, nodePrefix, node)
     const result = await runPromptForFirstImage(baseUrl, workflow, nodePrefix, 300000)
     const stats = await assertModelAlphaDataUrl(result, node.name)
-    console.info('[NovaFlow split] RMBG output alpha', stats)
+    console.info('[Foart split] RMBG output alpha', stats)
     return result
   }
 
@@ -9222,7 +9222,7 @@
     if (!enabled && hasLegacyWorkflow && !customAiWorkflowEnabled._warned) customAiWorkflowEnabled._warned = {}
     if (!enabled && hasLegacyWorkflow && !customAiWorkflowEnabled._warned[kind]) {
       customAiWorkflowEnabled._warned[kind] = true
-      console.info(`[NovaFlow split] ignored cached ${kind} workflow; using built-in crop/paste provider`)
+      console.info(`[Foart split] ignored cached ${kind} workflow; using built-in crop/paste provider`)
     }
     return enabled
   }
@@ -19139,7 +19139,7 @@
   function splitInpaintNsfwPixelsApi() {
     const api = window.NovaFlowSplitInpaintNsfwPixels
     if (!api || typeof api.removeWhiteMatteRgb !== 'function' || typeof api.blendSubjectJoinRgb !== 'function') {
-      throw new Error('NovaFlow NSFW 像素适配器未加载，请刷新应用后重试')
+      throw new Error('Foart NSFW 像素适配器未加载，请刷新应用后重试')
     }
     return api
   }
@@ -19152,7 +19152,7 @@
       || typeof api.assertPreparedSourceGuide !== 'function'
       || typeof api.resolveSubjectJoinPolicy !== 'function'
     ) {
-      throw new Error('NovaFlow NSFW 修图工作流未加载，请刷新应用后重试')
+      throw new Error('Foart NSFW 修图工作流未加载，请刷新应用后重试')
     }
     return api
   }
@@ -22736,7 +22736,7 @@
     // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
     // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
     resolved = objectTransferUsableRuntime(resolved) || resolveQwen21EditRuntime(info, '特效提取')
-    if (!info || !info.GetImageSize || !info.EmptyImage) throw new Error('当前算力节点缺少 GetImageSize / EmptyImage 节点，无法执行特效提取。请在本地助手里重新启动 NovaFlow 后再试')
+    if (!info || !info.GetImageSize || !info.EmptyImage) throw new Error('当前算力节点缺少 GetImageSize / EmptyImage 节点，无法执行特效提取。请在本地助手里重新启动 Foart 后再试')
     // image_1 is a pure black canvas the size of the plate (so the sampled latent is the plate's grid and
     // the result lands back on the crop), image_2 the plate itself, each at its own size (resolution 0;
     // the plate is 32-aligned, so it is never resampled). The sampler runs on the encoder's latent at
@@ -22872,7 +22872,7 @@
     const info = await comfyAllObjectInfo(baseUrl)
     const resolved = resolveQwen21EditRuntime(info, stageLabel)
     const api = window.NovaFlowBackgroundRemoval
-    if (!api || typeof api.unmultBlackBackgroundDataUrl !== 'function') throw new Error('去黑能力未加载，请重启 NovaFlow 后重试')
+    if (!api || typeof api.unmultBlackBackgroundDataUrl !== 'function') throw new Error('去黑能力未加载，请重启 Foart 后重试')
     const input = effectExtractModelInput(session, bounds)
     const width = input.cropBox.width
     const height = input.cropBox.height

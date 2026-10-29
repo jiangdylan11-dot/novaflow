@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NovaFlow 后台管理</title>
+    <title>Foart 后台管理</title>
   </head>
   <body>
     <div id="app">
       <aside class="sidebar" aria-label="后台管理模块">
         <div class="brandBlock">
-          <div class="brandMark">NF</div>
+          <img class="brandMark" src="../build/icon.png" alt="" />
           <div class="brandText">
-            <div class="brandName">NovaFlow 后台管理</div>
+            <div class="brandName"><img class="brandLogo" src="../build/foart-logo-dark.svg" alt="Foart" /><span>后台管理</span></div>
             <div class="brandSub">授权 · 积分 · 算力</div>
           </div>
         </div>
@@ -50,7 +50,7 @@
       <main class="mainShell">
         <header class="topbar">
           <div class="crumb">
-            <span class="crumbRoot">NovaFlow 后台管理</span>
+            <span class="crumbRoot">Foart 后台管理</span>
             <span class="crumbSep">/</span>
             <span id="topbarModuleName" class="crumbCurrent">仪表盘</span>
           </div>
@@ -717,7 +717,7 @@
             <div class="pageHead">
               <div>
                 <h1 class="pageTitle">算力节点</h1>
-                <div class="pageHint">NovaFlow Web 的 GPU 池。发一个一次性注册码，对方装上 Worker 填进去就自动上线。</div>
+                <div class="pageHint">Foart Web 的 GPU 池。发一个一次性注册码，对方装上 Worker 填进去就自动上线。</div>
               </div>
               <div class="pageTools">
                 <span id="computeDataBadge" class="pill skeletonPill"></span>
@@ -913,7 +913,7 @@
                   </div>
                 </div>
               </div>
-              <div class="drawerNote">账号规则：2-64 位小写字母、数字、点、下划线或短横线。用户将使用此账号和初始密码登录 NovaFlow。</div>
+              <div class="drawerNote">账号规则：2-64 位小写字母、数字、点、下划线或短横线。用户将使用此账号和初始密码登录 Foart。</div>
             </div>
             <div class="drawerFooter">
               <div id="createUserStatus" class="hint">-</div>
@@ -1111,7 +1111,7 @@
     <style>
       :root {
         color-scheme: dark;
-        /* Neutral greys, the same family as the NovaFlow web app (#101010 /
+        /* Neutral greys, the same family as the Foart web app (#101010 /
            #161616 / #202020 / #272727 surfaces, #1ea672 green). */
         --bg: #101010;
         --surface: #161616;
@@ -1189,6 +1189,8 @@
         font-weight: 800;
       }
       .brandText { min-width: 0; }
+      .brandLogo { display: block; width: 76px; height: 28px; object-fit: contain; }
+      .brandName { display: flex; align-items: center; gap: 7px; }
       .brandName { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .brandSub { margin-top: 2px; font-size: 11px; color: var(--caption); white-space: nowrap; }
       .moduleNav { display: grid; gap: 2px; }

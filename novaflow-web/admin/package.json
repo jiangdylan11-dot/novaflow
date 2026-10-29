@@ -1,12 +1,12 @@
 {
   "name": "novaflow-license-manager",
-  "productName": "NovaFlow 后台管理",
-  "version": "3.0.22",
+  "productName": "Foart 后台管理",
+  "version": "3.0.24",
   "private": true,
-  "description": "NovaFlow Web administration application",
+  "description": "Foart Web administration application",
   "main": "admin-main.js",
   "scripts": {
-    "prebuild:win": "node ../tools/sync-art-admin.mjs",
+    "prebuild:win": "node ../tools/sync-brand-assets.mjs && node ../tools/sync-art-admin.mjs",
     "pretest": "node ../tools/sync-art-admin.mjs --check",
     "start": "electron .",
     "server": "node admin-server/server.js",

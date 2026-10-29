@@ -412,7 +412,7 @@
       }
       const ed = window.NovaFlowSkeletonEditor
       if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
-      setStatus('打开 NovaFlow 工程…')
+      setStatus('打开 Foart 工程…')
       const api = await ed.ready()
       const n = await api.openProjectFile(nfproj, null, { directory: window.__NovaFlowLastProjectDirectory || { files: list }, operation })
       return { projects: n }
@@ -3320,7 +3320,7 @@
           if (!files.length) throw new Error('这个文件夹里没有 JSON 和贴图')
           rememberProjectFolder(files, true)
         const n = await importPhotoshopProject(files, (t) => say(t))
-          say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+          say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
         })
         return
       }
@@ -3383,7 +3383,7 @@
         if (!files.length) throw new Error('这里面没有 JSON 和贴图')
         rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => sayHere(t))
-        sayHere((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+        sayHere((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
     })
     picker.addEventListener('change', () => {
@@ -3397,7 +3397,7 @@
       guardWith(say)(async () => {
         rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => say(t))
-        say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+        say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
     })
     document.body.appendChild(picker)
@@ -3421,11 +3421,11 @@
       nfPicker.value = ''
       if (!f) return
       guardWith(sayHere)(async () => {
-        sayHere('打开 NovaFlow 工程…')
+        sayHere('打开 Foart 工程…')
         const ed = window.NovaFlowSkeletonEditor
         if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
         const n = await (await ed.ready()).openProjectFile(f)
-        sayHere(n ? `已打开 NovaFlow 工程（${n} 个工程）` : '已取消', 'ok')
+        sayHere(n ? `已打开 Foart 工程（${n} 个工程）` : '已取消', 'ok')
       })
     })
     document.body.appendChild(nfPicker)
@@ -3479,23 +3479,23 @@
     open.type = 'button'
     styleButton(open, false)
     open.setAttribute('data-nf-project-open', '1')
-    open.title = '打开 NovaFlow 工程文件（.nfproj），里面的工程都加进工程树；打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
+    open.title = '打开 Foart 工程文件（.nfproj），里面的工程都加进工程树；打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
     // the file picker (not the upload input) when the browser has it: the file is remembered, so
     // 保存工程 / Ctrl+S write back to it (user 2026-10-16)
     open.addEventListener('click', async () => {
       if (state.busy) return
       if (typeof window.showOpenFilePicker !== 'function') { nfPicker.click(); return }
       let handle
-      try { [handle] = await window.showOpenFilePicker({ types: [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }] }) } catch (e) {
+      try { [handle] = await window.showOpenFilePicker({ types: [{ description: 'Foart 工程', accept: { 'application/octet-stream': ['.nfproj'] } }] }) } catch (e) {
         if (e && e.name === 'AbortError') return
         nfPicker.click(); return
       }
       guardWith(sayHere)(async () => {
-        sayHere('打开 NovaFlow 工程…')
+        sayHere('打开 Foart 工程…')
         const ed = window.NovaFlowSkeletonEditor
         if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
         const n = await (await ed.ready()).openProjectFile(await handle.getFile(), handle)
-        sayHere(n ? `已打开 NovaFlow 工程（${n} 个工程）` : '已取消', 'ok')
+        sayHere(n ? `已打开 Foart 工程（${n} 个工程）` : '已取消', 'ok')
       })
     })
     const save = el('button', null, '保存工程')

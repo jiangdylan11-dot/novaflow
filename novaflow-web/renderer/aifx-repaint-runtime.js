@@ -1872,7 +1872,7 @@
     const api = window.electronAPI
     if (!api || typeof api.smartAiImageReverse !== 'function') return { ok: false, error: '云端材质识别失败，请刷新网页后重试' }
     const token = readAifxSessionToken()
-    if (!token) return { ok: false, error: '请先登录 NovaFlow 账号' }
+    if (!token) return { ok: false, error: '请先登录 Foart 账号' }
     let timer = 0
     const timeout = new Promise(resolve => { timer = setTimeout(() => resolve({ ok: false, error: '云端材质识别失败，请稍后重试' }), timeoutMs) })
     try {
@@ -2362,7 +2362,7 @@
       const bytes = await response.arrayBuffer()
       candidate.saved = await warehouse.save({ blob: new Blob([bytes], { type: 'video/mp4' }), name: candidateFileName(candidate) })
     } catch (error) {
-      console.warn('[NovaFlow aifx] 结果入库失败', error)
+      console.warn('[Foart aifx] 结果入库失败', error)
     }
   }
 
@@ -3100,7 +3100,7 @@
     try {
       await handler(event)
     } catch (error) {
-      console.error('[NovaFlow aifx]', error)
+      console.error('[Foart aifx]', error)
       setStatus('出错了', String(error && error.message || error))
       refreshUi()
     }

@@ -1159,7 +1159,7 @@ export function createWorker(options) {
 
   async function bindAccount(sessionToken) {
     if (!localRunning || sharing || claimBusy) throw new Error('请在本地服务空闲且未分享时绑定账号');
-    if (!controlUrl || !sessionToken) throw new Error('请先配置控制面地址并登录 NovaFlow 账号');
+    if (!controlUrl || !sessionToken) throw new Error('请先配置控制面地址并登录 Foart 账号');
     const me = await callControl('GET', '/api/web/me', { token: sessionToken });
     if (!me.user?.id) throw new Error('账号验证失败');
     if (state.boundAccount?.id && state.boundAccount.id !== me.user.id) throw new Error('此设备已绑定其他账号，请先由原账号处理解绑');

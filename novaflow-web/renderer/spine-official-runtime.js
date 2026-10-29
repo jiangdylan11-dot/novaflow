@@ -55,7 +55,7 @@
         this.player.seek(this.timeSec)
         if (this.playing) this.start()
       } catch (error) {
-        console.warn('[NovaFlow Spine] official runtime failed, fallback player may be used next mount', error)
+        console.warn('[Foart Spine] official runtime failed, fallback player may be used next mount', error)
       }
     }
 
@@ -288,7 +288,7 @@
         this.setAnimation(animationNames.includes(prevAnimation) ? prevAnimation : animationNames[0] || '', this.loop)
         this.seek(prevTime)
       } catch (error) {
-        console.warn('[NovaFlow Spine] failed to apply project animation override', error)
+        console.warn('[Foart Spine] failed to apply project animation override', error)
       }
     }
 
@@ -962,7 +962,7 @@
     try {
       return new OfficialSpineProxy(canvas, rawSource, animationName, parsedProject)
     } catch (error) {
-      console.warn('[NovaFlow Spine] official preview skipped', error)
+      console.warn('[Foart Spine] official preview skipped', error)
       return null
     }
   }

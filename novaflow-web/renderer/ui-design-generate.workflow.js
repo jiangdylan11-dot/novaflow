@@ -1821,7 +1821,7 @@
       'blobToDataUrl',
     ]
     const missing = required.filter((name) => typeof bridge?.[name] !== 'function')
-    if (missing.length) throw new Error(`NovaFlow UI generation bridge is incomplete: ${missing.join(', ')}`)
+    if (missing.length) throw new Error(`Foart UI generation bridge is incomplete: ${missing.join(', ')}`)
     return bridge
   }
 
@@ -2302,15 +2302,15 @@
     RUN_SIGNAL = signal
     try {
       throwIfAborted(signal)
-      emitProgress(onProgress, 'connect', '正在连接 NovaFlow AI Runtime', 0.04)
+      emitProgress(onProgress, 'connect', '正在连接 Foart AI Runtime', 0.04)
       const baseUrl = await bridgeTimeout(
         bridge,
         () => bridge.detectBaseUrl(),
         CONNECT_TIMEOUT_MS,
-        '连接 NovaFlow AI Runtime 超时',
+        '连接 Foart AI Runtime 超时',
       )
       throwIfAborted(signal)
-      if (!cleanText(baseUrl)) throw new Error('NovaFlow AI Runtime 未连接')
+      if (!cleanText(baseUrl)) throw new Error('Foart AI Runtime 未连接')
       runtimeBaseUrl = baseUrl
 
       const uploadDataUrls = qwen21
@@ -2400,7 +2400,7 @@
       const sentData = responseData(sent)
       const promptId = cleanText(sentData?.prompt_id || sentData?.data?.prompt_id)
       if (!sent || sent.ok === false || !promptId) {
-        throw new Error(cleanText(sent?.error || sent?.raw) || 'NovaFlow AI Runtime 未返回 prompt_id')
+        throw new Error(cleanText(sent?.error || sent?.raw) || 'Foart AI Runtime 未返回 prompt_id')
       }
 
       const startedAt = Date.now()

@@ -22,7 +22,7 @@ f.identity.controlUrl = 'https://control.test';
 equal(f.windows[0].options.minWidth >= 620, true);
 equal((await f.call('start')).needsLicense, true);
 equal(f.instances.length, 0);
-equal((await f.call('freeMemory')).error, '请先启动 NovaFlow'); // Nothing holds the GPU before the assistant runs.
+equal((await f.call('freeMemory')).error, '请先启动 Foart'); // Nothing holds the GPU before the assistant runs.
 equal((await f.call('license')).state.machineId, 'TEST-MACHINE-ONLY');
 f.config.registrationCode = 'bad-code';
 equal((await f.call('share')).ok, false);
@@ -92,7 +92,9 @@ equal(f.windows[0].focused, true);
 f.windows[0].emit('close', { preventDefault() {} });
 f.tray.emit('click');
 equal(f.windows[0].hidden, false);
-equal(f.tray.tooltip, 'NovaFlow');
+equal(f.tray.tooltip, 'Foart');
+equal(f.app.productName, 'Foart');
+equal(f.app.appId, 'com.novaflow.worker');
 equal(f.app.userData.endsWith('NovaFlow Worker'), true);
 f.removed.length = 0;
 f.config.warehouseFolders = [path.join(comfyDir, 'output', 'kept')];

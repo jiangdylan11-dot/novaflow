@@ -395,8 +395,8 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
 
     const brand = el('div'); brand.className = 'nf-login-brand';
     const logo = el('img'); logo.className = 'nf-login-logo';
-    logo.src = './assets/logo.png';
-    logo.alt = 'NovaFlow';
+    logo.src = './assets/foart-logo-dark.svg';
+    logo.alt = 'Foart';
     logo.draggable = false;
     brand.appendChild(logo);
 
@@ -405,7 +405,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     brand.appendChild(headline);
 
     const lede = el('p'); lede.className = 'nf-login-lede';
-    lede.appendChild(root.document.createTextNode('NovaFlow 游戏美术创作工作台'));
+    lede.appendChild(root.document.createTextNode('Foart 游戏美术创作工作台'));
     brand.appendChild(lede);
 
     // Descriptive labels for what is inside. They are deliberately not

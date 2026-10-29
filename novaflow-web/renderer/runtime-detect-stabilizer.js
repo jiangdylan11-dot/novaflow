@@ -2,8 +2,8 @@
   const TEXT = {
     detect: '\u68c0\u6d4b',
     connected: '\u5df2\u8fde\u63a5',
-    missing: '\u672a\u627e\u5230 NovaFlow AI Runtime',
-    recovering: '\u5df2\u68c0\u6d4b\u5230 NovaFlow AI Runtime\uff0c\u6b63\u5728\u6062\u590d\u8fde\u63a5...',
+    missing: '\u672a\u627e\u5230 Foart AI Runtime',
+    recovering: '\u5df2\u68c0\u6d4b\u5230 Foart AI Runtime\uff0c\u6b63\u5728\u6062\u590d\u8fde\u63a5...',
     model: '\u4e3b\u6a21\u578b',
   }
 
@@ -50,7 +50,7 @@
         const button = Array.from(container.querySelectorAll('button')).find((node) => textOf(node).includes(TEXT.detect))
         if (button) {
           const containerText = textOf(container)
-          if (containerText.includes('NovaFlow AI Runtime') || containerText.includes(TEXT.model)) {
+          if (containerText.includes('Foart AI Runtime') || containerText.includes(TEXT.model)) {
             const statusNode = getStatusNode(container)
             return {
               input,

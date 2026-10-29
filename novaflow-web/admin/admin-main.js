@@ -2,6 +2,9 @@ const { app, BrowserWindow } = require("electron");
 const path = require("path");
 const { registerLicenseAdminIpc } = require("./license-admin-gui/ipc");
 
+app.setName("Foart 后台管理");
+app.setAppUserModelId("com.novaflow.licenseadmin");
+
 // Keep the installed admin's account configuration across the repository move.
 app.setPath("userData", path.join(app.getPath("appData"), "novaflow-license-manager"));
 
@@ -14,8 +17,8 @@ function createWindow() {
     height: 880,
     minWidth: 1080,
     minHeight: 680,
-    title: "NovaFlow 后台管理",
-    icon: path.join(__dirname, "build", "icon.ico"),
+    title: "Foart 后台管理",
+    icon: path.join(__dirname, "build", "foart-admin-icon.ico"),
     backgroundColor: "#0B0E13",
     autoHideMenuBar: true,
     webPreferences: {

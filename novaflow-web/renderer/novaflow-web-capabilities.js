@@ -240,7 +240,7 @@
     const status = await api.runtimeGetStatus();
     if (status.running) return status;
     return Object.assign({}, status, {
-      detail: 'Web 版无法远程启动算力节点，请让算力提供者打开 NovaFlow Worker'
+      detail: 'Web 版无法远程启动算力节点，请让算力提供者打开 Foart Worker'
     });
   };
 
@@ -270,7 +270,7 @@
     mode: 'web-no-license-required',
     permissions: ['export', 'warehouse', 'web'],
     expireAt: null,
-    detail: 'NovaFlow Web 不需要授权文件（授权文件绑定机器码，浏览器没有机器码）'
+    detail: 'Foart Web 不需要授权文件（授权文件绑定机器码，浏览器没有机器码）'
   };
 
   // The renderer does `result.state ? result.state : result`, so `state` has to
@@ -285,7 +285,7 @@
   api.licenseClear = async () => ok(Object.assign({ cleared: false }, WEB_LICENSE));
 
   api.getAppInfo = async () => ok({
-    name: 'NovaFlow Web',
+    name: 'Foart Web',
     version: runtime.version,
     platform: 'web',
     userAgent: root.navigator ? root.navigator.userAgent : ''
@@ -1107,7 +1107,7 @@
     function mux({ width, height, fps, frames }) {
       const ms = (i) => Math.round(i * 1000 / fps);
       const ebml = el(0x1A45DFA3, [el(0x4286, uint(1)), el(0x42F7, uint(1)), el(0x42F2, uint(4)), el(0x42F3, uint(8)), el(0x4282, te.encode('webm')), el(0x4287, uint(4)), el(0x4285, uint(2))]);
-      const info = el(0x1549A966, [el(0x2AD7B1, uint(1000000)), el(0x4489, float64(ms(frames.length))), el(0x4D80, te.encode('NovaFlow')), el(0x5741, te.encode('NovaFlow'))]);
+      const info = el(0x1549A966, [el(0x2AD7B1, uint(1000000)), el(0x4489, float64(ms(frames.length))), el(0x4D80, te.encode('Foart')), el(0x5741, te.encode('Foart'))]);
       const tracks = el(0x1654AE6B, [el(0xAE, [el(0xD7, uint(1)), el(0x73C5, uint(1)), el(0x83, uint(1)), el(0x9C, uint(0)), el(0x86, te.encode('V_VP8')),
         el(0xE0, [el(0xB0, uint(width)), el(0xBA, uint(height)), el(0x53C0, uint(1))])])]);
       // Clusters of about one second, each frame a BlockGroup with its alpha in BlockAdditions.
@@ -2739,7 +2739,7 @@
     const status = await api.runtimeGetStatus();
     return Object.assign({}, status, {
       ok: false,
-      detail: 'Web 版不能重启算力节点，请让算力提供者在 NovaFlow Worker 里操作'
+      detail: 'Web 版不能重启算力节点，请让算力提供者在 Foart Worker 里操作'
     });
   };
 
@@ -2786,7 +2786,7 @@
         ok: false,
         httpStatus: status,
         error: status === 401
-          ? '请先登录 NovaFlow 账号（点顶栏右上角的「登录」）'
+          ? '请先登录 Foart 账号（点顶栏右上角的「登录」）'
           : String(error.message || error)
       };
     }

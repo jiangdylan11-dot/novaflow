@@ -1,8 +1,8 @@
 {
   "appId": "com.novaflow.licenseadmin",
-  "productName": "NovaFlow 后台管理",
+  "productName": "Foart 后台管理",
   "electronVersion": "32.2.0",
-  "artifactName": "NovaFlow 后台管理 Setup ${version}.${ext}",
+  "artifactName": "Foart 后台管理 Setup ${version}.${ext}",
   "extraMetadata": {
     "main": "admin-main.js",
     "name": "novaflow-license-manager"
@@ -11,7 +11,9 @@
     "admin-main.js",
     "load-shared-esm.cjs",
     "build/icon.ico",
+    "build/foart-admin-icon.ico",
     "build/icon.png",
+    "build/foart-logo-dark.svg",
     "admin-server/**/*",
     "license/config.js",
     "license-admin-core.js",
@@ -29,7 +31,7 @@
   },
   "asar": false,
   "win": {
-    "icon": "build/icon.ico",
+    "icon": "build/foart-admin-icon.ico",
     "target": [
       {
         "target": "nsis",
@@ -50,9 +52,10 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "installerIcon": "build/icon.ico",
-    "uninstallerIcon": "build/icon.ico",
-    "installerHeaderIcon": "build/icon.ico"
+    "installerIcon": "build/foart-admin-icon.ico",
+    "uninstallerIcon": "build/foart-admin-icon.ico",
+    "installerHeaderIcon": "build/foart-admin-icon.ico",
+    "shortcutName": "Foart 后台管理"
   },
   "extraResources": [
     {

@@ -534,7 +534,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         if (!intentional) rejectPending(message);
         if (settled) return;
         if (startupFailure) settle(startupFailure);
-        else if (Number(code) === 73) settle(Object.assign(new Error('Prompt Assistant 本地模型正在另一个 NovaFlow 实例中使用，请等待当前任务完成后重试'), { errorCode: 'prompt-assistant-already-running', failureCategory: 'resource_busy', retryable: true }));
+        else if (Number(code) === 73) settle(Object.assign(new Error('Prompt Assistant 本地模型正在另一个 Foart 实例中使用，请等待当前任务完成后重试'), { errorCode: 'prompt-assistant-already-running', failureCategory: 'resource_busy', retryable: true }));
         else settle(new Error(intentional ? 'Prompt Assistant 服务已关闭' : message));
       });
       const timer = setTimeout(() => settle(new Error('Prompt Assistant 服务启动超时')), START_TIMEOUT_MS);

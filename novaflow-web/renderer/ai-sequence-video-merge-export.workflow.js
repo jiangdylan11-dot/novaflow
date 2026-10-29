@@ -6,7 +6,7 @@
   'use strict'
 
   const SCHEMA = 'novaflow.video-compositor.export/v1'
-  const EXPORT_UNAVAILABLE_MESSAGE = '当前环境暂不支持视频合并导出，请在完整的 NovaFlow 桌面版中使用。'
+  const EXPORT_UNAVAILABLE_MESSAGE = '当前环境暂不支持视频合并导出，请在完整的 Foart 桌面版中使用。'
 
   function finite(value, fallback) {
     const number = Number(value)

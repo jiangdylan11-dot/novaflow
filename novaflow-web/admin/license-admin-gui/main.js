@@ -10,7 +10,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 760,
-    title: "NovaFlow 后台管理",
+    title: "Foart 后台管理",
     backgroundColor: "#090b0f",
     autoHideMenuBar: true,
     webPreferences: {

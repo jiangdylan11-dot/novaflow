@@ -208,9 +208,7 @@ export default function App() {
     <div className="nf-app">
       <header className="nf-topbar">
         <div className="nf-brand">
-          <span className="nf-brand-mark" />
-          NovaFlow
-          <span className="nf-brand-web">WEB</span>
+          <img className="nf-brand-logo" src="/assets/foart-logo-dark.svg" alt="Foart" />
         </div>
 
         <div className="nf-topbar-spacer" />

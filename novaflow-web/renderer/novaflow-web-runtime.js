@@ -214,7 +214,7 @@
   }
 
   async function localControl(method, path, body, timeoutMs = 30000) {
-    if (!CONFIG.localAssistant) throw new Error('请在本地助手点击“启动NovaFlow”，连接本机工作台');
+    if (!CONFIG.localAssistant) throw new Error('请在本地助手点击“启动Foart”，连接本机工作台');
     const res = await fetch(CONFIG.localOrigin + path, { method,
       headers: { 'content-type': 'application/json', 'x-novaflow-local': localKey },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
@@ -322,7 +322,7 @@
           const panel = root.document.createElement('div');
           panel.setAttribute('role', 'status');
           panel.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:#151515;color:#eee;font:16px system-ui;padding:32px;text-align:center';
-          panel.textContent = 'NovaFlow 已关闭。可关闭此标签页，需要使用时请在本地助手点击“启动NovaFlow”。';
+          panel.textContent = 'Foart 已关闭。可关闭此标签页，需要使用时请在本地助手点击“启动Foart”。';
           root.document.body.appendChild(panel);
           root.close?.();
           return;
@@ -621,7 +621,7 @@
     const uploads = Array.isArray(payload.uploads) ? payload.uploads.filter(file => file && ['image', 'video', 'audio'].includes(file.kind)).slice(0, 16) : [];
     if ([...history.map(item => item.content), payload.message].join('\n').length > 24000)
       return { ok: false, error: '小桃AI的文字上下文过长，请发送“新对话”后重试，或缩短需求' };
-    if (!currentSession()?.token) return { ok: false, error: '请先登录 NovaFlow 后使用小桃AI云端AI' };
+    if (!currentSession()?.token) return { ok: false, error: '请先登录 Foart 后使用小桃AI云端AI' };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 60000);
     companionCloudUsed.add(id); companionCloudRequests.set(id, controller);
@@ -935,7 +935,7 @@
       // itself. On the desktop that works; here it is exactly what spec 10
       // forbids, so it fails loudly rather than silently doing nothing.
       throw new Error(
-        'NovaFlow Web 不接受浏览器直接提交工作流。' +
+        'Foart Web 不接受浏览器直接提交工作流。' +
         '该功能的图构建尚未迁移到算力节点，请在 docs/LIMITATIONS.md 查看已迁移的功能。'
       );
     }
@@ -1144,7 +1144,7 @@
           return {
             ok: false,
             status: 503,
-            error: 'NovaFlow Web 不在浏览器里暴露节点目录；节点信息由算力节点持有'
+            error: 'Foart Web 不在浏览器里暴露节点目录；节点信息由算力节点持有'
           };
         }
 
@@ -1153,7 +1153,7 @@
         }
 
         void query;
-        return { ok: false, status: 404, error: 'NovaFlow Web does not proxy ' + clean };
+        return { ok: false, status: 404, error: 'Foart Web does not proxy ' + clean };
       } catch (error) {
         // "missing session token" is the control plane's own wording and it
         // surfaced raw in three different panels, none of which told anyone to
@@ -1163,7 +1163,7 @@
           return {
             ok: false,
             status: 401,
-            error: '请先登录 NovaFlow 账号（点顶栏右上角的「登录」）'
+            error: '请先登录 Foart 账号（点顶栏右上角的「登录」）'
           };
         }
         return { ok: false, status, error: String(error.message || error) };

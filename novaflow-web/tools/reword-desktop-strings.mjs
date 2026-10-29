@@ -28,11 +28,11 @@ export const REWORDS = [
     to: '暂无可用算力节点（AI 序列），请等待算力上线'
   },
   {
-    from: '未找到NovaFlow AI Runtime，请确认已启动',
+    from: '未找到Foart AI Runtime，请确认已启动',
     to: '暂无可用算力节点，请等待算力上线'
   },
   {
-    from: 'NovaFlow AI Runtime 地址为空',
+    from: 'Foart AI Runtime 地址为空',
     to: '算力池地址未配置'
   }
 ];

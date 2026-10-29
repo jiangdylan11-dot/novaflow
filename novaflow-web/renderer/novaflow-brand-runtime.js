@@ -1,7 +1,7 @@
 (function () {
   const HTMLElement = window.HTMLElement || window.Element;
-  const LOGO_SRC = "./assets/logo.png";
-  const ICON_SRC = "./assets/favicon.ico";
+  const LOGO_SRC = "./assets/foart-logo-dark.svg";
+  const ICON_SRC = "./assets/foart.ico";
   const STYLE_ID = "novaflow-brand-runtime-style";
   const PRE_BRAND_STYLE_ID = "novaflow-brand-prepaint-style";
   const PRIMARY_SIDEBAR_ID = "novaflow-primary-sidebar";
@@ -954,7 +954,7 @@
   function nfJankProbeWindowLabel() {
     const surface = window.electronAPI ? "desktop-electron" : "web";
     const protocol = String(window.location?.protocol || "").replace(/:$/, "") || "unknown";
-    const title = String(document.title || "NovaFlow").slice(0, 80);
+    const title = String(document.title || "Foart").slice(0, 80);
     return `${surface}:${protocol}:${title}`;
   }
 
@@ -3072,7 +3072,7 @@
   const NOVAFLOW_TOPBAR_HELP_ITEM_MODAL_INTENT_MS = 1000;
   const NOVAFLOW_TOPBAR_FILE_HELP_CLOSE_BUFFER_MS = 150;
   const NOVAFLOW_TOPBAR_FILE_HELP_HOTZONE_PAD_PX = 14;
-  const NOVAFLOW_TOPBAR_HELP_ITEM_LABELS = new Set(["\u5feb\u6377\u952e", "\u5173\u4e8eNovaFlow", "\u8054\u7cfb\u6211\u4eec"]);
+  const NOVAFLOW_TOPBAR_HELP_ITEM_LABELS = new Set(["\u5feb\u6377\u952e", "\u5173\u4e8eFoart", "\u8054\u7cfb\u6211\u4eec"]);
   const NF_TOPBAR_HELP_DEBUG_PREFIX = "[NF_TOPBAR_HELP_DEBUG]";
 
   // Called from every mutation flush; re-read the URL and storage at most once a second.
@@ -3177,7 +3177,7 @@
   const UI_TOPBAR_BACKGROUND = "#101113";
   const UI_TOPBAR_BORDER_COLOR = "transparent";
   const UI_TOPBAR_PAD_X = 20;
-  const UI_TOPBAR_LOGO_WIDTH = 167;
+  const UI_TOPBAR_LOGO_WIDTH = 86;
   const UI_TOPBAR_LOGO_HEIGHT = 31;
   const UI_TOPBAR_RIGHT_GAP = 18;
   const UI_TOPBAR_STATUS_TEXT = "#979797";
@@ -39915,7 +39915,7 @@
       aiModeSection.isConnected &&
       clientAuthTitle instanceof HTMLElement &&
       clientAuthTitle.isConnected &&
-      normalizeText(clientAuthTitle.textContent) === normalizeText("NovaFlow \u8d26\u53f7")
+      normalizeText(clientAuthTitle.textContent) === normalizeText("Foart \u8d26\u53f7")
     );
     const fullLayoutReady = Boolean(
       mainWorkspace instanceof HTMLElement &&
@@ -45409,7 +45409,7 @@
         return "AI\u5e8f\u5217\u52a8\u753b";
       }
       if (bodyHas("\u62c6\u56fe\u7f16\u8f91", "\u98d8\u5e26\u8ba1\u7b97", "\u9aa8\u9abc\u6811", "\u76ae\u80a4")) return "\u9aa8\u9abc\u52a8\u753b";
-      if (bodyHas("NovaFlow AI Runtime", "ComfyUI", "LORA", "\u6b63\u5411\u63d0\u793a\u8bcd", "\u5f00\u59cb\u751f\u6210\u89c6\u9891", "\u8d44\u6e90\u5217\u8868")) return "AI\u5e8f\u5217\u52a8\u753b";
+      if (bodyHas("Foart AI Runtime", "ComfyUI", "LORA", "\u6b63\u5411\u63d0\u793a\u8bcd", "\u5f00\u59cb\u751f\u6210\u89c6\u9891", "\u8d44\u6e90\u5217\u8868")) return "AI\u5e8f\u5217\u52a8\u753b";
     }
     if (key === "AI\u7f8e\u672f|\u5b9e\u7528\u5de5\u5177") {
       if (body && body.classList.contains("novaflow-primary-target-tools")) return "\u5b9e\u7528\u5de5\u5177";
@@ -45454,7 +45454,7 @@
       "\u98d8\u5e26\u8ba1\u7b97",
       "\u9aa8\u9abc\u6811",
       "\u76ae\u80a4"
-    ) || bodyHasAll("NovaFlow AI Runtime", "LORA", "\u8d44\u6e90\u5217\u8868") || bodyHasAll("ComfyUI", "LORA", "\u8d44\u6e90\u5217\u8868")) {
+    ) || bodyHasAll("Foart AI Runtime", "LORA", "\u8d44\u6e90\u5217\u8868") || bodyHasAll("ComfyUI", "LORA", "\u8d44\u6e90\u5217\u8868")) {
       return "\u52a8\u753b";
     }
     if (bodyHas(
@@ -57841,7 +57841,7 @@
     }
     if (versionNode instanceof HTMLElement) versionNode.textContent = String(status?.version || "--");
     if (portNode instanceof HTMLElement) portNode.textContent = String(status?.port || 8188);
-    if (detailNode instanceof HTMLElement) detailNode.textContent = installed ? "NovaFlow AI Runtime" : "\u672a\u5b89\u88c5 NovaFlow AI Runtime";
+    if (detailNode instanceof HTMLElement) detailNode.textContent = installed ? "Foart AI Runtime" : "\u672a\u5b89\u88c5 Foart AI Runtime";
     Array.from(panel.querySelectorAll("[data-novaflow-ai-runtime-action]")).forEach((button) => {
       if (!(button instanceof HTMLButtonElement)) return;
       const action = button.getAttribute("data-novaflow-ai-runtime-action") || "";
@@ -57945,11 +57945,11 @@
       panel.setAttribute("data-novaflow-ai-comfy-row", "1");
       if (directChild) panel.setAttribute("data-novaflow-ai-mode-body-item", "1");
       const title = document.createElement("div");
-      title.textContent = "NovaFlow AI Runtime";
+      title.textContent = "Foart AI Runtime";
       setImportantStyles(title, { "font-size": "13px", "font-weight": NOVAFLOW_STRONG_FONT_WEIGHT, color: "#ffffff", "line-height": "18px" });
       const detail = document.createElement("div");
       detail.setAttribute("data-novaflow-ai-runtime-status", "detail");
-      detail.textContent = "NovaFlow AI Runtime";
+      detail.textContent = "Foart AI Runtime";
       setImportantStyles(detail, { "font-size": "11px", color: "rgba(255,255,255,0.56)", "line-height": "16px", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" });
       const metrics = document.createElement("div");
       setImportantStyles(metrics, { display: "grid", "grid-template-columns": "minmax(0, 1fr)", gap: "4px", "margin-top": "8px" });
@@ -58065,9 +58065,9 @@
       normalized.includes("\u8fde\u63a5\u5931\u8d25") ||
       normalized.includes("\u8fde\u63a5\u5f02\u5e38")
     );
-    const hasRuntimeLabel = lowerText.includes("comfyui") || lowerText.includes("runtime") || normalized.includes("NovaFlow AI Runtime");
+    const hasRuntimeLabel = lowerText.includes("comfyui") || lowerText.includes("runtime") || normalized.includes("Foart AI Runtime");
     const hasRuntimeMissingText = (
-      normalized.includes("NovaFlow AI Runtime") &&
+      normalized.includes("Foart AI Runtime") &&
       (
         normalized.includes("\u672a\u627e\u5230") ||
         normalized.includes("\u8bf7\u786e\u8ba4\u5df2\u542f\u52a8") ||
@@ -62752,7 +62752,7 @@
       "\u4e91\u7aefAI"
     ];
     const localTokens = [
-      "NovaFlow AI Runtime",
+      "Foart AI Runtime",
       "ComfyUI",
       "\u4e3b\u6a21\u578b",
       "LORA",
@@ -62827,7 +62827,7 @@
       if (node.querySelector("input, button, select, textarea")) return;
       const text = normalizeText(node.textContent || "");
       const lowerText = text.toLowerCase();
-      const isEnvironmentHint = text.includes("NovaFlow\u4e0d\u5185\u7f6e\u73af\u5883") && lowerText.includes("comfyui");
+      const isEnvironmentHint = text.includes("Foart\u4e0d\u5185\u7f6e\u73af\u5883") && lowerText.includes("comfyui");
       const isLegacyRuntimeStatus = isLegacyComfyRuntimeStatusText(text, { allowShortRuntimeStatus: true });
       if (!isEnvironmentHint && !isLegacyRuntimeStatus) return;
       if (text.length > 90) return;
@@ -85357,7 +85357,7 @@
         const result = await withArtGenerateTimeout(
           () => artRequestJson(baseUrl, "/system_stats", { method: "GET" }),
           ART_GENERATE_CONNECT_TIMEOUT_MS,
-          "\u8fde\u63a5\u672c\u5730AI\u8d85\u65f6\uff0c\u8bf7\u68c0\u67e5 NovaFlow AI Runtime \u662f\u5426\u6b63\u5728\u8fd0\u884c"
+          "\u8fde\u63a5\u672c\u5730AI\u8d85\u65f6\uff0c\u8bf7\u68c0\u67e5 Foart AI Runtime \u662f\u5426\u6b63\u5728\u8fd0\u884c"
         );
         if (result && result.ok && result.data && typeof result.data === "object") {
           localStorage.setItem(ART_GENERATE_LAST_RUNTIME_KEY, baseUrl);
@@ -85369,7 +85369,7 @@
         lastError = String(error && error.message || error || "").slice(0, 160);
       }
     }
-    throw new Error(lastError ? `NovaFlow AI Runtime \u672a\u8fde\u63a5: ${lastError}` : "NovaFlow AI Runtime \u672a\u8fde\u63a5");
+    throw new Error(lastError ? `Foart AI Runtime \u672a\u8fde\u63a5: ${lastError}` : "Foart AI Runtime \u672a\u8fde\u63a5");
   }
 
   function artWorkflowKeyForState(state = ART_GENERATE_STATE) {
@@ -85473,7 +85473,7 @@
             crop: "disabled"
           },
           class_type: "ImageScale",
-          _meta: { title: "NovaFlow Output Size" }
+          _meta: { title: "Foart Output Size" }
         };
         resized.set(token, key);
       }
@@ -85527,7 +85527,7 @@
         crop: "disabled"
       },
       class_type: "ImageScale",
-      _meta: { title: "NovaFlow Aspect Fit" }
+      _meta: { title: "Foart Aspect Fit" }
     };
     let targetKey = scaleKey;
     if (plan.left || plan.top || plan.right || plan.bottom) {
@@ -85542,7 +85542,7 @@
           feathering: 0
         },
         class_type: "ImagePadForOutpaint",
-        _meta: { title: "NovaFlow Target Canvas" }
+        _meta: { title: "Foart Target Canvas" }
       };
     }
     Object.entries(workflow).forEach(([nodeKey, node]) => {
@@ -85588,7 +85588,7 @@
       workflow[key] = {
         inputs: { image: refs[loadKeys.length] },
         class_type: "LoadImage",
-        _meta: { title: `NovaFlow Reference Image ${loadKeys.length + 1}` }
+        _meta: { title: `Foart Reference Image ${loadKeys.length + 1}` }
       };
       loadKeys.push(key);
     }
@@ -85968,7 +85968,7 @@
     const required = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha", ...(nativeEdit ? ["VAEEncode", "SetLatentNoiseMask", "SolidMask", "MaskComposite", ...(nativeEdit.neutralizeConditioning ? ["EmptyImage", "ImageCompositeMasked"] : [])] : [])];
     const missing = required.filter((type) => !info[type]);
     if (!runtime || missing.length) {
-      throw new Error("当前算力节点缺少所需的模型或节点，无法按多参考图生成 UI。请在本地助手里重新启动 NovaFlow 后再试");
+      throw new Error("当前算力节点缺少所需的模型或节点，无法按多参考图生成 UI。请在本地助手里重新启动 Foart 后再试");
     }
     const names = (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean);
     if (names.length > QWEN21_UI_MAX_REFERENCES) {
@@ -86166,7 +86166,7 @@
       return { workflow: JSON.parse(String(marker)), provider, mode };
     }
     const api = window.NovaFlowArtGenerateProviderWorkflow;
-    if (!api) throw new Error("NovaFlow \u4e91\u7aef\u56fe\u50cf\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
+    if (!api) throw new Error("Foart \u4e91\u7aef\u56fe\u50cf\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
     // A drawing run samples with the steps / CFG its panel shows; their defaults follow the user's own
     // negative prompt (state.negativePrompt), not the quality profile's automatic one. UI design
     // keeps its own presets.
@@ -86191,7 +86191,7 @@
     // Asked for 2.1 on a node that cannot build it: an error, never a 2511 graph that keeps three of
     // the references and other steps than the panel showed.
     if ((drawQwen21 || uiQwen21) && !qwen21Build) {
-      throw new Error("当前算力节点无法生成（缺少模型或节点），请在本地助手里重新启动 NovaFlow 后再试");
+      throw new Error("当前算力节点无法生成（缺少模型或节点），请在本地助手里重新启动 Foart 后再试");
     }
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;
@@ -86206,7 +86206,7 @@
         const modelApi = window.NovaFlowArtGenerateModels;
         const sampling = samplingFor(state?.nsfw === true ? "rapid" : "standard");
         if (typeof modelApi?.applyLocalWorkflowPreset !== "function") {
-          throw new Error("NovaFlow \u672c\u5730\u751f\u6210\u9884\u8bbe\u6a21\u5757\u672a\u5c31\u7eea");
+          throw new Error("Foart \u672c\u5730\u751f\u6210\u9884\u8bbe\u6a21\u5757\u672a\u5c31\u7eea");
         }
         if (state === ART_GENERATE_STATE) {
           localWorkflow = patchArtWorkflow(cloneArtWorkflow(), uploadedNames, outputPrefix, positivePrompt, negativePrompt, referenceSizes);
@@ -86221,7 +86221,7 @@
           localWorkflow = loraApi.apply(localWorkflow, { ...state, provider, mode });
         }
       if (!localWorkflow || typeof localWorkflow !== "object") {
-        throw new Error("NovaFlow \u672c\u5730\u751f\u6210\u9884\u8bbe\u5e94\u7528\u5931\u8d25");
+        throw new Error("Foart \u672c\u5730\u751f\u6210\u9884\u8bbe\u5e94\u7528\u5931\u8d25");
       }
     }
     const built = api.buildRunWorkflow({
@@ -86258,7 +86258,7 @@
     const ignored = new Set(["PrimitiveInt", "PrimitiveFloat", "PrimitiveBoolean"]);
     const missing = Array.from(new Set(Object.values(workflow || {}).map((node) => String(node && node.class_type || "")).filter(Boolean)))
       .filter((type) => !ignored.has(type) && !objectInfo[type]);
-    if (missing.length) throw new Error(`NovaFlow AI Runtime \u7f3a\u5c11\u8282\u70b9: ${missing.join(", ")}`);
+    if (missing.length) throw new Error(`Foart AI Runtime \u7f3a\u5c11\u8282\u70b9: ${missing.join(", ")}`);
   }
 
   function applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) {
@@ -86328,7 +86328,7 @@
       if (tag === "execution_error" && data) {
         const nodeType = data.node_type ? ` ${data.node_type}` : "";
         const message = String(data.exception_message || data.exception_type || "").trim();
-        return message ? `NovaFlow AI Runtime${nodeType} \u6267\u884c\u5931\u8d25: ${message}` : `NovaFlow AI Runtime${nodeType} \u6267\u884c\u5931\u8d25`;
+        return message ? `Foart AI Runtime${nodeType} \u6267\u884c\u5931\u8d25: ${message}` : `Foart AI Runtime${nodeType} \u6267\u884c\u5931\u8d25`;
       }
     }
     return "";
@@ -86500,7 +86500,7 @@
       authorizationContext = window.NovaFlowClientAuth?.createAuthorizationContext?.() || null;
       if (!authorizationContext) {
         resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);
-        setArtGenerateStatus("\u8bf7\u5148\u767b\u5f55 NovaFlow \u8d26\u53f7", true);
+        setArtGenerateStatus("\u8bf7\u5148\u767b\u5f55 Foart \u8d26\u53f7", true);
         return;
       }
     }
@@ -86666,7 +86666,7 @@
         const promptId = String(sent && sent.data && sent.data.prompt_id || "");
         if (!sent || !sent.ok || !promptId) {
           const detail = sent && (sent.error || sent.raw || JSON.stringify(sent.data || {}));
-          throw new Error(detail ? `NovaFlow AI Runtime \u4e0b\u53d1\u5931\u8d25: ${String(detail).slice(0, 500)}` : "NovaFlow AI Runtime \u4e0b\u53d1\u5931\u8d25");
+          throw new Error(detail ? `Foart AI Runtime \u4e0b\u53d1\u5931\u8d25: ${String(detail).slice(0, 500)}` : "Foart AI Runtime \u4e0b\u53d1\u5931\u8d25");
         }
         ART_GENERATE_STATE.activePromptId = promptId;
         setArtGenerateProgress("\u751f\u6210\u4e2d..", 0.32, { promptId, started: true });

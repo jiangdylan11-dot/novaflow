@@ -273,7 +273,7 @@ export async function runBoneComfySplit(args: {
     try {
       connectedUrl = await detectComfyBaseUrl()
     } catch {
-      throw new Error('未找到 NovaFlow AI Runtime，请重新检测 Runtime')
+      throw new Error('未找到 Foart AI Runtime，请重新检测 Runtime')
     }
   }
   try { localStorage.setItem('novaflow_runtime_last_connected_url', connectedUrl) } catch { }
