@@ -13,6 +13,15 @@
     --accent: #1ea672; --accent-hover: #25bc84; --danger: #ef4444; --warn: #f59e0b;
     --button: #272727;
   }
+  /* Launcher primary actions use solid green. Override the shared theme's
+     translucent action tokens only in this local assistant document. */
+  @layer foart-buttons {
+    :root {
+      --foart-action-green: var(--accent);
+      --foart-action-green-hover: var(--accent-hover);
+    }
+    button.primary { color: #fff !important; }
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
