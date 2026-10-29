@@ -20,7 +20,8 @@ function fixture() {
   const h = (tag, attrs, ...kids) => ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(x => x != null) })
   const ctx = vm.createContext({ state, Ops, rt: {}, h, $: () => tree, projects: [], activeProject: 0, KEY_COLOR: { event: '#fff' },
     ICON: new Proxy({}, { get: (_, key) => String(key) }), skinOf: name => j.skins.find(s => s.name === name),
-    bone: name => j.bones.find(b => b.name === name), animOn: () => false, isSel: () => false,
+    SLOT_TRACKS:()=>[], BONE_TRACKS:()=>[], wireAudioEventDrop() {}, keyBtn() {}, meshKeyEnd() {}, consKeyEnd() {},
+    bone: name => j.bones.find(b => b.name === name), animOn: () => state.mode === 'animate', isSel: () => false,
     selectedAttachments: () => [], selectedSkins: () => [], allConstraints: () => [{ kind: 'transform', c: { name: 'follow' } }],
     drawOrderNow: () => ['slot'], clipRanges: () => new Map(), slotOf: name => j.slots.find(s => s.name === name),
     caret() {}, visDot() {}, wireDrag() {}, boneIcon() {}, consOf: () => [], consRowEnd() {},
@@ -110,3 +111,9 @@ test('bounding box filter works independently of image, mesh and clipping filter
   f.only('boundingbox'); assert.deepEqual(f.rigKeys(), ['att:default:slot:hit']);
   f.only('clipping'); assert.deepEqual(f.rigKeys(), []);
 })
+
+test('animation mode hides both resource groups, while setup restores them',()=>{
+ const f=fixture();assert(f.keys().includes('images'));assert(f.keys().includes('audio'));
+ f.state.mode='animate';assert(!f.keys().includes('images'));assert(!f.keys().includes('audio'));assert(f.keys().includes('event:end'));
+ f.state.mode='setup';assert(f.keys().includes('images'));assert(f.keys().includes('audio'));
+});

@@ -52,6 +52,7 @@
     atlasChanged: false,
     images: new Map(),
     audio: new Map(), // portable relative path -> audio data URL
+    audioFolder: null, audioVersions: new Map(), pendingAudioFolder: null,
     addedImages: [],
     history: [],
     future: [],
@@ -102,6 +103,7 @@
     hover: null,
     hoverImg: null, // 选择图层: the slot whose image is under the pointer
     imageFolder: null, // Spine's images folder: { name, list() } (指定文件夹 in the image picker)
+    projectAccessContext: null,
     offset: { x: 0, y: 0 }, // where this project sits on the stage, beside the others (view only, not exported)
     loop: true, // 循环 (the 动画 section's transport): off = playback stops on the last frame
     meshEdit: null, // 编辑网格: { skin, slot, name, tool, isolate, deform, sel, draft }
@@ -377,10 +379,12 @@
       projectImageRefs: p.imageRefs || (p.operation === 'refresh' && state.projectImageRefs) || [], imagePath: p.imagePath || (p.operation === 'refresh' && state.imagePath) || '.',
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
       audio: new Map(p.audio || (p.operation === 'refresh' ? state.audio : [])),
+      audioFolder: null, audioVersions: new Map(), pendingAudioFolder: null,
       addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiAtts: [], attachmentAnchor: null, multiSkins: [], skinAnchor: null, multiCons: [], pick: null,
       offset: p.offset && Number.isFinite(p.offset.x) && Number.isFinite(p.offset.y) ? { x: p.offset.x, y: p.offset.y } : { x: 0, y: 0 },
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
-      folderKey: p.folderKey || (p.operation === 'refresh' && state.folderKey) || newFolderKey(), pendingFolder: null,
+      folderKey: p.folderKey || (p.operation === 'refresh' && state.folderKey) || newFolderKey(), pendingFolder: p.pendingFolder || null,
+      projectAccessContext: p.projectAccessContext || null,
     })
     state.pendingSwapFolder = null
     state.temp.clear()
@@ -436,9 +440,9 @@
   // Spine keeps several skeletons in one hierarchy. Here every import adds a project; the picked one
   // is on the stage and unfolded in the tree, the others are rows that keep their whole editing state
   // (undo included) until they are picked again. They can be renamed, moved and deleted.
-  const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'audio', 'addedImages', 'history', 'future', 'offset',
+  const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'audio', 'audioFolder', 'audioVersions', 'pendingAudioFolder', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiAtts', 'attachmentAnchor', 'multiSkins', 'skinAnchor', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
-    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
+    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'projectAccessContext', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel', 'imageFolderGen', 'projectDirectory', 'projectAccessRoot', 'projectImageRefs', 'imagePath']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
   let activeProject = -1, projectSerial = 0
@@ -870,7 +874,7 @@
       if (!s || !s.json) continue
       const { images, imagePath, externalFolder, missing: unavailable } = await projectReferences(s, directory)
       missing.push(...unavailable)
-      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, audio: [...(s.audio || [])], images, imagePath, ...(externalFolder ? { externalFolder: true } : {}), pma: !!s.pma, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, exported: projects[i].exported !== false, folderKey: s.folderKey || '' })
+      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, audio: [...(s.audio || [])], audioPath: s.audioFolder?.path || '', images, imagePath, ...(externalFolder ? { externalFolder: true } : {}), pma: !!s.pma, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, exported: projects[i].exported !== false, folderKey: s.folderKey || '' })
     }
     if (!list.length) throw new Error('没有可保存的工程')
     const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 2, active: Math.max(0, activeProject), projects: list })
@@ -1338,9 +1342,12 @@
       try { offer = await findSiblingSwapFolder(directory, parentParts, imagePath, missedRefs) } catch { offer = null }
       const folderKey = duplicate ? mintFolderKey() : (p.folderKey || '')
       await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, imageFolder: folder, projectDirectory, projectAccessRoot: directory,
+        projectAccessContext: { data, handle },
+        pendingFolder: !folder && !ignoreCache && record?.handle && (record.imagePath == null || record.imagePath === imagePath) ? record.handle : null,
         audio: p.audio || [], imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
         label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey, operation: imported.length ? 'append' : operation,
         replace: operation === 'replace' && imported.length === 0 && !!state.json })
+      if (typeof restoreAudioDirectory === 'function') await restoreAudioDirectory(state, p.audioPath || p.json?.skeleton?.audio, p.folderKey)
       imported.push(activeProject)
       if (folder && folder.handle && typeof rememberFolder === 'function') await rememberFolder(folder.handle)
       if (projects[activeProject]) projects[activeProject].pendingSwapFolder = offer || null
@@ -1364,7 +1371,57 @@
     const offerNote = state.pendingSwapFolder ? `；这些替换图在同级目录「${state.pendingSwapFolder.name}」里，可点「改接目录」` : ''
     status((missing.length ? `已打开 ${d.projects.length} 个工程，缺少 ${missing.length} 张外部图片：${missing.join('、')}；已显示 MISSING 占位，可在对应工程的「图片」节点重新定位目录${offerNote}`
       : `已打开 Foart 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`) + hidden + emptySetup, missing.length || hidden || emptySetup ? 'error' : 'ok')
+    if (missing.length && !state.imageFolder && typeof document !== 'undefined' && document.body) {
+      if (state.pendingFolder) askRestoreFolder()
+      else offerProjectFolderConnection()
+    }
     return d.projects.length
+  }
+
+  /** A file picker grants the .nfproj only, not its sibling PNGs. Reconnect in place,
+   * keeping current edits and the original file untouched; never borrow a different rig's folder. */
+  async function connectProjectImageDirectory() {
+    const project = projects[activeProject], json = state.json, context = state.projectAccessContext
+    if (!project || !context) return false
+    const root = await pickDirectory({ mode: 'read', startIn: context.handle })
+    if (!root) return false
+    const found = await locateReadableProject(context.data, context.handle, [root])
+    if (!found) throw new Error(`请选择包含「${context.handle?.name || context.data.name || '.nfproj'}」的工程文件夹`)
+    if (projects[activeProject] !== project || state.json !== json) throw new Error('工程已切换或修改，请返回此工程重新连接')
+    const directory = await projectSubdir(root, found.parentParts)
+    const imageDir = await projectSubdir(root, projectPath(state.imagePath || '.', found.parentParts))
+    if (projects[activeProject] !== project || state.json !== json) throw new Error('工程已切换或修改，请返回此工程重新连接')
+    state.projectDirectory = directory; state.projectAccessRoot = root
+    if (context.handle && projectFile === context.handle) projectSaveDirectory = directory
+    await useRememberedFolder(state, imageDir)
+    if (projects[activeProject] !== project || state.projectAccessContext !== context) return false
+    await rememberFolder(imageDir)
+    await restoreAudioDirectory(state, state.json.skeleton?.audio, state.folderKey)
+    const missing = missingProjectImageRefs(state.json, state.atlasText, state.projectImageRefs, [...state.images.values()])
+    status(missing.length ? `目录已连接，仍缺少 ${missing.length} 张实际使用的图片：${missing.map(r => r.path || r.fileName).join('、')}` : `已连接工程图片目录「${imageDir.name}」，图片已恢复`, missing.length ? 'error' : 'ok')
+    return true
+  }
+
+  function offerProjectFolderConnection() {
+    if (state.pendingFolder) { askRestoreFolder(); return }
+    if (!state.json || state.imageFolder || !state.projectAccessContext || document.querySelector('.dialog.ask')) return
+    const context = state.projectAccessContext
+    const mask = h('div', { class: 'mask' })
+    const done = () => mask.remove()
+    const connect = btn('选择工程所在文件夹…', async () => {
+      connect.disabled = true
+      try { if (await connectProjectImageDirectory()) done() }
+      catch (e) { status('连接工程图片失败：' + (e.message || e), 'error') }
+      finally { connect.disabled = false }
+    }, { primary: true })
+    mask.append(h('div', { class: 'dialog ask', 'data-nf-project-connect': '1' },
+      h('div', { class: 'hd' }, h('b', {}, '连接工程图片'), h('button', { class: 'xx', onclick: done, title: '稍后连接' }, '×')),
+      h('div', { class: 'msg' },
+        h('div', {}, `已打开「${context.handle?.name || context.data.name || state.name}」，图片目录尚未连接。`),
+        h('div', {}, `请选择工程文件所在的文件夹，将按记录的「${state.imagePath || '.'}」目录读取图片。`),
+        h('div', {}, '只读取现有图片；原工程和图片都不会被改写。以后在这个网站打开会恢复已保存的目录连接。')),
+      h('div', { class: 'ft' }, btn('稍后连接', done), connect)))
+    document.body.append(mask)
   }
 
   /** The 工程 属性 X / Y boxes follow a drag (the rest of the panel stays). */
@@ -1386,6 +1443,7 @@
         ibtn('copy', '复制工程（Ctrl+D）', () => duplicateProject(activeProject)),
         ibtn('trash', '删除工程（Delete）', () => deleteProject(activeProject))),
       h('div', { class: 'grid2' }, num('x'), num('y')),
+      !state.imageFolder && state.projectAccessContext ? btn('连接工程图片目录…', () => offerProjectFolderConnection()) : null,
       h('div', { class: 'hint' }, '位置只影响编辑器里的摆放，不写进导出的骨架；选中工程后在画面上拖动也能移动它。'),
     ]
   }
@@ -1408,7 +1466,10 @@
         renderTree()
       }), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, name),
       ...(projects[i].visible === false ? [h('span', { class: 'hint', style: 'margin-left:4px', title: '点击此工程左侧的显示圆点恢复显示' }, '已隐藏')] : []),
-      h('span', { class: 'end' }, h('button', { class: 'act', title: `删除工程 ${name}`, onclick: (e) => { e.stopPropagation(); deleteProject(i) } }, '删除')))
+      h('span', { class: 'end' },
+        active && !state.imageFolder && state.projectAccessContext && missingProjectImageRefs(state.json, state.atlasText, state.projectImageRefs, [...state.images.values()]).length
+          ? h('button', { class: 'ld-btn tiny', title: '连接此工程的外部图片目录', onclick: e => { e.stopPropagation(); offerProjectFolderConnection() } }, '连接图片') : null,
+        h('button', { class: 'act', title: `删除工程 ${name}`, onclick: (e) => { e.stopPropagation(); deleteProject(i) } }, '删除')))
     // drag a project row onto another one to move it there (above / below)
     row.draggable = true
     row.addEventListener('dragstart', (e) => { state.drag = { type: 'project', index: i }; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', name) })
@@ -2000,11 +2061,12 @@
 
   // ------------------------------------------------------------------ edits
 
-  function snapshot() { return { audio: state.audio, json: state.json, atlasText: state.atlasText, atlasChanged: state.atlasChanged } }
+  function snapshot() { return { audioFolder: state.audioFolder, audioVersions: state.audioVersions, audio: state.audio, json: state.json, atlasText: state.atlasText, atlasChanged: state.atlasChanged } }
 
   function restore(s) {
     audioPlayer.stop()
     state.audio = s.audio || new Map()
+    state.audioFolder = s.audioFolder || null; state.audioVersions = s.audioVersions || new Map()
     state.atlasText = s.atlasText
     state.atlasChanged = s.atlasChanged
     applyJson(s.json)
@@ -2984,7 +3046,7 @@
     const pickers = [window, window.parent].filter((w, i, a) => w && a.indexOf(w) === i && typeof w.showDirectoryPicker === 'function')
     if (!pickers.length) throw new Error('这个浏览器不能选择文件夹，请用 Chrome 或 Edge')
     for (let i = 0; i < pickers.length; i++) {
-      try { return await pickers[i].showDirectoryPicker({ mode: 'readwrite', ...(options.startIn ? { startIn: options.startIn } : {}) }) } catch (e) {
+      try { return await pickers[i].showDirectoryPicker({ mode: options.mode || 'readwrite', ...(options.startIn ? { startIn: options.startIn } : {}) }) } catch (e) {
         if (e && e.name === 'AbortError') return null
         // a frame that may not show it: the app's window may
         if (!(e && e.name === 'SecurityError') || i === pickers.length - 1) throw e
@@ -3135,6 +3197,7 @@
     const best = bestPictureRoot(await pictureRels(handle), names)
     if (target.json !== json) return
     target.imageFolder = folderWithPictureNames(folderFromHandle(handle, handle.name || '图片'), best, names)
+    if ((target.projectImageRefs || []).length) target.imageFolder.recordedPaths = true
     await connectProjectImages(target, target.imageFolder)
     await refreshFolderPictures(target, target.imageFolder)
     target.pendingFolder = null
@@ -3204,10 +3267,14 @@
   /** The browser wants a click before it lets the page into the folder again. */
   function restorePendingFolder() {
     const handle = state.pendingFolder
+    const project = projects[activeProject]
     if (!handle) { chooseImageFolder(); return }
-    handle.requestPermission({ mode: 'readwrite' }).then(async (perm) => {
+    return handle.requestPermission({ mode: 'read' }).then(async (perm) => {
       if (perm !== 'granted') { status('浏览器没有允许访问上次的图片文件夹：可以点「指定文件夹…」重新选', 'error'); return }
+      if (projects[activeProject] !== project || state.pendingFolder !== handle) return
       await useRememberedFolder(state, handle)
+      if (projects[activeProject] !== project) return
+      await rememberFolder(handle)
       status(`已接上上次的图片文件夹「${handle.name}」`, 'ok')
     }, () => status('浏览器没有允许访问上次的图片文件夹：可以点「指定文件夹…」重新选', 'error'))
   }
@@ -7391,13 +7458,16 @@
 
       // 事件 (Spine): double-click creates one; in an animation its key fires it at the current frame
       const evNames = Object.keys(j.events || {})
-      if (node('events', '事件', 'event', evNames.length, 1, newEvent)) {
+      const eventsOpen = node('events', '事件', 'event', evNames.length, 1, newEvent)
+      wireAudioEventDrop(rows[rows.length - 1])
+      if (eventsOpen) {
         for (const n of evNames) {
-          rows.push(h('div', {
+          const eventRow = h('div', {
             class: 'row', style: pad(2), 'data-selected': isSel('event', n) ? '1' : null, 'data-multi': !isSel('event', n) && state.dopeExtra && state.dopeExtra.events.includes(n) ? '1' : null, 'data-key': 'event:' + n,
             onclick: () => select({ kind: 'event', name: n }),
           }, animOn() ? h('span', { class: 'lkey' }, keyBtn([['events', n]], () => keyEventNow(n), `在第 ${state.frame} 帧放事件 ${n}`)) : null,
-          caret(null), h('span', { class: 'ico', html: ICON.event, style: `color:${KEY_COLOR.event}` }), h('span', { class: 'label' }, n)))
+          caret(null), h('span', { class: 'ico', html: ICON.event, style: `color:${KEY_COLOR.event}` }), h('span', { class: 'label' }, n))
+          wireAudioEventDrop(eventRow, n); rows.push(eventRow)
         }
       }
 
@@ -7416,8 +7486,10 @@
       }
 
       // 图片 (Spine's Images node): the project's image folder, pictures drag onto a bone / slot / the stage
-      if (F.images) renderImagesNode(rows, pad)
-      renderAudioNode(rows, pad)
+      if (!animOn()) {
+        if (F.images) renderImagesNode(rows, pad)
+        renderAudioNode(rows, pad)
+      }
     }
 
     if (rows.length === contentFrom) rows.push(h('div', { class: 'row', style: pad(1) }, h('span', { class: 'meta' }, '当前筛选无匹配节点')))
@@ -10965,12 +11037,84 @@
       state.audio = assets; state.sections.delete('audio'); state.sel = { kind: 'audio', name: imported[0] }
     })
   }
-  function pickAudioFiles(folder = false) {
-    const input = h('input', { type: 'file', multiple: true, accept: '.wav,.ogg,.mp3,.m4a,.aac,.flac,.webm' })
-    if (folder) input.webkitdirectory = true
-    input.addEventListener('change', () => importAudioFiles(Array.from(input.files || []), folder).catch(e => status('音频导入失败：' + e.message, 'error')))
-    input.click()
+  async function refreshAudioDirectory(target = state) {
+    const folder = target.audioFolder
+    if (!folder?.handle || folder.busy) return false
+    folder.busy = true
+    try {
+      const assets = new Map(), versions = new Map(), prior = target.audioVersions || new Map()
+      const walk = async (handle, prefix = '') => {
+        for await (const [name, entry] of handle.entries()) {
+          if (entry.kind === 'directory') await walk(entry, prefix + name + '/')
+          else if (AudioAssets.extensions.test(name)) {
+            const file = await entry.getFile(), path = prefix + name, stamp = `${file.size}:${file.lastModified}`
+            assets.set(path, prior.get(path) === stamp && target.audio.has(path) ? target.audio.get(path) : await audioDataUrl(file))
+            versions.set(path, stamp)
+          }
+        }
+      }
+      await walk(folder.handle)
+      if (target.audioFolder !== folder) return false
+      const changed = [...versions].some(([name, stamp]) => prior.get(name) !== stamp) || versions.size !== prior.size
+      target.audio = assets; target.audioVersions = versions
+      if (changed && target === state) { renderTree(); if (state.sel?.kind === 'audio') renderProps() }
+      return changed
+    } finally { folder.busy = false }
   }
+  async function useAudioDirectory(handle) {
+    const project = projects[activeProject], json = state.json
+    if (!project || !json || !handle) return
+    const rel = state.projectDirectory?.resolve ? await state.projectDirectory.resolve(handle).catch(() => null) : null
+    if (projects[activeProject] !== project || state.json !== json) return
+    const path = rel ? rel.join('/') || '.' : handle.name
+    edit(`已指定音频文件夹「${handle.name}」`, j => { const json = Ops.prepare(j); json.skeleton = { ...json.skeleton, audio: path + '/' }; return { json } }, () => {
+      audioPlayer.stop(); state.audioFolder = { handle, name: handle.name, path }; state.audio = new Map(); state.audioVersions = new Map(); state.sections.delete('audio'); state.sel = { kind: 'section', name: 'audio' }
+    })
+    await refreshAudioDirectory()
+    if (projects[activeProject] !== project) return
+    await folderDbDo('readwrite', store => store.put({ handle, audioPath: path }, 'audio:' + state.folderKey)).catch(() => {})
+    status(`音频目录「${handle.name}」已连接；把音频拖到「事件」创建音频事件`, 'ok')
+  }
+  async function chooseAudioDirectory() {
+    try {
+      if (typeof window.showDirectoryPicker !== 'function' && typeof window.parent.showDirectoryPicker !== 'function') {
+        const input = h('input', { type: 'file', multiple: true }); input.webkitdirectory = true
+        input.addEventListener('change', () => importAudioFiles(Array.from(input.files || []), true)); input.click(); return
+      }
+      const handle = await pickDirectory({ mode: 'read', startIn: state.audioFolder?.handle || state.projectDirectory })
+      if (handle) await useAudioDirectory(handle)
+    } catch (e) { status('指定音频文件夹失败：' + (e.message || e), 'error') }
+  }
+  async function restoreAudioDirectory(target, path, key) {
+    let handle = null
+    if (target.projectDirectory && path) { try { handle = await projectSubdir(target.projectDirectory, projectPath(path)) } catch {} }
+    if (!handle && key) {
+      const record = await folderDbDo('readonly', store => store.get('audio:' + key)).catch(() => null)
+      if (record?.handle && (!path || record.audioPath === String(path).replace(/\/$/, ''))) {
+        if (await folderHandleReadable(record.handle)) handle = record.handle
+        else target.pendingAudioFolder = record.handle
+      }
+    }
+    if (handle) { target.audioFolder = { handle, name: handle.name, path: String(path || handle.name).replace(/\/$/, '') }; await refreshAudioDirectory(target) }
+  }
+  function audioToEvent(name, eventName) {
+    if (animOn()) return
+    edit(`已将音频「${name}」关联事件`, j => {
+      const created = eventName ? { json: j, event: eventName } : Ops.createEvent(j, name.split('/').pop().replace(/\.[^.]+$/, ''))
+      const r = Ops.setEventProps(created.json, created.event, { audio: name })
+      return { ...r, event: created.event }
+    }, r => { state.sections.delete('events'); state.sel = { kind: 'event', name: r.event } })
+  }
+  function wireAudioEventDrop(row, eventName) {
+    const type = 'application/x-foart-spine-audio'
+    row.addEventListener('dragover', e => { if (!animOn() && Array.from(e.dataTransfer?.types || []).includes(type)) { e.preventDefault(); e.dataTransfer.dropEffect = 'link' } })
+    row.addEventListener('drop', e => {
+      const raw = e.dataTransfer?.getData(type); if (!raw || animOn()) return
+      e.preventDefault(); e.stopPropagation()
+      try { const data = JSON.parse(raw); if (data.project === projects[activeProject]?.id && AudioAssets.names(state.json, state.audio).includes(data.name)) audioToEvent(data.name, eventName) } catch {}
+    })
+  }
+  setInterval(() => { if (state.audioFolder?.handle) refreshAudioDirectory().catch(e => status('音频目录读取失败：' + e.message, 'error')) }, 2500)
   function playAudioEvent(key) {
     const event = state.json?.events?.[key.name] || {}, data = AudioAssets.source(state.audio, event.audio)
     if (!data) return false
@@ -10989,22 +11133,22 @@
     const toggle = () => { closed ? state.sections.delete('audio') : state.sections.add('audio'); renderTree() }
     rows.push(h('div', { class: 'row node', style: pad(1), 'data-key': 'audio', onclick: () => { toggle(); select({ kind: 'section', name: 'audio' }) } },
       caret(!closed, toggle), h('span', { class: 'ico', html: ICON.audio }), h('span', { class: 'label' }, '音频'),
-      h('span', { class: 'end' }, h('button', { class: 'ld-btn tiny', title: '导入音频文件或在下方属性选择文件夹', onclick: e => { e.stopPropagation(); pickAudioFiles() } }, '导入…'), h('span', { class: 'cnt' }, String(names.length)))))
+      h('span', { class: 'end' }, h('button', { class: 'ld-btn tiny', title: '指定音频文件夹', onclick: e => { e.stopPropagation(); chooseAudioDirectory() } }, state.audioFolder ? '换文件夹…' : '指定文件夹…'), h('span', { class: 'cnt' }, String(names.length)))))
     if (closed) return
-    for (const name of names) rows.push(h('div', { class: 'row', style: pad(2), 'data-key': 'audio:' + name, 'data-selected': state.sel?.kind === 'audio' && state.sel.name === name ? '1' : null,
-      title: AudioAssets.source(state.audio, name) ? '双击试听：' + name : '未连接音频文件：' + name,
+    for (const name of names) rows.push(h('div', { class: 'row', draggable: true, ondragstart: e => { e.dataTransfer.setData('application/x-foart-spine-audio', JSON.stringify({ project: projects[activeProject]?.id, name })); e.dataTransfer.effectAllowed = 'link' }, style: pad(2), 'data-key': 'audio:' + name, 'data-selected': state.sel?.kind === 'audio' && state.sel.name === name ? '1' : null,
+      title: AudioAssets.source(state.audio, name) ? '拖到事件分组创建音频事件，拖到已有事件更换音频；双击试听：' + name : '未连接音频文件：' + name,
       onclick: () => select({ kind: 'audio', name }), ondblclick: () => { const data = AudioAssets.source(state.audio, name); if (data) audioPlayer.play(data) } },
       caret(null), h('span', { class: 'ico', html: ICON.audio }), h('span', { class: 'label' }, name), AudioAssets.source(state.audio, name) ? null : h('span', { class: 'cnt' }, '未连接')))
   }
   function audioBody() {
     const name = state.sel.kind === 'audio' ? state.sel.name : '', data = AudioAssets.source(state.audio, name)
-    const out = [h('div', { class: 'btns g2' }, btn('导入音频…', () => pickAudioFiles()), btn('指定文件夹…', () => pickAudioFiles(true)))]
-    if (!name) return [...out, h('div', { class: 'hint' }, '音频资源与事件分开管理；在事件的「音频路径」关联音频。双击资源试听。')]
+    const out = [field('音频目录', h('span', {}, state.audioFolder?.name || state.json.skeleton?.audio || '未指定')), h('div', { class: 'btns' }, btn(state.audioFolder ? '更换文件夹…' : '指定文件夹…', chooseAudioDirectory))]
+    if (!name) return [...out, h('div', { class: 'hint' }, '指定音频文件夹后，音频拖入「事件」就创建控制该音频的事件；双击音频试听。')]
     out.unshift(field('音频路径', h('span', {}, name)))
     out.push(h('div', { class: 'btns g2' }, btn('试听', () => audioPlayer.play(data), { disabled: !data }), btn('停止', () => audioPlayer.stop())))
     const events = Object.entries(state.json.events || {}).filter(([, e]) => e.audio === name).map(([n]) => n)
-    out.push(h('div', { class: 'hint' }, data ? `已连接；引用事件：${events.join('、') || '无'}` : '未连接文件：请选择音频文件或文件夹，已有事件路径会保留。'))
-    if (data) out.push(btn('移除音频资源', () => edit(`已移除音频 ${name}`, j => ({ json: Ops.prepare(j) }), () => { state.audio = new Map(state.audio); state.audio.delete(name); audioPlayer.stop() }), { title: '保留事件路径，允许以后重新连接' }))
+    out.push(h('div', { class: 'hint' }, data ? `已连接；引用事件：${events.join('、') || '无'}` : '未连接文件：请指定音频文件夹，已有事件路径会保留。'))
+
     return out
   }
 
@@ -11034,7 +11178,7 @@
     out.push(field('音频路径', audioPath))
     out.push(field('选择音频', selectInput([['', '（无）'], ...AudioAssets.names(state.json, state.audio).map(n => [n, n])], defaults.audio || '', v => set('audio')(v))))
     if (animOn()) { const f = out[out.length - 1]; f.querySelector('select').disabled = true }
-    out.push(h('div', { class: 'btns g2' }, btn('导入音频…', () => pickAudioFiles()), btn('试听', () => playAudioEvent({ name, ...e }), { disabled: !AudioAssets.source(state.audio, defaults.audio) })))
+    out.push(h('div', { class: 'btns g2' }, btn('指定音频文件夹…', chooseAudioDirectory, { disabled: animOn() }), btn('试听', () => playAudioEvent({ name, ...e }), { disabled: !AudioAssets.source(state.audio, defaults.audio) })))
     if (e.audio) {
       out.push(field('音量', audioSlider(Math.round((e.volume === undefined ? 1 : e.volume) * 100), 0, 100, v => set('volume')(v / 100))))
       out.push(field('平衡', audioSlider(Math.round((e.balance || 0) * 100), -100, 100, v => set('balance')(v / 100))))
@@ -11479,6 +11623,7 @@
   function setMode(mode) {
     audioPlayer.stop()
     state.mode = mode
+    if (mode === 'animate' && (state.sel?.kind === 'audio' || state.sel?.kind === 'section' && ['audio', 'images'].includes(state.sel.name))) state.sel = null
     state.meshEdit = null
     state.weightEdit = null
     state.temp.clear()
@@ -12928,5 +13073,5 @@
     } catch (e) { console.warn('[skeleton editor] attach', e) }
   }, 0)
 
-  window.__SkeletonLab = { regionPixelsCanvas, toScreen, newClipping, newBoundingBox, importAudioFiles, sourceAudio, projectFileBytes, gotoFrame, togglePlay, audioPlayer, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, openSweepPanel, openParticlePanel, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
+  window.__SkeletonLab = { regionPixelsCanvas, toScreen, newClipping, newBoundingBox, importAudioFiles, useAudioDirectory, refreshAudioDirectory, connectProjectImageDirectory, restorePendingFolder, sourceAudio, projectFileBytes, missingProjectImageRefs, gotoFrame, togglePlay, audioPlayer, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, openSweepPanel, openParticlePanel, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
 })()

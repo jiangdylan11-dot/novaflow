@@ -87,6 +87,7 @@ function fixture() {
   const projects = [{ snap: null }], records = new Map(), status = [], picker = []
   const w = { NovaFlowSequenceAtlas: { safeName: s => s }, showSaveFilePicker: async () => { throw Error('not configured') }, showDirectoryPicker: async opts => { picker.push(opts); if (!w.directory) return null; return w.directory } }; w.parent = w
   const c = vm.createContext({ console, window: w, state, projects, activeProject: 0, Blob, File, Response, CompressionStream, DecompressionStream, Uint8Array, fetch,
+    sourceAudio: async () => [], audioPlayer: { stop() {} },
     Attach, lower: s => String(s).toLowerCase(), stem: s => s.replace(/\.[^.]+$/, ''), baseName: s => s.split('/').pop(),
     rt: {}, pagePixels: new Map(), frameThumbs: new Map(), imgTree: null, refresh() {}, applyJson(j) { state.json = j }, prepareExternalPage: im => im,
     imageFromBlob: async blob => ({ naturalWidth: 1, naturalHeight: 1, blob }),
@@ -99,7 +100,7 @@ function fixture() {
   c.loadParts = async p => {
     if (state.json && projects[c.activeProject]) projects[c.activeProject].snap = { ...state }
     Object.assign(state, { json: p.json, name: p.label, fileName: p.jsonName, atlasName: p.atlasName, atlasText: p.atlasText,
-      imageFolder: p.imageFolder, projectDirectory: p.projectDirectory, projectAccessRoot: p.projectAccessRoot, projectImageRefs: p.imageRefs || [], imagePath: p.imagePath,
+      imageFolder: p.imageFolder, pendingFolder: p.pendingFolder || null, projectAccessContext: p.projectAccessContext || null, projectDirectory: p.projectDirectory, projectAccessRoot: p.projectAccessRoot, projectImageRefs: p.imageRefs || [], imagePath: p.imagePath,
       images: new Map((p.images || []).map(im => [im.fileName.toLowerCase(), { ...im, img: { naturalWidth: 1, naturalHeight: 1 } }])), folderKey: p.folderKey, pma: !!p.pma })
     projects.push({ snap: null, visible: p.visible !== false }); c.activeProject = projects.length - 1
   }
@@ -849,3 +850,20 @@ test('an unmatched saved path stays missing without forcing a directory picker',
   assert.equal(f.picker.length, 0)
   assert.notEqual(f.state.folderKey, 'shared')
 })
+
+test('a remembered image folder requiring permission stays reconnectable instead of silently losing its handle',async()=>{
+ const d=disk(),f=fixture();await d.put('img/pic.png','real pixels');const handle=await d.root.getDirectoryHandle('img');
+ handle.queryPermission=async()=> 'prompt';f.records.set('saved-slot',{handle,imagePath:'img'});
+ const p={name:'scene',json:json(),atlasText:atlas(),imagePath:'img',folderKey:'saved-slot',images:[{fileName:'pic.png',path:'pic.png'}]};
+ const file=await d.put('scene.nfproj',await gzip({format:'novaflow-spine-projects',version:2,projects:[p]}));
+ await f.open(await file.getFile(),file);assert.equal(f.state.images.size,0);assert.equal(f.state.pendingFolder,handle);assert.equal(f.picker.length,0);
+});
+test('a fresh browser connects the selected project directory without rewriting the rig or its file',async()=>{
+ const d=disk(),f=fixture();await d.put('img/pic.png','real pixels');
+ const p={name:'scene',json:json(),atlasText:atlas(),imagePath:'img',folderKey:'saved-slot',images:[{fileName:'pic.png',path:'pic.png'}]};
+ const file=await d.put('scene.nfproj',await gzip({format:'novaflow-spine-projects',version:2,projects:[p]})),before=await file.getFile();
+ await f.open(await file.getFile(),file);assert.equal(f.state.images.size,0);f.window.directory=d.root;
+ f.c.useRememberedFolder=async(target,handle)=>{target.imageFolder=f.c.folderFromHandle(handle,handle.name);target.imageFolder.recordedPaths=true;await f.c.connectProjectImages(target,target.imageFolder)};f.c.rememberFolder=()=>{};f.c.restoreAudioDirectory=async()=>{};
+ const rig=JSON.stringify(f.state.json);await f.c.connectProjectImageDirectory();
+ assert.equal(await f.state.images.get('pic.png').blob.text(),'real pixels');assert.equal(JSON.stringify(f.state.json),rig);assert.equal(await (await file.getFile()).text(),await before.text());assert.equal(f.picker[0].mode,'read');
+});

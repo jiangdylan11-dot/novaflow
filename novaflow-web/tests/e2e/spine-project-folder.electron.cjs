@@ -7,7 +7,9 @@ assert(process.env.FOART_SAMPLE_PROJECT, 'Set FOART_SAMPLE_PROJECT to the real .
 const sampleRoot = path.dirname(project), renderer = path.resolve(process.env.FOART_WEB_ROOT || path.join(root, 'renderer'));
 const output = path.resolve(process.env.FOART_IMPORT_OUTPUT || path.join(root, '../work/project-folder-ui'));
 const hash = () => crypto.createHash('sha256').update(fs.readFileSync(project)).digest('hex');
+const scenario=process.env.FOART_FOLDER_SCENARIO||'remembered';
 const before = hash(); let server;
+fs.mkdirSync(output,{recursive:true});app.setPath('userData',path.join(output,'profile'));
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   fs.mkdirSync(output, { recursive: true });
@@ -25,10 +27,10 @@ app.whenReady().then(async () => {
       // Virtual read-only handles cannot be structured-cloned into IndexedDB.
       // Substitute only the persistence boundary; execute the real importer/rendering.
       if (!disk && path.basename(file) === 'spine-skeleton-editor.js') bytes = Buffer.from(bytes.toString().replace(
-        /async function (\w+)\((\w+),\s*(\w+)\)\s*\{(?=[\s\S]{0,200}?indexedDB\.open)/,
+        /async function (\w+)\((\w+),\s*(\w+)\)\s*\{(?=[\s\S]{0,600}?\.objectStore\(['"']folders['"']\))/,
         (match, name, mode, run) => match + ' if(window.fixtureRecords) return '+run+'({get:k=>fixtureRecords.get(k),getAll:()=>[...fixtureRecords.values()],put:(v,k)=>fixtureRecords.set(k,v)});'
       ));
-      res.writeHead(200, { 'Content-Type': type }).end(bytes);
+      res.writeHead(200, { 'Content-Type': type, 'x-fixture-mtime': String(fs.statSync(file).mtimeMs) }).end(bytes);
     } catch { res.writeHead(404).end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -43,7 +45,7 @@ app.whenReady().then(async () => {
       resolve:async other=>other.__parts?.slice(0,p.length).join('/')===p.join('/')?other.__parts.slice(p.length):null,
       getDirectoryHandle:async name=>{const entries=await(await fetch(url('list',p))).json();if(!entries.some(e=>e.name===name&&e.kind==='directory'))throw Error('NotFound');return make([...p,name],'directory')},
       getFileHandle:async name=>{const entries=await(await fetch(url('list',p))).json();if(!entries.some(e=>e.name===name&&e.kind==='file'))throw Error('NotFound');return make([...p,name],'file')},
-      getFile:async()=>{const r=await fetch(url('file',p));if(!r.ok)throw Error('NotFound');return new File([await r.arrayBuffer()],p.at(-1))},
+      getFile:async()=>{const r=await fetch(url('file',p));if(!r.ok)throw Error('NotFound');return new File([await r.arrayBuffer()],p.at(-1),{lastModified:Number(r.headers.get('x-fixture-mtime'))})},
       entries:async function*(){for(const e of await(await fetch(url('list',p))).json())yield[e.name,make([...p,e.name],e.kind)]}
     });
     window.sampleDirectory=make([],'directory');window.sampleFile=make([${JSON.stringify(path.basename(project))}],'file');window.folderPicks=0;
@@ -52,15 +54,23 @@ app.whenReady().then(async () => {
     window.importResult=(async()=>{
       const file=await sampleFile.getFile();
       const data=JSON.parse(await new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text());
-      for(const p of data.projects){let folder=sampleDirectory;for(const part of p.imagePath.split('/').filter(s=>s&&s!=='.'))folder=await folder.getDirectoryHandle(part);
+      if(${JSON.stringify(scenario)}!=='fresh')for(const p of data.projects){let folder=sampleDirectory;for(const part of p.imagePath.split('/').filter(s=>s&&s!=='.'))folder=await folder.getDirectoryHandle(part);
+        if(${JSON.stringify(scenario)}==='permission'){folder.queryPermission=async()=> 'prompt';folder.requestPermission=async()=>{folder.queryPermission=async()=> 'granted';return 'granted'}}
         fixtureRecords.set(p.folderKey,{handle:folder,imagePath:p.imagePath});}
       return NovaFlowSkeletonEditorAPI.openProjectFile(file,sampleFile,{operation:'replace'});
     })();
   })()`);
-  const first = await win.webContents.executeJavaScript(`importResult.then(count=>{const s=NovaFlowSkeletonEditorAPI.mediaExportPlans()[0].entries[0].src;return{count,picks:folderPicks,images:s.images.size,imagePath:s.imagePath,text:document.body.innerText}})`);
-  assert.equal(first.count, 1); assert.equal(first.picks, 0); assert(first.images >= 80); assert(!first.text.includes('缺少 84 张外部图片')); assert(!first.text.includes('已显示 MISSING'));
+  if(scenario!=='remembered'){
+    const missing=await win.webContents.executeJavaScript(`importResult.then(()=>({count:__SkeletonLab.state.images.size,text:document.body.innerText,dialog:!!document.querySelector('[data-nf-project-connect]'),pending:!!__SkeletonLab.state.pendingFolder}))`);
+    assert.equal(missing.count,0);assert(missing.text.includes('84 张外部图片'));assert(scenario==='fresh'?missing.dialog:missing.pending);
+    fs.writeFileSync(path.join(output,'disconnected.png'),(await win.webContents.capturePage()).toPNG());
+    await win.webContents.executeJavaScript(`(()=>{const b=[...document.querySelectorAll('.dialog.ask button')].find(b=>b.textContent.includes(${JSON.stringify(scenario==='fresh'?'选择工程所在文件夹':'继续使用')}));if(!b)throw Error('reconnect button missing');b.click()})()`);
+    await win.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const end=Date.now()+30000,t=setInterval(()=>{if(__SkeletonLab.state.images.size>=80&&!document.body.innerText.includes('缺少 84 张外部图片')){clearInterval(t);resolve()}else if(Date.now()>end){clearInterval(t);reject(Error('images did not reconnect: '+document.querySelector('#toast').textContent+' count='+__SkeletonLab.state.images.size))}},30)})`);
+  }
+  const first = await win.webContents.executeJavaScript(`importResult.then(count=>{const s=NovaFlowSkeletonEditorAPI.mediaExportPlans()[0].entries[0].src;return{count,picks:folderPicks,images:s.images.size,missingUsed:__SkeletonLab.missingProjectImageRefs(s.json,s.atlasText,s.projectImageRefs,[...s.images.values()]).map(r=>r.fileName),imagePath:s.imagePath,text:document.body.innerText}})`);
+  assert.equal(first.count, 1); assert.equal(first.picks, scenario==='fresh'?1:0); assert(first.images >= 80); assert.deepEqual(first.missingUsed,[]); assert(!first.text.includes('缺少 84 张外部图片')); assert(!first.text.includes('已显示 MISSING'));
   const reopened = await win.webContents.executeJavaScript(`sampleFile.getFile().then(file=>NovaFlowSkeletonEditorAPI.openProjectFile(file,sampleFile,{operation:'replace'})).then(count=>({count,picks:folderPicks,images:NovaFlowSkeletonEditorAPI.mediaExportPlans()[0].entries[0].src.images.size}))`);
-  assert.equal(reopened.count, 1); assert.equal(reopened.picks, 0); assert.equal(reopened.images, first.images);
+  assert.equal(reopened.count, 1); assert.equal(reopened.picks, scenario==='fresh'?1:0); assert.equal(reopened.images, first.images);
   await new Promise(resolve => setTimeout(resolve, 150));
   fs.writeFileSync(path.join(output, 'imported-project.png'), (await win.webContents.capturePage()).toPNG());
   assert.equal(hash(), before, 'The supplied original project must remain unchanged');

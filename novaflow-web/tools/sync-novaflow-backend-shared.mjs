@@ -61,7 +61,9 @@ while (queue.length) {
     let current = '';
     try { current = await readFile(copyPath, 'utf8'); }
     catch { throw new Error('novaflow-backend shared copy missing: ' + name + '. Run: node novaflow-web/tools/sync-novaflow-backend-shared.mjs'); }
-    if (current !== wanted) throw new Error('novaflow-backend shared copy drift: ' + name + '. Run: node novaflow-web/tools/sync-novaflow-backend-shared.mjs');
+    // Git may check generated copies out as CRLF on Windows; compare their source
+    // content without treating that checkout conversion as an implementation drift.
+    if (current.replace(/\r\n/g, '\n') !== wanted.replace(/\r\n/g, '\n')) throw new Error('novaflow-backend shared copy drift: ' + name + '. Run: node novaflow-web/tools/sync-novaflow-backend-shared.mjs');
   } else {
     await mkdir(dirname(copyPath), { recursive: true });
     await writeFile(copyPath, wanted);
