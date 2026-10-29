@@ -812,3 +812,40 @@ test('identical copied upload projects in different authorized directories are a
   assert.equal(f.state.imageFolder, null)
   assert.equal(f.state.images.size, 0)
 })
+
+for (const uploadOnly of [false, true]) test(`saved image handle restores without a project-directory handle (${uploadOnly ? 'upload' : 'picker'})`, async () => {
+  const d = disk(), f = fixture()
+  await d.put('img/pic.png', 'recorded pixels')
+  const p = { name: 'scene', json: json(), atlasText: atlas(), imagePath: 'img', folderKey: 'saved-slot', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
+  f.records.set('saved-slot', { handle: await d.root.getDirectoryHandle('img'), imagePath: 'img' })
+  const file = await d.put('scene.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] }))
+  await f.open(await file.getFile(), uploadOnly ? null : file)
+  assert.equal(await f.state.images.get('pic.png').blob.text(), 'recorded pixels')
+  assert.equal(f.picker.length, 0)
+})
+
+test('an unmatched saved path stays missing without forcing a directory picker', async () => {
+  const d = disk(), f = fixture()
+  await d.put('img/pic.png', 'wrong pixels')
+  f.records.set('shared', { handle: await d.root.getDirectoryHandle('img'), imagePath: 'img' })
+  const p = { name: 'scene', json: json(), atlasText: atlas(), imagePath: 'other', folderKey: 'shared', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
+  await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] })], 'scene.nfproj'))
+  assert.equal(f.state.images.size, 0)
+  assert.equal(f.picker.length, 0)
+  assert.match(f.status.at(-1)[0], /MISSING/)
+  assert(!source.includes('askProjectAccessDirectory'))
+})
+
+ test('a saved current-directory image handle restores siblings even with legacy shared keys', async () => {
+  const d = disk(), f = fixture()
+  await d.put('img/pic.png', 'original pixels')
+  await d.put('copy/pic.png', 'copy pixels')
+  f.records.set('shared', { handle: await d.root.getDirectoryHandle('copy'), imagePath: 'copy' })
+  f.records.set('current-directory', { handle: d.root, imagePath: '.' })
+  const p = { name: 'scene', json: json(), atlasText: atlas(), imagePath: 'img', folderKey: 'shared', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
+  const file = await d.put('scene.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] }))
+  await f.open(await file.getFile(), file)
+  assert.equal(await f.state.images.get('pic.png').blob.text(), 'original pixels')
+  assert.equal(f.picker.length, 0)
+  assert.notEqual(f.state.folderKey, 'shared')
+})

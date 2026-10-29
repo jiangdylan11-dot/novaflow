@@ -21,7 +21,14 @@ app.whenReady().then(async () => {
       if (file !== base && !file.startsWith(base + path.sep)) return res.writeHead(403).end();
       if (url.pathname === '/fixture/list') return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(fs.readdirSync(file, { withFileTypes: true }).map(e => ({ name: e.name, kind: e.isDirectory() ? 'directory' : 'file' }))));
       const type = { '.js': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' }[path.extname(file)] || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': type }).end(fs.readFileSync(file));
+      let bytes = fs.readFileSync(file);
+      // Virtual read-only handles cannot be structured-cloned into IndexedDB.
+      // Substitute only the persistence boundary; execute the real importer/rendering.
+      if (!disk && path.basename(file) === 'spine-skeleton-editor.js') bytes = Buffer.from(bytes.toString().replace(
+        /async function (\w+)\((\w+),\s*(\w+)\)\s*\{(?=[\s\S]{0,200}?indexedDB\.open)/,
+        (match, name, mode, run) => match + ' if(window.fixtureRecords) return '+run+'({get:k=>fixtureRecords.get(k),getAll:()=>[...fixtureRecords.values()],put:(v,k)=>fixtureRecords.set(k,v)});'
+      ));
+      res.writeHead(200, { 'Content-Type': type }).end(bytes);
     } catch { res.writeHead(404).end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -41,13 +48,19 @@ app.whenReady().then(async () => {
     });
     window.sampleDirectory=make([],'directory');window.sampleFile=make([${JSON.stringify(path.basename(project))}],'file');window.folderPicks=0;
     window.showDirectoryPicker=async()=>{folderPicks++;return sampleDirectory};
-    window.importResult=sampleFile.getFile().then(file=>NovaFlowSkeletonEditorAPI.openProjectFile(file,sampleFile,{operation:'replace'}));
+    window.fixtureRecords=new Map();
+    window.importResult=(async()=>{
+      const file=await sampleFile.getFile();
+      const data=JSON.parse(await new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text());
+      for(const p of data.projects){let folder=sampleDirectory;for(const part of p.imagePath.split('/').filter(s=>s&&s!=='.'))folder=await folder.getDirectoryHandle(part);
+        fixtureRecords.set(p.folderKey,{handle:folder,imagePath:p.imagePath});}
+      return NovaFlowSkeletonEditorAPI.openProjectFile(file,sampleFile,{operation:'replace'});
+    })();
   })()`);
-  await win.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const end=Date.now()+10000;const t=setInterval(()=>{const n=document.querySelector('[data-nf-project-directory-access] .btn.primary');if(n){clearInterval(t);n.click();resolve()}else if(Date.now()>end){clearInterval(t);reject(Error('directory connection prompt missing'))}},50)})`);
   const first = await win.webContents.executeJavaScript(`importResult.then(count=>{const s=NovaFlowSkeletonEditorAPI.mediaExportPlans()[0].entries[0].src;return{count,picks:folderPicks,images:s.images.size,imagePath:s.imagePath,text:document.body.innerText}})`);
-  assert.equal(first.count, 1); assert.equal(first.picks, 1); assert(first.images >= 80); assert(!first.text.includes('缺少 84 张外部图片')); assert(!first.text.includes('已显示 MISSING'));
+  assert.equal(first.count, 1); assert.equal(first.picks, 0); assert(first.images >= 80); assert(!first.text.includes('缺少 84 张外部图片')); assert(!first.text.includes('已显示 MISSING'));
   const reopened = await win.webContents.executeJavaScript(`sampleFile.getFile().then(file=>NovaFlowSkeletonEditorAPI.openProjectFile(file,sampleFile,{operation:'replace'})).then(count=>({count,picks:folderPicks,images:NovaFlowSkeletonEditorAPI.mediaExportPlans()[0].entries[0].src.images.size}))`);
-  assert.equal(reopened.count, 1); assert.equal(reopened.picks, 1); assert.equal(reopened.images, first.images);
+  assert.equal(reopened.count, 1); assert.equal(reopened.picks, 0); assert.equal(reopened.images, first.images);
   await new Promise(resolve => setTimeout(resolve, 150));
   fs.writeFileSync(path.join(output, 'imported-project.png'), (await win.webContents.capturePage()).toPNG());
   assert.equal(hash(), before, 'The supplied original project must remain unchanged');

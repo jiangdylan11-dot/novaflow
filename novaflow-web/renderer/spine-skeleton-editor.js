@@ -1230,30 +1230,6 @@
     return candidates.length === 1 ? candidates[0] : null
   }
 
-  /** A new browser/origin needs a directory grant once; never silently substitute a sibling. */
-  function askProjectAccessDirectory(data, handle) {
-    if (typeof document === 'undefined' || !document.body || typeof window === 'undefined' ||
-      ![window, window.parent].some(w => w && typeof w.showDirectoryPicker === 'function')) return Promise.resolve(undefined)
-    return new Promise(resolve => {
-      const finish = result => { mask.remove(); window.removeEventListener('keydown', key, true); resolve(result) }
-      const key = e => { if (e.key === 'Escape') { e.preventDefault(); finish(null) } }
-      const message = h('div', {}, '首次打开这个位置，需要允许访问工程所在文件夹；之后会自动恢复，并按工程记录定位图片子目录。')
-      const choose = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
-        try {
-          const root = await pickDirectory({ startIn: handle || undefined })
-          if (!root) return
-          const found = await locateReadableProject(data, handle, [root])
-          if (!found) { message.textContent = '请选择包含当前 .nfproj 的文件夹，或它的上级目录。'; return }
-          finish(found)
-        } catch (e) { message.textContent = '无法连接工程文件夹：' + ((e && e.message) || e) }
-      } }, '选择工程文件夹')
-      const mask = h('div', { class: 'mask' }, h('div', { class: 'dialog ask', 'data-nf-project-directory-access': '1' },
-        h('div', { class: 'hd' }, h('b', {}, '连接工程图片目录'), h('button', { class: 'xx', onclick: () => finish(null) }, '×')),
-        h('div', { class: 'msg' }, message), h('div', { class: 'ft' }, btn('取消导入', () => finish(null)), choose)))
-      document.body.append(mask); window.addEventListener('keydown', key, true)
-    })
-  }
-
   /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
   async function openProjectFile(data, handle, options = {}) {
     const blob = data instanceof Blob ? data : new Blob([data])
@@ -1289,34 +1265,21 @@
         if (parts && parts.length) { directory = root; parentParts = parts.slice(0, -1); break }
       }
     }
-    // A remembered folder only locates this file (access / permission). It becomes the
-    // image folder when it resolves to this project's own imagePath, never a sibling
-    // slot that happens to share folderKey. Reopen and replace both re-resolve here.
-    if (handle) for (const p of d.projects) {
-      const rec = await folderDbDo('readonly', (store) => store.get(p.folderKey)).catch(() => null)
-      const root = rec && rec.projectDirectory
-      if (!root || typeof root.queryPermission !== 'function' || typeof root.resolve !== 'function' || await root.queryPermission({ mode: 'read' }).catch(() => 'denied') !== 'granted') continue
-      const parts = await root.resolve(handle).catch(() => null)
-      if (parts && parts.length === 1) {
-        const access = rec.projectAccessRoot || root, relative = await access.resolve(handle).catch(() => null)
-        if (relative) {
-          if (!directory) { directory = access; parentParts = relative.slice(0, -1) }
-          cachedRecords.set(p.folderKey, rec)
-        }
-      }
+    // A project carries the key of its saved image-directory record. Read it for
+    // both file-picker handles and upload Files, even when no project root exists.
+    for (const p of d.projects) {
+      if (!p.folderKey || cachedRecords.has(p.folderKey)) continue
+      const rec = await folderDbDo('readonly', store => store.get(p.folderKey)).catch(() => null)
+      if (rec) cachedRecords.set(p.folderKey, rec)
     }
     if (!directory && !supplied) {
       const records = await folderDbDo('readonly', store => store.getAll()).catch(() => []) || []
       // folderKey can change on Save As. The file's real containment, not its key,
       // decides whether a previously granted project directory can be reused.
-      const roots = records.flatMap(rec => [rec.projectDirectory, rec.projectAccessRoot])
+      const roots = records.flatMap(rec => [rec.projectDirectory, rec.projectAccessRoot, rec.handle])
       const restored = await locateReadableProject(data, handle, roots)
       if (restored) { directory = restored.directory; parentParts = restored.parentParts }
-      else if (d.version === 2 && d.projects.some(p => (p.images || []).length)) {
-        const picked = await askProjectAccessDirectory(data, handle)
-        if (picked === null) return 0
-        if (picked) { directory = picked.directory; parentParts = picked.parentParts }
-      }
+
     }
     let projectDirectory = directory ? await projectSubdir(directory, parentParts) : null
     const imported = []
@@ -1337,6 +1300,9 @@
       if (!folder && !ignoreCache && record && record.handle && await folderHandleReadable(record.handle)) {
         const outside = !(directory && typeof directory.resolve === 'function' && await directory.resolve(record.handle).catch(() => null))
         if (await cachedFolderMatches(directory, parentParts, imagePath, record.handle)) folder = folderFromHandle(record.handle, record.handle.name)
+        // Without a known project root, the saved key and matching imagePath are
+        // the original directory identity. Never replace it with a guessed sibling.
+        else if (!directory && !supplied && (record.imagePath == null || record.imagePath === imagePath)) folder = folderFromHandle(record.handle, record.handle.name || record.name)
         else if (p.externalFolder && outside) folder = folderFromHandle(record.handle, record.handle.name || record.name)
       }
       if (!folder && !directory && supplied) {
