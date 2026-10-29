@@ -53,6 +53,36 @@ function env({cfg=5} = {}) {
   const api = sandbox.NovaFlowXiaotaoArtAgent, bridge = api.createBridge();
   return {api, bridge, sandbox, runtime, state, refs, saved, calls, setSurface:v => {surface = v;}, getPrepared:() => prepared};
 }
+test('online predicted fee matches its inline receipt and learns only server-approved numeric usage',async()=>{
+  const e=env(); e.refs.splice(1); Object.assign(e.refs[0],{width:96,height:96});
+  runInContext(readFileSync(new URL('../../renderer/feature-credit-prices.js',import.meta.url),'utf8'),createContext(e.sandbox));
+  e.sandbox.NovaFlowFeatureCreditPrices.applyConfig({xiaotao_online:{output_tokens:17}});
+  const policy={message_cap_credits:80,chars_per_token:2,output_tokens:2048,usd_per_million_tokens:10,file_tokens:{image:2500,video:0,audio:0}};
+  const message='把附图放到图生图参考图；只用一句中文描述图片主色，不要生成或修改图片。';
+  let eligible=true, model='fixture-metered-model'; const seen=[];
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async payload=>{
+    seen.push(payload);
+    return {ok:true,data:{reply:'绿色背景，橙色圆形。',model,quota:{billing_mode:'token',estimated_credits:21,settled_credits:10,balance_after:100},
+      billingSample:{eligible,model,pricingSource:'token_usage',inputTokens:1600,outputTokens:600,totalTokens:2200,usdCost:0.022,creditsPerUsd:211,markup:2,policy}}};
+  }})});
+  controller.setProvider('api');
+  const before=controller.onlineQuote(message); assert.equal(before.reservedCredits,21);
+  for(let i=0;i<4;i++)assert.equal(await controller.send(message),true);
+  const after=controller.onlineQuote(message);
+  assert.equal(after.sampleCount,4); assert.ok(after.credits<before.credits);
+  assert.equal(seen[0].images[0].width,96); assert.equal(seen[0].images[0].height,96);
+  const first=controller.state.messages.find(m=>m.receipt);
+  assert.ok(first.receipt.includes(`预估 ${before.credits}`));
+  assert.ok(!first.content.includes('实扣'));
+  const saved=JSON.parse(e.saved.get('novaflow.xiaotao-pricing.v1'));
+  assert.equal(saved.samples.length,4);
+  assert.ok(!JSON.stringify(saved).includes(message) && !JSON.stringify(saved).includes('data:image'));
+  eligible=false; await controller.send(message); assert.equal(controller.onlineQuote(message).sampleCount,4);
+  eligible=true; model='another-model'; await controller.send(message); assert.equal(controller.onlineQuote(message).sampleCount,1);
+  e.sandbox.Date={now:()=>Date.now()+16*60*1000};
+  assert.equal(controller.onlineQuote(message).sampleCount,0,'an open controller expires the old pricing profile too');
+  assert.equal(e.calls.length,0,'online prediction and receipt never generate a picture');
+});
 async function proposal(e, snapshot = e.bridge.capture()) {
   return {prompt:'Redraw <image1> using the painted style of <image2>.', negativePrompt:snapshot.artContext.negativePrompt, cfg:3,
     contextFingerprint:await e.api.fingerprint(snapshot), model:'flash-fixture', promptIds:['actual-native-id'], kind:'qwen21-strata-native', version:'flash-native-v1', sourceOrder:[1,2],
@@ -523,6 +553,8 @@ test('a staged file already shown as a blob reference is counted once and its ex
   const e=env(),payloads=[];
   e.refs.splice(0);
   e.sandbox.btoa=value=>Buffer.from(value,'binary').toString('base64');
+  let decodes=0;
+  e.sandbox.Image=class {set src(value){assert.ok(value.startsWith('data:image/png;'));decodes++;this.naturalWidth=96;this.naturalHeight=96;Promise.resolve().then(()=>this.onload());}};
   runInContext(readFileSync(new URL('../../renderer/xiaotao-upload.js',import.meta.url),'utf8'),createContext(e.sandbox));
   let reads=0;
   const bytes=Buffer.from(png(25).split(',')[1],'base64');
@@ -531,27 +563,107 @@ test('a staged file already shown as a blob reference is counted once and its ex
   controller.setProvider('api');
   await controller.stageUploads([file]);
   e.refs.push({dataUrl:'blob:preview/same',file,drawingRole:'subject'});
-  for(let i=0;i<10;i++)assert.equal(controller.onlineEstimateInput('请说明参考图主色？').files.length,1);
+  for(let i=0;i<10;i++){const quoted=controller.onlineEstimateInput('请说明参考图主色？');assert.equal(quoted.files.length,1);assert.equal(quoted.files[0].width,96);assert.equal(quoted.files[0].height,96);}
   assert.equal(reads,1);
+  assert.equal(decodes,1,'passive estimates reuse dimensions instead of decoding on every refresh');
   assert.equal(await controller.send('请说明参考图主色？'),true,controller.state.error);
   assert.equal(payloads[0].images.length,1);
   assert.equal(reads,1);
 });
 
-test('an online reply shows the settled credits and writes a transcript receipt', async () => {
+test('an online reply keeps its receipt below the body and copies only the reply', async () => {
   const e = env();
   const controller = e.api.createController({bridge:e.bridge, api:() => ({
     artAgentChat: async () => ({ok:true, data:{
       reply:'好的。', history:[], mode:'chat', provider:'api',
-      quota:{billing_mode:'token', settled_credits:8, estimated_credits:21, balance_after:90}
+      quota:{billing_mode:'token', settled_credits:8, expected_credits:13, estimated_credits:21, balance_after:90}
     }})
   })});
   controller.setProvider('api');
   assert.equal(await controller.send('你好'), true);
-  assert.match(controller.state.status, /实扣 8 分/);
-  assert.match(controller.state.status, /剩余 90/);
-  const receipt = controller.state.messages.find(item => item.role === 'status' && /本次实扣/.test(item.content));
-  assert.equal(receipt.content, '本次实扣 8 分（预估 21）');
+  assert.equal(controller.state.status, '已回复');
+  const reply = controller.state.messages.find(item => item.role === 'assistant');
+  assert.equal(reply.content, '好的。');
+  assert.equal(reply.receipt, '本次实扣 8 分（预估 13）');
+  assert.equal(controller.state.messages.some(item => item.role === 'status'), false);
+  const copied = [], row = e.api.conversationRows(controller.state.messages).at(-1);
+  const bubble = e.api.renderConversationRow(messageDocument(), row, {copyText:text => copied.push(text)});
+  assert.equal(bubble.children[1].textContent, '好的。');
+  assert.equal(bubble.children.at(-1).tagName, 'SMALL');
+  assert.equal(bubble.children.at(-1).textContent, reply.receipt);
+  bubble.children[0].children[1].onclick();
+  assert.deepEqual(copied, ['好的。']);
+  const reloaded = e.api.createController({bridge:e.bridge});
+  assert.equal(reloaded.state.messages.find(item=>item.role==='assistant').receipt, reply.receipt);
+});
+
+function messageDocument() {
+  class Node {
+    constructor(tag, text='') {this.tagName=tag.toUpperCase();this.children=[];this.value=text;this.attributes={};}
+    append(...nodes) {this.children.push(...nodes);}
+    set textContent(text) {this.value=String(text);this.children=[];}
+    get textContent() {return this.value+this.children.map(node=>node.textContent).join('');}
+    setAttribute(key,value) {this.attributes[key]=String(value);}
+    getAttribute(key) {return this.attributes[key]??null;}
+    set innerHTML(_) {assert.fail('Conversation content must remain safe text');}
+  }
+  return {createElement:tag=>new Node(tag),createTextNode:text=>new Node('#text',text)};
+}
+
+test('legacy receipts survive archive import and render with the reply without progress bubbles', () => {
+  const e=env(), key='novaflow.xiaotao-art.chat.v1', values=new Map([[key, JSON.stringify({provider:'api',sessions:{api:{messages:[
+    {role:'user',content:'旧问题'},
+    {role:'status',content:'消息已发送，正在等待小桃回复。'},
+    {role:'assistant',content:'旧回复',imageUrl:'data:do-not-import',receipt:'本次实扣 7 分（预估 11）'},
+    {role:'status',content:'本次实扣 8 分（预估 21）'}
+  ],history:[],conversationId:'old-id'}}})]]), tab=new Map();
+  const storage=map=>({getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v)});
+  const archive=e.api.createTabScopedStorage(storage(values),storage(tab));
+  const controller=e.api.createController({bridge:e.bridge,storage:archive});
+  const before=plain(controller.state.messages), rows=e.api.conversationRows(controller.state.messages);
+  assert.equal(rows.length,2);
+  assert.deepEqual(plain(rows[1].receipts),['本次实扣 7 分（预估 11）','本次实扣 8 分（预估 21）']);
+  assert.equal(rows[1].imageUrl,undefined);
+  const bubble=e.api.renderConversationRow(messageDocument(),rows[1]);
+  assert.equal(bubble.children.filter(node=>node.tagName==='SMALL').length,2);
+  assert.deepEqual(plain(controller.state.messages),before,'display projection preserves original fee evidence');
+  const reloaded=e.api.createController({bridge:e.bridge,storage:archive});
+  assert.deepEqual(plain(e.api.conversationRows(reloaded.state.messages)[1].receipts),plain(rows[1].receipts));
+});
+
+test('standalone old fees remain readable and action failures remain alerts', () => {
+  const {api}=env(), doc=messageDocument();
+  const rows=api.conversationRows([
+    {role:'status',content:'本次实扣 8 分（预估 21）'},
+    {role:'status',content:'已放入图生图参考图：test.png'},
+    {role:'status',level:'error',content:'Upload rejected by worker'},
+  ]);
+  const fee=api.renderConversationRow(doc,rows[0]), placed=api.renderConversationRow(doc,rows[1]), failed=api.renderConversationRow(doc,rows[2]);
+  assert.equal(fee.textContent,'本次实扣 8 分（预估 21）');
+  assert.equal(fee.className.includes('nf-xiaotao-message'),false);
+  assert.equal(placed.getAttribute('role'),'note');
+  assert.equal(placed.textContent,'已放入图生图参考图：test.png');
+  assert.equal(failed.getAttribute('role'),'alert');
+  assert.equal(failed.className.includes('nf-xiaotao-note-error'),true);
+  const copied=[], prompt='portrait, warm light';
+  const bubble=api.renderConversationRow(doc,{role:'assistant',content:'完整提示词：\n```text\n'+prompt+'\n```',receipts:['本次实扣 9 分（预估 12）']},{copyText:text=>copied.push(text)});
+  bubble.children[0].children[1].onclick();
+  assert.deepEqual(copied,[prompt]);
+});
+
+test('waiting and failed chat requests never append progress or fee messages', async () => {
+  const e=env(), entered=deferred(), gate=deferred();
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{entered.resolve();return gate.promise;}})});
+  controller.setProvider('api');
+  const sending=controller.send('你好');await entered.promise;
+  assert.equal(controller.state.pending,true);
+  assert.equal(controller.state.messages.length,1);
+  assert.equal(controller.state.messages[0].role,'user');
+  assert.match(controller.state.status,/正在连接在线智能/);
+  gate.resolve({ok:false,error:'服务繁忙，请稍后再试'});await sending;
+  assert.equal(controller.state.error,'服务繁忙，请稍后再试');
+  assert.equal(controller.state.messages.length,1);
+  assert.equal(controller.state.messages.some(message=>message.receipt),false);
 });
 
 test('the send button stays right of a fixed estimate slot in local and online mode', () => {
@@ -753,7 +865,7 @@ test('explicit visual feedback without prior consent asks before analysis; uncha
   await controller.send('这张太蓝，请改成参考图那种颜色');assert.equal(payloads.length,0);assert(controller.state.confirmation);
   assert.equal(await controller.confirmSampling('current'),true,controller.state.error);assert.equal(payloads.length,1);assert.equal(e.calls.length,1);
   await controller.send('头发还是太写实，改成更明确的动漫发束');assert.equal(payloads.length,2);assert.equal(e.calls.length,2);assert.equal(controller.state.confirmation,null);
-  assert(controller.state.messages.some(m=>m.role==='status' && /本次使用 Turbo 加速版 · 8 步 · CFG 3/.test(m.content)));
+  assert(controller.state.messages.some(m=>m.role==='status' && /本次已确认：Turbo 加速版 · 8 步 · CFG 3/.test(m.content)));
   e.state.samplingOverrides['qwen-2.1-turbo:img2img'].cfg=4;
   await controller.send('这张太蓝，请改成参考图的冷色');assert.equal(payloads.length,2);assert.equal(e.calls.length,2);assert.equal(controller.state.confirmation.sampling.cfg,4);
 });
@@ -781,7 +893,7 @@ test('drawing progress uses the matching operation phase and elapsed time instea
   phase='analyzing';await timers.next();assert.match(controller.state.status,/正在分析当前绘图.*42 秒/);assert.equal(controller.state.localSession,null);
   phase='releasing';await timers.next();assert.match(controller.state.status,/正在释放模型资源，准备生图/);
   gate.resolve({ok:true,data:{reply:'已分析',history:[],proposal:await proposal(e)}});assert.equal(await running,true,controller.state.error);assert.equal(timers.pending.size,0);assert.equal(controller.state.operation,null);assert.equal(e.calls.length,1);
-  assert(controller.state.messages.some(m=>m.role==='status' && /请求已收到/.test(m.content)));
+  assert.equal(controller.state.messages.some(m=>m.role==='status' && /请求已收到|正在等待/.test(m.content)),false);
 });
 
 test('real sampling confirmation supplies a request-bound approval separately from the unchanged snapshot and user history',async()=>{

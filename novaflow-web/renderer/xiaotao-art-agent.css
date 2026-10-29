@@ -53,6 +53,11 @@
 .nf-xiaotao-user { max-width:78%; margin-left:auto; margin-right:0; border-top-right-radius:3px; background:#4c3b34; color:#f6e7df; }
 .nf-xiaotao-user .nf-xiaotao-message-label { color:#dfb8a3; }
 .nf-xiaotao-assistant { margin-left:0; margin-right:auto; border-top-left-radius:3px; border:1px solid #3c3c3c; background:#2b2b2b; color:#eeeeee; }
+.nf-xiaotao-receipt { display:block; margin-top:8px; padding-top:6px; border-top:1px solid #ffffff12; color:#a9a4a0; font-size:10px; line-height:1.5; font-variant-numeric:tabular-nums; }
+.nf-xiaotao-note { margin:0 0 12px; max-width:100%; padding:0 3px; color:#aaa6a3; font-size:11px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+.nf-xiaotao-note.nf-xiaotao-receipt { padding-top:0; border-top:0; }
+.nf-xiaotao-note-error { padding:8px 10px; border-left:2px solid #df8f82; border-radius:4px; background:#4d2f2a; color:#ffd4ca; }
+.nf-xiaotao-message.nf-xiaotao-message-error { border-color:#b47165; background:#4d2f2a; color:#ffd4ca; }
 .nf-xiaotao-message img { display:block; width:100%; height:auto; max-height:260px; object-fit:contain; margin-top:9px; border-radius:6px; background:#191919; }
 .nf-xiaotao-proposal { margin:0 13px 8px; padding:9px 11px; border:1px solid #6c615d; border-radius:8px; background:#2a2928; max-height:220px; overflow:auto; flex-shrink:0; }
 .nf-xiaotao-proposal summary { cursor:pointer; color:#e7d2ba; font-weight:600; }
@@ -62,7 +67,7 @@
 #nf-xiaotao-art-root .nf-xiaotao-primary:hover { background:#cca290; }
 .nf-xiaotao-status { color:#cccccc; min-height:18px; padding:0 15px 6px; font-size:11px; flex-shrink:0; }
 .nf-xiaotao-tools { color:#a0a0a0; padding:0 15px 5px; font-size:10px; }
-.nf-xiaotao-error { color:#ffc1b9; margin:0; padding:0 15px 8px; font-size:12px; white-space:pre-wrap; }
+.nf-xiaotao-error { color:#ffd4ca; background:#4d2f2a; border-left:2px solid #df8f82; border-radius:4px; margin:0 12px 8px; padding:8px 10px; font-size:12px; white-space:pre-wrap; }
 .nf-xiaotao-compose { border-top:1px solid #3d3d3d; padding:11px 12px 12px; flex-shrink:0; }
 .nf-xiaotao-compose textarea { display:block; width:100%; box-sizing:border-box; resize:vertical; min-height:64px; max-height:140px; border:1px solid #555555; border-radius:8px; background:#171717; color:#eeeeee; padding:9px 10px; }
 .nf-xiaotao-compose textarea::placeholder { color:#888888; }

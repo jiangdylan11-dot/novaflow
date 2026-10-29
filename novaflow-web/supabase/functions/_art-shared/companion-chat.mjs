@@ -2,10 +2,31 @@
 // One metered multimodal conversation, without application execution tools.
 import {isArtPromptLanguage,artPromptLanguageSystem} from './art-prompt-language.mjs';
 import {postRunningHubResponses} from './runninghub-llm.mjs';
-import {XIAOTAO_TEXT_SYSTEM,XIAOTAO_VISION_SYSTEM,estimateXiaotaoOnlineCredits,settleXiaotaoOnlineCredits,xiaotaoFileKind} from './feature-credits.mjs';
+import {XIAOTAO_TEXT_SYSTEM,XIAOTAO_VISION_SYSTEM,estimateXiaotaoOnlineCredits,settleXiaotaoOnlineCredits,xiaotaoFileKind,tokenUsageRecord,xiaotaoOnlinePolicy} from './feature-credits.mjs';
 export class CompanionError extends Error {constructor(status,message){super(message);this.status=status;}}
 const need=(ok,message)=>{if(!ok)throw new CompanionError(400,message);};
 const MAX_OUTPUT_TOKENS=2048;
+function sampleTokenCount(value){
+ if(typeof value!=='number'&&typeof value!=='string')return null;
+ if(typeof value==='string'&&!/^\d+(?:\.\d+)?$/.test(value.trim()))return null;
+ const count=Math.round(Number(value));
+ return Number.isSafeInteger(count)&&count>=0?count:null;
+}
+function billingSampleFor(model,usage,decision,config){
+ const tokens=tokenUsageRecord(usage)||{};
+ let inputTokens=sampleTokenCount(tokens.input_tokens)??sampleTokenCount(tokens.prompt_tokens);
+ let outputTokens=sampleTokenCount(tokens.output_tokens)??sampleTokenCount(tokens.completion_tokens);
+ let totalTokens=sampleTokenCount(tokens.total_tokens);
+ if(!(totalTokens>0)&&inputTokens!=null&&outputTokens!=null)totalTokens=sampleTokenCount(inputTokens+outputTokens);
+ // The RunningHub adapter fills absent counters with zero. A positive total
+ // with no component counts does not mean that the provider used zero of each.
+ if(totalTokens>0&&inputTokens===0&&outputTokens===0){inputTokens=null;outputTokens=null;}
+ const usable=totalTokens>0&&Number.isFinite(decision.usdCost)&&decision.usdCost>0&&!decision.usageMissing
+  &&!decision.capped&&!decision.settleCapped&&!decision.reserveCapped;
+ return {sample:{model:String(model||'').slice(0,200),pricingSource:decision.pricingSource,usdCost:decision.usdCost,
+  inputTokens,outputTokens,totalTokens,creditsPerUsd:decision.creditsPerUsd,markup:decision.markup,
+  policy:{...xiaotaoOnlinePolicy(config),output_tokens:MAX_OUTPUT_TOKENS},eligible:false},usable};
+}
 export function companionInput(payload){
  need(isArtPromptLanguage(payload?.promptLanguage),'提示词语言无效');
  need(payload?.mode==='chat'&&/^[A-Za-z0-9_-]{8,128}$/.test(payload.requestId||'')&&typeof payload.message==='string'&&payload.message.trim()&&payload.message.length<=12000,'对话请求无效');
@@ -48,6 +69,7 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
   const files=Array.from({length:imageCountForBill},()=>({kind:'image'}));
   const estimate=estimateXiaotaoOnlineCredits({text:payload.message+(captions.length?'\n'+captions.join('\n'):''),history:historyText,system:systemText,files,outputTokens:MAX_OUTPUT_TOKENS,config:provider.creditConfig,promptLanguage:payload.promptLanguage});
   const feature=imageCountForBill?'xiaotao-vision':'xiaotao-text';
+  let calibration=null,decisionCredits=null;
   try{
    const charged=await charge({userId:user.id,feature,amount:1,usageKey:'xiaotao:'+payload.requestId,estimatedCredits:estimate.credits,metadata:{imageAnalysis:imageCount>0,estimate:estimate.credits},run:async()=>{
     let posted;
@@ -58,9 +80,14 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
     const reply=result.output.flatMap(m=>m.type==='message'&&m.role==='assistant'?(m.content||[]).filter(p=>p.type==='output_text'&&typeof p.text==='string').map(p=>p.text):[]).join('\n').trim();
     if(!reply)throw Object.assign(new CompanionError(502,textOnly?'小桃AI未返回完整文字回复，本次未自动重试':'在线图片分析未返回文字'),{chargedAmount:0});
     const decision=settleXiaotaoOnlineCredits({usage:result.usage,reservedCredits:estimate.credits,config:provider.creditConfig});
+    calibration=billingSampleFor(result.model||provider.model,result.usage,decision,provider.creditConfig);decisionCredits=decision.credits;
     return {amount:1,reply,model:result.model||provider.model,imageCount,settledCredits:decision.credits,rhCostUsd:decision.usdCost,pricingSource:decision.pricingSource,metadata:{model:result.model,imageCount,usage:result.usage,billing_mode:'token',estimated_credits:estimate.credits,settled_credits:decision.credits}};
    }});
-   return {reply:charged.reply,model:charged.model,imageCount:charged.imageCount,quota:{...(charged.quota||{}),billing_mode:'token',estimated_credits:estimate.credits,settled_credits:charged.quota?.settled_credits??charged.settledCredits,feature}};
+   const actual=sampleTokenCount(charged.quota?.settled_credits);
+   const billingSample=calibration?{...calibration.sample,eligible:calibration.usable&&actual!=null&&Number(charged.quota?.settled_credits)===actual&&actual===decisionCredits
+    &&charged.quota?.balance_short!==true&&!(Number(charged.quota?.uncollected_credits)>0)
+    &&charged.quota?.capped!==true&&charged.quota?.settle_capped!==true&&charged.quota?.reserve_capped!==true}:null;
+   return {reply:charged.reply,model:charged.model,imageCount:charged.imageCount,billingSample,quota:{...(charged.quota||{}),billing_mode:'token',estimated_credits:estimate.credits,settled_credits:charged.quota?.settled_credits??charged.settledCredits,feature}};
   }catch(error){
    if(error instanceof CompanionError)throw error;
    const status=Number(error?.statusCode)||502;

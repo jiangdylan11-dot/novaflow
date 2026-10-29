@@ -312,6 +312,73 @@ await test('a token-priced settle returns the credits the ledger actually charge
   assert.equal(short.quota.estimated_credits, estimate);
 });
 
+await test('successful companion billing samples are numeric allowlists without changing reservation or output budget', async () => {
+  const events=[];
+  const creditConfig={credits_per_usd:'211',token_billing:{markup:'2'},xiaotao_online:{output_tokens:17,privateKey:'never-public'}};
+  const message='仅用于校准的私有测试文字';
+  const service=createCompanionChat({
+    provider:{baseUrl:'https://provider.test/v1',model:'configured-model',apiKey:'private-service-credential',creditConfig},
+    charge:createOnlineAiCharge({
+      reserve:async input=>{events.push(['reserve',input]);return {status:'reserved',idempotent:false,amount:1,credits:input.estimatedCredits};},
+      settle:async input=>{events.push(['settle',input]);return {settled_credits:String(input.settledCredits),balance_short:false};},
+      release:async()=>assert.fail('successful fixture must not release')
+    }),
+    fetchImpl:async(_url,init)=>{
+      const body=JSON.parse(init.body);
+      assert.equal(body.max_tokens,2048);
+      return Response.json({model:'actual-model',choices:[{finish_reason:'stop',message:{role:'assistant',content:'完成'}}],
+        usage:{prompt_tokens:'1400',completion_tokens:'400',total_tokens:'1800',privateKey:'never-public',prompt_tokens_details:{private:'never-public'}}});
+    }
+  });
+  const result=await service.reply({user:{id:'user'},payload:{requestId:'sample-allowlist-1',mode:'chat',promptLanguage:'en',message,history:[]}});
+  const expectedReserve=estimateXiaotaoOnlineCredits({text:message,outputTokens:2048,config:creditConfig}).credits;
+  assert.equal(events[0][1].estimatedCredits,expectedReserve);
+  assert.equal(events[1][1].settledCredits,8);
+  assert.equal(result.quota.estimated_credits,expectedReserve);
+  assert.deepEqual(Object.keys(result.billingSample).sort(),['model','pricingSource','usdCost','inputTokens','outputTokens','totalTokens','creditsPerUsd','markup','policy','eligible'].sort());
+  assert.deepEqual(result.billingSample,{model:'actual-model',pricingSource:'token_usage',usdCost:0.018,inputTokens:1400,outputTokens:400,totalTokens:1800,
+    creditsPerUsd:211,markup:2,policy:{...xiaotaoOnlinePolicy(creditConfig),output_tokens:2048},eligible:true});
+  assert.equal(result.billingSample.policy.output_tokens,2048);
+  const encoded=JSON.stringify(result.billingSample);
+  for(const secret of [message,'private-service-credential','never-public','prompt_tokens_details'])assert.equal(encoded.includes(secret),false);
+});
+
+await test('calibration excludes missing usage, zero cost, caps and ledger shortfalls while allowing unknown token splits', async () => {
+  const cases=[
+    {usage:{total_tokens:1800},eligible:true,total:1800,input:null,output:null},
+    {usage:{total_tokens:1800,thirdPartyConsumeMoney:'0.02'},eligible:true,total:1800,input:null,output:null},
+    {usage:{input_tokens:'1400',output_tokens:'400'},eligible:true,total:1800,input:1400,output:400},
+    {usage:{},eligible:false},
+    {usage:{thirdPartyConsumeMoney:'0.01'},eligible:false},
+    {usage:{total_tokens:1800,thirdPartyConsumeMoney:'0'},eligible:false},
+    {usage:{total_tokens:30000},eligible:false},
+    {usage:{total_tokens:1800},quota:{balance_short:true},eligible:false},
+    {usage:{total_tokens:1800},quota:{uncollected_credits:1},eligible:false},
+    {usage:{total_tokens:1800},quota:{settled_credits:3},eligible:false},
+    {usage:{total_tokens:1800},quota:{settled_credits:8.2},eligible:false},
+    {usage:{total_tokens:1800},quota:{settled_credits:null},eligible:false},
+    {usage:{total_tokens:1800},quota:{settle_capped:true},eligible:false},
+  ];
+  for(const [i,entry] of cases.entries()){
+    const service=createCompanionChat({
+      provider:{baseUrl:'https://provider.test/v1',model:'fixture',apiKey:'private-key'},
+      charge:createOnlineAiCharge({
+        reserve:async input=>({status:'reserved',idempotent:false,amount:1,credits:input.estimatedCredits}),
+        settle:async input=>({settled_credits:input.settledCredits,balance_short:false,...entry.quota}),
+        release:async()=>assert.fail('completed fixture must settle')
+      }),
+      fetchImpl:async()=>Response.json({model:'fixture',choices:[{finish_reason:'stop',message:{role:'assistant',content:'完成'}}],usage:entry.usage})
+    });
+    const result=await service.reply({user:{id:'user'},payload:{requestId:'calibration-case-'+i,mode:'chat',promptLanguage:'en',message:'你好',history:[]}});
+    assert.equal(result.billingSample.eligible,entry.eligible,JSON.stringify(entry));
+    if(entry.eligible){
+      assert.equal(result.billingSample.totalTokens,entry.total);
+      assert.equal(result.billingSample.inputTokens,entry.input);
+      assert.equal(result.billingSample.outputTokens,entry.output);
+    }
+  }
+});
+
 await test('a text-only online turn keeps the general chat prompt and token billing', async () => {
   const text = companionInput({ requestId: 'text-only-1234', mode: 'chat', promptLanguage: 'en', message: '你好', history: [] });
   assert.equal(text.textOnly, true);

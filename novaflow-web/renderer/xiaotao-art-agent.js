@@ -27,6 +27,21 @@
   }
   const resolvedFiles = new WeakMap();
   const referencePreviews = new WeakMap();
+  const referenceDimensions = new WeakMap();
+  function imageDimensions(ref) {
+    const cached = ref?.file && referenceDimensions.get(ref.file);
+    return {width:Number(ref?.width || cached?.width) || 0, height:Number(ref?.height || cached?.height) || 0};
+  }
+  async function readImageDimensions(file, url) {
+    if (referenceDimensions.has(file) || typeof root.Image !== 'function') return;
+    const dimensions = await new Promise(resolve => {
+      const img = new root.Image();
+      img.onload = () => resolve({width:img.naturalWidth || img.width, height:img.naturalHeight || img.height});
+      img.onerror = () => resolve({width:0,height:0});
+      img.src = url;
+    });
+    referenceDimensions.set(file, dimensions);
+  }
   // One resolver for every path that serializes or sends a reference. The slot
   // may keep a blob: URL for display; File does not survive JSON.stringify.
   async function resolveReferenceDataUrl(ref) {
@@ -92,7 +107,7 @@
     for (const file of uploads) {
       const dataUrl = file.previewUrl || file.dataUrl;
       if (file.kind !== 'image' || !dataUrl || images.length >= 3) continue;
-      const image = {dataUrl, file:file.file, mimeType:file.mimeType, role:'attachment', source:images.length + 1, name:file.name};
+      const image = {dataUrl, file:file.file, mimeType:file.mimeType, role:'attachment', source:images.length + 1, name:file.name, ...imageDimensions(file)};
       if (!images.some(existing => chatReferenceIdentity(existing) === chatReferenceIdentity(image))) images.push(image);
     }
     return images;
@@ -176,6 +191,63 @@
     }
     flush(); return body;
   }
+  function conversationRows(messages) {
+    const rows = [];
+    for (const message of messages) {
+      const content = String(message.content || '');
+      if (message.role === 'status' && /^(?:消息已发送，正在等待小桃回复|请求已收到，开始分析当前绘图)/.test(content)) continue;
+      const receipt = message.role === 'status' && /^(?:本次)?实扣\s*\d+\s*(?:分|积分)/.test(content);
+      const previous = rows[rows.length - 1];
+      if (receipt && previous?.role === 'assistant') {
+        previous.receipts.push(content);
+        continue;
+      }
+      rows.push({...message, content, receipts:typeof message.receipt === 'string' && message.receipt ? [message.receipt] : [], ...(receipt ? {receiptOnly:true} : {})});
+    }
+    return rows;
+  }
+  function renderConversationRow(doc, message, {copyText = () => {}, chooseUploadDestination = () => {}} = {}) {
+    const el = (tag, className = '', text) => {const node = doc.createElement(tag); node.className = className; if (text !== undefined) node.textContent = text; return node;};
+    if (message.role === 'status') {
+      const failed = !message.receiptOnly && (message.level === 'error' || /失败|未成功|无法|不能|不支持|未放入|不可用|已失效|未完成/.test(message.content));
+      const note = el('div', `nf-xiaotao-note${message.receiptOnly ? ' nf-xiaotao-receipt' : failed ? ' nf-xiaotao-note-error' : ''}`, message.content);
+      note.setAttribute('role', failed ? 'alert' : 'note');
+      return note;
+    }
+    const bubble = el('div', 'nf-xiaotao-message nf-xiaotao-' + message.role + (message.level === 'error' ? ' nf-xiaotao-message-error' : ''));
+    if (message.level === 'error') bubble.setAttribute('role', 'alert');
+    const label = el('div', 'nf-xiaotao-message-label');
+    const textPrompt = message.content.match(/完整提示词：\n```text\n([\s\S]*?)\n```/);
+    const copy = el('button', 'nf-xiaotao-copy', textPrompt ? '复制提示词' : '复制');
+    copy.type = 'button';
+    copy.setAttribute('aria-label', message.role === 'user' ? '复制你的消息' : textPrompt ? '复制小桃的完整提示词' : '复制小桃的回复');
+    copy.onclick = () => void copyText(textPrompt ? textPrompt[1] : message.content, copy);
+    label.append(el('span', '', message.role === 'user' ? '你' : '小桃AI'), copy);
+    bubble.append(label, renderMessageMarkdown(doc, message.content));
+    if (message.attachments?.length) {
+      const strip = el('div', 'nf-xiaotao-message-attachments');
+      for (const resource of message.attachments) {
+        if (resource.dataUrl) {const image = el('img'); image.src = resource.dataUrl; image.alt = resource.name; strip.append(image);}
+        else strip.append(el('span', 'nf-xiaotao-message-file', resource.name));
+      }
+      bubble.append(strip);
+    }
+    if (message.choices?.length) {
+      const choices = el('div', 'nf-xiaotao-choices');
+      for (const choice of message.choices) {
+        const chip = el('button', 'nf-xiaotao-choice', choice.label); chip.type = 'button';
+        chip.onclick = () => void chooseUploadDestination(choice.id, message.pendingId);
+        choices.append(chip);
+      }
+      bubble.append(choices);
+    }
+    if (message.imageUrl && /^data:image\//.test(message.imageUrl)) {
+      const link = el('a'); link.href = message.imageUrl; link.target = '_blank'; link.rel = 'noopener';
+      const image = el('img'); image.src = message.imageUrl; image.alt = '本次实际成图，待评价'; link.append(image); bubble.append(link);
+    }
+    for (const receipt of message.receipts || []) {const note = el('small', 'nf-xiaotao-receipt', receipt); note.setAttribute('role', 'note'); bubble.append(note);}
+    return bubble;
+  }
   function createTabScopedStorage(localStorage, sessionStorage) {
     const tabKey = STORAGE_KEY + ':tab-id', prefix = STORAGE_KEY + ':tab:', latestKey = STORAGE_KEY + ':latest-archive';
     const read = (storage, key) => {try {return storage?.getItem(key) ?? null;} catch {return null;}};
@@ -183,7 +255,7 @@
     let tabId = read(sessionStorage, tabKey);
     if (!/^[\da-f-]{36}$/i.test(tabId || '')) {tabId = root.crypto.randomUUID(); write(sessionStorage, tabKey, tabId);}
     const archiveKey = prefix + tabId; let cached = null;
-    const textOnly = (items, limit) => (Array.isArray(items) ? items : []).filter(m => ['user','assistant'].includes(m?.role) && typeof m.content === 'string').slice(-limit).map(({role, content}) => ({role, content}));
+    const textOnly = (items, limit, receipts = false) => (Array.isArray(items) ? items : []).filter(m => (receipts ? ['user','assistant','status'] : ['user','assistant']).includes(m?.role) && typeof m.content === 'string').slice(-limit).map(({role, content, receipt, level}) => ({role, content, ...(receipts && typeof receipt === 'string' && receipt ? {receipt} : {}), ...(receipts && level === 'error' ? {level} : {})}));
     return Object.freeze({
       getItem(key) {
         if (key !== STORAGE_KEY) return null;
@@ -193,7 +265,7 @@
           if (!candidate) continue;
           try {
             const source = JSON.parse(candidate), sessions = source.sessions || {local:source};
-            cached = JSON.stringify({provider:source.provider === 'api' ? 'api' : 'local',sessions:Object.fromEntries(['local','api'].map(provider => [provider,{messages:textOnly(sessions[provider]?.messages,40),history:textOnly(sessions[provider]?.history,12),conversationId:''}]))});
+            cached = JSON.stringify({provider:source.provider === 'api' ? 'api' : 'local',sessions:Object.fromEntries(['local','api'].map(provider => [provider,{messages:textOnly(sessions[provider]?.messages,40,true),history:textOnly(sessions[provider]?.history,12),conversationId:''}]))});
             write(localStorage, archiveKey, cached); return cached;
           } catch {}
         }
@@ -341,8 +413,8 @@
         runtime()?.capturePrompt?.();
         Object.assign(artContext, copy(Object.fromEntries(SETTINGS.filter(k => ctx.state[k] !== undefined).map(k => [k, ctx.state[k]]))));
       }
-      const images=ctx&&(ctx.generationSurface==='drawing'||drawingPreview)?(ctx.references||[]).map((ref,i)=>ref?.dataUrl?{source:i+1,role:ref.drawingRole&&ref.drawingRole!=='auto'?ref.drawingRole:'attachment',dataUrl:ref.dataUrl,referenceIdentity:referenceIdentity(ref),file:ref.file,mimeType:ref.mimeType,name:ref.name||'参考图'}:null).filter(Boolean):[];
-      if(includeResult){const result=rtResult();if(result?.imageUrl)images.push({source:0,role:'result',dataUrl:result.imageUrl,referenceIdentity:referenceIdentity(result),name:'当前成图'});}
+      const images=ctx&&(ctx.generationSurface==='drawing'||drawingPreview)?(ctx.references||[]).map((ref,i)=>ref?.dataUrl?{source:i+1,role:ref.drawingRole&&ref.drawingRole!=='auto'?ref.drawingRole:'attachment',dataUrl:ref.dataUrl,referenceIdentity:referenceIdentity(ref),file:ref.file,mimeType:ref.mimeType,name:ref.name||'参考图',...imageDimensions(ref)}:null).filter(Boolean):[];
+      if(includeResult){const result=rtResult();if(result?.imageUrl)images.push({source:0,role:'result',dataUrl:result.imageUrl,referenceIdentity:referenceIdentity(result),name:'当前成图',...imageDimensions(result)});}
       if(images.length>3)fail('小桃一次可分析三张完整图片，请移除多余参考后发送');
       return publish({artContext, images});
     }
@@ -365,7 +437,7 @@
       const images = [];
       for (const img of snapshot.images || []) {
         const dataUrl = await resolveReferenceDataUrl({ dataUrl: img.dataUrl, file: img.file, mimeType: img.mimeType });
-        images.push({ dataUrl, referenceIdentity: img.referenceIdentity, name: img.name, role: img.role, source: img.source });
+        images.push({ dataUrl, referenceIdentity: img.referenceIdentity, name: img.name, role: img.role, source: img.source, ...imageDimensions(img) });
       }
       return { artContext: snapshot.artContext, images, lastResult: snapshot.lastResult };
     }
@@ -488,24 +560,26 @@
     const amount = Number(value);
     return Number.isFinite(amount) ? Math.round(amount) : null;
   }
-  function creditStatus(base, quota) {
-    if (!quota || quota.local) return base;
-    const settled = roundedCredits(quota.settled_credits ?? quota.charged_credits);
-    if (settled == null) return base;
-    const remain = quota.balance_after;
-    const unit = quota.billing_mode === 'token' ? '分' : '积分';
-    return `${base} · 实扣 ${settled} ${unit}${remain == null ? '' : `，剩余 ${remain}`}`;
-  }
   function creditReceipt(quota) {
     if (!quota || quota.local) return '';
     const settled = roundedCredits(quota.settled_credits ?? quota.charged_credits);
     if (settled == null) return '';
     const unit = quota.billing_mode === 'token' ? '分' : '积分';
-    const estimated = roundedCredits(quota.estimated_credits);
+    const estimated = roundedCredits(quota.expected_credits ?? quota.estimated_credits);
     return `本次实扣 ${settled} ${unit}${estimated == null ? '' : `（预估 ${estimated}）`}`;
   }
   function createController({bridge, api = () => root.electronAPI, storage = root.localStorage, onChange = () => {}, timers = root, uploadHost = null} = {}) {
     const state = {provider:'local', mode:'chat', messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'本地 Flash', toolTrace:[], localSession:null};
+    const pricingKey = 'novaflow.xiaotao-pricing.v1';
+    let metering = null;
+    const pricingTtl = 15 * 60 * 1000;
+    try {const saved = JSON.parse(root.localStorage?.getItem(pricingKey) || 'null'); if (saved && Date.now()-saved.updatedAt < pricingTtl) metering = saved;} catch {}
+    function predictOnline(input) {
+      if (metering && Date.now()-metering.updatedAt >= pricingTtl) metering = null;
+      const prices = root.NovaFlowFeatureCreditPrices;
+      return prices?.predictXiaotaoOnline?.({...input,model:metering?.model,config:metering?.config,samples:metering?.samples}) || prices?.estimateXiaotaoOnline?.(input);
+    }
+    function onlineQuote(message) {return predictOnline(onlineEstimateInput(message));}
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
     const recapture = snapshot => snapshot.artContext.task === 'creation' ? bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')}) : bridge.capture({includeResult:snapshot.images.length===3});
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
@@ -536,7 +610,7 @@
     try {
       const saved = JSON.parse(storage?.getItem(STORAGE_KEY) || 'null');
       if (saved) {if (saved.sessions) Object.assign(sessions, saved.sessions); else sessions.local = saved;}
-      for (const item of Object.values(sessions)) item.messages = (item.messages || []).filter(m => ['user','assistant'].includes(m.role) && typeof m.content === 'string').slice(-40);
+      for (const item of Object.values(sessions)) item.messages = (item.messages || []).filter(m => ['user','assistant','status'].includes(m.role) && typeof m.content === 'string').slice(-40);
       const previousProvider = saved?.provider === 'api' ? 'api' : 'local';
       Object.assign(state, sessions[previousProvider]);
       if (previousProvider !== state.provider) state.conversationId = '';
@@ -552,7 +626,7 @@
       state.messages.push(entry);
       if (carryAsk) {state.messages.push(carryAsk); carryAsk = null;}
     }
-    function note(content) {if (content) state.messages.push({role:'assistant', content:String(content)}); }
+    function note(content, failed = false) {if (content) state.messages.push({role:'status', content:String(content), ...(failed ? {level:'error'} : {})}); }
     async function readPreview(file) {
       if (typeof file?.arrayBuffer !== 'function') return '';
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -567,9 +641,9 @@
         const item = {id, name:String(file?.name || '未命名文件'), status:'reading', file, kind:'', mimeType:'', previewUrl:'', size:Number(file?.size) || 0};
         state.staged.push(item); notify();
         const verdict = uploads.inspectUpload(file);
-        if (!verdict.ok) {state.staged = state.staged.filter(entry => entry !== item); note(verdict.message); notify(); continue;}
+        if (!verdict.ok) {state.staged = state.staged.filter(entry => entry !== item); note(verdict.message,true); notify(); continue;}
         item.kind = verdict.kind; item.mimeType = verdict.mimeType; item.ext = verdict.ext;
-        if (verdict.kind === 'image') {try {item.previewUrl = await readPreview(file); referencePreviews.set(file, item.previewUrl);} catch {state.staged = state.staged.filter(entry => entry !== item); note(`${item.name} 读取失败`); notify(); continue;}}
+        if (verdict.kind === 'image') {try {item.previewUrl = await readPreview(file); referencePreviews.set(file, item.previewUrl); await readImageDimensions(file,item.previewUrl); Object.assign(item,imageDimensions(item));} catch {state.staged = state.staged.filter(entry => entry !== item); note(`${item.name} 读取失败`,true); notify(); continue;}}
         else if (typeof root.URL?.createObjectURL === 'function') {try {item.previewUrl = root.URL.createObjectURL(file);} catch {}}
         item.status = 'ready'; notify();
       }
@@ -591,14 +665,14 @@
     async function consumeStaged(message) {
       if (state.staged.some(item => item.status === 'reading')) {state.error = '文件还在读取，请稍后再发送'; notify(); return false;}
       const ready = state.staged.filter(item => item.status === 'ready');
-      lastUploads = ready.map(item => ({kind:item.kind, name:item.name, file:item.file, mimeType:item.mimeType, ...(item.kind === 'image' && item.previewUrl ? {dataUrl:item.previewUrl} : {})}));
+      lastUploads = ready.map(item => ({kind:item.kind, name:item.name, file:item.file, mimeType:item.mimeType, ...imageDimensions(item), ...(item.kind === 'image' && item.previewUrl ? {dataUrl:item.previewUrl} : {})}));
       if (!ready.length) return true;
       const uploads = uploadApi(); if (!uploads) {state.error = '上传模块未加载'; notify(); return false;}
       const plan = uploads.planRoutes(message, ready);
-      const notes = [];
+      const notes = []; let failed = plan.reject.length > 0;
       for (const item of plan.place) {
         try {const receipt = await host().place(item); notes.push(`已放入${item.destination.label}：${item.name}`); item.receipt = receipt;}
-        catch (error) {notes.push(String(error?.message || error));}
+        catch (error) {failed = true; notes.push(String(error?.message || error));}
       }
       for (const item of plan.reject) notes.push(item.message);
       carryAttachments = ready.map(item => ({name:item.name, kind:item.kind, dataUrl:item.kind === 'image' ? item.previewUrl : '', mimeType:item.mimeType}));
@@ -608,8 +682,8 @@
         state.pendingUploads = plan.ask.map(item => ({name:item.name, kind:item.kind, mimeType:item.mimeType, previewUrl:item.previewUrl || '', file:item.file, pendingId}));
         state.pendingUploadId = pendingId;
         const content = [...notes, uploads.askText(plan.ask)].filter(Boolean).join('\n');
-        carryAsk = {role:'assistant', content, choices:uploads.choiceList(), pendingId};
-      } else if (notes.length) carryAsk = {role:'assistant', content:notes.join('\n')};
+        carryAsk = {role:'assistant', content, choices:uploads.choiceList(), pendingId, ...(failed ? {level:'error'} : {})};
+      } else if (notes.length) carryAsk = {role:'status', content:notes.join('\n'), ...(failed ? {level:'error'} : {})};
       state.staged = state.staged.filter(item => !ready.includes(item));
       return true;
     }
@@ -618,20 +692,20 @@
       const destination = uploads?.destinationById?.(destinationId);
       if (!destination || !state.pendingUploads.length || pendingId !== state.pendingUploadId) return false;
       const batch = state.pendingUploads.filter(item => item.pendingId === pendingId);
-      const notes = []; const done = [];
+      const notes = []; const done = []; let failed = false;
       for (const item of batch) {
-        if (!uploads.acceptsKind(destination, item.kind)) {notes.push(`${item.name} 不能放到${destination.label}`); continue;}
+        if (!uploads.acceptsKind(destination, item.kind)) {failed = true; notes.push(`${item.name} 不能放到${destination.label}`); continue;}
         try {await host().place({...item, destination}); done.push(item); notes.push(`已放入${destination.label}：${item.name}`);}
-        catch (error) {notes.push(String(error?.message || error));}
+        catch (error) {failed = true; notes.push(String(error?.message || error));}
       }
       releasePreviews(done);
       state.pendingUploads = state.pendingUploads.filter(item => !done.includes(item));
       if (!state.pendingUploads.length) state.pendingUploadId = '';
-      note(notes.join('\n') || '没有放入文件'); notify(); return done.length > 0;
+      note(notes.join('\n') || '没有放入文件',failed || !done.length); notify(); return done.length > 0;
     }
     function notify() {
       sessions[state.provider] = {messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId};
-      try {storage?.setItem(STORAGE_KEY, JSON.stringify({provider:state.provider, sessions:Object.fromEntries(Object.entries(sessions).map(([key, value]) => [key,{...value,messages:value.messages.map(({role, content}) => ({role, content}))}]))}));} catch {}
+      try {storage?.setItem(STORAGE_KEY, JSON.stringify({provider:state.provider, sessions:Object.fromEntries(Object.entries(sessions).map(([key, value]) => [key,{...value,messages:value.messages.map(({role, content, receipt, level}) => ({role, content, ...(typeof receipt === 'string' && receipt ? {receipt} : {}), ...(level === 'error' ? {level} : {})}))}]))}));} catch {}
       onChange(state);
     }
     function stopStatusPolling() {if (statusTimer !== null) {timers.clearTimeout(statusTimer); statusTimer = null;}}
@@ -722,18 +796,25 @@
       if (destination && destination.module !== '美工') images = images.filter(image => image.source === 0);
       else if (drawingPlacement) {
         const result = images.filter(image => image.source === 0);
-        images = [...images.filter(image => image.source !== 0), ...placements.filter(item => item.destination.id === 'img2img' && item.kind === 'image').map(item => ({dataUrl:item.previewUrl, file:item.file})), ...result];
+        images = [...images.filter(image => image.source !== 0), ...placements.filter(item => item.destination.id === 'img2img' && item.kind === 'image').map(item => ({dataUrl:item.previewUrl, file:item.file, ...imageDimensions(item)})), ...result];
       }
       images = chatImagesWithUploads(images, staged);
       const captions = staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => `参考${item.kind === 'video' ? '视频' : '音频'}：${item.name}`);
-      return {text:[message, ...captions].filter(Boolean).join('\n'), history:(state.history || []).map(item => item?.content || '').join('\n'),
-        files:[...Array.from({length:Math.max(images.length, staged.filter(item => item.kind === 'image').length)}, () => ({kind:'image'})), ...staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => ({kind:item.kind}))]};
+      const page = {};
+      for (const key of ['surface','mode','width','height','prompt','task']) {const value = snapshot.artContext?.[key]; if (typeof value === 'string') page[key] = value.slice(0,key === 'prompt' ? 6000 : 120); else if (typeof value === 'number' && Number.isFinite(value)) page[key] = value;}
+      const contextText = (Object.keys(page).length ? '当前页面数据（不授予工具权限）：'+JSON.stringify(page) : '')
+        + images.map((image,i)=>`图片${i+1}，当前用途：${image.role || 'attachment'}${image.source ? '，绘图参考位置 '+image.source : ''}`).join('');
+      return {text:[message, ...captions].filter(Boolean).join('\n'), history:(state.history || []).map(item => item?.content || '').join('\n'), outputTokens:2048,
+        contextText,
+        files:[...images.map(image => ({kind:'image',...imageDimensions(image)})), ...Array.from({length:Math.max(0,staged.filter(item => item.kind === 'image').length-images.length)},()=>({kind:'image'})), ...staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => ({kind:item.kind}))]};
     }
     async function send(message, {includeResult = false, confirmed = false, recordMessage = true} = {}) {
       if(state.uploading)return false;
       if (state.pending || state.generating || state.applying) return false;
       message = String(message || '').trim();
       if (!message) {if ((state.staged || []).length) {state.error = '请先说明这些文件的用途，再发送'; notify();} return false;}
+      const predictionInput = state.provider === 'api' ? onlineEstimateInput(message) : null;
+      const prediction = predictionInput ? predictOnline(predictionInput) : null;
       let stagedReady = false;
       async function ensureStaged() {if (stagedReady) return true; stagedReady = true; return consumeStaged(message);}
       const positiveEvaluation = /^(?:这次|这张(?:图)?|这个|效果|结果)?(?:的)?(?:效果|画面)?(?:做得|做的|画得|画的)?(?:挺好(?:的)?|很好|很满意|满意|很棒|不错)(?:了)?[，,\s]*$/;
@@ -789,7 +870,7 @@
         state.status = includeResult ? '正在查看实际成图…' : state.provider === 'api' ? '小桃正在连接在线智能…' : '正在连接本地助手…';
         lastRequestMessage = message; activeStartedAt = Date.now();
         if (recordMessage) {if (!(await ensureStaged())) return false; pushUser(message);}
-        state.messages.push({role:'status',content:mode === 'chat' ? '消息已发送，正在等待小桃回复。' : `请求已收到，开始分析当前绘图。${state.samplingApproval && samplingUnchanged(state.samplingApproval) ? `本次使用 ${samplingLabel(state.samplingApproval)}。` : '当前尚未授权自动生图。'}`}); notify();
+        notify();
         const contextFingerprint = mode !== 'chat' ? await fingerprint(snapshot) : undefined; if (operation !== serial || stopped) return false;
         activeRequest = root.crypto.randomUUID();
         let executionApproval;
@@ -802,11 +883,11 @@
         const images = [];
         for (const img of snapshot.images || []) {
           const dataUrl = await resolveReferenceDataUrl(img);
-          images.push({ dataUrl, referenceIdentity: img.referenceIdentity, name: img.name, role: img.role, source: img.source });
+          images.push({ dataUrl, referenceIdentity: img.referenceIdentity, name: img.name, role: img.role, source: img.source, ...imageDimensions(img) });
         }
         if (state.provider === 'api') for (const image of chatImagesWithUploads(images, lastUploads).slice(images.length)) {
           const dataUrl = await resolveReferenceDataUrl(image);
-          images.push({dataUrl, role:image.role, source:image.source, name:image.name});
+          images.push({dataUrl, role:image.role, source:image.source, name:image.name, ...imageDimensions(image)});
         }
         const payload = {requestId:activeRequest, provider:state.provider, mode, promptLanguage:'en', conversationId:state.conversationId || undefined, message, history:copy(state.history), artContext:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:lastUploads.map(({kind, name}) => ({kind, name}))} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {})};
         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新页面或启动本地助手');
@@ -818,21 +899,28 @@
           fail(response?.error || '小桃暂时未能完成分析，请稍后再试');
         }
         const data = response.data; if (!data || typeof data.reply !== 'string') fail('小桃没有返回完整回复，请重试');
+        if (state.provider === 'api') {
+          if (prediction?.credits != null && data.quota) data.quota = {...data.quota,expected_credits:prediction.credits};
+          if (data.billingSample) {
+            const actualInput = {...predictionInput,files:[...images.map(image=>({kind:'image',...imageDimensions(image)})),...lastUploads.filter(file=>file.kind!=='image')]};
+            const next = root.NovaFlowFeatureCreditPrices?.recordXiaotaoOnlineSample?.(actualInput,data.billingSample,metering);
+            if (next && next !== metering) {metering = {...next,updatedAt:Date.now()}; try {root.localStorage?.setItem(pricingKey,JSON.stringify(metering));} catch {}}
+          }
+        }
         state.learningTask = data.learning || null; state.learningWarning = response.learningWarning || '';
         if (state.provider === 'local') {state.localSession = null; updateLocalSession(data.chatSession);}
         const discussionOnly=/[?？]|吗[。！!]?\s*$|解释|讨论|聊聊|什么意思|为什么|如何|怎么|(?:不要|不用|别|先不|暂不).{0,6}(?:生成|生图|出图|执行|应用)|(?:只|仅).{0,8}(?:提示词|方案|讨论|解释)/.test(message)
           || /(?:给我|提供|输出).{0,12}提示词/.test(message) && !/写入|填入|写到|写进|填进|填到|应用|生成一张|直接生成|生图/.test(message);
         const promptOnly=discussionOnly || !data.proposal?.action || data.proposal.action==='prompt';
         const reply=mode!=='chat' && data.proposal && promptOnly ? data.reply+'\n\n完整提示词：\n```text\n'+data.proposal.prompt+'\n```' : data.reply;
-        state.messages.push({role:'assistant', content:reply});
         const receipt = state.provider === 'api' ? creditReceipt(data.quota) : '';
-        if (receipt) state.messages.push({role:'status', content:receipt});
+        state.messages.push({role:'assistant', content:reply, ...(receipt ? {receipt} : {})});
         state.conversationId = data.conversationId || state.conversationId;
         if (Array.isArray(data.history)) state.history = copy(data.history);
         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
         const unchanged = mode === 'chat' || sameSnapshot(snapshot, recapture(snapshot));
         if (mode !== 'chat' && data.proposal && unchanged && data.proposal.contextFingerprint === contextFingerprint) {state.proposal = copy(data.proposal); state.proposalSnapshot = snapshot; state.status = '方案已准备，可直接说“按这个方案生成”';}
-        else state.status = !unchanged ? '当前绘图已变化，这次回复中的建议未应用' : mode === 'chat' && state.provider === 'local' && snapshot.artContext.surface === 'drawing' ? '已回复 · 当前仅对话，尚未形成可生图双图上下文' : creditStatus('已回复', data.quota);
+        else state.status = !unchanged ? '当前绘图已变化，这次回复中的建议未应用' : mode === 'chat' && state.provider === 'local' && snapshot.artContext.surface === 'drawing' ? '已回复 · 当前仅对话，尚未形成可生图双图上下文' : '已回复';
         const action=execution || (!discussionOnly && ['apply','generate'].includes(data.proposal?.action) ? {generate:data.proposal.action==='generate'} : null);
         if (action) {
           if (!state.proposal) {state.error = unchanged ? '本次未取得可执行的绘图方案，尚未生成。' : '绘图内容已变化，本次未生成。'; return false;}
@@ -885,7 +973,7 @@
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null;
       Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能 · 不扣积分' : '已切换在线智能 · 按实际用量计费'}); notify(); return true;
     }
-    return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, onlineEstimateInput, calibrateLocalStatus, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia});
+    return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, onlineEstimateInput, onlineQuote, calibrateLocalStatus, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia});
   }
   function mount() {
     if (!root.document?.body || root.document.getElementById('nf-xiaotao-art-root')) return;
@@ -966,7 +1054,13 @@
       } catch {button.textContent='请选中文字复制';}
     }
     function render(state) {
-      if (state.messages.length !== rendered.length || state.messages.some((m, i) => m !== rendered[i])) {rendered = state.messages.slice(); messages.replaceChildren(); if (!state.messages.length) messages.append(intro); for (const m of state.messages) {const bubble = el('div', 'nf-xiaotao-message nf-xiaotao-' + (m.role === 'status' ? 'assistant nf-xiaotao-receipt' : m.role)), label=el('div','nf-xiaotao-message-label'), textPrompt=m.content.match(/完整提示词：\n```text\n([\s\S]*?)\n```/), copy=el('button','nf-xiaotao-copy',textPrompt?'复制提示词':'复制'); copy.type='button'; copy.setAttribute('aria-label',m.role === 'user' ? '复制你的消息' : m.role === 'status' ? '复制执行回执' : textPrompt?'复制小桃的完整提示词':'复制小桃的回复'); copy.onclick=()=>void copyText(textPrompt?textPrompt[1]:m.content,copy); label.append(el('span','',m.role === 'user' ? '你' : m.role === 'status' ? '执行回执' : '小桃AI'),copy); bubble.append(label,renderMessageMarkdown(doc, m.content)); if(m.attachments?.length){const strip=el('div','nf-xiaotao-message-attachments');for(const resource of m.attachments){if(resource.dataUrl){const image=el('img');image.src=resource.dataUrl;image.alt=resource.name;strip.append(image);}else{const tile=el('span','nf-xiaotao-message-file',resource.name);strip.append(tile);}}bubble.append(strip);} if(m.choices?.length){const choices=el('div','nf-xiaotao-choices');for(const choice of m.choices){const chip=el('button','nf-xiaotao-choice',choice.label);chip.type='button';chip.onclick=()=>void controller.chooseUploadDestination(choice.id,m.pendingId);choices.append(chip);}bubble.append(choices);} if (m.imageUrl && /^data:image\//.test(m.imageUrl)) {const link = el('a'); link.href = m.imageUrl; link.target = '_blank'; link.rel = 'noopener'; const image = el('img'); image.src = m.imageUrl; image.alt = '本次实际成图，待评价'; link.append(image); bubble.append(link);} messages.append(bubble);} messages.scrollTop = messages.scrollHeight;}
+      if (state.messages.length !== rendered.length || state.messages.some((m, i) => m !== rendered[i])) {
+        rendered = state.messages.slice(); messages.replaceChildren();
+        const rows = conversationRows(state.messages);
+        if (!rows.length) messages.append(intro);
+        for (const row of rows) messages.append(renderConversationRow(doc, row, {copyText, chooseUploadDestination:controller.chooseUploadDestination}));
+        messages.scrollTop = messages.scrollHeight;
+      }
       const stagedItems = state.staged || []; stagedRow.hidden = !stagedItems.length; stagedRow.replaceChildren(); for (const item of stagedItems) {const card=el('div','nf-xiaotao-staged-item');card.setAttribute('data-status',item.status);if(item.status==='reading')card.setAttribute('aria-busy','true');const thumb=item.previewUrl?el('img','nf-xiaotao-staged-thumb'):el('div','nf-xiaotao-staged-fallback',item.kind==='video'?'视频':item.kind==='audio'?'音频':'文件');if(item.previewUrl){thumb.src=item.previewUrl;thumb.alt=item.name;thumb.setAttribute('alt',item.name);}if(item.status==='reading')card.append(el('span','nf-xiaotao-staged-spinner'));const remove=el('button','nf-xiaotao-staged-remove','×');remove.type='button';remove.setAttribute('aria-label','移除 '+item.name);remove.onclick=event=>{event.preventDefault?.();event.stopPropagation?.();controller.removeStaged(item.id);};card.append(thumb,remove);stagedRow.append(card);} 
       const warm = state.localSession?.state === 'warm' && state.localSession.modelLoaded === true;
       titleText.title = state.provider === 'api' ? '在线智能' : warm ? '本地智能 · 上次已就绪' : '本地智能';
@@ -984,11 +1078,13 @@
       const prices = root.NovaFlowFeatureCreditPrices;
       let text = '';
       if (controller.state.provider === 'api' && typeof prices?.estimateXiaotaoOnline === 'function') {
-        const quote = prices.estimateXiaotaoOnline(controller.onlineEstimateInput(input.value));
+        const quote = controller.onlineQuote(input.value);
         text = quote?.credits ? `约${quote.credits}分` : '';
+        const title = quote?.credits ? `预计 ${quote.low ?? quote.credits}–${quote.high ?? quote.credits} 分${quote.sampleCount ? `，参考 ${quote.sampleCount} 次同类用量` : '，尚未积累同类用量'}；暂预扣 ${quote.reservedCredits ?? quote.credits} 分，按实际结算；单次最高 ${quote.cap} 分` : '';
+        if (estimateLabel.title !== title) estimateLabel.title = title;
       }
       estimateLabel.hidden = false;
-      estimateLabel.textContent = text;
+      if (estimateLabel.textContent !== text) estimateLabel.textContent = text;
       if (text) estimateLabel.removeAttribute('data-idle');
       else estimateLabel.setAttribute('data-idle', '1');
     }
@@ -1036,6 +1132,6 @@
     render(controller.state); root.setInterval(tick, 500); tick();
     root.NovaFlowXiaotaoArtAgent.panel = Object.freeze({open:() => setOpen(true), close:() => setOpen(false), controller});
   }
-  root.NovaFlowXiaotaoArtAgent = {fingerprint, sameSnapshot, executionIntent, samplingRequest, samplingChoice, feedbackRequest, clampPanelPosition, anchoredPanelPosition, renderMessageMarkdown, createTabScopedStorage, bindPanelDrag, createBridge, createController, mount};
+  root.NovaFlowXiaotaoArtAgent = {fingerprint, sameSnapshot, executionIntent, samplingRequest, samplingChoice, feedbackRequest, clampPanelPosition, anchoredPanelPosition, renderMessageMarkdown, conversationRows, renderConversationRow, createTabScopedStorage, bindPanelDrag, createBridge, createController, mount};
   if (root.document?.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', mount, {once:true}); else if (root.document?.body) mount();
 })(typeof window !== 'undefined' ? window : globalThis);

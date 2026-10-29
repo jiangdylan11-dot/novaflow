@@ -96,8 +96,9 @@
   var TEXT_ENDPOINT = '/openapi/v2/rhart-image-g-2.5-official-token/sunburst/text-to-image';
   var IMAGE_ENDPOINT = '/openapi/v2/rhart-image-g-2.5/sunburst/image-to-image';
 
-  function billingConfig() {
-    var stored = config && config.token_billing && typeof config.token_billing === 'object' ? config.token_billing : {};
+  function billingConfig(override) {
+    var effective = override || config;
+    var stored = effective && effective.token_billing && typeof effective.token_billing === 'object' ? effective.token_billing : {};
     var cap = Math.round(Number(stored.settle_cap_credits));
     if (!isFinite(cap) || cap < 1) cap = 40;
     var table = {};
@@ -112,8 +113,8 @@
         table[resolution][quality] = Math.min(cap, chosen);
       }
     }
-    var routes = config && config.gpt_image && typeof config.gpt_image === 'object' ? config.gpt_image : {};
-    var perUsd = Number(config && config.credits_per_usd);
+    var routes = effective && effective.gpt_image && typeof effective.gpt_image === 'object' ? effective.gpt_image : {};
+    var perUsd = Number(effective && effective.credits_per_usd);
     var markup = Number(stored.markup);
     return {
       cap: cap,
@@ -216,7 +217,8 @@
 
   function estimateXiaotaoOnline(input) {
     var spec = input || {};
-    var stored = config && config.xiaotao_online && typeof config.xiaotao_online === 'object' ? config.xiaotao_online : {};
+    var effective = spec.config || config;
+    var stored = effective && effective.xiaotao_online && typeof effective.xiaotao_online === 'object' ? effective.xiaotao_online : {};
     var files = stored.file_tokens && typeof stored.file_tokens === 'object' ? stored.file_tokens : {};
     var cap = Math.round(Number(stored.message_cap_credits));
     var charsPer = Math.round(Number(stored.chars_per_token));
@@ -233,7 +235,7 @@
         audio: isFinite(Math.round(Number(files.audio))) && Math.round(Number(files.audio)) >= 0 ? Math.round(Number(files.audio)) : XIAOTAO_ONLINE.file_tokens.audio
       }
     };
-    var billing = billingConfig();
+    var billing = billingConfig(effective);
     var counts = { image: 0, video: 0, audio: 0 };
     var fileTokens = 0;
     var list = Array.isArray(spec.files) ? spec.files : [];
@@ -264,6 +266,73 @@
     };
   }
 
+  // The reservation above protects the balance. A prediction is a separate,
+  // uncertain forecast and never changes the reservation or the provider limit.
+  function predictXiaotaoOnline(input) {
+    var spec = input || {}, held = estimateXiaotaoOnline(spec);
+    var effective = spec.config || config || {}, online = effective.xiaotao_online || {}, billing = billingConfig(effective);
+    var outputLimit = spec.outputTokens == null ? Number(online.output_tokens == null ? XIAOTAO_ONLINE.output_tokens : online.output_tokens) : Number(spec.outputTokens);
+    if (!isFinite(outputLimit) || outputLimit < 0) outputLimit = XIAOTAO_ONLINE.output_tokens;
+    var text = String(spec.text || '');
+    var intent = /详细|详尽|长文|完整方案|逐步|深入|全面|多种方案|detailed|in.depth|comprehensive/i.test(text) ? 'detailed'
+      : /一句话|一[句话]中文|只用一句|简短|简要|只回答|仅回答|yes.or.no|one sentence|briefly/i.test(text) ? 'brief' : 'normal';
+    var output = Math.min(outputLimit, intent === 'brief' ? 512 : intent === 'detailed' ? 1536 : 1024);
+    var charsPerToken = Math.max(1, Number(online.chars_per_token) || XIAOTAO_ONLINE.chars_per_token);
+    var inputTokens = Math.max(0, held.tokens - outputLimit) + Math.ceil(String(spec.contextText || '').length / charsPerToken);
+    var baseTokens = inputTokens + output;
+    var files = Array.isArray(spec.files) ? spec.files : [];
+    // Current Grok docs do not publish a reliable per-size image token formula.
+    // Keep the configured prior; dimensions isolate measured samples instead.
+    var shapes = files.filter(function (file) { return xiaotaoKind(file) === 'image'; }).map(function (file) {
+      var w = Number(file.width), h = Number(file.height);
+      if (!(w > 0 && h > 0 && isFinite(w * h))) return 'unknown';
+      return (w * h <= 512 * 512 ? 'small' : w * h <= 1536 * 1536 ? 'medium' : 'large') + (Math.max(w, h) / Math.min(w, h) > 2 ? '-wide' : '');
+    }).sort();
+    var policyKey = JSON.stringify([1, effective.xiaotao_online || XIAOTAO_ONLINE, billing.perUsd, billing.markup]);
+    var group = JSON.stringify([String(spec.model || ''), policyKey, intent, shapes, held.counts.video, held.counts.audio]);
+    var observations = (Array.isArray(spec.samples) ? spec.samples : []).filter(function (sample) {
+      return sample && sample.group === group && Number(sample.baseTokens) > 0 && isFinite(Number(sample.baseTokens)) && Number(sample.usdCost) > 0
+        && isFinite(Number(sample.usdCost)) && Number(sample.totalTokens) > 0 && isFinite(Number(sample.totalTokens));
+    }).slice(-24);
+    var priorUsd = baseTokens / 1000000 * (isFinite(Number(online.usd_per_million_tokens)) ? Number(online.usd_per_million_tokens) : XIAOTAO_ONLINE.usd_per_million_tokens);
+    var expectedUsd = priorUsd, lowUsd = priorUsd * 0.6, highUsd = Math.max(priorUsd * 1.4, held.tokens / Math.max(1, baseTokens) * priorUsd);
+    if (observations.length) {
+      // Compare only nearby workloads. The observed USD includes hidden reasoning
+      // and provider pricing, unlike visible answer length or rounded credits.
+      var costs = observations.filter(function (sample) { return Number(sample.baseTokens) / Math.max(1, baseTokens) >= 0.5 && Number(sample.baseTokens) / Math.max(1, baseTokens) <= 2; })
+        .map(function (sample) { return Number(sample.usdCost) * baseTokens / Number(sample.baseTokens); }).sort(function (a, b) { return a - b; });
+      observations = costs;
+      if (costs.length) {
+        var median = costs[Math.floor(costs.length / 2)], weight = costs.length / (costs.length + 3);
+        expectedUsd = priorUsd * (1 - weight) + median * weight;
+        lowUsd = Math.min(expectedUsd * 0.8, costs[Math.floor((costs.length - 1) * 0.2)]);
+        highUsd = Math.max(expectedUsd * 1.2, costs[Math.ceil((costs.length - 1) * 0.8)]);
+        if (costs.length < 3) { lowUsd = Math.min(lowUsd, priorUsd * 0.6); highUsd = Math.max(highUsd, priorUsd * 1.4); }
+      }
+    }
+    function amount(usd) { return held.credits ? Math.max(1, Math.min(held.cap, Math.ceil(usd * billing.perUsd * billing.markup - 1e-9))) : 0; }
+    return {credits:amount(expectedUsd), low:amount(lowUsd), high:amount(highUsd), reservedCredits:held.credits, cap:held.cap,
+      baseTokens:baseTokens, inputTokens:inputTokens, outputTokens:output, group:group, model:String(spec.model || ''),
+      sampleCount:observations.length, confidence:observations.length >= 3 ? 'calibrated' : 'initial'};
+  }
+
+  function recordXiaotaoOnlineSample(input, sample, previous) {
+    if (!sample || typeof sample.model !== 'string' || !sample.model || !(Number(sample.creditsPerUsd) > 0)
+      || !isFinite(Number(sample.creditsPerUsd)) || !(Number(sample.markup) > 0) || !isFinite(Number(sample.markup)) || !sample.policy) return previous || null;
+    var effective = {credits_per_usd:Number(sample.creditsPerUsd), token_billing:{markup:Number(sample.markup)}, xiaotao_online:sample.policy};
+    if (sample.eligible !== true || !(Number(sample.usdCost) > 0) || !isFinite(Number(sample.usdCost))
+      || !(Number(sample.totalTokens) > 0) || !isFinite(Number(sample.totalTokens))) {
+      // A capped/failed observation cannot train cost, but a changed effective
+      // model or pricing policy must still invalidate the old confidence.
+      if (previous && previous.model === sample.model && JSON.stringify(previous.config) === JSON.stringify(effective)) return previous;
+      return {model:sample.model,config:effective,samples:previous && Array.isArray(previous.samples) ? previous.samples.slice(-24) : []};
+    }
+    var quote = predictXiaotaoOnline(Object.assign({}, input, {config:effective,model:sample.model,samples:[]}));
+    var kept = previous && Array.isArray(previous.samples) ? previous.samples.slice(-23) : [];
+    kept.push({group:quote.group, baseTokens:quote.baseTokens, usdCost:Number(sample.usdCost), totalTokens:Number(sample.totalTokens)});
+    return {model:sample.model, config:effective, samples:kept};
+  }
+
   function settlementText(quota) {
     if (!quota || quota.local) return '';
     var charged = quota.charged_credits != null ? quota.charged_credits : quota.settled_credits;
@@ -276,6 +345,8 @@
     quoteFeature: quoteFeature,
     quoteGptImage: quoteGptImage,
     estimateXiaotaoOnline: estimateXiaotaoOnline,
+    predictXiaotaoOnline: predictXiaotaoOnline,
+    recordXiaotaoOnlineSample: recordXiaotaoOnlineSample,
     previewText: previewText,
     settlementText: settlementText,
     applyConfig: function (next) { config = next && typeof next === 'object' ? next : null; },
