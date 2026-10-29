@@ -355,6 +355,8 @@ export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, 
 // 多退少补: the desired charge is the actual USD amount, bounded by the
 // per-message cap, and is allowed to exceed the reservation. The SQL settlement
 // refunds the surplus or tops up the shortfall without taking the balance negative.
+// Money fields win. When they are null, a positive token count (total_tokens, or
+// prompt plus completion, nested or top-level) prices at usd_per_million_tokens.
 // A missing usage record still charges the reserved estimate.
 export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = {}) {
   const policy = xiaotaoOnlinePolicy(config);
@@ -362,9 +364,20 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = 
   const cap = policy.message_cap_credits;
   const reserved = Math.max(0, Math.round(Number(reservedCredits) || 0));
   const parsed = parseUsageUsd(usage);
-  const usd = parsed.usd;
+  const tokens = tokenUsageRecord(usage);
+  let usd = parsed.usd;
+  let pricingSource = 'rh_consume_money';
+  let usageMissing = false;
+  if (usd == null) {
+    const count = countedUsageTokens(tokens);
+    if (count == null) usageMissing = true;
+    else {
+      usd = count / 1000000 * policy.usd_per_million_tokens;
+      pricingSource = 'token_usage';
+    }
+  }
   const base = {
-    tokens: tokenUsageRecord(usage),
+    tokens,
     money: usage && typeof usage === 'object' ? (usage.thirdPartyConsumeMoney ?? null) : null,
     consumeMoney: usage && typeof usage === 'object' ? (usage.consumeMoney ?? null) : null,
     moneySource: parsed.source || null,
@@ -374,7 +387,7 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = 
     settleCap: cap,
     reservedCredits: reserved
   };
-  if (usd == null) {
+  if (usageMissing) {
     const credits = Math.min(reserved, cap);
     return {
       ...base,
@@ -394,21 +407,21 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = 
     };
   }
   const raw = creditsFromUsd(usd, normalized);
-  const credits = Math.min(raw, cap);
+  const credits = Math.min(raw == null ? 0 : raw, cap);
   const toppedUp = credits > reserved;
   return {
     ...base,
     rawCredits: raw,
     credits,
-    capped: credits < raw,
-    settleCapped: raw > cap,
+    capped: raw != null && credits < raw,
+    settleCapped: raw != null && raw > cap,
     reserveCapped: false,
     toppedUp,
     shortfall: toppedUp ? credits - reserved : 0,
     refund: credits < reserved ? reserved - credits : 0,
-    pricingSource: 'rh_consume_money',
+    pricingSource,
     usageMissing: false,
-    warning: raw > cap ? `token charge capped at ${cap}: raw ${raw}, charging ${credits}` : ''
+    warning: raw != null && raw > cap ? `token charge capped at ${cap}: raw ${raw}, charging ${credits}` : ''
   };
 }
 
@@ -453,16 +466,63 @@ export function parseUsageUsd(usage) {
   return { usd: null, source: '' };
 }
 
-export function tokenUsageRecord(usage) {
-  const raw = usage && typeof usage === 'object' ? (usage.tokenUsage || usage.token_usage) : null;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+const TOKEN_USAGE_KEYS = [
+  'input_tokens', 'output_tokens', 'total_tokens',
+  'prompt_tokens', 'completion_tokens',
+  'input_tokens_details', 'output_tokens_details',
+  'prompt_tokens_details', 'completion_tokens_details'
+];
+
+function tokenFieldBag(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return null;
   const pick = {};
-  for (const key of ['input_tokens', 'output_tokens', 'total_tokens', 'input_tokens_details', 'output_tokens_details']) {
-    if (raw[key] != null) pick[key] = raw[key];
+  for (const key of TOKEN_USAGE_KEYS) {
+    if (source[key] != null) pick[key] = source[key];
   }
-  if (!Object.keys(pick).length) return null;
+  return Object.keys(pick).length ? pick : null;
+}
+
+function finiteTokenCount(value) {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) return null;
+    return Math.round(value);
+  }
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  if (!/^\d+(\.\d+)?$/.test(text)) return null;
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount);
+}
+
+// Positive counts only. A normalized usage record fills missing counters with 0,
+// and that placeholder is not a provider token count.
+function countedUsageTokens(record) {
+  if (!record) return null;
+  const total = finiteTokenCount(record.total_tokens);
+  if (total != null && total > 0) return total;
+  const prompt = finiteTokenCount(record.prompt_tokens);
+  const completion = finiteTokenCount(record.completion_tokens);
+  if (prompt != null && completion != null && prompt + completion > 0) return prompt + completion;
+  const input = finiteTokenCount(record.input_tokens);
+  const output = finiteTokenCount(record.output_tokens);
+  if (input != null && output != null && input + output > 0) return input + output;
+  return null;
+}
+
+export function tokenUsageRecord(usage) {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null;
+  const nested = tokenFieldBag(usage.tokenUsage || usage.token_usage);
+  const top = tokenFieldBag(usage);
+  if (!nested && !top) return null;
+  const pick = { ...(top || {}), ...(nested || {}) };
   try {
-    if (JSON.stringify(pick).length > 4000) return null;
+    if (JSON.stringify(pick).length > 4000) {
+      for (const key of Object.keys(pick)) {
+        if (key.endsWith('_details')) delete pick[key];
+      }
+      if (!Object.keys(pick).length || JSON.stringify(pick).length > 4000) return null;
+    }
   } catch {
     return null;
   }

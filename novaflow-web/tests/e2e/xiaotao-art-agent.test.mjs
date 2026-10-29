@@ -367,6 +367,22 @@ test('current drawing results are attached as actual feedback pixels and new-con
   controller.setProvider('local'); assert.equal(controller.state.messages.length,0); assert.equal(e.calls.length,0);
 });
 
+test('an online reply shows the settled credits and writes a transcript receipt', async () => {
+  const e = env();
+  const controller = e.api.createController({bridge:e.bridge, api:() => ({
+    artAgentChat: async () => ({ok:true, data:{
+      reply:'好的。', history:[], mode:'chat', provider:'api',
+      quota:{billing_mode:'token', settled_credits:8, estimated_credits:21, balance_after:90}
+    }})
+  })});
+  controller.setProvider('api');
+  assert.equal(await controller.send('你好'), true);
+  assert.match(controller.state.status, /实扣 8 分/);
+  assert.match(controller.state.status, /剩余 90/);
+  const receipt = controller.state.messages.find(item => item.role === 'status' && /本次实扣/.test(item.content));
+  assert.equal(receipt.content, '本次实扣 8 分（预估 21）');
+});
+
 test('an unconfigured API shows an actual error and cancelling cloud wait does not claim to undo usage', async () => {
   const e = env();
   const unavailable = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async () => ({ok:false,error:'尚未配置小猴API'})})}); unavailable.setProvider('api'); await unavailable.send('你好'); assert.match(unavailable.state.error,/未配置/); assert.equal(unavailable.state.proposal,null);

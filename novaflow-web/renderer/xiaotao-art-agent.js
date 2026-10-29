@@ -374,13 +374,26 @@
     }
     return Object.freeze({capture, captureAny, captureCreation, captureChat, readSampling, setSampling, currentResult:()=>runtime()?.selectedResult?.(), hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
   }
+  function roundedCredits(value) {
+    if (value == null || value === '') return null;
+    const amount = Number(value);
+    return Number.isFinite(amount) ? Math.round(amount) : null;
+  }
   function creditStatus(base, quota) {
     if (!quota || quota.local) return base;
-    const settled = quota.settled_credits ?? quota.charged_credits;
+    const settled = roundedCredits(quota.settled_credits ?? quota.charged_credits);
     if (settled == null) return base;
     const remain = quota.balance_after;
     const unit = quota.billing_mode === 'token' ? '分' : '积分';
     return `${base} · 实扣 ${settled} ${unit}${remain == null ? '' : `，剩余 ${remain}`}`;
+  }
+  function creditReceipt(quota) {
+    if (!quota || quota.local) return '';
+    const settled = roundedCredits(quota.settled_credits ?? quota.charged_credits);
+    if (settled == null) return '';
+    const unit = quota.billing_mode === 'token' ? '分' : '积分';
+    const estimated = roundedCredits(quota.estimated_credits);
+    return `本次实扣 ${settled} ${unit}${estimated == null ? '' : `（预估 ${estimated}）`}`;
   }
   function createController({bridge, api = () => root.electronAPI, storage = root.localStorage, onChange = () => {}, timers = root, uploadHost = null} = {}) {
     const state = {provider:'local', mode:'chat', messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'本地 Flash', toolTrace:[], localSession:null};
@@ -677,7 +690,10 @@
           || /(?:给我|提供|输出).{0,12}提示词/.test(message) && !/写入|填入|写到|写进|填进|填到|应用|生成一张|直接生成|生图/.test(message);
         const promptOnly=discussionOnly || !data.proposal?.action || data.proposal.action==='prompt';
         const reply=mode!=='chat' && data.proposal && promptOnly ? data.reply+'\n\n完整提示词：\n```text\n'+data.proposal.prompt+'\n```' : data.reply;
-        state.messages.push({role:'assistant', content:reply}); state.conversationId = data.conversationId || state.conversationId;
+        state.messages.push({role:'assistant', content:reply});
+        const receipt = state.provider === 'api' ? creditReceipt(data.quota) : '';
+        if (receipt) state.messages.push({role:'status', content:receipt});
+        state.conversationId = data.conversationId || state.conversationId;
         if (Array.isArray(data.history)) state.history = copy(data.history);
         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
         const unchanged = mode === 'chat' || sameSnapshot(snapshot, recapture(snapshot));

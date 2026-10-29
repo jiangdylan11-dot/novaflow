@@ -45,6 +45,7 @@ function load() {
     atob: (value) => Buffer.from(value, 'base64').toString('binary'),
     btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
     File, Blob, Uint8Array,
+    URL: { createObjectURL(file) { return 'blob:test/' + (file?.name || 'file'); }, revokeObjectURL() {} },
     localStorage: { getItem: (key) => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) },
     __NovaFlowArtGenerate: runtime,
     NovaFlowH3Media: { async importFiles(kind, files, options) { imports.push({ kind, names: files.map(item => item.name), representation: options?.representation }); const dataUrl = await files[0]?.text?.(); return { errors: [], imported: files.map(item => ({ kind, dataUrl: String(dataUrl || '') })) }; } }
@@ -175,7 +176,8 @@ await test('an image follows 图生图 and 图生视频, and an unclear image wa
   await controller.send('放到图生图');
   assert.equal(env.runtime.state.mode, 'img2img');
   assert.equal(env.placed[0].name, 'draw.png');
-  assert.equal(env.refs[0].dataUrl.startsWith('data:image/png'), true);
+  assert.equal(env.refs[0].dataUrl, 'blob:test/draw.png');
+  assert.equal(String(env.refs[0].dataUrl).startsWith('data:'), false);
   assert.equal(doc.primary.includes('美工'), true);
   await controller.stageUploads([file('motion.png', 'image/png')]);
   assert.equal(await controller.send('放到图生视频参考'), true);
@@ -190,6 +192,65 @@ await test('an image follows 图生图 and 图生视频, and an unclear image wa
   assert.equal(await controller.chooseUploadDestination('multi_reference', ask.pendingId), true);
   assert.equal(host.placed.at(-1).id, 'multi_reference');
   assert.equal(env.imports.at(-1).names[0], 'maybe.png');
+});
+
+async function flushFrames(frames, pending) {
+  for (let guard = 0; guard < 16; guard++) {
+    await Promise.resolve();
+    if (frames.length) {
+      const batch = frames.splice(0);
+      for (const fn of batch) fn();
+      continue;
+    }
+    const state = await Promise.race([
+      pending.then(() => 'done', () => 'done'),
+      new Promise(resolve => setTimeout(() => resolve('wait'), 0))
+    ]);
+    if (state === 'done' && !frames.length) return pending;
+  }
+  return pending;
+}
+
+await test('图生图 placement yields, keeps a light reference, and skips a second mode render', async () => {
+  const env = load();
+  const doc = documentFor();
+  env.sandbox.document = doc;
+  const frames = [];
+  env.sandbox.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+  env.sandbox.URL = { createObjectURL(file) { return 'blob:light/' + file.name; }, revokeObjectURL() {} };
+  const renders = [];
+  const refreshed = [];
+  env.runtime.render = (options) => { renders.push(options || {}); };
+  env.runtime.refreshReferences = () => { refreshed.push('grid'); return true; };
+  const host = env.api.createUploadHost(env.sandbox);
+  const preview = 'data:image/png;base64,' + 'A'.repeat(8000);
+  const first = host.place({
+    destination: env.api.destinationById('img2img'),
+    file: file('still.png', 'image/png', 64),
+    kind: 'image', name: 'still.png', mimeType: 'image/png', previewUrl: preview
+  });
+  await flushFrames(frames, first);
+  assert.equal(env.runtime.state.mode, 'img2img');
+  assert.equal(env.refs[0].dataUrl, 'blob:light/still.png');
+  assert.equal(env.refs[0].dataUrl.includes('AAAA'), false);
+  assert.equal(renders.filter(item => item.forceBottom === true).length, 1);
+  assert.equal(env.modes.filter(item => item === 'img2img').length, 1);
+  assert.ok(frames.length === 0);
+
+  renders.length = 0;
+  env.runtime.state.active = true;
+  const second = host.place({
+    destination: env.api.destinationById('img2img'),
+    file: file('next.png', 'image/png', 32),
+    kind: 'image', name: 'next.png', mimeType: 'image/png', previewUrl: preview
+  });
+  await flushFrames(frames, second);
+  assert.equal(env.modes.filter(item => item === 'img2img').length, 1);
+  assert.equal(env.modes.filter(item => item === 'activate:img2img').length, 1);
+  assert.equal(renders.some(item => item.forceBottom === true), false);
+  assert.equal(refreshed.length, 1);
+  assert.equal(env.refs[1].dataUrl, 'blob:light/next.png');
+  assert.equal(env.refs[1].dataUrl.includes('AAAA'), false);
 });
 
 await test('unsupported files are rejected in chat and never staged', async () => {
