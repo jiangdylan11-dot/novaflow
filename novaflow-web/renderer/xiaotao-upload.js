@@ -240,6 +240,26 @@
     }
     return null;
   }
+  const yieldTimer = typeof root.setTimeout === 'function' ? root.setTimeout.bind(root) : null;
+  function yieldFrame(scope) {
+    return new Promise(resolve => {
+      const raf = scope.requestAnimationFrame;
+      if (typeof raf === 'function') {
+        raf(() => resolve());
+        return;
+      }
+      if (typeof yieldTimer === 'function') yieldTimer(resolve, 0);
+      else resolve();
+    });
+  }
+  // The staged preview is a full base64 data URL. Putting that string into the
+  // reference and then rebuilding the art surface on the same turn freezes the page.
+  function lightReferenceUrl(scope, file, uploadedName) {
+    if (file && typeof scope.URL?.createObjectURL === 'function') {
+      try { return scope.URL.createObjectURL(file); } catch {}
+    }
+    return uploadedName || '';
+  }
   function createUploadHost(target) {
     const scope = target || root;
     const placed = [];
@@ -256,15 +276,29 @@
         if (destination.id === 'img2img') {
           const runtime = scope.__NovaFlowArtGenerate;
           if (typeof runtime?.setReference !== 'function') throw new Error('图生图参考位置不可用');
-          runtime.activate?.('img2img');
-          runtime.setMode?.('img2img');
+          const already = runtime.state?.mode === 'img2img';
+          await yieldFrame(scope);
+          if (!(already && runtime.state?.active !== false)) {
+            runtime.activate?.('img2img');
+            await yieldFrame(scope);
+          }
+          if (!already) {
+            runtime.setMode?.('img2img');
+            await yieldFrame(scope);
+          }
           const refs = runtime.references?.() || [];
           const limit = Math.max(1, Number(runtime.referenceLimit?.()) || destination.limit);
           const index = refs.findIndex(ref => !ref?.dataUrl);
           const slot = index >= 0 ? index : refs.length;
           if (slot >= limit) throw new Error('图生图参考图已满');
-          runtime.setReference(slot, {name:item.name, dataUrl:item.previewUrl || '', mimeType:item.mimeType, drawingRole:'subject', source:'xiaotao-upload'});
-          runtime.render?.({forceBottom:true});
+          const preview = lightReferenceUrl(scope, file, uploadedName);
+          // dataUrl is only the display preview. Submit reads file (or the worker
+          // name) and turns it into base64 off this click.
+          runtime.setReference(slot, {name:item.name, dataUrl:preview, file, mimeType:item.mimeType, drawingRole:'subject', source:'xiaotao-upload', ...(uploadedName ? {uploadedName} : {})});
+          await yieldFrame(scope);
+          if (already) {
+            if (typeof runtime.refreshReferences === 'function') runtime.refreshReferences();
+          } else runtime.render?.({forceBottom:true});
         } else if (destination.id === 'multi_reference') {
           switchMode(doc, destination.mode);
           const limit = MULTI_LIMITS[item.kind] || 1;

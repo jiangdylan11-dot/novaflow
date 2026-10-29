@@ -13,6 +13,7 @@ import {
   estimateXiaotaoOnlineCredits,
   settleTokenImageCredits,
   settleXiaotaoOnlineCredits,
+  tokenUsageRecord,
   xiaotaoOnlinePolicy,
   xiaotaoOnlineSystemPrompt
 } from '../../packages/shared/src/feature-credits.mjs';
@@ -75,8 +76,9 @@ await test('settlement is ceil(USD × 211 × 2), prefers thirdPartyConsumeMoney,
   });
   assert.equal(fallback.moneySource, 'consumeMoney');
   assert.equal(fallback.credits, Math.ceil(0.02 * 211 * 2));
-  const missing = settleXiaotaoOnlineCredits({ usage: { prompt_tokens: 10 }, reservedCredits: 6 });
+  const missing = settleXiaotaoOnlineCredits({ usage: { consumeMoney: null, thirdPartyConsumeMoney: null }, reservedCredits: 6 });
   assert.equal(missing.usageMissing, true);
+  assert.equal(missing.pricingSource, 'estimate_cap');
   assert.equal(missing.credits, 6);
   const capped = settleXiaotaoOnlineCredits({
     usage: { thirdPartyConsumeMoney: '1.0000' },
@@ -171,8 +173,143 @@ await test('the composer estimate matches the charge-path formula and local mode
   const source = readFileSync(new URL('../../renderer/xiaotao-art-agent.js', import.meta.url), 'utf8');
   assert.match(source, /约\$\{quote\.credits\}分/);
   assert.match(source, /实扣 \$\{settled\} \$\{unit\}/);
+  assert.match(source, /本次实扣 \$\{settled\} \$\{unit\}/);
+  assert.match(source, /预估 \$\{estimated\}/);
   assert.match(source, /不扣积分/);
   assert.doesNotMatch(source, /本次将扣 \$\{onlineCreditCost\(\)\}/);
+});
+
+function tokensToCredits(tokens) {
+  return creditsFromUsd(tokens / 1e6 * xiaotaoOnlinePolicy().usd_per_million_tokens);
+}
+
+await test('null money with token counts settles from tokens, refunds or tops up, and stays under the cap', () => {
+  const promptOnly = settleXiaotaoOnlineCredits({ usage: { prompt_tokens: 10, consumeMoney: null, thirdPartyConsumeMoney: null }, reservedCredits: 6 });
+  assert.equal(promptOnly.usageMissing, true);
+  assert.equal(promptOnly.pricingSource, 'estimate_cap');
+  assert.equal(promptOnly.credits, 6);
+  const zeros = settleXiaotaoOnlineCredits({ usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, consumeMoney: null, thirdPartyConsumeMoney: null }, reservedCredits: 11 });
+  assert.equal(zeros.usageMissing, true);
+  assert.equal(zeros.credits, 11);
+
+  for (const tokens of [1700, 1800, 1850]) {
+    const decision = settleXiaotaoOnlineCredits({
+      usage: { prompt_tokens: tokens - 400, completion_tokens: 400, total_tokens: tokens, consumeMoney: null, thirdPartyConsumeMoney: null },
+      reservedCredits: tokens < 1800 ? 11 : 21
+    });
+    assert.equal(decision.pricingSource, 'token_usage');
+    assert.equal(decision.usageMissing, false);
+    assert.equal(decision.credits, 8);
+    assert.equal(decision.credits, tokensToCredits(tokens));
+    assert.equal(decision.usdCost, tokens / 1e6 * 10);
+    assert.equal(decision.refund, decision.reservedCredits - 8);
+    assert.equal(decision.toppedUp, false);
+    assert.equal(decision.shortfall, 0);
+  }
+
+  const nested = settleXiaotaoOnlineCredits({
+    usage: { consumeMoney: null, thirdPartyConsumeMoney: null, token_usage: { prompt_tokens: '900', completion_tokens: '800' } },
+    reservedCredits: 4
+  });
+  assert.equal(nested.pricingSource, 'token_usage');
+  assert.equal(nested.credits, tokensToCredits(1700));
+  assert.equal(nested.tokens.prompt_tokens, '900');
+  assert.equal(nested.toppedUp, true);
+  assert.equal(nested.shortfall, nested.credits - 4);
+  assert.equal(nested.refund, 0);
+
+  const pair = settleXiaotaoOnlineCredits({
+    usage: { input_tokens: 1000, output_tokens: 850, thirdPartyConsumeMoney: null, consumeMoney: null },
+    reservedCredits: 21
+  });
+  assert.equal(pair.pricingSource, 'token_usage');
+  assert.equal(pair.credits, tokensToCredits(1850));
+  assert.equal(pair.credits, 8);
+
+  const moneyWins = settleXiaotaoOnlineCredits({
+    usage: { total_tokens: 1800, thirdPartyConsumeMoney: '0.0100', consumeMoney: null },
+    reservedCredits: 21
+  });
+  assert.equal(moneyWins.pricingSource, 'rh_consume_money');
+  assert.equal(moneyWins.moneySource, 'thirdPartyConsumeMoney');
+  assert.equal(moneyWins.credits, Math.ceil(0.01 * 211 * 2));
+  assert.equal(moneyWins.tokens.total_tokens, 1800);
+
+  const capped = settleXiaotaoOnlineCredits({
+    usage: { total_tokens: 500000, consumeMoney: null, thirdPartyConsumeMoney: null },
+    reservedCredits: 4,
+    config: { xiaotao_online: { message_cap_credits: 80 } }
+  });
+  assert.equal(capped.pricingSource, 'token_usage');
+  assert.equal(capped.credits, 80);
+  assert.equal(capped.settleCapped, true);
+  assert.equal(capped.toppedUp, true);
+  assert.equal(capped.shortfall, 76);
+
+  const record = tokenUsageRecord({
+    prompt_tokens: 12,
+    completion_tokens: 8,
+    total_tokens: 20,
+    consumeMoney: null,
+    tokenUsage: { total_tokens: '1800', output_tokens: '600' }
+  });
+  assert.equal(record.total_tokens, '1800');
+  assert.equal(record.prompt_tokens, 12);
+  assert.equal(record.output_tokens, '600');
+  const bulky = 'x'.repeat(5000);
+  const trimmed = tokenUsageRecord({ total_tokens: 1800, prompt_tokens_details: { text: bulky }, thirdPartyConsumeMoney: null });
+  assert.equal(trimmed.total_tokens, 1800);
+  assert.equal(trimmed.prompt_tokens_details, undefined);
+});
+
+await test('a token-priced settle returns the credits the ledger actually charged', async () => {
+  const events = [];
+  const service = createCompanionChat({
+    provider: { baseUrl: 'https://provider.test/v1', model: 'chat-fixture', apiKey: 'fixture-private' },
+    charge: createOnlineAiCharge({
+      reserve: async (input) => ({ status: 'reserved', idempotent: false, amount: 1, credits: input.estimatedCredits }),
+      settle: async (input) => {
+        events.push(input);
+        return { settled_credits: input.settledCredits, estimated_credits: input.metadata?.estimated_credits, balance_after: 90, balance_short: false };
+      },
+      release: async () => ({ status: 'released', settled_credits: 0 })
+    }),
+    fetchImpl: async () => Response.json({
+      id: 'cmpl-tokens', model: 'chat-fixture',
+      choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '好的。' } }],
+      usage: { prompt_tokens: 1400, completion_tokens: 400, total_tokens: 1800, consumeMoney: null, thirdPartyConsumeMoney: null }
+    })
+  });
+  const estimate = estimateXiaotaoOnlineCredits({ text: '你好' }).credits;
+  const result = await service.reply({ user: { id: 'user' }, payload: { requestId: 'token-usage-1800', mode: 'chat', promptLanguage: 'en', message: '你好', history: [] } });
+  assert.equal(events[0].pricingSource, 'token_usage');
+  assert.equal(events[0].settledCredits, 8);
+  assert.equal(events[0].rhCostUsd, 0.018);
+  assert.equal(result.quota.settled_credits, 8);
+  assert.equal(result.quota.estimated_credits, estimate);
+  assert.equal(result.quota.billing_mode, 'token');
+  assert.ok(estimate > 8);
+
+  const short = await createCompanionChat({
+    provider: { baseUrl: 'https://provider.test/v1', model: 'chat-fixture', apiKey: 'fixture-private' },
+    charge: createOnlineAiCharge({
+      reserve: async () => ({ status: 'reserved', idempotent: false, amount: 1, credits: 21 }),
+      settle: async (input) => {
+        assert.equal(input.settledCredits, 8);
+        assert.equal(input.pricingSource, 'token_usage');
+        return { settled_credits: 3, estimated_credits: 21, balance_after: 0, balance_short: true, uncollected_credits: 5 };
+      },
+      release: async () => ({ status: 'released' })
+    }),
+    fetchImpl: async () => Response.json({
+      id: 'cmpl-short', model: 'chat-fixture',
+      choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '好的。' } }],
+      usage: { total_tokens: 1800, consumeMoney: null, thirdPartyConsumeMoney: null }
+    })
+  }).reply({ user: { id: 'user' }, payload: { requestId: 'token-usage-short', mode: 'chat', promptLanguage: 'en', message: '你好', history: [] } });
+  assert.equal(short.quota.settled_credits, 3);
+  assert.equal(short.quota.balance_short, true);
+  assert.equal(short.quota.estimated_credits, estimate);
 });
 
 await test('a text-only online turn keeps the general chat prompt and token billing', async () => {

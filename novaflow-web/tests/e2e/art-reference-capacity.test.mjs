@@ -50,6 +50,28 @@ test('cloud admin normalization keeps sixteen role references without truncation
   assert.throws(()=>context.normalizeGrokSmartAiImages({images:[refs(1)[0],{}]}),/未截断/);
 });
 
+test('clearing or replacing a reference revokes its blob url', () => {
+  const brand = source('novaflow-brand-runtime.js');
+  const revoked = [];
+  const state = { provider: 'local', references: [] };
+  const context = {
+    ART_GENERATE_STATE: state,
+    artGenerateModelState: () => state,
+    window: { NovaFlowArtGenerateModels: models },
+    URL: { revokeObjectURL(url) { revoked.push(url); } }
+  };
+  vm.runInNewContext(brand.slice(brand.indexOf('  const ART_GENERATE_MAX_REFERENCES ='), brand.indexOf('  function artGenerateResourceMentionSnapshot()')), context);
+  context.setArtGenerateReference(0, { dataUrl: 'blob:test/one', name: 'a.png' });
+  assert.deepEqual(revoked, []);
+  context.setArtGenerateReference(0, { dataUrl: 'blob:test/two', name: 'b.png' });
+  assert.deepEqual(revoked, ['blob:test/one']);
+  context.setArtGenerateReference(0, null);
+  assert.deepEqual(revoked, ['blob:test/one', 'blob:test/two']);
+  context.setArtGenerateReference(1, { dataUrl: 'data:image/png;base64,YQ==', name: 'c.png' });
+  context.setArtGenerateReference(1, { dataUrl: 'data:image/png;base64,Yg==', name: 'd.png' });
+  assert.deepEqual(revoked, ['blob:test/one', 'blob:test/two']);
+});
+
 test('model switches retain and display overflow so it can be removed',()=>{
   const brand=source('novaflow-brand-runtime.js');
   const state={provider:'gpt',references:refs(16)};
