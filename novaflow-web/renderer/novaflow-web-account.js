@@ -359,6 +359,9 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   }
 
   function animateLoginAtmosphere(host) {
+    // Selected from the login background previews: 柔光流体, at its original
+    // speed and light intensity. Keep the production page on this one effect.
+    host.setAttribute('data-effect', 'soft-fluid');
     const canvas = el('canvas'); canvas.className = 'nf-login-liquid';
     host.appendChild(canvas);
     host.setAttribute('data-renderer', 'css');
@@ -376,7 +379,11 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       };
       const vertex = compile(gl.VERTEX_SHADER, 'attribute vec2 position; void main(){gl_Position=vec4(position,0.0,1.0);}');
       const fragment = compile(gl.FRAGMENT_SHADER, `
+        #ifdef GL_FRAGMENT_PRECISION_HIGH
+        precision highp float;
+        #else
         precision mediump float;
+        #endif
         uniform vec2 resolution;
         uniform float time;
         void main() {
@@ -401,7 +408,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
           color+=jade*(bandA*.62+foldA*.25+exp(-abs(a)*5.0)*.16);
           color+=ember*(bandB*.48+foldB*.21+exp(-abs(b)*4.0)*.12);
           color+=mix(jade,ember,.5+.5*sin(t*.43))*(bandC*.23);
-          color*=1.0-.33*smoothstep(.15,.95,length(p*vec2(.65,1.0)));
+          color*=1.0-.28*smoothstep(.1,1.05,length(p*vec2(.65,1.0)));
           gl_FragColor=vec4(color,1.0);
         }
       `);
@@ -423,7 +430,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     function resize() {
       // Soft lighting does not need device-pixel resolution. Cap fill rate on
       // large displays and render at 30fps; typing never drives the renderer.
-      const scale = Math.min(.7, 1050 / Math.max(1, root.innerWidth));
+      const scale = Math.min(.75, 950 / Math.max(1, root.innerWidth, root.innerHeight));
       canvas.width = Math.max(1, Math.round(root.innerWidth * scale));
       canvas.height = Math.max(1, Math.round(root.innerHeight * scale));
       gl.viewport(0, 0, canvas.width, canvas.height);
@@ -434,7 +441,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       if (root.document.hidden) return;
       if (timestamp - previousFrame >= 1000 / 30 || motion.matches) {
         gl.uniform2f(resolution, canvas.width, canvas.height);
-        gl.uniform1f(time, motion.matches ? 0 : timestamp / 1000);
+        gl.uniform1f(time, motion.matches ? 8 : timestamp / 1000);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         if (host.getAttribute('data-renderer') !== 'webgl') host.setAttribute('data-renderer', 'webgl');
         previousFrame = timestamp;
