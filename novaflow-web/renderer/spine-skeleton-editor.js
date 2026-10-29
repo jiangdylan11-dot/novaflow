@@ -376,6 +376,7 @@
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
       folderKey: p.folderKey || (p.operation === 'refresh' && state.folderKey) || newFolderKey(), pendingFolder: null,
     })
+    state.pendingSwapFolder = null
     state.temp.clear()
     state.collapsed.clear()
     const first = [...images.values()][0]
@@ -847,7 +848,12 @@
       images.push({ fileName, path, pma: pagePma(s.images, fileName, s.pma) })
     }
     s.projectImageRefs = images; s.imagePath = imagePath; s.projectDirectory = directory
-    await folderDbDo('readwrite', (store) => store.put({ handle: folder.handle, projectDirectory: directory, projectAccessRoot: s.projectAccessRoot, name: folder.name, at: Date.now() }, s.folderKey)).catch(() => {})
+    // A copied .nfproj keeps its folderKey until the image directory changes. Do not
+    // overwrite the other file's slot with this directory.
+    let existing = null
+    try { existing = await folderDbDo('readonly', (store) => store.get(s.folderKey)) } catch { existing = null }
+    if (existing && typeof existing.imagePath === 'string' && existing.imagePath !== imagePath) s.folderKey = mintFolderKey()
+    await folderDbDo('readwrite', (store) => store.put({ handle: folder.handle, projectDirectory: directory, projectAccessRoot: s.projectAccessRoot, name: folder.name, imagePath, at: Date.now() }, s.folderKey)).catch(() => {})
     return { images, imagePath, externalFolder, missing }
   }
   async function projectFileBytes(directory) {
@@ -1025,6 +1031,7 @@
     if (!window.showSaveFilePicker) {
       const directory = await projectDirectoryFor(null, state.imageFolder && state.imageFolder.handle)
       if (!directory) return null
+      if (as) separateFolderKeys()
       const { bytes, count, missing } = await projectFileBytes(directory)
       assertProjectBytes(bytes)
       const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' })), download: name + '.nfproj' })
@@ -1052,6 +1059,7 @@
         if (createdEmpty) await discardEmptyCreated(null, handle)
         return null
       }
+      if (as) separateFolderKeys()
       const { bytes, count, missing } = await projectFileBytes(directory)
       assertProjectBytes(bytes)
       handle = await commitProjectFile(directory, handle, bytes)
@@ -1071,6 +1079,130 @@
     saveProjectFileNow({ as }).catch((e) => status('保存工程失败：' + ((e && e.message) || e), 'error'))
   }
 
+  /** A folder key that is not shared with another .nfproj cache slot. */
+  function mintFolderKey() {
+    if (typeof newFolderKey === 'function') return newFolderKey()
+    mintFolderKey.n = (mintFolderKey.n || 0) + 1
+    return 'nf-folder-' + mintFolderKey.n.toString(36) + '-' + Date.now().toString(36)
+  }
+
+  /** Save As writes a new file, so each project in it gets its own folder slot. */
+  function separateFolderKeys() {
+    const seen = new Set()
+    for (let i = 0; i < projects.length; i++) {
+      const s = i === activeProject ? state : projects[i].snap
+      if (!s) continue
+      let key = mintFolderKey()
+      let spins = 0
+      while (seen.has(key) && spins < 8) { key = mintFolderKey(); spins++ }
+      if (seen.has(key)) key = key + '-' + i
+      seen.add(key)
+      s.folderKey = key
+    }
+  }
+
+  function imagePathFrom(parentParts, dirParts) {
+    let i = 0
+    while (i < parentParts.length && i < dirParts.length && parentParts[i] === dirParts[i]) i++
+    return [...parentParts.slice(i).map(() => '..'), ...dirParts.slice(i)].join('/') || '.'
+  }
+
+  async function folderHandleReadable(handle) {
+    return !!(handle && typeof handle.queryPermission === 'function' && await handle.queryPermission({ mode: 'read' }).catch(() => 'denied') === 'granted')
+  }
+
+  /** The cached handle is this project's image folder only when it is that path. */
+  async function cachedFolderMatches(directory, parentParts, imagePath, handle) {
+    if (!handle || !directory || typeof directory.resolve !== 'function') return false
+    const rel = await directory.resolve(handle).catch(() => null)
+    if (!rel) return false
+    let wanted = null
+    try { wanted = projectPath(imagePath, parentParts) } catch { return false }
+    return rel.join('/') === wanted.join('/')
+  }
+
+  /**
+   * Two .nfproj files that share a folderKey must not share one cache slot once
+   * their image directories differ. A matching path keeps the key.
+   */
+  async function folderKeyIsDuplicate(key, imagePath, directory, parentParts, record) {
+    if (!key) return false
+    if (record && typeof record.imagePath === 'string' && record.imagePath !== imagePath) return true
+    for (let i = 0; i < projects.length; i++) {
+      const s = i === activeProject ? state : projects[i].snap
+      if (!s || !s.json || s.folderKey !== key) continue
+      if ((s.imagePath || '.') !== imagePath) return true
+    }
+    if (record && record.handle && directory && typeof directory.resolve === 'function') {
+      const rel = await directory.resolve(record.handle).catch(() => null)
+      if (rel) {
+        let wanted = null
+        try { wanted = projectPath(imagePath, parentParts) } catch { wanted = null }
+        if (wanted && rel.join('/') !== wanted.join('/')) return true
+      }
+    }
+    return false
+  }
+
+  async function directoryChildren(dir) {
+    const out = []
+    if (!dir || typeof dir.entries !== 'function') return out
+    for await (const [name, child] of dir.entries()) {
+      if (child && child.kind === 'directory') out.push([name, child])
+    }
+    return out
+  }
+
+  async function directoryHolds(dir, names) {
+    if (!dir || typeof dir.getFileHandle !== 'function') return false
+    for (const name of names) {
+      try { await dir.getFileHandle(name) } catch { return false }
+    }
+    return true
+  }
+
+  /**
+   * Missing __nf_swap_* pages that all sit in one sibling image directory.
+   * Opening still shows MISSING; the caller only offers a reconnect.
+   */
+  async function findSiblingSwapFolder(directory, parentParts, imagePath, missingRefs) {
+    const names = [...new Set((missingRefs || []).map((ref) => String(ref.fileName || '').split('/').pop()).filter((name) => /^__nf_swap_\d+\.png$/i.test(name)))]
+    if (!names.length || !directory) return null
+    const recorded = typeof imagePath === 'string' ? imagePath : '.'
+    let wanted = []
+    try { wanted = projectPath(recorded, parentParts) } catch { wanted = [] }
+    const parents = []
+    const addParent = (parts) => {
+      const key = parts.join('/')
+      if (!parents.some((p) => p.key === key)) parents.push({ key, parts })
+    }
+    if (wanted.length) addParent(wanted.slice(0, -1))
+    addParent((parentParts || []).slice())
+    const hits = []
+    const seen = new Set()
+    const consider = (handle, name, parts) => {
+      const rel = imagePathFrom(parentParts || [], parts)
+      if (seen.has(rel) || rel === recorded) return
+      seen.add(rel)
+      hits.push({ handle, name: name || handle.name || rel, imagePath: rel, files: names.slice() })
+    }
+    for (const parent of parents) {
+      let dir = null
+      try { dir = await projectSubdir(directory, parent.parts) } catch { continue }
+      for (const [name, child] of await directoryChildren(dir)) {
+        const parts = [...parent.parts, name]
+        if (parts.join('/') === wanted.join('/')) continue
+        if (await directoryHolds(child, names)) consider(child, name, parts)
+        for (const [subName, sub] of await directoryChildren(child)) {
+          const nested = [...parts, subName]
+          if (nested.join('/') === wanted.join('/')) continue
+          if (await directoryHolds(sub, names)) consider(sub, subName, nested)
+        }
+      }
+    }
+    return hits.length === 1 ? hits[0] : null
+  }
+
   /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
   async function openProjectFile(data, handle, options = {}) {
     const blob = data instanceof Blob ? data : new Blob([data])
@@ -1085,14 +1217,18 @@
     const operation = await chooseProjectOperation('import', options.operation)
     if (!operation) return 0
     let directory = options.directory && options.directory.handle
-    const cachedImageFolders = new Map()
+    const cachedRecords = new Map()
     let parentParts = []
     const supplied = options.directory && options.directory.files
     const rel = String(data.webkitRelativePath || data.name || '').replace(/\\/g, '/')
-    if (directory && handle && directory.resolve) {
-      const parts = await directory.resolve(handle)
-      if (parts) parentParts = parts.slice(0, -1)
-    } else if (supplied && rel.includes('/')) parentParts = rel.split('/').slice(1, -1)
+    if (directory && handle && typeof directory.resolve === 'function') {
+      const parts = await directory.resolve(handle).catch(() => null)
+      // A handle that does not contain this file is not its project directory.
+      // Replace/reopen must not keep resolving imagePath against the previous image folder.
+      if (parts && parts.length) parentParts = parts.slice(0, -1)
+      else directory = null
+    }
+    if (!directory && supplied && rel.includes('/')) parentParts = rel.split('/').slice(1, -1)
     if (!directory && handle) {
       const known = [projectSaveDirectory, state.projectDirectory, state.projectAccessRoot,
         ...projects.flatMap((p) => p.snap ? [p.snap.projectDirectory, p.snap.projectAccessRoot] : [])]
@@ -1102,8 +1238,9 @@
         if (parts && parts.length) { directory = root; parentParts = parts.slice(0, -1); break }
       }
     }
-    // Resolve every subproject's own folder. A saved folder is usable only when its
-    // recorded project directory contains this actual file, never a moved namesake.
+    // A remembered folder only locates this file (access / permission). It becomes the
+    // image folder when it resolves to this project's own imagePath, never a sibling
+    // slot that happens to share folderKey. Reopen and replace both re-resolve here.
     if (handle) for (const p of d.projects) {
       const rec = await folderDbDo('readonly', (store) => store.get(p.folderKey)).catch(() => null)
       const root = rec && rec.projectDirectory
@@ -1113,7 +1250,7 @@
         const access = rec.projectAccessRoot || root, relative = await access.resolve(handle).catch(() => null)
         if (relative) {
           if (!directory) { directory = access; parentParts = relative.slice(0, -1) }
-          if (rec.handle && typeof rec.handle.queryPermission === 'function' && await rec.handle.queryPermission({ mode: 'read' }).catch(() => 'denied') === 'granted') cachedImageFolders.set(p.folderKey, rec.handle)
+          cachedRecords.set(p.folderKey, rec)
         }
       }
     }
@@ -1123,13 +1260,21 @@
     for (const p of d.projects) {
       let folder = null
       const imagePath = typeof p.imagePath === 'string' ? p.imagePath : '.'
-      const cached = cachedImageFolders.get(p.folderKey)
-      if (cached && typeof cached.queryPermission === 'function' && await cached.queryPermission({ mode: 'read' }).catch(() => 'denied') === 'granted') {
-        folder = folderFromHandle(cached, cached.name)
-      } else if (directory) {
+      const record = cachedRecords.get(p.folderKey) || null
+      // Replace and reopen both re-resolve from imagePath below. A shared folderKey
+      // becomes a new slot when this file's image directory is not the cached one.
+      const duplicate = await folderKeyIsDuplicate(p.folderKey || '', imagePath, directory, parentParts, record)
+      const ignoreCache = duplicate
+      if (directory) {
         try { const imageDir = await projectSubdir(directory, projectPath(imagePath, parentParts)); folder = folderFromHandle(imageDir, imageDir.name) }
         catch { /* recorded path is missing: keep the rig and show MISSING attachments */ }
-      } else if (supplied) {
+      }
+      if (!folder && !ignoreCache && record && record.handle && await folderHandleReadable(record.handle)) {
+        const outside = !(directory && typeof directory.resolve === 'function' && await directory.resolve(record.handle).catch(() => null))
+        if (await cachedFolderMatches(directory, parentParts, imagePath, record.handle)) folder = folderFromHandle(record.handle, record.handle.name)
+        else if (p.externalFolder && outside) folder = folderFromHandle(record.handle, record.handle.name || record.name)
+      }
+      if (!folder && !directory && supplied) {
         const prefix = projectPath(imagePath, parentParts).join('/')
         const items = supplied.map((f) => ({ rel: String(f.webkitRelativePath || f.name).split('/').slice(1).join('/'), file: f }))
           .filter((f) => !prefix || f.rel.startsWith(prefix + '/')).map((f) => ({ ...f, rel: prefix ? f.rel.slice(prefix.length + 1) : f.rel }))
@@ -1149,16 +1294,25 @@
         const external = new Map(images.map((im) => [lower(im.fileName), im]))
         images = await Promise.all((p.images || []).map(async (im) => external.get(lower(im.fileName)) || { fileName: im.fileName, blob: await (await fetch(im.dataUrl)).blob() }))
       }
-      missing.push(...missingProjectImageRefs(p.json, p.atlasText, p.images, images).map((ref) => `${p.name}：${ref.path || ref.fileName}`))
+      const missedRefs = missingProjectImageRefs(p.json, p.atlasText, p.images, images)
+      missing.push(...missedRefs.map((ref) => `${p.name}：${ref.path || ref.fileName}`))
+      let offer = null
+      try { offer = await findSiblingSwapFolder(directory, parentParts, imagePath, missedRefs) } catch { offer = null }
+      const folderKey = duplicate ? mintFolderKey() : (p.folderKey || '')
       await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, imageFolder: folder, projectDirectory, projectAccessRoot: directory,
         imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
-        label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey: p.folderKey || '', operation: imported.length ? 'append' : operation,
+        label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey, operation: imported.length ? 'append' : operation,
         replace: operation === 'replace' && imported.length === 0 && !!state.json })
       imported.push(activeProject)
+      if (projects[activeProject]) projects[activeProject].pendingSwapFolder = offer || null
       // The saved references already supply the pages. Do not guess replacement pixels
       // from another subtree merely because an attachment has the same short name.
     }
-    switchProject(imported[Math.max(0, Math.min(d.projects.length - 1, Number(d.active) || 0))])
+    const picked = Math.max(0, Math.min(imported.length - 1, Number(d.active) || 0))
+    switchProject(imported[picked])
+    state.pendingSwapFolder = (projects[activeProject] && projects[activeProject].pendingSwapFolder) || null
+    if (state.pendingSwapFolder && typeof offerSwapReconnect === 'function' && typeof document !== 'undefined' && document.body) offerSwapReconnect(state.pendingSwapFolder)
+    if (state.pendingSwapFolder && typeof refresh === 'function') refresh()
     // opened into an empty tree, the tree is that file: 保存工程 / Ctrl+S write back to it
     // (added to projects already open, the next save still asks - it would hold them all)
     if (handle && (wasEmpty || operation === 'replace')) { projectFile = handle; projectSaveDirectory = projectDirectory }
@@ -1168,7 +1322,8 @@
       Object.values(a.slots || {}).some((s) => (s.attachment || []).some((key) => key.name)))
     const emptySetup = !(state.json.slots || []).some((s) => s.attachment) && attachmentAnimations.length
       ? `；设置姿势没有显示附件，请在工程树选择动画「${attachmentAnimations[0][0]}」查看` : ''
-    status((missing.length ? `已打开 ${d.projects.length} 个工程，缺少 ${missing.length} 张外部图片：${missing.join('、')}；已显示 MISSING 占位，可在对应工程的「图片」节点重新定位目录`
+    const offerNote = state.pendingSwapFolder ? `；这些替换图在同级目录「${state.pendingSwapFolder.name}」里，可点「改接目录」` : ''
+    status((missing.length ? `已打开 ${d.projects.length} 个工程，缺少 ${missing.length} 张外部图片：${missing.join('、')}；已显示 MISSING 占位，可在对应工程的「图片」节点重新定位目录${offerNote}`
       : `已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`) + hidden + emptySetup, missing.length || hidden || emptySetup ? 'error' : 'ok')
     return d.projects.length
   }
@@ -2753,6 +2908,7 @@
     if (!state.json) throw new Error('先新建或导入工程')
     const list = [...files].filter((f) => IMG_RX.test(f.name))
     if (!list.length) { status('文件夹里没有图片（PNG / JPG / WebP）', 'error'); return 0 }
+    if (typeof newFolderKey === 'function') state.folderKey = newFolderKey()
     const top = String(list[0].webkitRelativePath || '').split('/')[0] || state.name || '图片'
     const items = list.map((f) => { const parts = String(f.webkitRelativePath || f.name).split('/').filter(Boolean); return { rel: (parts.length > 1 ? parts.slice(1) : parts).join('/'), file: f } })
     const names = attachmentPictureNames(state.json)
@@ -2863,6 +3019,10 @@
    */
   async function useFolderHandle(handle) {
     if (!state.json) return
+    const previousHandle = state.imageFolder && state.imageFolder.handle
+    if (handle && previousHandle !== handle && typeof newFolderKey === 'function') state.folderKey = newFolderKey()
+    if (typeof projects !== 'undefined' && typeof activeProject === 'number' && projects[activeProject]) projects[activeProject].pendingSwapFolder = null
+    state.pendingSwapFolder = null
     let dir = handle
     const names = attachmentPictureNames(state.json)
     for (const r of regionList()) names.add(r.name)
@@ -2878,6 +3038,10 @@
     await connectProjectImages(state, state.imageFolder)
     await refreshFolderPictures(state, state.imageFolder)
     state.pendingFolder = null
+    if (state.projectDirectory && typeof state.projectDirectory.resolve === 'function') {
+      const rel = await state.projectDirectory.resolve(handle).catch(() => null)
+      if (rel) state.imagePath = rel.join('/') || '.'
+    }
     rememberFolder(handle)
     state.imageFolderGen = (state.imageFolderGen || 0) + 1
     imgTree = { key: '', nodes: new Map(), pending: new Set() }
@@ -2918,7 +3082,8 @@
     const key = state.folderKey
     if (!key || !handle) return
     const record = { handle, projectDirectory: state.projectDirectory,
-      projectAccessRoot: state.projectAccessRoot, name: handle.name, at: Date.now() }
+      projectAccessRoot: state.projectAccessRoot, name: handle.name,
+      imagePath: state.imagePath || '.', at: Date.now() }
     folderDbDo('readwrite', (store) => store.put(record, key)).catch(() => {})
   }
   /** The project (picked, or one in the tree) that `fill` writes to, wherever it now sits. */
@@ -2954,6 +3119,47 @@
     target.pendingFolder = rec.handle
     if (target === state) { refresh(); setTimeout(askRestoreFolder, 0) }
   }
+  /** Switch this project onto the sibling directory that holds its __nf_swap_* pages. */
+  async function acceptSwapReconnect() {
+    const project = projects[activeProject]
+    const pending = project && project.pendingSwapFolder
+    if (!pending || !pending.handle || !state.json) return
+    project.pendingSwapFolder = null
+    state.pendingSwapFolder = null
+    if (pending.imagePath) state.imagePath = pending.imagePath
+    if (typeof newFolderKey === 'function') state.folderKey = newFolderKey()
+    try {
+      await useFolderHandle(pending.handle)
+      status(`已改接图片目录「${pending.name}」`, 'ok')
+    } catch (e) { status('改接图片目录失败：' + ((e && e.message) || e), 'error') }
+  }
+
+  /** Offer the sibling directory. Missing pages stay MISSING until the user accepts. */
+  function offerSwapReconnect(pending) {
+    if (!pending || typeof document === 'undefined' || !document.body || typeof h !== 'function') return
+    if (document.querySelector('.dialog.ask')) return
+    const done = () => { mask.remove(); window.removeEventListener('keydown', onKey, true) }
+    const onKey = (e) => {
+      if (e.key !== 'Escape' && e.key !== 'Enter') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      done()
+      if (e.key === 'Enter') acceptSwapReconnect()
+    }
+    const names = (pending.files || []).join('、')
+    const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) done() } },
+      h('div', { class: 'dialog ask', 'data-nf-swap-reconnect': '1' },
+        h('div', { class: 'hd' }, h('b', {}, '改接图片目录'), h('button', { class: 'xx', title: '保持当前目录', onclick: done }, '×')),
+        h('div', { class: 'msg' },
+          h('div', {}, `「${state.name}」记录的目录里缺少替换图${names ? ' ' + names : ''}。`),
+          h('div', {}, `同级目录「${pending.name}」里有这些图。改接后只影响这个工程，不必刷新整个应用。`)),
+        h('div', { class: 'ft' },
+          btn('保持当前目录', done),
+          btn(`改接到「${pending.name}」`, () => { done(); acceptSwapReconnect() }, { primary: true }))))
+    document.body.append(mask)
+    window.addEventListener('keydown', onKey, true)
+  }
+
   /** The browser wants a click before it lets the page into the folder again. */
   function restorePendingFolder() {
     const handle = state.pendingFolder
@@ -7929,10 +8135,15 @@
     const root = imagesListing('')
     const count = root ? root.files.length + (root.dirs.length ? ` + ${root.dirs.length} 夹` : '') : '…'
     const folder = state.imageFolder ? state.imageFolder.name : ''
-    rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: (folder ? `图片文件夹：${folder}${state.imageFolder.live ? '（文件夹里加图、删图会实时显示）' : '（已载入）'}\n` : `记录的图片目录：${state.imagePath || '.'}（未连接，缺图显示 MISSING）\n`) + '把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
+    const swapOffer = projects[activeProject] && projects[activeProject].pendingSwapFolder
+    rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: (folder ? `图片文件夹：${folder}${state.imageFolder.live ? '（文件夹里加图、删图会实时显示）' : '（已载入）'}\n` : `记录的图片目录：${state.imagePath || '.'}（未连接，缺图显示 MISSING）\n`) + (swapOffer ? `同级目录「${swapOffer.name}」里有缺少的替换图，可改接。\n` : '') + '把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
       caret(!closed, toggle), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
       h('span', { class: 'end' },
         // Spine's images path, no import (user 2026-10-15: 这里不需要有什么导入按钮): pictures are what the folder holds
+        swapOffer
+          ? h('button', { class: 'ld-btn tiny', title: `改接到同级图片目录「${swapOffer.name}」（${swapOffer.imagePath}）`,
+            onclick: (e) => { e.stopPropagation(); acceptSwapReconnect() } }, '改接目录')
+          : null,
         !folder && state.pendingFolder
           ? h('button', { class: 'ld-btn tiny', title: `接上上次的图片文件夹「${state.pendingFolder.name}」（浏览器要点一下确认）`,
             onclick: (e) => { e.stopPropagation(); restorePendingFolder() } }, '接上文件夹')

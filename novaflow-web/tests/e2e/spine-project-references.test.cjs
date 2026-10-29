@@ -428,6 +428,7 @@ test('a missing recorded subdirectory does not borrow same-name images from its 
   assert.equal(f.state.imageFolder, null)
   assert.equal(f.state.images.size, 0)
   assert.match(f.status.at(-1)[0], /MISSING/)
+  assert.equal(f.state.pendingSwapFolder, null)
   assert.equal(f.picker.length, 0)
 })
 
@@ -643,6 +644,127 @@ test('cancelling the directory picker removes the empty file the save picker cre
   assert.equal(result, null)
   assert.equal(d.root.nodes.has('scene.nfproj'), false)
   assert.equal([...d.root.nodes.keys()].some((n) => String(n).includes('.tmp')), false)
+})
+
+function swapRig() {
+  const names = ['swap5', 'swap3']
+  const files = ['__nf_swap_5.png', '__nf_swap_3.png']
+  const j = json()
+  j.slots = names.map(name => ({ name, bone: 'root', attachment: name }))
+  j.skins = [{ name: 'default', attachments: Object.fromEntries(names.map(name => [name, { [name]: { width: 1, height: 1 } }])) }]
+  const atlasText = Attach.synthesizeAtlas(files.map((fileName, i) => ({ name: names[i], fileName, width: 1, height: 1 })))
+  const images = files.map(fileName => ({ fileName, path: fileName, pma: false }))
+  return { j, atlasText, images }
+}
+
+test('two nfproj files that share a folderKey resolve their own imagePath instead of one cached folder', async () => {
+  const d = disk('project')
+  await d.put('img/__nf_swap_5.png', 'img five')
+  await d.put('img/__nf_swap_3.png', 'img three')
+  await d.put('img_261028/img_261028/__nf_swap_5.png', 'copy five')
+  await d.put('img_261028/img_261028/__nf_swap_3.png', 'copy three')
+  const { j, atlasText, images } = swapRig()
+  const shared = 'same-slot'
+  const original = { name: 'skeleton', fileName: 'skeleton.json', json: j, atlasText, imagePath: 'img', folderKey: shared, images }
+  const copy = { name: 'skeleton-copy', fileName: 'skeleton.json', json: j, atlasText, imagePath: 'img_261028/img_261028', folderKey: shared, images }
+  const copyDir = await (await d.root.getDirectoryHandle('img_261028')).getDirectoryHandle('img_261028')
+  const f = fixture()
+  f.records.set(shared, { handle: copyDir, projectDirectory: d.root, name: 'img_261028', imagePath: 'img_261028/img_261028' })
+  const file = await d.put('skeleton.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [original] }))
+  await f.open(await file.getFile(), file, { directory: { handle: d.root } })
+  assert.equal(await f.state.images.get('__nf_swap_5.png').blob.text(), 'img five')
+  assert.equal(await f.state.images.get('__nf_swap_3.png').blob.text(), 'img three')
+  assert.equal(f.state.imagePath, 'img')
+  assert.equal(f.state.imageFolder.handle, await d.root.getDirectoryHandle('img'))
+  assert.notEqual(f.state.folderKey, shared)
+  assert.equal(/缺少/.test(f.status.at(-1)[0]), false)
+
+  const g = fixture()
+  g.records.set(shared, { handle: await d.root.getDirectoryHandle('img'), projectDirectory: d.root, name: 'img', imagePath: 'img' })
+  const copyFile = await d.put('skeleton - 副本.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [copy] }))
+  await g.open(await copyFile.getFile(), copyFile, { directory: { handle: d.root } })
+  assert.equal(await g.state.images.get('__nf_swap_5.png').blob.text(), 'copy five')
+  assert.equal(await g.state.images.get('__nf_swap_3.png').blob.text(), 'copy three')
+  assert.equal(g.state.imagePath, 'img_261028/img_261028')
+  assert.equal(g.state.imageFolder.handle, copyDir)
+  assert.notEqual(g.state.folderKey, shared)
+  assert.equal(/缺少/.test(g.status.at(-1)[0]), false)
+})
+
+test('replace re-resolves the imported imagePath and drops the previous image directory', async () => {
+  const d = disk(), f = fixture(); f.realLifecycle()
+  await d.put('img/pic.png', 'original pixels')
+  await d.put('img_261028/img_261028/pic.png', 'copy pixels')
+  const part = (name, imagePath) => ({ name, fileName: name + '.json', json: json(), atlasText: atlas(), imagePath, folderKey: 'shared', pma: false,
+    images: [{ fileName: 'pic.png', path: 'pic.png', pma: false }] })
+  const img = await d.root.getDirectoryHandle('img')
+  f.records.set('shared', { handle: img, projectDirectory: d.root, name: 'img', imagePath: 'img' })
+  const original = await d.put('skeleton.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [part('skeleton', 'img')] }))
+  await f.open(await original.getFile(), original, { directory: { handle: d.root } })
+  assert.equal(await f.state.images.get('pic.png').blob.text(), 'original pixels')
+  assert.equal(f.state.imagePath, 'img')
+  assert.equal(f.state.folderKey, 'shared')
+  const copy = await d.put('skeleton - 副本.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [part('skeleton-copy', 'img_261028/img_261028')] }))
+  // The previous image directory is still the caller's directory hint. Replace must not keep it.
+  await f.open(await copy.getFile(), copy, { operation: 'replace', directory: { handle: img } })
+  assert.equal(f.projects.length, 1)
+  assert.equal(f.state.name, 'skeleton-copy')
+  assert.equal(f.state.imagePath, 'img_261028/img_261028')
+  assert.equal(await f.state.images.get('pic.png').blob.text(), 'copy pixels')
+  assert.notEqual(f.state.imageFolder.handle, img)
+  assert.notEqual(f.state.folderKey, 'shared')
+})
+
+test('a shared folderKey still shows MISSING and only offers a sibling swap directory', async () => {
+  const d = disk(), f = fixture()
+  await d.put('img/__nf_swap_5.png', 'sibling five')
+  await d.put('img/__nf_swap_3.png', 'sibling three')
+  await d.put('other/keep.txt', 'x')
+  const { j, atlasText, images } = swapRig()
+  const p = { name: 'skeleton', fileName: 'skeleton.json', json: j, atlasText, imagePath: 'other', folderKey: 'shared', images }
+  f.records.set('shared', { handle: await d.root.getDirectoryHandle('img'), projectDirectory: d.root, name: 'img', imagePath: 'img' })
+  const file = await d.put('skeleton.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] }))
+  await f.open(await file.getFile(), file, { directory: { handle: d.root } })
+  assert.equal(f.state.images.size, 0)
+  assert.equal(f.state.imagePath, 'other')
+  assert.equal(f.state.imageFolder.handle, await d.root.getDirectoryHandle('other'))
+  assert.match(f.status.at(-1)[0], /缺少 2 张外部图片/)
+  assert.match(f.status.at(-1)[0], /__nf_swap_5.png/)
+  assert.match(f.status.at(-1)[0], /MISSING/)
+  assert.equal(f.state.pendingSwapFolder.imagePath, 'img')
+  assert.equal(f.state.pendingSwapFolder.name, 'img')
+  assert.match(f.status.at(-1)[0], /改接目录/)
+})
+
+test('two sibling directories that both contain the missing swaps do not guess one', async () => {
+  const d = disk(), f = fixture()
+  await d.put('img/__nf_swap_5.png', 'a')
+  await d.put('img/__nf_swap_3.png', 'a')
+  await d.put('img_b/__nf_swap_5.png', 'b')
+  await d.put('img_b/__nf_swap_3.png', 'b')
+  await d.put('other/keep.txt', 'x')
+  const { j, atlasText, images } = swapRig()
+  const p = { name: 'skeleton', fileName: 'skeleton.json', json: j, atlasText, imagePath: 'other', folderKey: 'shared', images }
+  const file = await d.put('skeleton.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] }))
+  await f.open(await file.getFile(), file, { directory: { handle: d.root } })
+  assert.equal(f.state.images.size, 0)
+  assert.equal(f.state.pendingSwapFolder, null)
+  assert.match(f.status.at(-1)[0], /MISSING/)
+})
+
+test('Save As gives the copied project its own folderKey', async () => {
+  const d = disk(), f = fixture()
+  await d.put('pic.png', 'pixels')
+  f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
+  f.state.folderKey = 'shared'
+  const copy = await d.put('scene-copy.nfproj', '')
+  f.window.directory = d.root
+  f.window.showSaveFilePicker = async () => copy
+  await vm.runInContext('saveProjectFileNow({ as: true })', f.c)
+  const saved = await unpack(await (await copy.getFile()).arrayBuffer())
+  assert.notEqual(saved.projects[0].folderKey, 'shared')
+  assert.equal(f.state.folderKey, saved.projects[0].folderKey)
+  assert.equal(saved.projects[0].imagePath, '.')
 })
 
 test('an empty project file shows the empty-file message and does not import', async () => {
