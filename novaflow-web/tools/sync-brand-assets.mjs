@@ -9,13 +9,15 @@ const add = (source, ...targets) => targets.forEach(target => BRAND_ASSET_COPIES
 for (const name of ['foart-logo-dark.svg', 'foart-logo-light.svg', 'foart-mark.svg', 'foart-app-icon.svg', 'foart-contact.svg']) {
   add(name, `renderer/assets/${name}`, `web/public/assets/${name}`);
 }
-add('foart-logo-dark.svg', 'worker/electron/assets/foart-logo-dark.svg', 'admin/build/foart-logo-dark.svg');
+add('foart-logo-dark.svg', 'worker/electron/assets/foart-logo-dark.svg');
+add('foart-admin-logo.svg', 'admin/build/foart-logo-dark.svg');
 add('foart-logo-dark.png', 'renderer/assets/logo.png', 'renderer/assets/asset-BmmmtA7v.png', 'worker/electron/assets/logo.png');
 add('foart-mark.png', 'renderer/assets/novaflow-brand-mark.png', 'renderer/assets/asset-BsnHnLaI.png');
 add('foart-app-icon.png', 'renderer/assets/icon.png');
-add('foart-app-icon.ico', 'renderer/assets/foart.ico', 'renderer/assets/favicon.ico', 'renderer/assets/favicon-CLAJAQ7J.ico', 'renderer/assets/asset-CLAJAQ7J.ico', 'worker/electron/assets/favicon.ico', 'web/public/assets/foart.ico');
+add('foart-app-icon.ico', 'renderer/assets/foart.ico', 'renderer/assets/foart-brush.ico', 'renderer/assets/favicon.ico', 'renderer/assets/favicon-CLAJAQ7J.ico', 'renderer/assets/asset-CLAJAQ7J.ico', 'worker/electron/assets/favicon.ico', 'worker/electron/assets/foart-brush.ico', 'web/public/assets/foart.ico', 'web/public/assets/foart-brush.ico');
 add('foart-admin-icon.png', 'admin/build/icon.png');
-add('foart-admin-icon.ico', 'admin/build/icon.ico', 'admin/build/foart-admin-icon.ico');
+add('foart-admin-icon.ico', 'admin/build/icon.ico', 'admin/build/foart-admin-icon.ico', 'admin/build/foart-admin-brush.ico');
+add('foart-contact.svg', 'renderer/assets/foart-contact-brush.svg', 'web/public/assets/foart-contact-brush.svg');
 
 export async function syncBrandAssets({ check = false } = {}) {
   for (const { source, target } of BRAND_ASSET_COPIES) {

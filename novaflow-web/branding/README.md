@@ -1,17 +1,16 @@
-# foart 品牌素材
+# Foart 笔刷品牌素材
 
-软件显示名称统一为 **Foart**，后台为 **Foart 后台管理**；图形字标沿用用户选定的小写设计。后台桌面、任务栏和安装包使用 `foart-admin-icon.*` 白色图形，主程序使用橙色图形。
+以用户最终选定的扁平笔刷 Foart 为当前品牌：Fo 白色、art 珊瑚红 `#ff5c35`。主程序 Icon 只取 F 并使用珊瑚红；后台 Icon 和字标均为白色。软件显示名称为 **Foart / Foart 后台管理**。
 
-以用户选定的 02 橙色几何方案为准：橙色图形、深色背景白色 `fo`、橙色 `art`。浅色背景使用深灰 `fo`；桌面应用图标使用深灰圆角方底和橙色图形。
+- `foart-brush-reference.png`：用户提供的原始设计参考，原样保留。
+- `foart-flat-wordmark-master.svg` / `foart-flat-f-master.svg`：从用户批准的设计稿转换的轮廓母版，保留字形并统一平面色。
+- `foart-brush-wordmark.png` / `foart-brush-f.png`：由轮廓母版渲染的透明底兼容素材。处理记录见 `brush-provenance.json`。
+- `foart-logo-dark.svg` / `foart-logo-light.svg`：深浅背景用的字标包装，嵌入透明 PNG。它们保留位图纹理，无字体依赖，并非纯矢量描边。
+- `foart-mark.svg`：透明底独立 F。`foart-app-icon.svg`：深灰圆角底、橙红 F。`foart-admin-icon.svg`：同一 F 轮廓，使用 SVG 色彩矩阵输出白色，保留透明度和笔刷边缘。
+- `foart-admin-logo.svg`：同一字标的全白版本，用于后台管理。
+- 同名兼容 PNG 和 ICO；ICO 包含 16、24、32、48、64、96、128、256 像素。
+- `foart-contact.svg`：新笔刷标题和原始二维码，二维码数据不重绘。
 
-- `foart-logo-dark.svg` / `foart-logo-light.svg`：横版矢量母版，字标已转路径，无字体依赖。
-- `foart-mark.svg`：透明底独立图形。
-- `foart-app-icon.svg`：桌面图标母版。
-- 同名 PNG 为兼容资源；ICO 包含 16、24、32、48、64、96、128、256 像素。
-- `foart-contact.svg`：更新联系卡片的品牌标题，嵌入并裁切原有二维码图片；二维码像素不重绘。
+`node novaflow-web/tools/sync-brand-assets.mjs` 同步网页、启动助手、后台和 React 入口，`--check` 验证副本；网页和后台构建自动同步。旧资源别名继续提供当前画稿。网页资源使用笔刷修订查询参数或新图标文件名，避免命中旧图标缓存。
 
-图形和字标从用户选定的原始设计稿制作矢量版，不使用后续有透明瑕疵的生成草稿。主色 `#ff5c35`，图标底色 `#242424`。
-
-`node novaflow-web/tools/sync-brand-assets.mjs` 将母版资源同步到网页、启动助手、后台和 React 入口。`--check` 核对副本；网页构建会自动同步。原有资源别名也保留兼容副本。
-
-改名只影响展示和安装包名称。为继续使用既有账号、授权、项目、快捷链接和本机配置，保留原有 appId、授权载荷产品标识、`novaflow:` 协议、`.nfproj` 扩展名、用户数据路径、环境变量及内部接口名称。不要全局替换代码标识或持久化键。
+为了保留用户数据，原有 appId、授权载荷产品标识、`novaflow:` 协议、`.nfproj`、用户数据目录、环境变量和内部 API 不改名。

@@ -234,7 +234,7 @@ async function quitAssistant() {
 }
 
 function createTray() {
-  tray = new Tray(path.join(__dirname, 'assets/favicon.ico'));
+  tray = new Tray(path.join(__dirname, 'assets/foart-brush.ico'));
   tray.setToolTip(PRODUCT_NAME);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开本地助手', click: showWindow },
@@ -252,7 +252,7 @@ function createWindow() {
     minHeight: 500,
     backgroundColor: '#0b0b0b',
     title: PRODUCT_NAME,
-    icon: path.join(__dirname, 'assets/favicon.ico'),
+    icon: path.join(__dirname, 'assets/foart-brush.ico'),
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#242424', symbolColor: '#e5e7eb', height: 38 },
     autoHideMenuBar: true,

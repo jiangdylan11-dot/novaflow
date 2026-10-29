@@ -18,7 +18,7 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     title: "Foart 后台管理",
-    icon: path.join(__dirname, "build", "foart-admin-icon.ico"),
+    icon: path.join(__dirname, "build", "foart-admin-brush.ico"),
     backgroundColor: "#0B0E13",
     autoHideMenuBar: true,
     webPreferences: {

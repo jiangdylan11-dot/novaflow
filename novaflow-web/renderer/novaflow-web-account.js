@@ -395,7 +395,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
 
     const brand = el('div'); brand.className = 'nf-login-brand';
     const logo = el('img'); logo.className = 'nf-login-logo';
-    logo.src = './assets/foart-logo-dark.svg';
+    logo.src = './assets/foart-logo-dark.svg?brand=flat-v2';
     logo.alt = 'Foart';
     logo.draggable = false;
     brand.appendChild(logo);

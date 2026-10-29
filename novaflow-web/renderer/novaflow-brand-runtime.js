@@ -1,7 +1,7 @@
 (function () {
   const HTMLElement = window.HTMLElement || window.Element;
-  const LOGO_SRC = "./assets/foart-logo-dark.svg";
-  const ICON_SRC = "./assets/foart.ico";
+  const LOGO_SRC = "./assets/foart-logo-dark.svg?brand=flat-v2";
+  const ICON_SRC = "./assets/foart-brush.ico";
   const STYLE_ID = "novaflow-brand-runtime-style";
   const PRE_BRAND_STYLE_ID = "novaflow-brand-prepaint-style";
   const PRIMARY_SIDEBAR_ID = "novaflow-primary-sidebar";
@@ -3177,8 +3177,8 @@
   const UI_TOPBAR_BACKGROUND = "#101113";
   const UI_TOPBAR_BORDER_COLOR = "transparent";
   const UI_TOPBAR_PAD_X = 20;
-  const UI_TOPBAR_LOGO_WIDTH = 86;
-  const UI_TOPBAR_LOGO_HEIGHT = 31;
+  const UI_TOPBAR_LOGO_WIDTH = 88;
+  const UI_TOPBAR_LOGO_HEIGHT = 44;
   const UI_TOPBAR_RIGHT_GAP = 18;
   const UI_TOPBAR_STATUS_TEXT = "#979797";
   const UI_TOPBAR_STATUS_DOT = "#a3a3a3";
@@ -21466,8 +21466,9 @@
     style.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
     style.textContent = `
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] {
-        gap: 6px !important;
-        /* The topbar's own 20 already sets the left margin. */
+        gap: 4px !important;
+        /* Keep the brush wordmark close to the rail without moving right-side controls. */
+        margin-left: -12px !important;
         padding-left: 0 !important;
       }
       #${DROPDOWN_OVERLAY_ID} {
@@ -21966,6 +21967,7 @@
         width: ${UI_TOPBAR_LOGO_WIDTH}px !important;
         height: ${UI_TOPBAR_LOGO_HEIGHT}px !important;
         object-fit: contain !important;
+        object-position: left center !important;
         /* Flat: the reference has no glow on the mark. */
         filter: none !important;
       }
@@ -21974,7 +21976,7 @@
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] .nf-brand-version {
         display: inline-block !important;
-        margin-left: 4px !important;
+        margin-left: 0 !important;
         color: rgba(230, 239, 255, 0.74) !important;
         font-size: 11px !important;
         font-weight: 400 !important;

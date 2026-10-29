@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Foart 后台管理</title>
   </head>
@@ -10,9 +10,9 @@
     <div id="app">
       <aside class="sidebar" aria-label="后台管理模块">
         <div class="brandBlock">
-          <img class="brandMark" src="../build/icon.png" alt="" />
+          <img class="brandMark" src="../build/icon.png?brand=flat-v2" alt="" />
           <div class="brandText">
-            <div class="brandName"><img class="brandLogo" src="../build/foart-logo-dark.svg" alt="Foart" /><span>后台管理</span></div>
+            <div class="brandName"><img class="brandLogo" src="../build/foart-logo-dark.svg?brand=flat-v2" alt="Foart" /><span>后台管理</span></div>
             <div class="brandSub">授权 · 积分 · 算力</div>
           </div>
         </div>
@@ -1189,7 +1189,7 @@
         font-weight: 800;
       }
       .brandText { min-width: 0; }
-      .brandLogo { display: block; width: 76px; height: 28px; object-fit: contain; }
+      .brandLogo { display: block; width: 84px; height: 40px; object-fit: contain; }
       .brandName { display: flex; align-items: center; gap: 7px; }
       .brandName { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .brandSub { margin-top: 2px; font-size: 11px; color: var(--caption); white-space: nowrap; }

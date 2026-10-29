@@ -17,16 +17,23 @@ test('all application surfaces receive the approved foart artwork', async () => 
     assert(ico.readUInt32LE(at + 12) + ico.readUInt32LE(at + 8) <= ico.length);
   }
   assert.deepEqual(sizes, [16, 24, 32, 48, 64, 96, 128, 256]);
+  const wordmark = await readFile(new URL('../../branding/foart-brush-wordmark.png', import.meta.url));
+  const brushF = await readFile(new URL('../../branding/foart-brush-f.png', import.meta.url));
   for (const theme of ['dark', 'light']) {
     const svg = await read(`branding/foart-logo-${theme}.svg`);
-    assert.match(svg, /#ff5c35/);
-    assert.match(svg, theme === 'dark' ? /#ffffff/ : /#252424/);
-    assert.doesNotMatch(svg, /<text|<image|gradient/i, 'wordmark is outlined and independent of installed fonts');
+    assert(svg.includes(`base64,${wordmark.toString('base64')}`), 'wordmark preserves the approved brush texture');
+    assert.doesNotMatch(svg, /<text|font-family/i, 'wordmark has no installed-font dependency');
+    if (theme === 'light') assert.match(svg, /#252424/);
   }
-  assert.match(await read('branding/foart-app-icon.svg'), /rx="105" fill="#242424"/);
+  const primaryIcon = await read('branding/foart-app-icon.svg');
+  assert.match(primaryIcon, /rx="105" fill="#242424"/);
+  assert(primaryIcon.includes(`base64,${brushF.toString('base64')}`), 'app icon uses only the standalone brush F');
   const adminIcon = await read('branding/foart-admin-icon.svg');
-  assert.match(adminIcon, /fill="#ffffff"/);
-  assert.doesNotMatch(adminIcon, /#ff5c35/);
+  assert(adminIcon.includes(`base64,${brushF.toString('base64')}`), 'admin keeps the exact same F shape');
+  assert.match(adminIcon, /values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"/);
+  const adminLogo = await read('branding/foart-admin-logo.svg');
+  assert(adminLogo.includes(`base64,${wordmark.toString('base64')}`));
+  assert.match(adminLogo, /filter="url\(#white-ink\)"/);
   const contact = await read('branding/foart-contact.svg');
   const originalQr = await readFile(new URL('../../renderer/assets/QR.png', import.meta.url));
   assert(contact.includes(`base64,${originalQr.toString('base64')}`), 'contact artwork preserves the exact scannable QR raster');
@@ -42,6 +49,9 @@ test('product rename keeps license, protocol and persisted configuration identit
   assert.equal(worker.nsis.shortcutName, 'Foart');
   const adminPackage = JSON.parse(await read('admin/electron-builder.json'));
   assert(adminPackage.files.includes('build/foart-logo-dark.svg'), 'admin installer must include its new wordmark');
+  assert(adminPackage.files.includes('build/foart-admin-brush.ico'), 'admin installer must include the white brush icon');
+  assert.equal(adminPackage.win.icon, 'build/foart-admin-brush.ico');
+  assert.equal(worker.win.icon, 'electron/assets/foart-brush.ico');
   const main = await read('worker/electron/main.cjs');
   assert.match(main, /'NovaFlow UI Trial' : 'NovaFlow Worker'/);
   assert.match(main, /licenseDataDir: path.join\(app.getPath\('appData'\), 'NovaFlow'\)/);

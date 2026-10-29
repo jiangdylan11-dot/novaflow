@@ -23,7 +23,8 @@
     ".secrets/license-private-key.pem",
     "package.json",
     "prompt_assistant/h3_prompt_enhance_policy.json",
-    "!**/tests/**/*"
+    "!**/tests/**/*",
+    "build/foart-admin-brush.ico"
   ],
   "directories": {
     "output": "dist-admin",
@@ -31,7 +32,7 @@
   },
   "asar": false,
   "win": {
-    "icon": "build/foart-admin-icon.ico",
+    "icon": "build/foart-admin-brush.ico",
     "target": [
       {
         "target": "nsis",
@@ -52,9 +53,9 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "installerIcon": "build/foart-admin-icon.ico",
-    "uninstallerIcon": "build/foart-admin-icon.ico",
-    "installerHeaderIcon": "build/foart-admin-icon.ico",
+    "installerIcon": "build/foart-admin-brush.ico",
+    "uninstallerIcon": "build/foart-admin-brush.ico",
+    "installerHeaderIcon": "build/foart-admin-brush.ico",
     "shortcutName": "Foart 后台管理"
   },
   "extraResources": [

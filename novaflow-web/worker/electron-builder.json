@@ -92,12 +92,12 @@
       "ext": "nfproj",
       "name": "Foart 工程",
       "description": "Foart 工程（骨骼动画）",
-      "icon": "electron/assets/favicon.ico"
+      "icon": "electron/assets/foart-brush.ico"
     }
   ],
   "asar": false,
   "win": {
-    "icon": "electron/assets/favicon.ico",
+    "icon": "electron/assets/foart-brush.ico",
     "target": [
       {
         "target": "nsis",
@@ -121,9 +121,9 @@
       "en_US"
     ],
     "language": 2052,
-    "installerIcon": "electron/assets/favicon.ico",
-    "uninstallerIcon": "electron/assets/favicon.ico",
-    "installerHeaderIcon": "electron/assets/favicon.ico"
+    "installerIcon": "electron/assets/foart-brush.ico",
+    "uninstallerIcon": "electron/assets/foart-brush.ico",
+    "installerHeaderIcon": "electron/assets/foart-brush.ico"
   },
   "compression": "normal",
   "npmRebuild": false,

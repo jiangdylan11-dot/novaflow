@@ -1,0 +1,11 @@
+{
+  "style": "flat brush",
+  "approvedReference": "foart-brush-reference.png",
+  "method": "Native contour conversion of approved imagegen design; no regenerated lettering",
+  "colors": {
+    "Fo": "#f4f4f2",
+    "art": "#ff5c35",
+    "mainIcon": "#ff5c35",
+    "admin": "#ffffff"
+  }
+}
