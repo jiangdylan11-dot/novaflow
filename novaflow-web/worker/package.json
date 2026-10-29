@@ -2,7 +2,7 @@
   "name": "novaflow-worker",
   "productName": "Foart",
   "private": true,
-  "version": "2.0.162",
+  "version": "2.0.163",
   "description": "Foart",
   "type": "commonjs",
   "main": "electron/main.cjs",
