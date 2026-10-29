@@ -367,12 +367,135 @@ test('current drawing results are attached as actual feedback pixels and new-con
   controller.setProvider('local'); assert.equal(controller.state.messages.length,0); assert.equal(e.calls.length,0);
 });
 
+test('capture, captureChat, fingerprint and companion chat send data urls for an uploaded reference', async () => {
+  const e = env();
+  const bytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 9, 8, 7, 6]);
+  const uploaded = (name, role) => {
+    const file = new File([bytes], name, { type: 'image/png' });
+    return { name, dataUrl: 'blob:preview/' + name, mimeType: 'image/png', file, drawingRole: role };
+  };
+  e.refs[0] = uploaded('subject.png', 'subject');
+  e.refs[1] = uploaded('style.png', 'style');
+  const captured = await e.bridge.capture();
+  const chat = await e.bridge.captureChat();
+  for (const image of [...captured.images, ...chat.images]) {
+    assert.match(image.dataUrl, /^data:image\/png;base64,/);
+    assert.equal(image.dataUrl.includes('blob:'), false);
+  }
+  assert.equal(JSON.stringify(captured).includes('blob:'), false);
+  assert.equal(JSON.stringify(chat).includes('blob:'), false);
+  const digest = await e.api.fingerprint(captured);
+  assert.equal(digest, await e.api.fingerprint(chat.images.length ? { ...captured, images: captured.images } : captured));
+  assert.equal(typeof digest, 'string');
+  assert.equal(digest.length, 64);
+  const payloads = [];
+  const controller = e.api.createController({ bridge: e.bridge, api: () => ({
+    artAgentChat: async (payload) => {
+      payloads.push(JSON.parse(JSON.stringify(payload)));
+      return { ok: true, data: { reply: '看到了。', history: [], quota: { billing_mode: 'token', settled_credits: 8, estimated_credits: 21 } } };
+    }
+  }) });
+  controller.setProvider('api');
+  assert.equal(await controller.send('看看这两张参考'), true);
+  assert.ok(payloads[0].images.length >= 1);
+  for (const image of payloads[0].images) assert.match(image.dataUrl, /^data:image\/png;base64,/);
+  assert.equal(JSON.stringify(payloads[0]).includes('blob:'), false);
+  const calls = [];
+  e.sandbox.electronAPI = {
+    promptAssistantGetStatus: async () => ({ ok: true, result: { ok: true, analysisBackend: 'strata', supportsOriginalImages: true } }),
+    promptAssistantReverseImagePrompt: async (payload) => { calls.push(JSON.parse(JSON.stringify(payload))); return { ok: false }; }
+  };
+  await assert.rejects(e.sandbox.NovaFlowArtDirection.prepare({
+    state: { ...e.state, prompt: '图1用图2画风', mode: 'img2img', drawingAnalysisEngine: 'local', provider: 'local' },
+    references: e.refs, referenceLimit: 10, generationSurface: 'drawing', onProgress() {}
+  }));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].images.length, 2);
+  for (const image of calls[0].images) {
+    assert.match(image.dataUrl, /^data:image\/png;base64,/);
+    assert.equal(image.dataUrl.includes('blob:'), false);
+  }
+  assert.equal(JSON.stringify(calls[0]).includes('blob:'), false);
+});
+
+test('an online reply shows the settled credits and writes a transcript receipt', async () => {
+  const e = env();
+  const controller = e.api.createController({bridge:e.bridge, api:() => ({
+    artAgentChat: async () => ({ok:true, data:{
+      reply:'好的。', history:[], mode:'chat', provider:'api',
+      quota:{billing_mode:'token', settled_credits:8, estimated_credits:21, balance_after:90}
+    }})
+  })});
+  controller.setProvider('api');
+  assert.equal(await controller.send('你好'), true);
+  assert.match(controller.state.status, /实扣 8 分/);
+  assert.match(controller.state.status, /剩余 90/);
+  const receipt = controller.state.messages.find(item => item.role === 'status' && /本次实扣/.test(item.content));
+  assert.equal(receipt.content, '本次实扣 8 分（预估 21）');
+});
+
+test('the send button stays right of a fixed estimate slot in local and online mode', () => {
+  const css = readFileSync(new URL('../../renderer/xiaotao-art-agent.css', import.meta.url), 'utf8');
+  assert.match(css, /\.nf-xiaotao-compose-actions \{[^}]*flex-wrap:\s*nowrap/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*margin-left:\s*auto/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*min-width:\s*5\.5em/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*width:\s*5\.5em/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*max-width:\s*5\.5em/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*text-align:\s*right/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*tabular-nums/);
+  assert.match(css, /\.nf-xiaotao-estimate\[data-idle\] \{\s*visibility:\s*hidden/);
+  assert.doesNotMatch(css, /\.nf-xiaotao-compose-actions button:last-child \{\s*margin-left:\s*auto/);
+  const e = env(), nodes = [];
+  class Node {
+    constructor(tag, text = '') { this.tagName = tag.toUpperCase(); this.children = []; this.style = {}; this.dataset = {}; this.attributes = new Map(); this.hidden = false; this.className = ''; this.ownText = text; this.classList = { add() {}, remove() {} }; nodes.push(this); }
+    append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } }
+    replaceChildren(...children) { this.children = []; this.ownText = ''; this.append(...children); }
+    set textContent(value) { this.children = []; this.ownText = String(value); }
+    get textContent() { return this.ownText + this.children.map(child => child.textContent).join(''); }
+    setAttribute(key, value) { this.attributes.set(key, String(value)); }
+    getAttribute(key) { return this.attributes.get(key) ?? null; }
+    removeAttribute(key) { this.attributes.delete(key); }
+    addEventListener() {}
+    getBoundingClientRect() { return { left: 10, top: 10, right: 80, bottom: 80, width: 70, height: 70 }; }
+    getClientRects() { return [this.getBoundingClientRect()]; }
+    closest() { return null; }
+    focus() {}
+    click() { this.onclick?.({ target: this, preventDefault() {}, stopPropagation() {} }); }
+  }
+  const doc = { readyState: 'complete', hidden: false, createElement: tag => new Node(tag), createTextNode: text => new Node('#text', text), getElementById: id => nodes.find(node => node.id === id) || null, querySelectorAll: () => [], addEventListener() {} };
+  doc.body = new Node('body');
+  let credits = 11;
+  Object.assign(e.sandbox, { document: doc, innerWidth: 320, innerHeight: 640, addEventListener() {}, setTimeout() { return 0; }, setInterval() { return 0; }, clearTimeout() {}, clearInterval() {}, NovaFlowFeatureCreditPrices: { estimateXiaotaoOnline: () => ({ credits }) } });
+  e.api.mount();
+  const actions = nodes.find(node => node.className === 'nf-xiaotao-compose-actions');
+  const estimate = nodes.find(node => node.className === 'nf-xiaotao-estimate');
+  const send = nodes.find(node => node.className === 'nf-xiaotao-primary' && node.textContent === '发送');
+  assert.equal(actions.children.at(-2), estimate);
+  assert.equal(actions.children.at(-1), send);
+  assert.equal(estimate.hidden, false);
+  assert.equal(estimate.getAttribute('data-idle'), '1');
+  assert.equal(estimate.textContent, '');
+  e.api.panel.controller.setProvider('api');
+  assert.equal(estimate.textContent, '约11分');
+  assert.equal(estimate.getAttribute('data-idle'), null);
+  assert.equal(estimate.hidden, false);
+  credits = 80;
+  nodes.find(node => node.getAttribute('aria-label') === '给智能助手的消息').oninput();
+  assert.equal(estimate.textContent, '约80分');
+  assert.equal(actions.children.at(-2), estimate);
+  assert.equal(actions.children.at(-1), send);
+  e.api.panel.controller.setProvider('local');
+  assert.equal(estimate.getAttribute('data-idle'), '1');
+  assert.equal(estimate.hidden, false);
+  assert.equal(actions.children.at(-1), send);
+});
+
 test('an unconfigured API shows an actual error and cancelling cloud wait does not claim to undo usage', async () => {
   const e = env();
   const unavailable = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async () => ({ok:false,error:'尚未配置小猴API'})})}); unavailable.setProvider('api'); await unavailable.send('你好'); assert.match(unavailable.state.error,/未配置/); assert.equal(unavailable.state.proposal,null);
   const entered = deferred(), gate = deferred(), stops = [];
   const waiting = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async () => {entered.resolve(); return gate.promise;},artAgentStop:async p => {stops.push(p); return {ok:true};}})});
-  waiting.setProvider('api'); const run = waiting.send('你好'); await entered.promise; await waiting.stop(); assert.equal(stops.length,1); assert.equal(stops[0].provider,'api'); assert.match(stops[0].requestId,/^[\da-f-]{36}$/); assert.match(waiting.state.status,/停止等待/); assert.match(waiting.state.status,/计次可能已发生/); gate.resolve({ok:true,data:{reply:'late',history:[]}}); await run;
+  waiting.setProvider('api'); const run = waiting.send('你好'); await entered.promise; await waiting.stop(); assert.equal(stops.length,1); assert.equal(stops[0].provider,'api'); assert.match(stops[0].requestId,/^[\da-f-]{36}$/); assert.match(waiting.state.status,/停止等待/); assert.match(waiting.state.status,/不扣积分/); assert.doesNotMatch(waiting.state.status,/计次可能已发生/); gate.resolve({ok:true,data:{reply:'late',history:[]}}); await run;
 });
 
 function manualTimers() {

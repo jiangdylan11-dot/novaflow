@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { normalizeReverseRequest } from '../../worker/src/prompt-assistant.mjs';
 import { artEditRendering } from '../../worker/src/art-edit-planner.mjs';
 import { createWorkflowHost } from '../../worker/src/comfy/workflow-host.mjs';
+import { prepareImageUrls } from '../../packages/shared/src/runninghub-gpt-image.mjs';
 const require=createRequire(import.meta.url);
 const cloud=require('../../admin/admin-server/art-direction.js');
 const samples=[[0,0,180,180],[210,0,390,180],[400,0,580,180],[600,0,780,180]];
@@ -599,6 +600,104 @@ test('real generation entry limits correction to one and stages inputs for each 
   assert.match(d.builds[1][4],/本次纠正：双腿改为站立/);assert.equal(d.state.results[0].artDirection.corrections,1);
   assert.equal(d.state.results[0].artDirection.review.pass,false);assert.match(d.statuses.at(-1).s,/自动检查发现偏差/);
 });
+function uploadedReference(name = 'upload.png') {
+  const bytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
+  const file = new File([bytes], name, { type: 'image/png' });
+  return { name, dataUrl: 'blob:test/' + name, mimeType: 'image/png', file, drawingRole: 'subject', bytes };
+}
+
+test('AI reverse prompt sends a data url for an uploaded blob reference', async () => {
+  const source = readFileSync(new URL('../../renderer/novaflow-brand-runtime.js', import.meta.url), 'utf8');
+  const bytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 4, 5, 6]);
+  const file = new File([bytes], 'rev.png', { type: 'image/png' });
+  const calls = [];
+  const sandbox = {
+    ART_GENERATE_STATE: { promptAssistantRunning: '', promptAssistantToken: 0, promptAssistantError: '', error: '', status: '', nsfw: false, prompt: '' },
+    artGeneratePromptAssistantRequest: null,
+    armArtGenerateRouteHold() {},
+    renderArtGenerateSurfaces() {},
+    setArtGeneratePromptAssistantError() {},
+    appendPromptAssistantPositivePrompt() {},
+    finishArtGeneratePromptAssistant() {},
+    showTopbarExportAvailabilityNotice() {},
+    beginArtGeneratePromptAssistantRequest: () => 'reverse-1',
+    async resolveArtReferenceDataUrl(item) {
+      if (/^data:[^;,]+;base64,/i.test(item?.dataUrl || '')) return item.dataUrl;
+      const raw = new Uint8Array(await item.file.arrayBuffer());
+      return `data:${item.file.type || 'image/png'};base64,${Buffer.from(raw).toString('base64')}`;
+    },
+    getPromptAssistantApi: () => ({
+      promptAssistantReverseImagePrompt: async (payload) => {
+        calls.push(JSON.parse(JSON.stringify(payload)));
+        return { ok: false, error: 'stop after payload' };
+      }
+    })
+  };
+  sandbox.window = sandbox;
+  const start = source.indexOf('  async function runArtGenerateReverseImagePrompt(');
+  const end = source.indexOf('  function handleArtGenerateReverseButton(');
+  runInContext(source.slice(start, end), createContext(sandbox));
+  await sandbox.runArtGenerateReverseImagePrompt([{ index: 0, label: '图1', name: 'rev.png', dataUrl: 'blob:test/rev.png', file, mimeType: 'image/png' }]);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].images[0].dataUrl, /^data:image\/png;base64,/);
+  assert.equal(calls[0].images[0].dataUrl.includes('blob:'), false);
+  assert.deepEqual(Buffer.from(calls[0].images[0].dataUrl.slice(calls[0].images[0].dataUrl.indexOf(',') + 1), 'base64'), Buffer.from(bytes));
+  assert.equal(JSON.stringify(calls[0]).includes('blob:'), false);
+});
+
+test('local img2img submit turns an uploaded blob reference into base64 before upload', async () => {
+  const d = drawingRun(() => assert.fail('uploaded reference must not be analyzed'));
+  const reference = uploadedReference();
+  d.refs[0] = reference;
+  d.state.prompt = '按这张参考图生成';
+  d.state.drawingAnalysisEngine = 'direct';
+  await d.run();
+  assert.equal(d.uploads.length, 1);
+  assert.match(d.uploads[0].dataUrl, /^data:image\/png;base64,/);
+  assert.equal(d.uploads[0].dataUrl.includes('blob:'), false);
+  assert.deepEqual(Buffer.from(d.uploads[0].dataUrl.slice(d.uploads[0].dataUrl.indexOf(',') + 1), 'base64'), Buffer.from(reference.bytes));
+  assert.equal(d.refs[0].dataUrl, 'blob:test/upload.png');
+});
+
+test('cloud img2img submit sends base64 for an uploaded reference and rejects a bare blob url', async () => {
+  const d = drawingRun(() => assert.fail('uploaded reference must not be analyzed'));
+  const reference = uploadedReference('cloud.png');
+  d.refs[0] = reference;
+  d.state.prompt = '按这张参考图生成';
+  d.state.drawingAnalysisEngine = 'direct';
+  d.state.provider = 'gpt';
+  d.e.sandbox.NovaFlowArtGenerateModels.normalizeProvider = value => value;
+  const sent = [];
+  d.e.sandbox.electronAPI.runtimeProviderUsageSettlement = 'web-control-plane-v1';
+  d.e.sandbox.electronAPI.runningHubGptImage = async (payload) => {
+    sent.push(payload);
+    return { ok: true, result: { ok: true, charged: 8, remaining: 90, images: [{ imageDataUrl: 'data:image/png;base64,result', taskId: 'rh-upload' }] } };
+  };
+  await d.run();
+  assert.equal(d.builds.length, 0);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].images[0].dataUrl, /^data:image\/png;base64,/);
+  assert.equal(sent[0].images[0].dataUrl.includes('blob:'), false);
+  assert.deepEqual(Buffer.from(sent[0].images[0].dataUrl.slice(sent[0].images[0].dataUrl.indexOf(',') + 1), 'base64'), Buffer.from(reference.bytes));
+  assert.equal(d.refs[0].dataUrl, 'blob:test/cloud.png');
+  const uploaded = [];
+  const urls = await prepareImageUrls({
+    config: { apiKey: 'fixture', baseUrl: 'https://rh.example' },
+    images: sent[0].images,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ code: 0, data: { downloadUrl: 'https://cdn.example/ref.png' } }) })
+  });
+  uploaded.push(...urls);
+  assert.deepEqual(uploaded, ['https://cdn.example/ref.png']);
+  await assert.rejects(
+    prepareImageUrls({
+      config: { apiKey: 'fixture', baseUrl: 'https://rh.example' },
+      images: [{ dataUrl: 'blob:test/cloud.png', filename: 'cloud.png' }],
+      fetchImpl: async () => { throw new Error('blob url must not be fetched'); }
+    }),
+    /参考图格式不受支持/
+  );
+});
+
 test('a failed review cannot silently submit a second paid cloud generation',async()=>{
   const failed={schema:'nf.art.review.v1',pass:false,issues:['画风不足'],repair:'改为水彩笔触'};
   const d=drawingRun(plan([{source:1,uses:[use('subject')],omit:[]}]),[failed]);
