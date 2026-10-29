@@ -20,4 +20,15 @@
 
 ## 发布状态
 
-准备以 2.0.146 按既有流程推送、打包和部署。正式发布证据追加于本节；在完成之前，不把源码和 CPU 验证当作已部署或浏览器可视验收。
+修复和统一版本 2.0.146 已提交并推送，代码提交 `1e36bb67`。`sync:runtime`、未压缩运行文件的 `check:runtime`、入口检查 4/4 和 `git diff --check` 通过。
+
+- 启动助手：`npm run build:win` 成功；实际解开 `worker/dist/NovaFlowSetup-2.0.146.exe` 的 NSIS 内层载荷，27/27 个关键文件与同次 `win-unpacked/resources` 的 SHA256 一致，包含网页和 worker-renderer 两套 core/UI。应用、网页和共享版本均为 2.0.146；未发现禁入配置或符号链接。EXE 大小 170,204,383 字节，SHA256 `5a6d6af7369dc448de34fe09fd96cf2f18294cff46c4e105e2d5a6ea965626e2`。
+- 本机安装：已安装到 `C:/Program1/NovaFlow`，读取到 2.0.146；9 个关键安装文件与已验证包一致。安装前后 4784 均未监听，未启动本机生成服务。
+- 在线助手：仅更新正式 `novaflow-companion`，revision 8 / ACTIVE；health 返回 200 和 2.0.146，视觉模型配置保留。独立下载远端源码，15 个文件与本地 SHA256 全部一致；没有发送聊天或付费模型请求。
+- 网页打包首轮因另一个后台任务的 `sync:runtime` 同时重建共用 web-dist 而中止，未发布失败产物。待该任务结束后按正式地址重新运行完整打包成功：`novaflow-web/.artifacts/NovaFlow-Web-2.0.146.zip` 共 703 个文件，171,854,541 字节，SHA256 `599f80031c6afc0d25bfee2df075cb8fc4119c33032056ded5da0ecdb4f6d3a4`。12 个关键文件与最终 web-dist 一致，正式 control/auth 地址正确，知识库开关关闭且 URL 为空。
+- 相比已发布的 2.0.145，网站 ZIP 没有文件增删，仅 `aifx-template-maker.core.js`、`aifx-template-maker.ui.js`、`index.html`、`release.json` 四个文件内容变化。
+- 发布始终使用现有配置的 `wrangler deploy`。前三次在 `assets-upload-session` 阶段返回 HTTP 500 / 10013；用户随后提供 Cloudflare 当前 IP 被限速的截图。停止 Cloudflare 请求超过一分钟后仅重试一次，仍在同一阶段报错；没有上传资源或创建新站点版本，网页部署尚未完成。截图限速和部署 500 是否同一原因尚不能确认，不修改发布方式或鉴权配置来绕过错误。
+- 对最终 web-dist 按正式工具相同的 Terser 选项重新计算，10/10 个关键压缩文件与源码生成结果逐字节一致，包括本次 core/UI。压缩版不以原始源码字节相等作为校验口径，也没有在写入正式地址后再重建覆盖配置。
+- 本次公共站点验证首个请求即 `fetch failed`，未取得 release、入口或受保护代码的响应，不声称线上验收通过。已验证 ZIP 和安装包均保留，Cloudflare 部署步骤待发布接口恢复后完成。
+
+发布证据保存在仓库忽略目录 `work/release-2.0.146/`。功能验证覆盖真实几何、CPU 渲染和 UI 状态函数；本轮没有新增实际浏览器可视交互验收，不将文件一致性视为截图场景的人工视觉验收。
