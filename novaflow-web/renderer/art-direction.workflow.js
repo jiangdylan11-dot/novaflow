@@ -257,7 +257,8 @@
     const originalImages=await acceptsOriginalAnalysisImages(api,source);
     for (const r of source.references) {
       if (signal.aborted) throw abortError();
-      analysisImages.push({ dataUrl: originalImages?r.dataUrl:await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
+      const dataUrl = await (root.resolveReferenceDataUrl || (value => Promise.resolve(value?.dataUrl || '')))(r);
+      analysisImages.push({ dataUrl: originalImages?dataUrl:await analysisImage(dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
     }
     const requestId=analysisRequestId();
     const payload = { requestId, surface: 'art', purpose: 'art-director', promptLanguage:'en', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
@@ -353,9 +354,9 @@
     return candidates.sort((a,b)=>Number(b.preferred)-Number(a.preferred)||b.score-a.score).slice(0,6).map(c=>c.b);
   }
   async function renderReference(ref, use, omit, status) {
-    if (use.role === 'subject' && use.box.join(',') === '0,0,1000,1000') return { dataUrl: ref.dataUrl, treatment: 'subject-original' };
+    if (use.role === 'subject' && use.box.join(',') === '0,0,1000,1000') return { dataUrl: ref.dataUrl, ...carriedReferenceFile(ref), treatment: 'subject-original' };
     if(root.navigator&&['material','background'].includes(use.role)&&typeof root.Worker!=='function')throw new Error('当前浏览器不支持参考图隔离处理，请使用新版 Chrome 或 Edge；本次未使用未隔离原图');
-    if(use.role==='style')return {dataUrl:ref.dataUrl,treatment:'complete-style-reference'};
+    if(use.role==='style')return {dataUrl:ref.dataUrl,...carriedReferenceFile(ref),treatment:'complete-style-reference'};
     const img = await image(ref.dataUrl), w = img.naturalWidth, h = img.naturalHeight;
     if (use.role === 'pose') {
       const { createImagePoseRecognizer, detectedPeople } = await import('./pose-reference-image.js');

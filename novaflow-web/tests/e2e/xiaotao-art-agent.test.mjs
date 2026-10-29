@@ -367,6 +367,57 @@ test('current drawing results are attached as actual feedback pixels and new-con
   controller.setProvider('local'); assert.equal(controller.state.messages.length,0); assert.equal(e.calls.length,0);
 });
 
+test('capture, captureChat, fingerprint and companion chat send data urls for an uploaded reference', async () => {
+  const e = env();
+  const bytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 9, 8, 7, 6]);
+  const uploaded = (name, role) => {
+    const file = new File([bytes], name, { type: 'image/png' });
+    return { name, dataUrl: 'blob:preview/' + name, mimeType: 'image/png', file, drawingRole: role };
+  };
+  e.refs[0] = uploaded('subject.png', 'subject');
+  e.refs[1] = uploaded('style.png', 'style');
+  const captured = await e.bridge.capture();
+  const chat = await e.bridge.captureChat();
+  for (const image of [...captured.images, ...chat.images]) {
+    assert.match(image.dataUrl, /^data:image\/png;base64,/);
+    assert.equal(image.dataUrl.includes('blob:'), false);
+  }
+  assert.equal(JSON.stringify(captured).includes('blob:'), false);
+  assert.equal(JSON.stringify(chat).includes('blob:'), false);
+  const digest = await e.api.fingerprint(captured);
+  assert.equal(digest, await e.api.fingerprint(chat.images.length ? { ...captured, images: captured.images } : captured));
+  assert.equal(typeof digest, 'string');
+  assert.equal(digest.length, 64);
+  const payloads = [];
+  const controller = e.api.createController({ bridge: e.bridge, api: () => ({
+    artAgentChat: async (payload) => {
+      payloads.push(JSON.parse(JSON.stringify(payload)));
+      return { ok: true, data: { reply: '看到了。', history: [], quota: { billing_mode: 'token', settled_credits: 8, estimated_credits: 21 } } };
+    }
+  }) });
+  controller.setProvider('api');
+  assert.equal(await controller.send('看看这两张参考'), true);
+  assert.ok(payloads[0].images.length >= 1);
+  for (const image of payloads[0].images) assert.match(image.dataUrl, /^data:image\/png;base64,/);
+  assert.equal(JSON.stringify(payloads[0]).includes('blob:'), false);
+  const calls = [];
+  e.sandbox.electronAPI = {
+    promptAssistantGetStatus: async () => ({ ok: true, result: { ok: true, analysisBackend: 'strata', supportsOriginalImages: true } }),
+    promptAssistantReverseImagePrompt: async (payload) => { calls.push(JSON.parse(JSON.stringify(payload))); return { ok: false }; }
+  };
+  await assert.rejects(e.sandbox.NovaFlowArtDirection.prepare({
+    state: { ...e.state, prompt: '图1用图2画风', mode: 'img2img', drawingAnalysisEngine: 'local', provider: 'local' },
+    references: e.refs, referenceLimit: 10, generationSurface: 'drawing', onProgress() {}
+  }));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].images.length, 2);
+  for (const image of calls[0].images) {
+    assert.match(image.dataUrl, /^data:image\/png;base64,/);
+    assert.equal(image.dataUrl.includes('blob:'), false);
+  }
+  assert.equal(JSON.stringify(calls[0]).includes('blob:'), false);
+});
+
 test('an online reply shows the settled credits and writes a transcript receipt', async () => {
   const e = env();
   const controller = e.api.createController({bridge:e.bridge, api:() => ({

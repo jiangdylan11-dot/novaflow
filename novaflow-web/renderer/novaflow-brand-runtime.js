@@ -85125,9 +85125,15 @@
     try {
       const requestedVisualV2 = selected.length === 1;
       const analysisNsfw = requestedVisualV2 ? true : !!ART_GENERATE_STATE.nsfw;
+      const images = await Promise.all(selected.map(async (item) => ({
+        index: item.index,
+        label: item.label,
+        name: item.name,
+        dataUrl: await resolveArtReferenceDataUrl(item)
+      })));
       const result = await api.promptAssistantReverseImagePrompt({
         requestId,
-        images: selected,
+        images,
         purpose: "static-image-reverse",
         ...(requestedVisualV2 ? { visualSchema: "nf.visual.v2", nsfw: analysisNsfw } : {})
       });
@@ -86814,6 +86820,8 @@
   // Display may keep a blob: URL. Submit reads the original file, or the blob
   // itself, and only then builds the data URL the local and cloud uploaders accept.
   async function resolveArtReferenceDataUrl(item) {
+    const shared = window.resolveReferenceDataUrl;
+    if (typeof shared === "function" && shared !== resolveArtReferenceDataUrl) return shared(item);
     const current = String(item?.dataUrl || "");
     if (/^data:[^;,]+;base64,/i.test(current)) return current;
     const file = item?.file;

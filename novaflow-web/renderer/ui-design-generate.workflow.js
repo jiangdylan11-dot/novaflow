@@ -6,6 +6,10 @@
   'use strict'
 
   const VERSION = '20260730-ui-design-generate-workflow-7'
+  async function resolveSentReference(reference) {
+    if (typeof root.resolveReferenceDataUrl === 'function') return root.resolveReferenceDataUrl(reference)
+    return String(reference?.dataUrl || '')
+  }
   const MODE = 'img2img'
   // The signal of the run in progress (one UI run at a time): a runtime call it is waiting on ends
   // the moment 任务中止 is pressed instead of when the call returns.
@@ -2247,7 +2251,7 @@
         prompt,
         referenceRoles,
         settings: workflowSettings(state, 'gpt', executionMode),
-        images: references.map((reference) => ({ dataUrl: reference.dataUrl, filename: reference.name })),
+        images: await Promise.all(references.map(async (reference) => ({ dataUrl: await resolveSentReference(reference), filename: reference.name }))),
         count: 1,
         width: state.width,
         height: state.height,
@@ -2310,7 +2314,7 @@
       runtimeBaseUrl = baseUrl
 
       const uploadDataUrls = qwen21
-        ? await Promise.all(references.map((reference) => flattenOnNeutralGray(reference.dataUrl)))
+        ? await Promise.all(references.map(async (reference) => flattenOnNeutralGray(await resolveSentReference(reference))))
         : null
       throwIfAborted(signal)
       const uploadedNames = []
@@ -2325,7 +2329,7 @@
           referenceRole: reference.role || 'reference',
         })
         const uploadName = qwen21 ? `ui_q21_${String(index + 1).padStart(2, '0')}.png` : reference.name
-        const upload = await bridge.uploadDataUrl(baseUrl, uploadName, uploadDataUrls ? uploadDataUrls[index] : reference.dataUrl)
+        const upload = await bridge.uploadDataUrl(baseUrl, uploadName, uploadDataUrls ? uploadDataUrls[index] : await resolveSentReference(reference))
         throwIfAborted(signal)
         uploadedNames.push(uploadedName(upload, uploadName))
       }
