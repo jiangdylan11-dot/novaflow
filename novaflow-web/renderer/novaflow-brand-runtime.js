@@ -83576,11 +83576,22 @@
     return Math.max(normalCount, lastFilled + 1);
   }
 
+  function releaseArtReferenceObjectUrl(item) {
+    const url = String(item?.dataUrl || "");
+    if (!url.startsWith("blob:")) return;
+    try {
+      if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(url);
+    } catch {}
+  }
+
   function setArtGenerateReference(index, value) {
     const refs = artGenerateReferences();
     const target = Math.max(0, Math.min(ART_GENERATE_MAX_REFERENCES - 1, Number(index) || 0));
     while (refs.length <= target) refs.push(null);
-    refs[target] = value || null;
+    const previous = refs[target];
+    const next = value || null;
+    if (previous && String(previous.dataUrl || "") !== String(next?.dataUrl || "")) releaseArtReferenceObjectUrl(previous);
+    refs[target] = next;
     ART_GENERATE_STATE.references = refs;
     ART_GENERATE_STATE.reference = refs[0] || null;
     // On 2.1 a new reference 1 fills W / H with its size once it is measured, so an untouched panel
@@ -84797,6 +84808,7 @@
 
   function artDataUrlToBase64(dataUrl) {
     const raw = String(dataUrl || "");
+    if (raw.startsWith("blob:")) throw new Error("参考图格式不受支持");
     const idx = raw.indexOf("base64,");
     return idx >= 0 ? raw.slice(idx + 7) : raw;
   }
@@ -86540,9 +86552,10 @@
           if (!isArtGenerateRunCurrent(runToken)) return null;
           prepared?.assertCurrent?.();
           const item = refs[i];
-          const mime = String(item.mimeType || artDataUrlMime(item.dataUrl) || "");
+          const dataUrl = await resolveArtReferenceDataUrl(item);
+          const mime = String(item.mimeType || artDataUrlMime(dataUrl) || "");
           const ext = /jpe?g/i.test(mime) ? "jpg" : /webp/i.test(mime) ? "webp" : "png";
-          const uploadedName = await artUploadDataUrl(baseUrl, `art_ref_${uploadStamp}_${pass + 1}_${String(i + 1).padStart(2, "0")}.${ext}`, item.dataUrl);
+          const uploadedName = await artUploadDataUrl(baseUrl, `art_ref_${uploadStamp}_${pass + 1}_${String(i + 1).padStart(2, "0")}.${ext}`, dataUrl);
           if (!isArtGenerateRunCurrent(runToken)) return null;
           names.push(uploadedName);
           if (pass === 0) setArtGenerateProgress(`\u53c2\u8003\u56fe${i + 1}\u5df2\u4e0a\u4f20`, Math.min(0.22, 0.12 + (i + 1) * 0.04));
@@ -86555,7 +86568,7 @@
         for (let i = 0; i < refs.length; i += 1) {
           if (!isArtGenerateRunCurrent(runToken)) return;
           prepared?.assertCurrent?.();
-          const image = await loadNovaflowArtExportImage(refs[i].dataUrl);
+          const image = await loadNovaflowArtExportImage(await resolveArtReferenceDataUrl(refs[i]));
           if (!isArtGenerateRunCurrent(runToken)) return;
           prepared?.assertCurrent?.();
           const width = Number(image.naturalWidth || image.width), height = Number(image.naturalHeight || image.height);
@@ -86783,6 +86796,41 @@
     }
   }
 
+  function encodeArtReferenceBase64(bytes) {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let out = "";
+    for (let i = 0; i < bytes.length; i += 3) {
+      const a = bytes[i];
+      const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
+      const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
+      const triple = (a << 16) | (b << 8) | c;
+      out += alphabet[(triple >> 18) & 63] + alphabet[(triple >> 12) & 63]
+        + (i + 1 < bytes.length ? alphabet[(triple >> 6) & 63] : "=")
+        + (i + 2 < bytes.length ? alphabet[triple & 63] : "=");
+    }
+    return out;
+  }
+
+  // Display may keep a blob: URL. Submit reads the original file, or the blob
+  // itself, and only then builds the data URL the local and cloud uploaders accept.
+  async function resolveArtReferenceDataUrl(item) {
+    const current = String(item?.dataUrl || "");
+    if (/^data:[^;,]+;base64,/i.test(current)) return current;
+    const file = item?.file;
+    const mimeOf = (blob) => String(blob?.type || item?.mimeType || "image/png").split(";")[0] || "image/png";
+    if (file && typeof FileReader === "function") return artFileToDataUrl(file);
+    if (file && typeof file.arrayBuffer === "function") {
+      return `data:${mimeOf(file)};base64,${encodeArtReferenceBase64(new Uint8Array(await file.arrayBuffer()))}`;
+    }
+    if (current.startsWith("blob:") && typeof fetch === "function") {
+      const response = await fetch(current);
+      const blob = await response.blob();
+      if (typeof FileReader === "function") return artBlobToDataUrl(blob);
+      return `data:${mimeOf(blob)};base64,${encodeArtReferenceBase64(new Uint8Array(await blob.arrayBuffer()))}`;
+    }
+    throw new Error("参考图格式不受支持");
+  }
+
   async function runArtGenerateOnRunningHub(ctx) {
     const api = window.electronAPI;
     if (!api || typeof api.runningHubGptImage !== "function") throw new Error("云端出图接口未就绪，请刷新页面后重试");
@@ -86796,7 +86844,7 @@
     setArtGenerateStatus("正在连接 GPT Image 2.5...");
     const settings = window.NovaFlowArtGenerateModels?.workflowSettings?.(ctx.settingsSnapshot, "gpt", ctx.runMode) || {};
     const images = ctx.runMode === "img2img"
-      ? ctx.refs.map((item) => ({ dataUrl: item.dataUrl, filename: item.name, mime: item.mimeType }))
+      ? await Promise.all(ctx.refs.map(async (item) => ({ dataUrl: await resolveArtReferenceDataUrl(item), filename: item.name, mime: item.mimeType || item.file?.type })))
       : [];
     let artImageStartedAt = Date.now();
     let lastPromptId = "";

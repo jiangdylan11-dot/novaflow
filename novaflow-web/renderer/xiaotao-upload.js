@@ -292,7 +292,9 @@
           const slot = index >= 0 ? index : refs.length;
           if (slot >= limit) throw new Error('图生图参考图已满');
           const preview = lightReferenceUrl(scope, file, uploadedName);
-          runtime.setReference(slot, {name:item.name, dataUrl:preview, mimeType:item.mimeType, drawingRole:'subject', source:'xiaotao-upload', ...(uploadedName ? {uploadedName} : {})});
+          // dataUrl is only the display preview. Submit reads file (or the worker
+          // name) and turns it into base64 off this click.
+          runtime.setReference(slot, {name:item.name, dataUrl:preview, file, mimeType:item.mimeType, drawingRole:'subject', source:'xiaotao-upload', ...(uploadedName ? {uploadedName} : {})});
           await yieldFrame(scope);
           if (already) {
             if (typeof runtime.refreshReferences === 'function') runtime.refreshReferences();

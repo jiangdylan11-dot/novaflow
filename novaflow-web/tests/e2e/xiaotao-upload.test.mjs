@@ -233,6 +233,8 @@ await test('图生图 placement yields, keeps a light reference, and skips a sec
   assert.equal(env.runtime.state.mode, 'img2img');
   assert.equal(env.refs[0].dataUrl, 'blob:light/still.png');
   assert.equal(env.refs[0].dataUrl.includes('AAAA'), false);
+  assert.equal(env.refs[0].file.name, 'still.png');
+  assert.equal(typeof env.refs[0].file.arrayBuffer, 'function');
   assert.equal(renders.filter(item => item.forceBottom === true).length, 1);
   assert.equal(env.modes.filter(item => item === 'img2img').length, 1);
   assert.ok(frames.length === 0);

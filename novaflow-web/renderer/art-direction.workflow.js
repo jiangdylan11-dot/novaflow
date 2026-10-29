@@ -453,10 +453,10 @@
     if(2>limit)throw new Error('完整主体和风格参考超过当前模型上限，未提交生成');
     const references=plan.references.map(r=>({r,u:r.uses[0]})).sort((a,b)=>Number(b.u.role==='subject')-Number(a.u.role==='subject')).map(({r,u})=>{
       const original=source.references.find(ref=>ref.source===r.source);
-      const mimeType=original.dataUrl.match(/^data:(image\/(?:png|jpeg|webp));/i)?.[1]?.toLowerCase();
+      const mimeType=referenceImageMime(original);
       if(!mimeType)throw new Error(`图${r.source}的图片格式不受支持，请使用 PNG、JPEG 或 WebP`);
       const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
-      return {name:`reference_${r.source}_${u.role}.${extension}`,mimeType,dataUrl:original.dataUrl,sourceIndex:r.source-1,sourceNumber:r.source,role:u.role,detail:u.detail,target:'',treatment:u.role==='subject'?'subject-original':'complete-style-reference'};
+      return {name:`reference_${r.source}_${u.role}.${extension}`,mimeType,dataUrl:original.dataUrl,...carriedReferenceFile(original),sourceIndex:r.source-1,sourceNumber:r.source,role:u.role,detail:u.detail,target:'',treatment:u.role==='subject'?'subject-original':'complete-style-reference'};
     });
     const prompt=e.prompt.replace(/<image(\d+)>/g,(_,n)=>`<image${references.findIndex(r=>r.sourceNumber===e.sourceOrder[Number(n)-1])+1}>`);
     check();
@@ -589,6 +589,15 @@
     const turboGuidance=renderingNegative&&plan.editEnhancer?.renderingClass==='anime'&&localStylePair(source,refs)?{renderingClass:'anime',cfg:3}:null;
     return {references:refs,promptSnapshot:{prompt,negativePrompt:[source.negativePrompt,automaticNegative].filter(Boolean).join(', ')},...(automaticNegative?{renderingPolicy:{cfg:3,negativePrompt:automaticNegative}}:{}),...(turboGuidance?{turboGuidance}:{}),...(localStylePair(source,refs)||(isolatedDonor.length||plan.editEnhancer)&&!lockedFraming&&!separateColor&&!preserveSkin&&!separateLighting?{referencePolicy:{stylePriority:true}}:{})};
   }
+  function referenceImageMime(ref) {
+    const fromData = String(ref?.dataUrl || '').match(/^data:(image\/(?:png|jpeg|webp));/i)?.[1]?.toLowerCase();
+    if (fromData) return fromData;
+    const hinted = String(ref?.mimeType || ref?.file?.type || '').split(';')[0].trim().toLowerCase();
+    return /^image\/(?:png|jpeg|webp)$/.test(hinted) ? hinted : '';
+  }
+  function carriedReferenceFile(ref) {
+    return ref?.file ? { file: ref.file } : {};
+  }
   function directPreparation(source, written) {
     if(!source.prompt)throw new Error('请写一句要求，例如“换成白色衬衫”；需要自动理解参考图时可选择本地AI');
     // An unchanged compiled prompt still addresses the slots selected by AI.
@@ -597,10 +606,10 @@
     let inputs=written?written.order.map(({sourceNumber,role})=>({...source.references.find(ref=>ref.source===sourceNumber),roles:[role]})):source.references;
     if(localStylePair(source,inputs.map(r=>({source:r.source,role:r.roles[0]}))))inputs=[...inputs].sort((a,b)=>Number(b.roles[0]==='subject')-Number(a.roles[0]==='subject'));
     const references=inputs.map(ref=>{
-      const mimeType=ref.dataUrl.match(/^data:(image\/(?:png|jpeg|webp));/i)?.[1]?.toLowerCase();
+      const mimeType=referenceImageMime(ref);
       if(!mimeType)throw new Error(`图${ref.source}的图片格式不受支持，请使用 PNG、JPEG 或 WebP`);
       const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
-      return {name:`reference_${ref.source}_direct.${extension}`,mimeType,dataUrl:ref.dataUrl,sourceIndex:ref.source-1,sourceNumber:ref.source,role:ref.roles[0]||'auto',detail:'原始完整参考图',treatment:'direct-original'};
+      return {name:`reference_${ref.source}_direct.${extension}`,mimeType,dataUrl:ref.dataUrl,...carriedReferenceFile(ref),sourceIndex:ref.source-1,sourceNumber:ref.source,role:ref.roles[0]||'auto',detail:'原始完整参考图',treatment:'direct-original'};
     });
     const prompt=written?.nativeExecution?written.nativeExecution.prompt.replace(/<image(\d+)>/g,(_,n)=>`<image${references.findIndex(ref=>ref.sourceNumber===written.nativeExecution.sourceOrder[Number(n)-1])+1}>`):source.references.length?source.prompt.replace(/(?:@?参考图|图片|图|image)\s*(\d+)/gi,(mention,number)=>{
       const index=references.findIndex(ref=>ref.sourceNumber===Number(number));
