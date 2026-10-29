@@ -66,7 +66,7 @@
 .nf-xiaotao-compose { border-top:1px solid #3d3d3d; padding:11px 12px 12px; flex-shrink:0; }
 .nf-xiaotao-compose textarea { display:block; width:100%; box-sizing:border-box; resize:vertical; min-height:64px; max-height:140px; border:1px solid #555555; border-radius:8px; background:#171717; color:#eeeeee; padding:9px 10px; }
 .nf-xiaotao-compose textarea::placeholder { color:#888888; }
-.nf-xiaotao-compose-actions { display:flex; gap:6px; align-items:center; margin-top:8px; }
+.nf-xiaotao-compose-actions { display:flex; flex-wrap:nowrap; gap:6px; align-items:center; margin-top:8px; min-width:0; }
 .nf-xiaotao-brains { display:flex; gap:3px; padding:3px; border:1px solid #494644; border-radius:8px; background:#1c1c1c; }
 .nf-xiaotao-header .nf-xiaotao-title { display:flex;align-items:center;gap:12px; }
 .nf-xiaotao-title > strong { flex-shrink:0; }
@@ -89,9 +89,11 @@
 @keyframes nf-xiaotao-spin { to { transform:rotate(360deg); } }
 #nf-xiaotao-art-root .nf-xiaotao-brains button { margin:0; border-color:transparent; background:transparent; color:#aaa5a2; }
 #nf-xiaotao-art-root .nf-xiaotao-brains button[aria-pressed="true"] { border-color:#8c6c5e; background:#493b35; color:#f1d0be; }
-#nf-xiaotao-art-root .nf-xiaotao-compose-actions button { font-size:11px; padding:5px 7px; }
-.nf-xiaotao-compose-actions button:last-child { margin-left:auto; }
-.nf-xiaotao-estimate { margin-left:auto; color:#e7c2b4; font-size:11px; white-space:nowrap; }
-.nf-xiaotao-compose-actions .nf-xiaotao-estimate + .nf-xiaotao-primary { margin-left:8px; }
+#nf-xiaotao-art-root .nf-xiaotao-compose-actions button { font-size:11px; padding:5px 7px; flex:0 1 auto; min-width:0; }
+/* Send stays on the right. The estimate is a fixed slot immediately to its left,
+   reserved in both modes so 约11分 and 约80分 cannot move the button. */
+.nf-xiaotao-compose-actions .nf-xiaotao-primary { flex:0 0 auto; margin-left:0; }
+.nf-xiaotao-estimate { margin-left:auto; flex:0 0 5.5em; width:5.5em; min-width:5.5em; max-width:5.5em; box-sizing:border-box; text-align:right; font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; color:#e7c2b4; font-size:11px; line-height:1; white-space:nowrap; overflow:hidden; }
+.nf-xiaotao-estimate[data-idle] { visibility:hidden; }
 @media (max-width:600px) { #nf-xiaotao-art-root { right:12px; bottom:12px; } .nf-xiaotao-panel { width:min(390px,calc(100vw - 24px)); height:calc(100dvh - 95px); bottom:52px; } }
 @media (prefers-reduced-motion:reduce) { .nf-xiaotao-robot svg, .nf-xiaotao-eyes, .nf-xiaotao-antenna, .nf-xiaotao-staged-spinner::after { animation:none !important; } }

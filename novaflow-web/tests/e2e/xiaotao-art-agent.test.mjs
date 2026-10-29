@@ -434,12 +434,68 @@ test('an online reply shows the settled credits and writes a transcript receipt'
   assert.equal(receipt.content, '本次实扣 8 分（预估 21）');
 });
 
+test('the send button stays right of a fixed estimate slot in local and online mode', () => {
+  const css = readFileSync(new URL('../../renderer/xiaotao-art-agent.css', import.meta.url), 'utf8');
+  assert.match(css, /\.nf-xiaotao-compose-actions \{[^}]*flex-wrap:\s*nowrap/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*margin-left:\s*auto/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*min-width:\s*5\.5em/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*width:\s*5\.5em/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*max-width:\s*5\.5em/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*text-align:\s*right/);
+  assert.match(css, /\.nf-xiaotao-estimate \{[^}]*tabular-nums/);
+  assert.match(css, /\.nf-xiaotao-estimate\[data-idle\] \{\s*visibility:\s*hidden/);
+  assert.doesNotMatch(css, /\.nf-xiaotao-compose-actions button:last-child \{\s*margin-left:\s*auto/);
+  const e = env(), nodes = [];
+  class Node {
+    constructor(tag, text = '') { this.tagName = tag.toUpperCase(); this.children = []; this.style = {}; this.dataset = {}; this.attributes = new Map(); this.hidden = false; this.className = ''; this.ownText = text; this.classList = { add() {}, remove() {} }; nodes.push(this); }
+    append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } }
+    replaceChildren(...children) { this.children = []; this.ownText = ''; this.append(...children); }
+    set textContent(value) { this.children = []; this.ownText = String(value); }
+    get textContent() { return this.ownText + this.children.map(child => child.textContent).join(''); }
+    setAttribute(key, value) { this.attributes.set(key, String(value)); }
+    getAttribute(key) { return this.attributes.get(key) ?? null; }
+    removeAttribute(key) { this.attributes.delete(key); }
+    addEventListener() {}
+    getBoundingClientRect() { return { left: 10, top: 10, right: 80, bottom: 80, width: 70, height: 70 }; }
+    getClientRects() { return [this.getBoundingClientRect()]; }
+    closest() { return null; }
+    focus() {}
+    click() { this.onclick?.({ target: this, preventDefault() {}, stopPropagation() {} }); }
+  }
+  const doc = { readyState: 'complete', hidden: false, createElement: tag => new Node(tag), createTextNode: text => new Node('#text', text), getElementById: id => nodes.find(node => node.id === id) || null, querySelectorAll: () => [], addEventListener() {} };
+  doc.body = new Node('body');
+  let credits = 11;
+  Object.assign(e.sandbox, { document: doc, innerWidth: 320, innerHeight: 640, addEventListener() {}, setTimeout() { return 0; }, setInterval() { return 0; }, clearTimeout() {}, clearInterval() {}, NovaFlowFeatureCreditPrices: { estimateXiaotaoOnline: () => ({ credits }) } });
+  e.api.mount();
+  const actions = nodes.find(node => node.className === 'nf-xiaotao-compose-actions');
+  const estimate = nodes.find(node => node.className === 'nf-xiaotao-estimate');
+  const send = nodes.find(node => node.className === 'nf-xiaotao-primary' && node.textContent === '发送');
+  assert.equal(actions.children.at(-2), estimate);
+  assert.equal(actions.children.at(-1), send);
+  assert.equal(estimate.hidden, false);
+  assert.equal(estimate.getAttribute('data-idle'), '1');
+  assert.equal(estimate.textContent, '');
+  e.api.panel.controller.setProvider('api');
+  assert.equal(estimate.textContent, '约11分');
+  assert.equal(estimate.getAttribute('data-idle'), null);
+  assert.equal(estimate.hidden, false);
+  credits = 80;
+  nodes.find(node => node.getAttribute('aria-label') === '给智能助手的消息').oninput();
+  assert.equal(estimate.textContent, '约80分');
+  assert.equal(actions.children.at(-2), estimate);
+  assert.equal(actions.children.at(-1), send);
+  e.api.panel.controller.setProvider('local');
+  assert.equal(estimate.getAttribute('data-idle'), '1');
+  assert.equal(estimate.hidden, false);
+  assert.equal(actions.children.at(-1), send);
+});
+
 test('an unconfigured API shows an actual error and cancelling cloud wait does not claim to undo usage', async () => {
   const e = env();
   const unavailable = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async () => ({ok:false,error:'尚未配置小猴API'})})}); unavailable.setProvider('api'); await unavailable.send('你好'); assert.match(unavailable.state.error,/未配置/); assert.equal(unavailable.state.proposal,null);
   const entered = deferred(), gate = deferred(), stops = [];
   const waiting = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async () => {entered.resolve(); return gate.promise;},artAgentStop:async p => {stops.push(p); return {ok:true};}})});
-  waiting.setProvider('api'); const run = waiting.send('你好'); await entered.promise; await waiting.stop(); assert.equal(stops.length,1); assert.equal(stops[0].provider,'api'); assert.match(stops[0].requestId,/^[\da-f-]{36}$/); assert.match(waiting.state.status,/停止等待/); assert.match(waiting.state.status,/计次可能已发生/); gate.resolve({ok:true,data:{reply:'late',history:[]}}); await run;
+  waiting.setProvider('api'); const run = waiting.send('你好'); await entered.promise; await waiting.stop(); assert.equal(stops.length,1); assert.equal(stops[0].provider,'api'); assert.match(stops[0].requestId,/^[\da-f-]{36}$/); assert.match(waiting.state.status,/停止等待/); assert.match(waiting.state.status,/不扣积分/); assert.doesNotMatch(waiting.state.status,/计次可能已发生/); gate.resolve({ok:true,data:{reply:'late',history:[]}}); await run;
 });
 
 function manualTimers() {

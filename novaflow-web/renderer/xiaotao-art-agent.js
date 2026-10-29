@@ -889,7 +889,7 @@
     listen(footer,'dragover',event=>{if(event?.dataTransfer)event.preventDefault?.();});
     listen(footer,'drop',event=>{event?.preventDefault?.();takeFiles(Array.from(event?.dataTransfer?.files||[]));});
     listen(input,'paste',event=>{const files=Array.from(event?.clipboardData?.files||[]);if(files.length){event.preventDefault?.();takeFiles(files);}});
-    for (const b of [localBrain, onlineBrain, newConversation, stop]) b.type = 'button'; newConversation.title = '清空聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空聊天记录并开启新对话'); onlineBrain.title='在线智能按实际用量计费，发送前显示约计积分';send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.hidden=true; providers.append(localBrain, onlineBrain);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); footer.append(stagedRow,input,footerActions);
+    for (const b of [localBrain, onlineBrain, newConversation, stop]) b.type = 'button'; newConversation.title = '清空聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空聊天记录并开启新对话'); onlineBrain.title='在线智能按实际用量计费，发送前显示约计积分';send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(localBrain, onlineBrain);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); footer.append(stagedRow,input,footerActions);
     panel.append(header, context, messages, confirmation, proposal, tools, status, error, footer); host.append(fab, greeting, panel); doc.body.append(host);
     const drag = bindPanelDrag(panel, header);
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onStart:() => {greeting.hidden = true;},onEnd:() => {if (open) anchorPanel();}});
@@ -921,15 +921,20 @@
     }
     function paintEstimate() {
       const prices = root.NovaFlowFeatureCreditPrices;
-      if (controller.state.provider !== 'api' || typeof prices?.estimateXiaotaoOnline !== 'function') {estimateLabel.hidden = true; return;}
-      const history = (controller.state.history || []).map(item => item?.content || '').join('\n');
-      const staged = (controller.state.staged || []).filter(item => item.status === 'ready');
-      let drawing = 0; try {drawing = bridge.captureChat().images.length;} catch {}
-      const captions = staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => `参考${item.kind === 'video' ? '视频' : '音频'}：${item.name}`);
-      const files = Array.from({length:Math.max(drawing, staged.filter(item => item.kind === 'image').length)}, () => ({kind:'image'}));
-      const quote = prices.estimateXiaotaoOnline({text:[input.value, ...captions].filter(Boolean).join('\n'), history, files});
-      estimateLabel.hidden = !quote?.credits;
-      estimateLabel.textContent = quote?.credits ? `约${quote.credits}分` : '';
+      let text = '';
+      if (controller.state.provider === 'api' && typeof prices?.estimateXiaotaoOnline === 'function') {
+        const history = (controller.state.history || []).map(item => item?.content || '').join('\n');
+        const staged = (controller.state.staged || []).filter(item => item.status === 'ready');
+        let drawing = 0; try {drawing = bridge.captureChat().images.length;} catch {}
+        const captions = staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => `参考${item.kind === 'video' ? '视频' : '音频'}：${item.name}`);
+        const files = Array.from({length:Math.max(drawing, staged.filter(item => item.kind === 'image').length)}, () => ({kind:'image'}));
+        const quote = prices.estimateXiaotaoOnline({text:[input.value, ...captions].filter(Boolean).join('\n'), history, files});
+        text = quote?.credits ? `约${quote.credits}分` : '';
+      }
+      estimateLabel.hidden = false;
+      estimateLabel.textContent = text;
+      if (text) estimateLabel.removeAttribute('data-idle');
+      else estimateLabel.setAttribute('data-idle', '1');
     }
     function anchorPanel() {
       const robot = fab.getBoundingClientRect(), box = panel.getBoundingClientRect(), size = {width:box.width,height:box.height};
