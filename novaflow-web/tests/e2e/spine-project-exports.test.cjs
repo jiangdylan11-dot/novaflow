@@ -7,7 +7,8 @@ function project(name,color) { return { name, color, pma:false, offset:{x:color,
 function fixture() {
   const state=project('one.v1',200),other=project('two',50),projects=[{id:1,visible:false,exported:true},{id:2,snap:other,visible:true,exported:true}],files=new Map()
   const directory=(prefix='')=>({getDirectoryHandle:async n=>directory(prefix+n+'/'),getFileHandle:async n=>({createWritable:async()=>({write:async data=>files.set(prefix+n,data),close:async()=>{}})})})
-  const c=vm.createContext({state,projects,activeProject:0,Ops,window:{NovaFlowSequenceAtlas:A},status(){},renderTree(){},renderProps(){},
+  require('../../renderer/spine-audio.js');const AudioAssets=globalThis.NovaFlowSpineAudio;
+  const c=vm.createContext({AudioAssets,state,projects,activeProject:0,Ops,window:{NovaFlowSequenceAtlas:A},status(){},renderTree(){},renderProps(){},
     projectName:i=>i===0?state.name:projects[i].snap.name,atlasSettings:()=>A.defaults,
     imageRgba:async(_name,_file,src)=>({width:2,height:2,rgba:Uint8Array.from(Array.from({length:4},()=>[src.color,0,0,255]).flat())}) })
   vm.runInContext(['setProjectExport','exportProjectName','selectedProjectEntries','mediaExportPlans','exportSelectedProjects','exportProject','exportImageNames'].map(fn).join('\n'),c)
@@ -39,3 +40,11 @@ test('duplicate project names are rejected without automatic renaming or overwri
 test('no selected projects is an explicit error instead of exporting the active project anyway',async()=>{
   const f=fixture();f.projects.forEach(p=>p.exported=false);await assert.rejects(f.export(),/勾选/);assert.equal(f.files.size,0)
 })
+
+test('audio resources export under each project alongside its skeleton with portable paths',async()=>{
+ const f=fixture();f.state.audio=new Map([['voices/hit.wav','data:audio/wav;base64,AQID']]);
+ f.state.json.events={hit:{audio:'voices/hit.wav'}};f.c.fetch=fetch;await f.export();
+ assert.deepEqual([...f.files.get('one.v1/audio/voices/hit.wav')],[1,2,3]);
+ const json=JSON.parse(f.files.get('one.v1/one.v1.json'));assert.equal(json.skeleton.audio,'audio/');assert.equal(json.events.hit.audio,'voices/hit.wav');
+ assert(![...f.files.keys()].some(n=>n.startsWith('two/audio/')));
+});

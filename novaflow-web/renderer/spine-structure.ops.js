@@ -625,17 +625,20 @@
   const CLIP_COLOR = 'ce3a3aff'
 
   /** A new clipping in `slot` (default skin), shown by the slot like any new attachment in Spine. */
-  function createClipping(input, slot, opts) {
+  function createClipping(input, slot, opts) { return createPolygon(input, slot, opts, 'clipping') }
+  function createBoundingBox(input, slot, opts) { return createPolygon(input, slot, opts, 'boundingbox') }
+  function createPolygon(input, slot, opts, type) {
     const json = prepare(input)
     const s = requireSlot(json, slot)
     const o = opts || {}
     const skin = requireSkin(json, 'default')
     const taken = new Set()
     for (const sk of json.skins) for (const k of Object.keys(sk.attachments[slot] || {})) taken.add(k)
-    const n = uniqueName(taken, String(o.name || 'clipping').trim() || 'clipping', true)
-    const att = { type: 'clipping', vertexCount: 0, vertices: [] }
+    const n = uniqueName(taken, String(o.name || type).trim() || type, true)
+    const att = { type, vertexCount: 0, vertices: [] }
+    if (type === 'boundingbox') att.color = '78cc38ff'
     if (Array.isArray(o.vertices) && o.vertices.length >= 6) { att.vertexCount = o.vertices.length / 2; att.vertices = o.vertices.map((x) => Math.round(x * 1000) / 1000) }
-    if (o.end) { requireSlot(json, o.end); att.end = o.end }
+    if (type === 'clipping' && o.end) { requireSlot(json, o.end); att.end = o.end }
     skin.attachments[slot] = skin.attachments[slot] || {}
     skin.attachments[slot][n] = att
     s.attachment = n
@@ -764,15 +767,18 @@
    * A clipping's polygon (`vertices`: flat x, y in the slot bone's space; a new count drops its
    * deform keys), its 结束插槽 (`end`, '' = to the top) and its colour.
    */
-  function setClipping(input, skinName, slot, name, props) {
+  function setClipping(input, skinName, slot, name, props) { return setPolygon(input, skinName, slot, name, props, 'clipping') }
+  function setBoundingBox(input, skinName, slot, name, props) { return setPolygon(input, skinName, slot, name, props, 'boundingbox') }
+  function setPolygon(input, skinName, slot, name, props, type) {
     const json = prepare(input)
     const skin = requireSkin(json, skinName)
     const att = (skin.attachments[slot] || {})[name]
-    if (!att || att.type !== 'clipping') fail(`不是剪裁：${name}`)
+    const word = type === 'boundingbox' ? '边界框' : '剪裁'
+    if (!att || att.type !== type) fail(`不是${word}：${name}`)
     const p = props || {}
     if (p.vertices !== undefined) {
       const v = Array.from(p.vertices, (x) => Math.round(Number(x) * 1000) / 1000)
-      if (v.length % 2 || v.some((x) => !Number.isFinite(x))) fail('剪裁顶点不对')
+      if (v.length % 2 || v.some((x) => !Number.isFinite(x))) fail(`${word}顶点不对`)
       const same = att.vertices && att.vertices.length === v.length && (Number(att.vertexCount) || 0) * 2 === v.length
       att.vertexCount = v.length / 2
       att.vertices = v
@@ -783,12 +789,12 @@
         }
       }
     }
-    if (p.end !== undefined) {
+    if (type === 'clipping' && p.end !== undefined) {
       if (p.end) { requireSlot(json, p.end); att.end = p.end } else delete att.end
     }
     if (p.color !== undefined) {
       const c = String(p.color || '').toLowerCase()
-      if (c && c !== CLIP_COLOR) att.color = c
+      if (c && (type === 'boundingbox' || c !== CLIP_COLOR)) att.color = c
       else delete att.color
     }
     return { json: tidy(json) }
@@ -1469,7 +1475,7 @@
       map = attachmentsOf(json, owner, slot) || fail('找不到链接的网格')
       att = map[att.parent] || fail(`找不到链接的网格：${att.parent}`)
     }
-    if (att.type !== 'mesh' && att.type !== 'clipping' && att.type !== 'path') fail('只有网格、剪裁和路径能移动顶点')
+    if (!['mesh', 'clipping', 'boundingbox', 'path'].includes(att.type)) fail('只有网格、剪裁、边界框和路径能移动顶点')
     const off = Array.from(offsets || [], (x) => num(x, 0))
     const r3 = (v) => Math.round(v * 1000) / 1000
     const v = att.vertices
@@ -2357,15 +2363,22 @@
   }
 
   /** Spine's event key: the event fires at `time` with its values. */
-  function keyEvent(input, anim, name, time) {
+  function keyEvent(input, anim, name, time, props) {
     const json = prepare(input)
     if (!(json.events || {})[name]) fail(`找不到事件：${name}`)
     const a = animationOf(json, anim)
     const t = keyTime(time)
     const list = Array.isArray(a.events) ? a.events : []
-    if (!list.some((k) => k.name === name && sameTime(k.time, t))) {
-      list.push(t ? { time: t, name } : { name })
+    let key = list.find((k) => k.name === name && sameTime(k.time, t))
+    if (!key) {
+      key = t ? { time: t, name } : { name }
+      list.push(key)
       list.sort((x, y) => num(x.time, 0) - num(y.time, 0))
+    }
+    for (const k of ['int', 'float', 'string', 'volume', 'balance']) if (props && props[k] !== undefined) {
+      const value = k === 'string' ? String(props[k]) : Number(props[k])
+      if (k !== 'string' && !Number.isFinite(value)) fail('事件参数必须是有限数字')
+      key[k] = k === 'int' ? Math.round(value) : k === 'volume' ? Math.max(0, Math.min(1, value)) : k === 'balance' ? Math.max(-1, Math.min(1, value)) : value
     }
     a.events = list
     return { json: tidy(json) }
@@ -2803,7 +2816,7 @@
     addRegionAttachment, setAttachmentProps, renameAttachment, deleteAttachment, transferAttachment,
     // keys
     keyAttachment, keyColor, keyConstraint, keyBone, keyDeform, moveMeshVertices, setMesh, regionToMesh, meshToRegion, boneKeys, removeKeyAt, slotKeys,
-    reorderSlots, keyDrawOrder, decodeDrawOrder, encodeDrawOrder, createClipping, setClipping,
+    reorderSlots, keyDrawOrder, decodeDrawOrder, encodeDrawOrder, createClipping, setClipping, createBoundingBox, setBoundingBox,
     createPath, setPath, updatePathLengths, pathLengths,
     // dopesheet
     keyTracks, moveKeys, scaleKeys, adjustKeys, deleteKeys, copyKeys, pasteKeys, setKeyCurve, keyCurve, setKeyBezier, keyBezier, nextKeyTime,

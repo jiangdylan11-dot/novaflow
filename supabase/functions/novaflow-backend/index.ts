@@ -12,6 +12,7 @@ import {
 import { readRunningHubLlmConfig, postRunningHubResponses, uiCatalogResponsesRequest, responsesOutputText, DEFAULT_RUNNINGHUB_LLM_MODEL } from "../_art-shared/runninghub-llm.mjs";
 import { createOnlineAiCharge } from "../_art-shared/online-ai-charge.mjs";
 import { createFeatureCreditPorts, normalizeCreditConfig, publicCreditError } from "../_art-shared/feature-credits.mjs";
+import { RELEASE_VERSION } from "../_art-shared/release.mjs";
 import {
   licenseVerificationRejected,
   normalizeLicenseVerificationInput,
@@ -1696,6 +1697,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, 200, {
         ok: true,
         service: "NovaFlow Backend",
+        releaseVersion: RELEASE_VERSION,
         status: "running",
         mode: "supabase_edge_function",
         config: readiness().config

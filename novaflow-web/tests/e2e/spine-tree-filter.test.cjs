@@ -25,6 +25,7 @@ function fixture() {
     drawOrderNow: () => ['slot'], clipRanges: () => new Map(), slotOf: name => j.slots.find(s => s.name === name),
     caret() {}, visDot() {}, wireDrag() {}, boneIcon() {}, consOf: () => [], consRowEnd() {},
     newSkin() {}, newEvent() {}, newAnimation() {},
+    renderAudioNode: rows => rows.push(h('div', { class: 'row', 'data-key': 'audio' }, '音频')),
     renderImagesNode: rows => rows.push(h('div', { class: 'row', 'data-key': 'images' }, '图片')),
     closeMenu() {}, mountMenu: n => { ctx.menu = n }, innerHeight: 800,
   })
@@ -85,11 +86,11 @@ test('one image switch controls ordinary image attachments and the image library
   f.only('mesh'); assert(!f.keys().includes('images')); assert(!f.rigKeys().includes('att:default:slot:image'))
 })
 
-test('menu contains only the seven supported hierarchy filters and both bulk actions', () => {
+test('menu contains the eight hierarchy filters and both bulk actions', () => {
   const f = fixture(), btn = { getBoundingClientRect: () => ({ right: 600, bottom: 100 }) }
   f.ctx.filterMenu(btn)
   const labels = () => f.ctx.menu.kids.filter(n => n.tag === 'button').map(n => n.kids.filter(x => typeof x === 'string').join(''))
-  assert.deepEqual(labels(), ['骨骼', '插槽', '图片', '网格', '剪裁', '路径', '皮肤占位符', '全部显示', '全部隐藏'])
+  assert.deepEqual(labels(), ['骨骼', '插槽', '图片', '网格', '剪裁', '边界框', '路径', '皮肤占位符', '全部显示', '全部隐藏'])
   const click = label => f.ctx.menu.kids.find(n => n.tag === 'button' && n.kids.includes(label)).attrs.onclick({ stopPropagation() {} })
   click('全部隐藏'); assert(Object.values(f.state.filter).every(v => !v)); assert.deepEqual(f.rigKeys(), [])
   click('网格'); assert.deepEqual(f.rigKeys(), ['att:default:slot:mesh', 'att:default:slot:linked', 'ph:slot:placeholder'])
@@ -102,4 +103,10 @@ test('imported bounding boxes and points remain accessible in the full tree and 
   assert(f.keys().includes('att:default:slot:importedBox'))
   assert(f.keys().includes('att:default:slot:importedPoint'))
   for (const type of ['images', 'mesh']) { f.only(type); assert(!f.keys().includes('att:default:slot:importedBox')); assert(!f.keys().includes('att:default:slot:importedPoint')) }
+})
+
+test('bounding box filter works independently of image, mesh and clipping filters', () => {
+  const f = fixture(); f.state.json.skins[0].attachments.slot.hit = { type: 'boundingbox' };
+  f.only('boundingbox'); assert.deepEqual(f.rigKeys(), ['att:default:slot:hit']);
+  f.only('clipping'); assert.deepEqual(f.rigKeys(), []);
 })

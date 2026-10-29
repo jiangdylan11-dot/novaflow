@@ -22,7 +22,9 @@
   const spine = window.spine
   const FPS = 30
   const DEG = 180 / Math.PI
-  const TREE_FILTERS = [['bones', '骨骼'], ['slots', '插槽'], ['images', '图片'], ['mesh', '网格'], ['clipping', '剪裁'], ['path', '路径'], ['placeholder', '皮肤占位符']]
+  const AudioAssets = window.NovaFlowSpineAudio
+  const audioPlayer = AudioAssets.player((e) => status('音频播放失败：' + (e.message || e), 'error'))
+  const TREE_FILTERS = [['bones', '骨骼'], ['slots', '插槽'], ['images', '图片'], ['mesh', '网格'], ['clipping', '剪裁'], ['boundingbox', '边界框'], ['path', '路径'], ['placeholder', '皮肤占位符']]
 
   const $ = (s) => document.querySelector(s)
   // inside the 骨骼动画 section (the host's iframe): no rail / left column of its own
@@ -48,7 +50,8 @@
     atlasText: '',
     atlasName: 'skeleton.atlas',
     atlasChanged: false,
-    images: new Map(), // lower-case file name -> { img, fileName, blob }
+    images: new Map(),
+    audio: new Map(), // portable relative path -> audio data URL
     addedImages: [],
     history: [],
     future: [],
@@ -138,6 +141,8 @@
   // ------------------------------------------------------------------ icons
 
   const ICON = {
+    bounds: '<svg viewBox="0 0 16 16"><path d="M3 3h10v10H3z" fill="none" stroke="#78cc38"/><path d="M1 1h4v4H1zM11 1h4v4h-4zM1 11h4v4H1zM11 11h4v4h-4z" fill="#78cc38"/></svg>',
+    audio: '<svg viewBox="0 0 16 16"><path d="M2 6h3l4-3v10l-4-3H2zM11 5q4 3 0 6" fill="none" stroke="#78cc38" stroke-width="1.5"/></svg>',
     import: '<svg viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 11v2.5h11V11" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
     bone: '<svg viewBox="0 0 16 16"><path d="M2 14 5 7l4 4z M5 7l9-5-5 9" fill="currentColor"/></svg>',
     slot: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
@@ -272,7 +277,7 @@
     }
     const replace = !!(state.json && projects[activeProject] && operation !== 'append')
     // JSON + 图集 + 贴图 with no folder: right after loading, a dialog asks for one (纹理解包, see askImageFolder)
-    await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, imageFolder, label: stem(name), replace,
+    await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, audio: await sourceAudio(src.audio, dir, json, name), imageFolder, label: stem(name), replace,
       operation, askFolder: !imageFolder && !replace && !!(src.atlas && src.atlas.text) })
     return true
   }
@@ -314,7 +319,7 @@
     const rooted = imgs.filter((f) => f.webkitRelativePath)
     // (only loose images: with an atlas the PNGs next to it are atlas pages, not the pictures)
     const imageFolder = rooted.length && !atlases.length ? folderFromFiles((imgRoot || jsonDir).split('/').pop() || '图片', rooted.map((f) => ({ rel: relName(f), file: f }))) : null
-    await loadParts({ json, jsonName: jsonFile.name, atlasText, atlasName, images: imgs.map((f) => ({ fileName: relName(f), blob: f })), imageFolder, label,
+    await loadParts({ json, jsonName: jsonFile.name, atlasText, atlasName, images: imgs.map((f) => ({ fileName: relName(f), blob: f })), audio: await sourceAudio(null, { files: list }, json, jsonFile.webkitRelativePath || jsonFile.name), imageFolder, label,
       operation, replace: operation === 'replace' && !!state.json, askFolder: !!(opts && opts.askFolder) && !imageFolder && !!atlasText })
     return true
   }
@@ -371,6 +376,7 @@
       projectAccessRoot: p.projectAccessRoot || (p.operation === 'refresh' && state.projectAccessRoot) || null,
       projectImageRefs: p.imageRefs || (p.operation === 'refresh' && state.projectImageRefs) || [], imagePath: p.imagePath || (p.operation === 'refresh' && state.imagePath) || '.',
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
+      audio: new Map(p.audio || (p.operation === 'refresh' ? state.audio : [])),
       addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiAtts: [], attachmentAnchor: null, multiSkins: [], skinAnchor: null, multiCons: [], pick: null,
       offset: p.offset && Number.isFinite(p.offset.x) && Number.isFinite(p.offset.y) ? { x: p.offset.x, y: p.offset.y } : { x: 0, y: 0 },
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
@@ -430,7 +436,7 @@
   // Spine keeps several skeletons in one hierarchy. Here every import adds a project; the picked one
   // is on the stage and unfolded in the tree, the others are rows that keep their whole editing state
   // (undo included) until they are picked again. They can be renamed, moved and deleted.
-  const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
+  const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'audio', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiAtts', 'attachmentAnchor', 'multiSkins', 'skinAnchor', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
     'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel', 'imageFolderGen', 'projectDirectory', 'projectAccessRoot', 'projectImageRefs', 'imagePath']
@@ -469,6 +475,7 @@
 
   /** Out of the edit modes that hold a project's attachment (编辑网格 / 权重 / 剪裁), before it changes. */
   function leaveProjectEdits() {
+    audioPlayer.stop()
     state.meshEdit = null; state.weightEdit = null; state.clipEdit = null; state.clipDrag = null; state.pathEdit = null; state.pathDrag = null
     state.pick = null; state.playing = false; state.drag = null
   }
@@ -863,7 +870,7 @@
       if (!s || !s.json) continue
       const { images, imagePath, externalFolder, missing: unavailable } = await projectReferences(s, directory)
       missing.push(...unavailable)
-      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images, imagePath, ...(externalFolder ? { externalFolder: true } : {}), pma: !!s.pma, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, exported: projects[i].exported !== false, folderKey: s.folderKey || '' })
+      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, audio: [...(s.audio || [])], images, imagePath, ...(externalFolder ? { externalFolder: true } : {}), pma: !!s.pma, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, exported: projects[i].exported !== false, folderKey: s.folderKey || '' })
     }
     if (!list.length) throw new Error('没有可保存的工程')
     const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 2, active: Math.max(0, activeProject), projects: list })
@@ -1331,7 +1338,7 @@
       try { offer = await findSiblingSwapFolder(directory, parentParts, imagePath, missedRefs) } catch { offer = null }
       const folderKey = duplicate ? mintFolderKey() : (p.folderKey || '')
       await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, imageFolder: folder, projectDirectory, projectAccessRoot: directory,
-        imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
+        audio: p.audio || [], imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
         label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey, operation: imported.length ? 'append' : operation,
         replace: operation === 'replace' && imported.length === 0 && !!state.json })
       imported.push(activeProject)
@@ -1379,7 +1386,6 @@
         ibtn('copy', '复制工程（Ctrl+D）', () => duplicateProject(activeProject)),
         ibtn('trash', '删除工程（Delete）', () => deleteProject(activeProject))),
       h('div', { class: 'grid2' }, num('x'), num('y')),
-      ...(boneClipboard ? [btn('粘贴骨骼', () => pasteBones(boneClipboard, activeProject, state.json.bones.find((b) => !b.parent).name), { title: 'Ctrl+V：粘贴到此工程，不带动画' })] : []),
       h('div', { class: 'hint' }, '位置只影响编辑器里的摆放，不写进导出的骨架；选中工程后在画面上拖动也能移动它。'),
     ]
   }
@@ -1994,9 +2000,11 @@
 
   // ------------------------------------------------------------------ edits
 
-  function snapshot() { return { json: state.json, atlasText: state.atlasText, atlasChanged: state.atlasChanged } }
+  function snapshot() { return { audio: state.audio, json: state.json, atlasText: state.atlasText, atlasChanged: state.atlasChanged } }
 
   function restore(s) {
+    audioPlayer.stop()
+    state.audio = s.audio || new Map()
     state.atlasText = s.atlasText
     state.atlasChanged = s.atlasChanged
     applyJson(s.json)
@@ -2053,6 +2061,7 @@
     const has = (kind, name) => (kind === 'bone' ? j.bones.some((b) => b.name === name)
       : kind === 'slot' ? j.slots.some((x) => x.name === name)
       : kind === 'skin' ? j.skins.some((x) => x.name === name)
+      : kind === 'audio' ? AudioAssets.names(j, state.audio).includes(name)
       : kind === 'event' ? !!(j.events || {})[name]
       : kind === 'section' || kind === 'project' ? true
       : (j[kind] || []).some((c) => c.name === name))
@@ -2671,7 +2680,7 @@
     const skins = Array.isArray(json && json.skins) ? json.skins
       : Object.entries((json && json.skins) || {}).map(([name, attachments]) => ({ name, attachments }))
     for (const sk of skins) for (const slot of Object.values((sk && sk.attachments) || {})) for (const [name, a] of Object.entries(slot || {})) {
-      if (a && (a.type === 'boundingbox' || a.type === 'clipping' || a.type === 'path' || a.type === 'point')) continue
+      if (a && (a.type === 'boundingbox' || a.type === 'clipping' || a.type === 'boundingbox' || a.type === 'path' || a.type === 'point')) continue
       names.add(String((a && (a.path || a.name)) || name))
     }
     return names
@@ -3632,6 +3641,11 @@
       const img = await imageRgba(it.name, it.file, source)
       if (!img) { missing.push(it.name); continue }
       await writer.addRgba(img.rgba, img.width, img.height, it.name)
+    }
+    const audioRoot = AudioAssets.path(json.skeleton?.audio) || 'audio'
+    if (source.audio?.size) {
+      json.skeleton = { ...json.skeleton, audio: audioRoot + '/' }
+      for (const [name, dataUrl] of source.audio) await write(`${audioRoot}/${name}`, new Uint8Array(await (await fetch(dataUrl)).arrayBuffer()))
     }
     const out = await writer.finish(json)
     return { ...out, skel, images: items.length - missing.length, missing }
@@ -5450,6 +5464,12 @@
     if (state.playing && rt.skeleton) {
       const dt = loop.last ? (ts - loop.last) / 1000 : 0
       const dur = duration()
+      // Audio keeps a continuous cursor. The pose fraction is deliberately capped at .999;
+      // using that visual fraction loses events in the tiny gap just before whole frames.
+      const audioFrom = loop.audioInitial || !loop.audioWasPlaying ? state.frame / FPS : loop.audioTime
+      const audioInitial = !!loop.audioInitial; loop.audioInitial = false
+      for (const event of AudioAssets.crossed(state.json.animations[state.anim]?.events, audioFrom, dt, dur, state.loop, audioInitial)) playAudioEvent(event)
+      loop.audioTime = dur > 0 ? state.loop ? (audioFrom + dt) % dur : Math.min(dur, audioFrom + dt) : 0
       loop.acc = (loop.acc || 0) + dt * FPS
       const step = Math.floor(loop.acc)
       if (step) {
@@ -5466,6 +5486,8 @@
       state.playFrac = state.playing && !(!state.loop && state.frame >= Math.round(dur * FPS)) ? Math.min(0.999, loop.acc) : 0
       pose()
     }
+    if (!state.playing && loop.audioWasPlaying) audioPlayer.stop()
+    loop.audioWasPlaying = state.playing
     if (pv.open) pvDraw(loop.last ? Math.min(0.1, (ts - loop.last) / 1000) : 0)
     loop.last = ts
     draw()
@@ -6009,7 +6031,7 @@
         let map = (json.skins.find((x) => x.name === skin) || {}).attachments
         let a = map && map[sel.slot] && map[sel.slot][name]
         if (a && a.type === 'linkedmesh') { skin = a.skin || 'default'; name = a.parent; map = (json.skins.find((x) => x.name === skin) || {}).attachments; a = map && map[sel.slot] && map[sel.slot][name] }
-        if (!a || (a.type !== 'mesh' && a.type !== 'clipping' && a.type !== 'path')) throw new Error('找不到网格')
+        if (!a || (a.type !== 'mesh' && a.type !== 'clipping' && a.type !== 'boundingbox' && a.type !== 'path')) throw new Error('找不到网格')
         const r3 = (x) => Math.round(x * 1000) / 1000
         const v = a.vertices
         if (att.bones) {
@@ -6199,7 +6221,7 @@
         if ((state.mode === 'setup' || animOn()) && !(e.ctrlKey || e.metaKey)) {
           const own = hitImage(sx, sy)
           // a clipping has no pixels: inside its polygon is its own area
-          const inClip = (MT.att instanceof spine.PathAttachment && pathNear(MT.slot, MT.att, sx, sy, 8)) || MT.att instanceof spine.ClippingAttachment && (() => {
+          const inClip = (MT.att instanceof spine.PathAttachment && pathNear(MT.slot, MT.att, sx, sy, 8)) || (MT.att instanceof spine.ClippingAttachment || MT.att instanceof spine.BoundingBoxAttachment) && (() => {
             const q = clipWorld(MT.slot, MT.att).map(([x, y]) => toScreen(x, y))
             let inside = false
             for (let i = 0, j = q.length - 1; i < q.length; j = i++) if ((q[i][1] > sy) !== (q[j][1] > sy) && sx < (q[j][0] - q[i][0]) * (sy - q[i][1]) / (q[j][1] - q[i][1]) + q[i][0]) inside = !inside
@@ -6568,7 +6590,7 @@
     const slot = rt.skeleton.findSlot(s.slot)
     const att = slot && slot.getAttachment()
     if (!isShapeAtt(att)) return null
-    if ((att instanceof spine.ClippingAttachment || att instanceof spine.PathAttachment) && s.name !== (attachmentKey(s.slot, att) || {}).name) return null
+    if ((att instanceof spine.ClippingAttachment || att instanceof spine.BoundingBoxAttachment || att instanceof spine.PathAttachment) && s.name !== (attachmentKey(s.slot, att) || {}).name) return null
     const deformAtt = att.deformAttachment || att
     const key = attachmentKey(s.slot, deformAtt) || attachmentKey(s.slot, att)
     if (!key) return null
@@ -6670,12 +6692,12 @@
   }
 
   const shapeWord = (att) => (att instanceof spine.ClippingAttachment || (att && att.type === 'clipping') ? '剪裁'
-    : att instanceof spine.PathAttachment || (att && att.type === 'path') ? '路径' : '网格')
-  const deformKind = (path) => { const a = (((skinOf(path[1]) || {}).attachments || {})[path[2]] || {})[path[3]]; return a && a.type === 'clipping' ? '剪裁' : a && a.type === 'path' ? '路径' : '网格' }
+    : att instanceof spine.BoundingBoxAttachment || (att && att.type === 'boundingbox') ? '边界框' : att instanceof spine.PathAttachment || (att && att.type === 'path') ? '路径' : '网格')
+  const deformKind = (path) => { const a = (((skinOf(path[1]) || {}).attachments || {})[path[2]] || {})[path[3]]; return a && a.type === 'clipping' ? '剪裁' : a && a.type === 'boundingbox' ? '边界框' : a && a.type === 'path' ? '路径' : '网格' }
 
   /** The attachments made of vertices the vertex tools move: meshes, clippings, paths. */
   function isShapeAtt(a) {
-    return a instanceof spine.MeshAttachment || a instanceof spine.ClippingAttachment || a instanceof spine.PathAttachment
+    return a instanceof spine.MeshAttachment || a instanceof spine.ClippingAttachment || a instanceof spine.BoundingBoxAttachment || a instanceof spine.PathAttachment
   }
 
   function finishVertexDrag(drag) {
@@ -6860,7 +6882,7 @@
     return { atts, phs }
   }
 
-  const attIcon = (type) => (type === 'region' ? 'region' : type === 'mesh' || type === 'linkedmesh' ? 'mesh' : type === 'clipping' ? 'clip' : type === 'path' ? 'path' : 'other')
+  const attIcon = (type) => (type === 'region' ? 'region' : type === 'mesh' || type === 'linkedmesh' ? 'mesh' : type === 'clipping' ? 'clip' : type === 'boundingbox' ? 'bounds' : type === 'path' ? 'path' : 'other')
 
   function treeAttachmentKind(type) {
     if (!type || type === 'region') return 'images'
@@ -6871,9 +6893,8 @@
     const c = slotContents(slot), F = state.filter
     // A placeholder remains one row. Its current skin attachment also participates in
     // the type filters, so hiding placeholders never hides a matching mesh or region.
-    // Imported bounding boxes and points stay accessible in the full tree, without advertising
-    // an unsupported authoring/filter feature or treating them as image regions.
-    const matches = (type) => F[treeAttachmentKind(type)] === true || (['boundingbox', 'point'].includes(type) && ['images', 'mesh', 'clipping', 'path'].every((key) => F[key]))
+    // Points remain accessible in the full tree; polygon attachments have their own filters.
+    const matches = (type) => F[treeAttachmentKind(type)] === true || (type === 'point' && ['images', 'mesh', 'clipping', 'path'].every((key) => F[key]))
     return { atts: c.atts.filter((a) => matches(a.type)), phs: c.phs.filter((p) => F.placeholder || (p.current && matches(p.current.type))) }
   }
 
@@ -7227,7 +7248,7 @@
         visDot(shown, () => showAttachment(s.name, shown ? null : a.name), null, true),
         caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : a.type === 'path' ? 'color:#ff8a1f' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
         !showSlot ? h('span', { class: 'meta' }, s.name) : null,
-        animOn() && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'clipping' || a.type === 'path') ? meshKeyEnd(s.name, a.name, 'lkey') : null)
+        animOn() && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'clipping' || a.type === 'boundingbox' || a.type === 'path') ? meshKeyEnd(s.name, a.name, 'lkey') : null)
         wireDrag(arow, { type: 'att', name: a.name, slot: s.name, skin: 'default' }, null)
         rows.push(arow)
       }
@@ -7396,6 +7417,7 @@
 
       // 图片 (Spine's Images node): the project's image folder, pictures drag onto a bone / slot / the stage
       if (F.images) renderImagesNode(rows, pad)
+      renderAudioNode(rows, pad)
     }
 
     if (rows.length === contentFrom) rows.push(h('div', { class: 'row', style: pad(1) }, h('span', { class: 'meta' }, '当前筛选无匹配节点')))
@@ -7705,11 +7727,12 @@
     if (s.kind === 'slot' && state.multiSlots.length > 1) return { title: `插槽 · 已选 ${state.multiSlots.length} 个`, body: multiSlotBody }
     if (s.kind === 'slot') return { title: '插槽', body: slotBody }
     if (s.kind === 'att' && selectedAttachments().length > 1) return { title: `附件 · 已选 ${selectedAttachments().length} 个`, body: multiAttachmentBody }
-    if (s.kind === 'att') return { title: s.skin === 'default' ? '图片' : `图片 · 皮肤 ${s.skin}`, body: slotBody }
+    if (s.kind === 'att') { const att = ((skinOf(s.skin) || {}).attachments || {})[s.slot]?.[s.name]; const word = { boundingbox: '边界框', clipping: '剪裁', path: '路径', mesh: '网格' }[att?.type] || '图片'; return { title: s.skin === 'default' ? word : `${word} · 皮肤 ${s.skin}`, body: slotBody } }
     if (s.kind === 'ph') return { title: '皮肤占位符', body: slotBody }
     if (s.kind === 'skin' && selectedSkins().length > 1) return { title: `皮肤 · 已选 ${selectedSkins().length} 个`, body: multiSkinBody }
     if (s.kind === 'skin') return { title: '皮肤', body: skinBody }
     if (s.kind === 'anim') return { title: '动画', body: animBody }
+    if (s.kind === 'audio' || (s.kind === 'section' && s.name === 'audio')) return { title: '音频', body: audioBody }
     if (s.kind === 'event') return { title: '事件', body: eventBody }
     if (s.kind === 'section') return { title: { skins: '皮肤', events: '事件', anims: '动画' }[s.name] || '属性', body: sectionBody }
     if (s.kind === 'project') return { title: '工程', body: projectBody }
@@ -7731,7 +7754,7 @@
   }
 
   // the properties' setup-mode operations (structure, parents, pictures, modes): greyed out in 动画 like in Spine
-  const SETUP_BUTTONS = new Set(['新建…', '设置父级', '换图', '转为皮肤占位符', '加入骨骼', '更换', '设置', '移除', '绑定', '编辑网格', '编辑剪裁', '编辑路径'])
+  const SETUP_BUTTONS = new Set(['新建…', '设置父级', '换图', '转为皮肤占位符', '加入骨骼', '更换', '设置', '移除', '绑定', '编辑网格', '编辑剪裁', '编辑边界框', '编辑路径'])
   const SETUP_FIELDS = new Set(['填入黑色', '结束插槽'])
   function lockSetupOnly(box) {
     const why = '动画模式下不能用：这是设置模式的操作'
@@ -9905,6 +9928,7 @@
         { label: '骨骼', icon: 'bone', run: () => newChildBone(name) },
         { label: '插槽', icon: 'slot', run: () => newSlot(name) },
         { label: '剪裁', icon: 'clip', run: () => newClipping(null, name), disabled: state.mode !== 'setup', title: '在这根骨骼上新建一个插槽，里面放剪裁（遮罩）' },
+        { label: '边界框', icon: 'bounds', run: () => newBoundingBox(null, name), disabled: state.mode !== 'setup', title: '范围多边形：用于碰撞或命中检测，不裁切图片' },
         { label: '路径', icon: 'path', run: () => newPath(null, name), disabled: state.mode !== 'setup', title: '在这根骨骼上新建一个插槽，里面放路径（贝塞尔曲线）' },
         { label: 'IK 约束', icon: 'ik', run: () => newIk([name]), disabled: !parent, title: '这一根骨骼；两根请 Ctrl 选父子两根' },
         { label: '变换约束', icon: 'transform', run: () => newTransform([name]), disabled: !parent },
@@ -9969,6 +9993,7 @@
         { label: '皮肤占位符', icon: 'placeholder', run: () => edit((r) => `已新建皮肤占位符 ${r.placeholder}`, (j) => Ops.addPlaceholder(j, name),
           (r) => { state.sel = { kind: 'ph', name: r.placeholder, slot: name }; state.collapsed.delete('s:' + name); revealInTree(state.sel) }) },
         { label: '剪裁', icon: 'clip', run: () => newClipping(name), disabled: state.mode !== 'setup', title: '遮罩：画一个多边形，剪掉它后面绘制的插槽（到「结束插槽」为止）' },
+        { label: '边界框', icon: 'bounds', run: () => newBoundingBox(name), disabled: state.mode !== 'setup', title: '范围多边形：用于碰撞或命中检测，不裁切图片' },
         { label: '路径', icon: 'path', run: () => newPath(name), disabled: state.mode !== 'setup', title: '贝塞尔曲线：骨骼可以用路径约束沿着它走' },
       ]),
       btn('设置父级', () => { state.sel = { kind: 'slot', name }; setParentForSelection() }, { title: 'P' })))
@@ -10034,8 +10059,8 @@
     const att = sk.attachments[sel.slot][sel.name]
     const type = att.type || 'region'
     const mesh = type === 'mesh' || type === 'linkedmesh'
-    const typeName = { region: '图片', mesh: '网格', linkedmesh: '链接网格', boundingbox: '包围盒', clipping: '裁剪', path: '路径', point: '点' }[type] || type
-    if (type === 'clipping') return clipPanel(sel, att)
+    const typeName = { region: '图片', mesh: '网格', linkedmesh: '链接网格', boundingbox: '边界框', clipping: '裁剪', path: '路径', point: '点' }[type] || type
+    if (type === 'clipping' || type === 'boundingbox') return clipPanel(sel, att)
     if (type === 'path') return pathPanel(sel, att)
     const inPlaceholder = Ops.isPlaceholder(state.json, sel.slot, sel.name)
     const others = state.json.skins.filter((x) => x.name !== 'default').length
@@ -10073,12 +10098,14 @@
   // ---------- 剪裁 (Spine's clipping: a mask polygon over the slots drawn after it)
 
   /** 新建 → 剪裁: in this slot, or (from a bone) in a new slot on it; drawing the polygon starts right away. */
-  function newClipping(slotName, boneName) {
-    if (state.mode !== 'setup') { status('剪裁在「设置」模式下新建'); return }
-    edit((r) => `已新建剪裁 ${r.attachment}：在画面里依次点出多边形`, (j) => {
+  function newBoundingBox(slotName, boneName) { return newClipping(slotName, boneName, true) }
+  function newClipping(slotName, boneName, bounds = false) {
+    const word = bounds ? '边界框' : '剪裁'
+    if (state.mode !== 'setup') { status(word + '在「设置」模式下新建'); return }
+    edit((r) => `已新建${word} ${r.attachment}：在画面里依次点出多边形`, (j) => {
       let slot = slotName, json = j
-      if (!slot) { const a = Ops.addSlot(json, boneName, uniqueSlotName(json, 'clipping')); json = a.json; slot = a.slot }
-      const r = Ops.createClipping(json, slot)
+      if (!slot) { const a = Ops.addSlot(json, boneName, uniqueSlotName(json, bounds ? 'boundingbox' : 'clipping')); json = a.json; slot = a.slot }
+      const r = (bounds ? Ops.createBoundingBox : Ops.createClipping)(json, slot)
       return { ...r, slot }
     }, (r) => {
       state.sel = { kind: 'att', skin: 'default', slot: r.slot, name: r.attachment }
@@ -10095,40 +10122,44 @@
    * its slot's place in 绘制顺序.
    */
   function clipPanel(sel, att) {
+    const bounds = att.type === 'boundingbox', word = bounds ? '边界框' : '剪裁'
+    const setter = bounds ? Ops.setBoundingBox : Ops.setClipping
     const out = []
     out.push(h('div', { class: 'name-row' },
       textInput(sel.name, (v) => edit(`已改名 → ${v}`, (j) => Ops.renameAttachment(j, sel.slot, sel.name, v), (r) => { state.sel = { ...sel, name: r.attachment } }), { rename: true }),
-      h('span', { class: 'tag' }, '剪裁'),
+      h('span', { class: 'tag' }, word),
       animOn() ? meshKeyEnd(sel.slot, sel.name) : null,
       ibtn('copy', '复制（Ctrl+D）', () => duplicateAttachmentSel(sel, false)),
       ibtn('trash', '删除', deleteSelection)))
     out.push(h('div', { class: 'checks' }, check('导出', Ops.isExported(state.json, sel.skin, sel.slot, sel.name),
       (v) => edit(v ? `「${sel.name}」会导出` : `「${sel.name}」不导出（工程里还在）`, (j) => Ops.setAttachmentExport(j, sel.skin, sel.slot, sel.name, v)))))
     // the slots it can reach: the ones drawn after its slot, listed top first like 绘制顺序
-    const order = state.json.slots.map((x) => x.name)
-    const after = order.slice(order.indexOf(sel.slot) + 1).reverse()
-    const end = att.end && after.includes(att.end) ? att.end : ''
-    const reach = end ? order.indexOf(end) - order.indexOf(sel.slot) : after.length
-    out.push(field('结束插槽', selectInput([['', '（一直到最上面）'], ...after.map((n) => [n, n])], end,
+    if (!bounds) {
+      const order = state.json.slots.map((x) => x.name)
+      const after = order.slice(order.indexOf(sel.slot) + 1).reverse()
+      const end = att.end && after.includes(att.end) ? att.end : ''
+      const reach = end ? order.indexOf(end) - order.indexOf(sel.slot) : after.length
+      out.push(field('结束插槽', selectInput([['', '（一直到最上面）'], ...after.map((n) => [n, n])], end,
       (v) => edit(v ? `「${sel.name}」剪到「${v}」为止` : `「${sel.name}」剪到最上面`, (j) => Ops.setClipping(j, sel.skin, sel.slot, sel.name, { end: v })))))
-    out.push(h('div', { class: 'hint' }, after.length
+      out.push(h('div', { class: 'hint' }, after.length
       ? `剪裁「${sel.slot}」上面的 ${reach} 个插槽${end ? `（到「${end}」为止）` : ''}；列表里只有它上面的插槽，在「绘制顺序」里拖动「${sel.slot}」改它从哪一层开始`
       : `「${sel.slot}」在最上面，上面没有可剪的插槽：在「绘制顺序」里把它往下拖，列表里才有可选的层`))
-    const colIn = h('input', { type: 'color', value: '#' + String(att.color || 'ce3a3aff').slice(0, 6), disabled: animOn() })
-    colIn.addEventListener('change', () => edit(`已修改 ${sel.name} 颜色`, (j) => Ops.setClipping(j, sel.skin, sel.slot, sel.name, { color: colIn.value.slice(1) + 'ff' })))
+    } else out.push(h('div', { class: 'hint' }, '范围多边形，用于碰撞 / 命中检测；不会裁切图片。'))
+    const colIn = h('input', { type: 'color', value: '#' + String(att.color || (bounds ? '78cc38ff' : 'ce3a3aff')).slice(0, 6), disabled: animOn() })
+    colIn.addEventListener('change', () => edit(`已修改 ${sel.name} 颜色`, (j) => setter(j, sel.skin, sel.slot, sel.name, { color: colIn.value.slice(1) + 'ff' })))
     out.push(field('颜色', colIn))
     const editing = !!(state.clipEdit && state.clipEdit.slot === sel.slot && state.clipEdit.name === sel.name)
     out.push(h('div', { class: 'hint' }, animOn()
-      ? '选中后直接在画面里拖顶点（框选 / Ctrl 加选，旋转、缩放工具也行）= 在这一帧打剪裁变形关键帧；钥匙 = 给当前形状打关键帧'
-      : '选中后直接在画面里拖顶点（框选 / Ctrl 加选）= 改剪裁形状；加减顶点用「编辑剪裁」'))
+      ? `选中后直接在画面里拖顶点（框选 / Ctrl 加选，旋转、缩放工具也行）= 在这一帧打${word}变形关键帧；钥匙 = 给当前形状打关键帧`
+      : `选中后直接在画面里拖顶点（框选 / Ctrl 加选）= 改${word}形状；加减顶点用「编辑${word}」`))
     out.push(h('div', { class: 'btns g2' },
-      btn('编辑剪裁', () => (editing ? exitClipEdit() : enterClipEdit(sel)), { primary: editing, disabled: state.mode !== 'setup', title: '在画面里点 / 拖 / 删多边形的顶点' }),
+      btn('编辑' + word, () => (editing ? exitClipEdit() : enterClipEdit(sel)), { primary: editing, disabled: state.mode !== 'setup', title: '在画面里点 / 拖 / 删多边形的顶点' }),
       btn('设置父级', () => transferAtt(sel, true), { title: 'P：移到别的插槽' })))
     return out
   }
 
   function enterClipEdit(sel) {
-    if (state.mode !== 'setup') { status('编辑剪裁在「设置」模式下用'); return }
+    if (state.mode !== 'setup') { status('编辑多边形顶点在「设置」模式下用'); return }
     state.meshEdit = null; state.weightEdit = null
     state.clipEdit = { skin: sel.skin, slot: sel.slot, name: sel.name, tool: 'create' }
     const R = clipRuntime()
@@ -10137,6 +10168,7 @@
     refresh()
   }
 
+  function polygonWord(att) { return att instanceof spine.BoundingBoxAttachment ? '边界框' : '剪裁' }
   function exitClipEdit() {
     if (!state.clipEdit) return
     state.clipEdit = null
@@ -10149,7 +10181,7 @@
     const ce = state.clipEdit
     if (!ce || !ce.draft) return false
     if (ce.draft.length < 3) { status('至少绘制 3 个顶点后，点击起点闭合'); return false }
-    return !!commitClip(ce.draft, '剪裁已闭合', () => { ce.draft = null; state.meshPointer = null })
+    return !!commitClip(ce.draft, polygonWord((clipRuntime() || {}).att) + '已闭合', () => { ce.draft = null; state.meshPointer = null })
   }
 
   function clipRuntime() {
@@ -10157,7 +10189,7 @@
     const slot = ce && rt.skeleton && rt.skeleton.findSlot(ce.slot)
     const skin = slot && (rt.data.findSkin(ce.skin) || rt.data.defaultSkin)
     const att = skin && skin.getAttachment(slot.data.index, ce.name)
-    return att instanceof spine.ClippingAttachment ? { slot, att } : null
+    return att instanceof spine.ClippingAttachment || att instanceof spine.BoundingBoxAttachment ? { slot, att } : null
   }
 
   /** A clipping's polygon in the world (setup pose). */
@@ -10178,7 +10210,7 @@
     const det = b.a * b.d - b.b * b.c || 1
     const local = []
     for (const [x, y] of pts) { const dx = x - b.worldX, dy = y - b.worldY; local.push((b.d * dx - b.b * dy) / det, (b.a * dy - b.c * dx) / det) }
-    return edit(label, (j) => Ops.setClipping(j, ce.skin, ce.slot, ce.name, { vertices: local }), after)
+    return edit(label, (j) => (R.att instanceof spine.BoundingBoxAttachment ? Ops.setBoundingBox : Ops.setClipping)(j, ce.skin, ce.slot, ce.name, { vertices: local }), after)
   }
 
   function clipVertexAt(pts, sx, sy) {
@@ -10197,7 +10229,7 @@
       if (vi >= 0) {
         const next = pts.filter((_, i) => i !== vi)
         if (ce.draft) { ce.draft = next; renderClipPanel() }
-        else commitClip(next, '已删除剪裁顶点')
+        else commitClip(next, '已删除' + polygonWord(R.att) + '顶点')
       }
       return null
     }
@@ -10218,7 +10250,7 @@
       }
       next = [...pts.slice(0, at + 1), [wx, wy], ...pts.slice(at + 1)]
     }
-    commitClip(next, `已添加剪裁顶点（${next.length}）`)
+    commitClip(next, `已添加${polygonWord(R.att)}顶点（${next.length}）`)
     return null
   }
 
@@ -10228,7 +10260,7 @@
     if (!d.moved || !cd) return
     const next = d.pts.map((p, i) => (i === d.vi ? cd.p : p))
     if (state.clipEdit && state.clipEdit.draft) { state.clipEdit.draft = next; renderClipPanel(); return }
-    commitClip(next, '已移动剪裁顶点')
+    commitClip(next, '已移动' + polygonWord((clipRuntime() || {}).att) + '顶点')
   }
 
   /** Every clipping its slot shows, outlined in its colour; the edited / picked one with vertices. */
@@ -10238,7 +10270,7 @@
     const items = []
     for (const slot of rt.skeleton.drawOrder) {
       const a = slot.getAttachment()
-      if (state.opt.otherVis && a instanceof spine.ClippingAttachment && !state.hiddenSlots.has(slot.data.name) && !(ce && slot.data.name === ce.slot)) items.push({ slot, att: a, edit: false })
+      if (state.opt.otherVis && (a instanceof spine.ClippingAttachment || a instanceof spine.BoundingBoxAttachment) && !state.hiddenSlots.has(slot.data.name) && !(ce && slot.data.name === ce.slot)) items.push({ slot, att: a, edit: false })
     }
     const R = ce ? clipRuntime() : null
     if (R) items.push({ slot: R.slot, att: R.att, edit: true })
@@ -10258,6 +10290,7 @@
         g.beginPath()
         q.forEach(([x, y], i) => { if (i) g.lineTo(x, y); else g.moveTo(x, y) })
         if (!drafting && q.length >= 3) g.closePath()
+        if (it.att instanceof spine.BoundingBoxAttachment && !drafting && q.length >= 3) { g.fillStyle = col + (picked ? '.20)' : '.09)'); g.fill() }
         g.stroke()
         if (drafting && state.meshPointer) { g.setLineDash([4, 3]); g.beginPath(); g.moveTo(q[q.length - 1][0], q[q.length - 1][1]); g.lineTo(state.meshPointer[0], state.meshPointer[1]); g.stroke(); g.setLineDash([]) }
       }
@@ -10283,7 +10316,7 @@
     for (let k = rt.skeleton.drawOrder.length - 1; k >= 0; k--) {
       const slot = rt.skeleton.drawOrder[k]
       const a = slot.getAttachment()
-      if (!(a instanceof spine.ClippingAttachment) || state.hiddenSlots.has(slot.data.name)) continue
+      if (!(a instanceof spine.ClippingAttachment || a instanceof spine.BoundingBoxAttachment) || state.hiddenSlots.has(slot.data.name)) continue
       const q = clipWorld(slot, a).map(([x, y]) => toScreen(x, y))
       for (let i = 0; i < q.length; i++) {
         const p0 = q[i], p1 = q[(i + 1) % q.length]
@@ -10312,12 +10345,12 @@
     const tool = (id, label, title) => h('button', { class: 'mt', 'aria-pressed': String(ce.tool === id), title, onclick: () => { ce.tool = id; renderClipPanel() } }, label)
     p.append(
       h('div', { class: 'mname' }, `${ce.slot} · ${ce.name}`),
-      h('div', { class: 'mhd' }, h('b', {}, '编辑剪裁'), h('button', { class: 'xx', title: drafting ? '取消未闭合的绘制（Esc）' : '完成（Enter / Esc）', onclick: exitClipEdit }, '×')),
+      h('div', { class: 'mhd' }, h('b', {}, '编辑' + polygonWord(R.att)), h('button', { class: 'xx', title: drafting ? '取消未闭合的绘制（Esc）' : '完成（Enter / Esc）', onclick: exitClipEdit }, '×')),
       h('div', { class: 'mrow' },
         tool('create', '创建', drafting ? '依次点击添加顶点，点击起点闭合；拖顶点移动' : '点空白处向最近的边添加顶点，拖顶点移动'),
         tool('delete', '删除', '点顶点删除')),
       h('div', { class: 'mrow' },
-        h('button', { class: 'mt', title: '清空多边形，重新点', onclick: () => { commitClip([], '已清空剪裁，重新点多边形', () => { ce.tool = 'create'; ce.draft = []; state.meshPointer = null }) } }, '新建'),
+        h('button', { class: 'mt', title: '清空多边形，重新点', onclick: () => { commitClip([], '已清空' + polygonWord(R.att) + '，重新点多边形', () => { ce.tool = 'create'; ce.draft = []; state.meshPointer = null }) } }, '新建'),
         drafting ? h('button', { class: 'mt', disabled: n < 3, title: '连接首尾并应用剪裁（Enter）', onclick: closeClipDraft }, '闭合') : null),
       h('div', { class: 'mrow mopts' }, h('span', { class: 'mcount' }, drafting ? `顶点：${n}（${n < 3 ? '至少 3 个，点击起点闭合' : '点击起点或按 Enter 闭合'}）` : `顶点：${n}`)))
     layoutFloats()
@@ -10880,12 +10913,110 @@
     return make ? [h('div', { class: 'btns' }, btn(make[0], make[1], { primary: true, full: true, title: `也可以双击工程树里的「${{ skins: '皮肤', events: '事件', anims: '动画' }[state.sel.name]}」` }))] : []
   }
 
+  // ---------- 音频资源（工程独立保存，Spine JSON 只记录路径）
+  const audioDataUrl = blob => new Promise((resolve, reject) => {
+    const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob)
+  })
+  async function sourceAudio(raw, directory, json, jsonName) {
+    const assets = new Map()
+    for (const item of raw || []) {
+      const name = AudioAssets.path(item.fileName || item.name)
+      if (name && AudioAssets.extensions.test(name) && /^data:(?:audio\/|application\/octet-stream)/i.test(item.dataUrl || '')) assets.set(name, item.dataUrl)
+    }
+    const files = directory?.files || []
+    const jsonDir = String(jsonName || '').replace(/\\/g, '/').split('/').slice(0, -1).join('/')
+    const root = AudioAssets.path([jsonDir, json.skeleton?.audio || ''].filter(Boolean).join('/'))
+    for (const file of files) {
+      if (!AudioAssets.extensions.test(file.name)) continue
+      const rel = AudioAssets.path(file.webkitRelativePath || file.name)
+      const name = root && rel.startsWith(root + '/') ? rel.slice(root.length + 1) : (!root || !file.webkitRelativePath ? file.name : '')
+      if (name) assets.set(name, await audioDataUrl(file))
+    }
+    if (directory?.handle && json.skeleton?.audio) {
+      try {
+        const parts = AudioAssets.path(json.skeleton.audio).split('/').filter(Boolean)
+        if (!parts.length) return [...assets]
+        let dir = directory.handle
+        for (const part of parts) dir = await dir.getDirectoryHandle(part)
+        const walk = async (handle, prefix = '') => {
+          for await (const [name, entry] of handle.entries()) {
+            if (entry.kind === 'directory') await walk(entry, prefix + name + '/')
+            else if (AudioAssets.extensions.test(name)) assets.set(prefix + name, await audioDataUrl(await entry.getFile()))
+          }
+        }
+        await walk(dir)
+      } catch { /* A missing directory is shown as missing resources in the audio tree. */ }
+    }
+    return [...assets]
+  }
+  async function importAudioFiles(files, folder = false) {
+    if (!state.json) return
+    const project = state.json, assets = new Map(state.audio), imported = []
+    for (const file of files || []) {
+      if (!AudioAssets.extensions.test(file.name)) continue
+      const rel = String(file.webkitRelativePath || file.name).replace(/\\/g, '/')
+      const name = AudioAssets.path(folder && rel.includes('/') ? rel.slice(rel.indexOf('/') + 1) : file.name)
+      if (name) { assets.set(name, await audioDataUrl(file)); imported.push(name) }
+    }
+    if (state.json !== project) { status('工程已切换，请在目标工程重新导入音频'); return }
+    if (!imported.length) { status('没有可用的音频文件'); return }
+    // Resource-only changes still share the normal atomic undo stack.
+    edit(`已导入 ${imported.length} 个音频`, j => ({ json: Ops.prepare(j) }), () => {
+      state.audio = assets; state.sections.delete('audio'); state.sel = { kind: 'audio', name: imported[0] }
+    })
+  }
+  function pickAudioFiles(folder = false) {
+    const input = h('input', { type: 'file', multiple: true, accept: '.wav,.ogg,.mp3,.m4a,.aac,.flac,.webm' })
+    if (folder) input.webkitdirectory = true
+    input.addEventListener('change', () => importAudioFiles(Array.from(input.files || []), folder).catch(e => status('音频导入失败：' + e.message, 'error')))
+    input.click()
+  }
+  function playAudioEvent(key) {
+    const event = state.json?.events?.[key.name] || {}, data = AudioAssets.source(state.audio, event.audio)
+    if (!data) return false
+    return audioPlayer.play(data, key.volume ?? event.volume ?? 1, key.balance ?? event.balance ?? 0)
+  }
+  function audioSlider(value, min, max, set) {
+    const number = numInput(value, v => set(Math.max(min, Math.min(max, v))), { step: 1 })
+    number.style.cssText = 'flex:0 0 48px;width:48px;min-width:0'
+    const slider = h('input', { type: 'range', min, max, step: 1, value, style: 'min-width:40px;width:auto;flex:1;accent-color:#1ea672' })
+    slider.addEventListener('input', () => { number.value = slider.value })
+    slider.addEventListener('change', () => set(Number(slider.value)))
+    return h('div', { class: 'inline' }, number, slider)
+  }
+  function renderAudioNode(rows, pad) {
+    const names = AudioAssets.names(state.json, state.audio), closed = state.sections.has('audio')
+    const toggle = () => { closed ? state.sections.delete('audio') : state.sections.add('audio'); renderTree() }
+    rows.push(h('div', { class: 'row node', style: pad(1), 'data-key': 'audio', onclick: () => { toggle(); select({ kind: 'section', name: 'audio' }) } },
+      caret(!closed, toggle), h('span', { class: 'ico', html: ICON.audio }), h('span', { class: 'label' }, '音频'),
+      h('span', { class: 'end' }, h('button', { class: 'ld-btn tiny', title: '导入音频文件或在下方属性选择文件夹', onclick: e => { e.stopPropagation(); pickAudioFiles() } }, '导入…'), h('span', { class: 'cnt' }, String(names.length)))))
+    if (closed) return
+    for (const name of names) rows.push(h('div', { class: 'row', style: pad(2), 'data-key': 'audio:' + name, 'data-selected': state.sel?.kind === 'audio' && state.sel.name === name ? '1' : null,
+      title: AudioAssets.source(state.audio, name) ? '双击试听：' + name : '未连接音频文件：' + name,
+      onclick: () => select({ kind: 'audio', name }), ondblclick: () => { const data = AudioAssets.source(state.audio, name); if (data) audioPlayer.play(data) } },
+      caret(null), h('span', { class: 'ico', html: ICON.audio }), h('span', { class: 'label' }, name), AudioAssets.source(state.audio, name) ? null : h('span', { class: 'cnt' }, '未连接')))
+  }
+  function audioBody() {
+    const name = state.sel.kind === 'audio' ? state.sel.name : '', data = AudioAssets.source(state.audio, name)
+    const out = [h('div', { class: 'btns g2' }, btn('导入音频…', () => pickAudioFiles()), btn('指定文件夹…', () => pickAudioFiles(true)))]
+    if (!name) return [...out, h('div', { class: 'hint' }, '音频资源与事件分开管理；在事件的「音频路径」关联音频。双击资源试听。')]
+    out.unshift(field('音频路径', h('span', {}, name)))
+    out.push(h('div', { class: 'btns g2' }, btn('试听', () => audioPlayer.play(data), { disabled: !data }), btn('停止', () => audioPlayer.stop())))
+    const events = Object.entries(state.json.events || {}).filter(([, e]) => e.audio === name).map(([n]) => n)
+    out.push(h('div', { class: 'hint' }, data ? `已连接；引用事件：${events.join('、') || '无'}` : '未连接文件：请选择音频文件或文件夹，已有事件路径会保留。'))
+    if (data) out.push(btn('移除音频资源', () => edit(`已移除音频 ${name}`, j => ({ json: Ops.prepare(j) }), () => { state.audio = new Map(state.audio); state.audio.delete(name); audioPlayer.stop() }), { title: '保留事件路径，允许以后重新连接' }))
+    return out
+  }
+
   // ---------- 事件
 
   function eventBody() {
     const name = state.sel.name
-    const e = (state.json.events || {})[name] || {}
-    const set = (k) => (v) => edit(`已修改事件 ${name}`, (j) => Ops.setEventProps(j, name, { [k]: v }))
+    const defaults = (state.json.events || {})[name] || {}
+    const keyed = animOn() && (state.json.animations[state.anim]?.events || []).find(k => k.name === name && Math.abs((k.time || 0) - timeSec()) < .0002)
+    const e = { ...defaults, ...(keyed || {}) }
+    const set = (k) => (v) => edit(`已修改事件 ${name}`, (j) => animOn() && k !== 'audio'
+      ? Ops.keyEvent(j, state.anim, name, timeSec(), { [k]: v }) : Ops.setEventProps(j, name, { [k]: v }))
     // text values may be cleared, unlike names
     const strIn = (k) => {
       const i = h('input', { type: 'text', value: e[k] || '' })
@@ -10899,11 +11030,16 @@
     out.push(field('整数', numInput(e.int || 0, set('int'), { step: 1 })))
     out.push(field('浮点', numInput(e.float || 0, set('float'))))
     out.push(field('字符串', strIn('string')))
-    out.push(field('音频', strIn('audio')))
+    const audioPath = strIn('audio'); audioPath.disabled = animOn()
+    out.push(field('音频路径', audioPath))
+    out.push(field('选择音频', selectInput([['', '（无）'], ...AudioAssets.names(state.json, state.audio).map(n => [n, n])], defaults.audio || '', v => set('audio')(v))))
+    if (animOn()) { const f = out[out.length - 1]; f.querySelector('select').disabled = true }
+    out.push(h('div', { class: 'btns g2' }, btn('导入音频…', () => pickAudioFiles()), btn('试听', () => playAudioEvent({ name, ...e }), { disabled: !AudioAssets.source(state.audio, defaults.audio) })))
     if (e.audio) {
-      out.push(field('音量', numInput(e.volume === undefined ? 1 : e.volume, set('volume'), { step: 0.1 })))
-      out.push(field('平衡', numInput(e.balance || 0, set('balance'), { step: 0.1 })))
+      out.push(field('音量', audioSlider(Math.round((e.volume === undefined ? 1 : e.volume) * 100), 0, 100, v => set('volume')(v / 100))))
+      out.push(field('平衡', audioSlider(Math.round((e.balance || 0) * 100), -100, 100, v => set('balance')(v / 100))))
     }
+    if (animOn()) out.push(h('div', { class: 'hint' }, '参数写入当前帧的事件关键帧；音频路径在设置模式修改。'))
     return out
   }
 
@@ -11086,7 +11222,7 @@
       const type = att.type || 'region'
       if (type === 'region') return { kind: 'att', sel: s, att }
       // a mesh moves / turns / scales / shears as a whole, with the same handles at its centre
-      if (type === 'mesh' || type === 'linkedmesh' || type === 'clipping' || type === 'path') return { kind: 'att', sel: s, att, mesh: true }
+      if (type === 'mesh' || type === 'linkedmesh' || type === 'clipping' || type === 'boundingbox' || type === 'path') return { kind: 'att', sel: s, att, mesh: true }
     }
     // 动画: the picked mesh (shown in its slot) the same way, written as its shape key
     if (s && s.kind === 'att' && animOn()) {
@@ -11319,6 +11455,7 @@
 
   /** The 动画 section's transport: jump to a frame (clamped), playback stops. */
   function gotoFrame(f) {
+    audioPlayer.stop()
     if (!animOn()) return
     const frames = Math.max(0, Math.round(duration() * FPS))
     state.playing = false
@@ -11333,12 +11470,14 @@
     // from the last frame with 循环 off, play starts over
     if (!state.playing && !state.loop && state.frame >= lastFrame()) state.frame = 0
     state.playing = !state.playing
+    if (state.playing) { audioPlayer.unlock(); loop.audioInitial = true } else audioPlayer.stop()
     state.temp.clear()
     loop.acc = 0
     syncTimeline()
   }
 
   function setMode(mode) {
+    audioPlayer.stop()
     state.mode = mode
     state.meshEdit = null
     state.weightEdit = null
@@ -12744,7 +12883,7 @@
       const images = []
       for (const [rel, d] of files) if (/\.png$/i.test(rel)) images.push({ fileName: rel, dataUrl: await dataUrl(d) })
       return {
-        source: { json: { fileName: `${name}.json`, text: await text(files.get(`${name}.json`)) }, atlas: { fileName: `${name}.atlas`, text: await text(files.get(`${name}.atlas`)) }, images },
+        source: { json: { fileName: `${name}.json`, text: await text(files.get(`${name}.json`)) }, atlas: { fileName: `${name}.atlas`, text: await text(files.get(`${name}.atlas`)) }, images, audio: [...state.audio].map(([fileName, dataUrl]) => ({ fileName, dataUrl })) },
         missing: r.missing,
       }
     },
@@ -12789,5 +12928,5 @@
     } catch (e) { console.warn('[skeleton editor] attach', e) }
   }, 0)
 
-  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, openSweepPanel, openParticlePanel, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
+  window.__SkeletonLab = { regionPixelsCanvas, toScreen, newClipping, newBoundingBox, importAudioFiles, sourceAudio, projectFileBytes, gotoFrame, togglePlay, audioPlayer, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, openSweepPanel, openParticlePanel, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
 })()

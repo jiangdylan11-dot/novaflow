@@ -314,7 +314,7 @@
       } finally { image.close(); }
     }
     async function finish(json) {
-      if (finished || !frames.length) throw new Error('没有可导出的序列帧');
+      if (finished || (!frames.length && !(json && (typeof json === 'string' || json.bones?.length)))) throw new Error('没有可导出的序列帧');
       if (packed) { await flush(); await options.write(`${baseName}.atlas`, makeAtlas(pages, settings, options.version)); }
       const skeleton = json ? normalizeSkeleton(json, frames, packed) : makeSkeleton({ ...options, baseName, frames, packed });
       // Normalization uses the editor's array skins internally; restore the 3.7 wire format last.
