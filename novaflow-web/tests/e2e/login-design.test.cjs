@@ -36,7 +36,7 @@ app.whenReady().then(async () => {
     const timer = setInterval(() => {
       const gate = document.getElementById('novaflow-web-login-gate');
       const logo = document.querySelector('.nf-login-logo');
-      if (gate && logo?.complete && logo.naturalWidth && document.querySelectorAll('.nf-login-flow ellipse').length === 2 && !document.getElementById('novaflow-boot-splash')) { clearInterval(timer); resolve(); }
+      if (gate && logo?.complete && logo.naturalWidth && document.querySelector('.nf-login-liquid') && !document.getElementById('novaflow-boot-splash')) { clearInterval(timer); resolve(); }
       else if (Date.now() > limit) { clearInterval(timer); reject(new Error('login surface not ready')); }
     }, 50);
   })`);
@@ -54,9 +54,12 @@ app.whenReady().then(async () => {
         card: { left: card.getBoundingClientRect().left, right: card.getBoundingClientRect().right },
         fieldBackground: getComputedStyle(input).backgroundColor,
         headlineSize: parseFloat(getComputedStyle(headline).fontSize),
+        logoWidth: document.querySelector('.nf-login-logo').getBoundingClientRect().width,
+        columnGap: parseFloat(getComputedStyle(document.querySelector('.nf-login-main')).gap),
         capabilities: { count: tags.children.length, controls: tags.querySelectorAll('button, a, [role="button"]').length,
           belowTitle: tags.getBoundingClientRect().top > headline.getBoundingClientRect().bottom },
-        flows: [...document.querySelectorAll('.nf-login-flow ellipse')].map(node => getComputedStyle(node).animationName),
+        renderer: document.querySelector('.nf-login-atmosphere').getAttribute('data-renderer'),
+        hardLightStrokes: document.querySelectorAll('.nf-login-flow, .nf-login-ribbon').length,
         font: getComputedStyle(document.querySelector('.nf-login-card-title')).fontFamily,
         help: document.querySelector('.nf-login-help').textContent };
     })()`);
@@ -66,24 +69,45 @@ app.whenReady().then(async () => {
     assert(['rgb(26, 32, 30)', 'rgb(28, 37, 33)'].includes(metrics.fieldBackground));
     assert(metrics.headlineSize <= 42, 'headline remains restrained');
     assert.deepEqual(metrics.capabilities, { count: 6, controls: 0, belowTitle: true });
-    assert.deepEqual(metrics.flows, ['nf-login-flow', 'nf-login-flow']);
+    assert(metrics.logoWidth >= (width > 700 ? 180 : 140), 'logo is visibly larger');
+    assert(metrics.columnGap <= 84, 'story and form remain a compact group');
+    assert(['webgl', 'css'].includes(metrics.renderer));
+    assert.equal(metrics.hardLightStrokes, 0, 'no highlights running around rigid lines');
     assert.equal(metrics.help, '账号由管理员开通');
     console.log(JSON.stringify({ size: [width, height], ...metrics }));
     if (width < 901) await run(`document.querySelector('.nf-login-submit').scrollIntoView({ block: 'end' })`);
     await fs.writeFile(path.join(out, `login-${width}x${height}.png`), (await win.webContents.capturePage()).toPNG());
   }
   const motion = await run(`(async () => {
-    const node = document.querySelector('.nf-login-flow ellipse');
-    const before = getComputedStyle(node).strokeDashoffset;
+    function sample() {
+      const host = document.querySelector('.nf-login-atmosphere');
+      if (host.getAttribute('data-renderer') === 'webgl') {
+        const gl = host.querySelector('canvas').getContext('webgl');
+        const program = gl.getParameter(gl.CURRENT_PROGRAM);
+        return gl.getUniform(program, gl.getUniformLocation(program, 'time'));
+      }
+      const style = getComputedStyle(host.querySelector('.nf-login-fog'));
+      return style.transform + style.filter;
+    }
+    const before = sample();
     await new Promise(resolve => setTimeout(resolve, 120));
-    return { before, after: getComputedStyle(node).strokeDashoffset };
+    return { before, after: sample() };
   })()`);
-  assert.notEqual(motion.before, motion.after, 'edge highlight flows along its arc');
+  assert.notEqual(motion.before, motion.after, 'light field deforms and changes color');
   win.webContents.debugger.attach('1.3');
   await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
-  const reduced = await run(`({ animation: getComputedStyle(document.querySelector('.nf-login-flow ellipse')).animationName,
-    opacity: getComputedStyle(document.querySelector('.nf-login-flow')).opacity })`);
-  assert.deepEqual(reduced, { animation: 'none', opacity: '0' });
+  const reduced = await run(`(async () => {
+    await new Promise(resolve => setTimeout(resolve, 80));
+    const host = document.querySelector('.nf-login-atmosphere');
+    const gl = host.getAttribute('data-renderer') === 'webgl' && host.querySelector('canvas').getContext('webgl');
+    const program = gl && gl.getParameter(gl.CURRENT_PROGRAM);
+    const sample = () => gl ? gl.getUniform(program, gl.getUniformLocation(program, 'time')) : 0;
+    const before = sample();
+    await new Promise(resolve => setTimeout(resolve, 120));
+    return { animations: [...host.querySelectorAll('.nf-login-fog')].map(node => getComputedStyle(node).animationName), before, after: sample() };
+  })()`);
+  assert.deepEqual(reduced.animations, ['none', 'none']);
+  assert.equal(reduced.before, reduced.after, 'reduced motion freezes the light field');
   await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] });
   win.webContents.debugger.detach();
   const result = await run(`(async () => {
@@ -111,7 +135,7 @@ app.whenReady().then(async () => {
   assert.deepEqual(result.during, { disabled: true, label: '登录中…', calls: 1 });
   assert.deepEqual(result.submitted, { account: 'fixture-account', password: 'fixture-password' });
   assert.deepEqual(result.after, { disabled: false, label: '进入工作台', message: '测试登录失败' });
-  console.log('PASS: built login at 5 sizes; capability descriptions, flowing background/reduced motion, validation, reveal, Enter, duplicate prevention and failed-auth recovery (fixture API)');
+  console.log('PASS: compact login at 5 sizes; larger logo, deforming/color-shifting field and reduced motion, validation, reveal, Enter, duplicate prevention and failed-auth recovery (fixture API)');
   win.destroy();
   server.close();
   app.exit(0);

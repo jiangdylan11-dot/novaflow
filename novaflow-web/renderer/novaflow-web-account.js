@@ -24,6 +24,7 @@
   let balanceTimer = 0;
   let seatTimer = 0;
   let pollBound = false;
+  let disposeLoginAtmosphere = null;
 
   const styles = el('style', '', `
 #novaflow-web-account-header{display:inline-flex!important;align-items:center;gap:8px;height:28px;margin-left:10px;color:#d7dbe2;font:400 12px/1 "Segoe UI","Microsoft YaHei",sans-serif;white-space:nowrap;-webkit-app-region:no-drag}
@@ -352,8 +353,119 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   // of the startup path.
 
   function removeGate() {
+    if (disposeLoginAtmosphere) { disposeLoginAtmosphere(); disposeLoginAtmosphere = null; }
     const gate = root.document.getElementById(GATE_ID);
     if (gate && gate.parentNode) gate.parentNode.removeChild(gate);
+  }
+
+  function animateLoginAtmosphere(host) {
+    const canvas = el('canvas'); canvas.className = 'nf-login-liquid';
+    host.appendChild(canvas);
+    host.setAttribute('data-renderer', 'css');
+    if (typeof canvas.getContext !== 'function' || typeof root.requestAnimationFrame !== 'function') return () => {};
+    let gl, program, buffer, frame = 0, disposed = false, previousFrame = -Infinity;
+    const motion = typeof root.matchMedia === 'function' ? root.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+    try {
+      gl = canvas.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' });
+      if (!gl) return () => {};
+      const compile = (type, source) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source); gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) { gl.deleteShader(shader); throw new Error('Login background shader unavailable'); }
+        return shader;
+      };
+      const vertex = compile(gl.VERTEX_SHADER, 'attribute vec2 position; void main(){gl_Position=vec4(position,0.0,1.0);}');
+      const fragment = compile(gl.FRAGMENT_SHADER, `
+        precision mediump float;
+        uniform vec2 resolution;
+        uniform float time;
+        void main() {
+          vec2 uv=gl_FragCoord.xy/resolution; uv.y=1.0-uv.y;
+          vec2 p=(uv-.5)*vec2(resolution.x/resolution.y,1.0);
+          float t=time*.24;
+          vec2 q=p;
+          q.x+=.18*sin(p.y*3.2+t*.73)+.055*cos(p.y*7.0-t*.46);
+          q.y+=.15*sin(p.x*2.8+t*.64)+.065*cos(p.x*5.2-t*.52);
+          float a=q.y+.31*q.x+.13*sin(q.x*2.3+t*.55)+.12;
+          float b=q.y-.38*q.x+.12*cos(q.x*2.0-t*.62)-.14;
+          float c=q.y+.15*q.x+.19*cos(q.x*2.3+t*.39)+.35;
+          float bandA=exp(-pow(a/.095,2.0));
+          float bandB=exp(-pow(b/.12,2.0));
+          float bandC=exp(-pow(c/.14,2.0));
+          float foldA=exp(-abs(a+.04)*42.0);
+          float foldB=exp(-abs(b-.045)*32.0);
+          float drift=.5+.5*sin(t*.48+q.x*1.5+q.y*.8);
+          vec3 jade=mix(vec3(.015,.24,.17),vec3(.035,.25,.32),drift);
+          vec3 ember=mix(vec3(.30,.065,.045),vec3(.23,.055,.20),.5+.5*cos(t*.56-q.x));
+          vec3 color=vec3(.032,.043,.043);
+          color+=jade*(bandA*.62+foldA*.25+exp(-abs(a)*5.0)*.16);
+          color+=ember*(bandB*.48+foldB*.21+exp(-abs(b)*4.0)*.12);
+          color+=mix(jade,ember,.5+.5*sin(t*.43))*(bandC*.23);
+          color*=1.0-.33*smoothstep(.15,.95,length(p*vec2(.65,1.0)));
+          gl_FragColor=vec4(color,1.0);
+        }
+      `);
+      program = gl.createProgram(); gl.attachShader(program, vertex); gl.attachShader(program, fragment); gl.linkProgram(program);
+      gl.deleteShader(vertex); gl.deleteShader(fragment);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('Login background program unavailable');
+      gl.useProgram(program);
+      buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+      const position = gl.getAttribLocation(program, 'position');
+      gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+    } catch (_) {
+      if (gl && buffer) gl.deleteBuffer(buffer);
+      if (gl && program) gl.deleteProgram(program);
+      return () => {};
+    }
+    const resolution = gl.getUniformLocation(program, 'resolution');
+    const time = gl.getUniformLocation(program, 'time');
+    function resize() {
+      // Soft lighting does not need device-pixel resolution. Cap fill rate on
+      // large displays and render at 30fps; typing never drives the renderer.
+      const scale = Math.min(.7, 1050 / Math.max(1, root.innerWidth));
+      canvas.width = Math.max(1, Math.round(root.innerWidth * scale));
+      canvas.height = Math.max(1, Math.round(root.innerHeight * scale));
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    function draw(timestamp) {
+      frame = 0;
+      if (disposed || !host.isConnected) return;
+      if (root.document.hidden) return;
+      if (timestamp - previousFrame >= 1000 / 30 || motion.matches) {
+        gl.uniform2f(resolution, canvas.width, canvas.height);
+        gl.uniform1f(time, motion.matches ? 0 : timestamp / 1000);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        if (host.getAttribute('data-renderer') !== 'webgl') host.setAttribute('data-renderer', 'webgl');
+        previousFrame = timestamp;
+      }
+      if (!motion.matches) frame = root.requestAnimationFrame(draw);
+    }
+    function refresh() {
+      if (frame) root.cancelAnimationFrame(frame);
+      frame = 0; previousFrame = -Infinity;
+      if (!disposed && !root.document.hidden) { resize(); frame = root.requestAnimationFrame(draw); }
+    }
+    function contextLost(event) {
+      event.preventDefault();
+      cleanup(); host.setAttribute('data-renderer', 'css');
+    }
+    function cleanup() {
+      if (disposed) return;
+      disposed = true;
+      if (frame) root.cancelAnimationFrame(frame);
+      root.removeEventListener('resize', refresh);
+      root.document.removeEventListener('visibilitychange', refresh);
+      if (motion.removeEventListener) motion.removeEventListener('change', refresh);
+      canvas.removeEventListener('webglcontextlost', contextLost);
+      gl.deleteBuffer(buffer); gl.deleteProgram(program);
+    }
+    root.addEventListener('resize', refresh);
+    root.document.addEventListener('visibilitychange', refresh);
+    if (motion.addEventListener) motion.addEventListener('change', refresh);
+    canvas.addEventListener('webglcontextlost', contextLost);
+    refresh();
+    return cleanup;
   }
 
   // Static, local icons: the login page must render before any remote service
@@ -407,17 +519,12 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
 
     const atmosphere = el('div'); atmosphere.className = 'nf-login-atmosphere';
     atmosphere.setAttribute('aria-hidden', 'true');
-    for (const tone of ['green', 'red', 'low']) {
-      const ribbon = el('div'); ribbon.className = 'nf-login-ribbon nf-login-ribbon-' + tone;
-      if (tone !== 'low') {
-        const [width, height] = tone === 'green' ? [920, 570] : [1240, 650];
-        const flow = el('span'); flow.className = 'nf-login-flow';
-        flow.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '" fill="none"><ellipse cx="' + width / 2 + '" cy="' + height / 2 + '" rx="' + (width / 2 - 1) + '" ry="' + (height / 2 - 1) + '" pathLength="100" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-dasharray="4 21"/></svg>';
-        ribbon.appendChild(flow);
-      }
-      atmosphere.appendChild(ribbon);
+    for (const tone of ['green', 'red']) {
+      const fog = el('div'); fog.className = 'nf-login-fog nf-login-fog-' + tone;
+      atmosphere.appendChild(fog);
     }
     gate.appendChild(atmosphere);
+    disposeLoginAtmosphere = animateLoginAtmosphere(atmosphere);
 
     const shell = el('div'); shell.className = 'nf-login-shell';
     const header = el('header'); header.className = 'nf-login-header';

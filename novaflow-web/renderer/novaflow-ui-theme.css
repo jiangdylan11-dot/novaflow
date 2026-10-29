@@ -100,45 +100,41 @@ body:has(> #novaflow-web-login-gate) { overflow: hidden !important; }
 html body #novaflow-web-login-gate :is(h1, h2, p, label, input, button, span, summary, .nf-login-tag, .nf-login-note) {
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif !important;
 }
-/* Pure CSS surfaces and local SVG strokes keep the first paint independent
-   of remote artwork. Only the two short edge highlights animate. */
+/* A warped light field changes shape and color as a whole. The CSS layers
+   remain a soft animated fallback when WebGL is unavailable. */
 .nf-login-atmosphere {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(ellipse at 45% -8%, #133e332e, transparent 52%),
-    radial-gradient(ellipse at 92% 72%, #2d15131f, transparent 45%);
+  position: fixed; inset: 0; overflow: hidden; z-index: -1; pointer-events: none;
+  background: #090c0d;
 }
-.nf-login-ribbon { position: absolute; border-radius: 50%; opacity: .7; }
-.nf-login-ribbon-green {
-  width: 920px; height: 570px; left: 24%; top: -495px;
-  transform: rotate(36deg);
-  background: linear-gradient(180deg, transparent 54%, #163c322e 84%, #249d7c1e 98%, #3be5b51c);
-  border-bottom: 1px solid #43dcb87d;
-  box-shadow: 0 2px 0 #34d9b20b, 0 18px 58px -24px #24bb8e4d;
-  color: #88edca;
+.nf-login-atmosphere::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 47%, transparent 20%, #03060770 100%);
 }
-.nf-login-ribbon-red {
-  width: 1240px; height: 650px; right: -820px; top: 170px;
-  transform: rotate(-32deg);
-  background: linear-gradient(180deg, #d3513b09, transparent 29%);
-  border-top: 1px solid #ea6a576e;
-  box-shadow: 0 -20px 64px -45px #ee5c3f80;
-  color: #ef8b72;
+.nf-login-liquid { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+.nf-login-atmosphere[data-renderer="webgl"] .nf-login-liquid { opacity: 1; }
+.nf-login-atmosphere[data-renderer="webgl"] .nf-login-fog { visibility: hidden; animation: none; }
+.nf-login-fog { position: absolute; width: 120%; height: 100%; left: -10%; top: -8%; border-radius: 40% 60% 63% 37% / 36% 38% 62% 64%; }
+.nf-login-fog-green {
+  background: radial-gradient(ellipse at 48% 43%, #1d8b6b47, #184b3c26 26%, transparent 57%);
+  transform: rotate(-25deg) skew(-15deg, 9deg);
+  animation: nf-login-liquid-green 16s ease-in-out infinite alternate;
 }
-.nf-login-ribbon-low {
-  width: 1300px; height: 740px; left: -780px; top: 250px;
-  transform: rotate(-18deg);
-  border-right: 1px solid #60af9714;
-  background: linear-gradient(110deg, transparent 60%, #16433812);
+.nf-login-fog-red {
+  top: 12%; left: 8%;
+  background: radial-gradient(ellipse at 60% 49%, #bd443847, #612d3724 25%, transparent 55%);
+  transform: rotate(24deg) skew(12deg, -8deg);
+  animation: nf-login-liquid-red 19s ease-in-out infinite alternate;
 }
-.nf-login-flow { position: absolute; inset: -1px; opacity: .38; }
-.nf-login-flow svg { display: block; width: 100%; height: 100%; }
-.nf-login-flow ellipse { animation: nf-login-flow 24s linear infinite; }
-.nf-login-ribbon-red .nf-login-flow ellipse { animation-duration: 32s; animation-delay: -14s; animation-direction: reverse; }
-@keyframes nf-login-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
+@keyframes nf-login-liquid-green {
+  0% { transform: translate(-8%, -12%) rotate(-25deg) skew(-15deg, 9deg) scale(1, .8); filter: hue-rotate(-12deg); }
+  50% { transform: translate(7%, 6%) rotate(8deg) skew(18deg, -7deg) scale(1.15, 1); filter: hue-rotate(27deg); }
+  100% { transform: translate(-3%, 16%) rotate(25deg) skew(-8deg, 13deg) scale(.9, 1.2); filter: hue-rotate(65deg); }
+}
+@keyframes nf-login-liquid-red {
+  0% { transform: translate(12%, 10%) rotate(24deg) skew(12deg, -8deg) scale(1.1, .9); filter: hue-rotate(-8deg); }
+  50% { transform: translate(-10%, -8%) rotate(-10deg) skew(-14deg, 13deg) scale(.9, 1.1); filter: hue-rotate(-24deg); }
+  100% { transform: translate(2%, -15%) rotate(-28deg) skew(19deg, -4deg) scale(1.2, .85); filter: hue-rotate(-48deg); }
+}
 .nf-login-shell {
   position: relative;
   width: 100%; max-width: 1672px; min-height: 100%; min-height: 100svh;
@@ -148,10 +144,10 @@ html body #novaflow-web-login-gate :is(h1, h2, p, label, input, button, span, su
 }
 .nf-login-header {
   display: flex; justify-content: space-between; align-items: center; gap: 24px;
-  padding: 42px 6% 0;
+  padding: 28px 6% 0;
 }
 .nf-login-identity { display: flex; align-items: center; gap: 20px; min-width: 0; }
-.nf-login-logo { display: block; width: 117px; height: 41px; object-fit: contain; object-position: left center; }
+.nf-login-logo { display: block; width: 190px; height: 82px; object-fit: contain; object-position: left center; }
 .nf-login-brand-note { padding-left: 20px; border-left: 1px solid #ffffff1a; color: #8e9894; font-size: 10px; letter-spacing: 2.6px; white-space: nowrap; }
 .nf-login-support { position: relative; color: #89938f; font-size: 12px; z-index: 2; }
 .nf-login-support summary { list-style: none; cursor: pointer; padding: 10px 0; }
@@ -161,10 +157,10 @@ html body #novaflow-web-login-gate :is(h1, h2, p, label, input, button, span, su
 .nf-login-support-copy p { margin: 0; }
 .nf-login-support-copy p + p { margin-top: 6px; }
 .nf-login-main {
-  display: grid; grid-template-columns: minmax(0, 1fr) 340px;
-  gap: clamp(70px, 10vw, 168px); align-items: center;
-  width: 80%; max-width: 1200px; min-height: 540px;
-  margin: 0 auto; padding: 78px 0 88px;
+  display: grid; grid-template-columns: minmax(0, 380px) 340px;
+  gap: clamp(48px, 5vw, 84px); align-items: center; justify-content: center;
+  width: calc(100% - 96px); max-width: 804px; min-height: 510px;
+  margin: 0 auto; padding: 52px 0 66px;
 }
 .nf-login-brand { min-width: 0; padding-bottom: 9px; }
 .nf-login-eyebrow { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; color: #9aaba3; font-size: 10px; letter-spacing: 2px; }
@@ -257,12 +253,12 @@ html body #novaflow-web-login-gate .nf-login-card-title { margin: 0 0 8px; color
 .nf-login-copyright { display: flex; align-items: center; gap: 15px; }
 .nf-login-footer-brand { color: #a6b4ac; font-size: 13px; letter-spacing: .5px; }
 @media (max-width: 1249px) {
-  .nf-login-main { grid-template-columns: minmax(0, 1fr) 310px; gap: 9%; }
+  .nf-login-main { grid-template-columns: minmax(0, 350px) 310px; gap: 56px; max-width: 716px; }
   html body #novaflow-web-login-gate .nf-login-headline { font-size: 36px; }
   .nf-login-card { padding: 29px 26px 22px; }
 }
 @media (max-width: 850px) {
-  .nf-login-main { width: 86%; grid-template-columns: minmax(0, 1fr) 285px; gap: 6%; }
+  .nf-login-main { width: calc(100% - 80px); grid-template-columns: minmax(0, 1fr) 285px; gap: 38px; }
   html body #novaflow-web-login-gate .nf-login-headline { font-size: 29px; }
   .nf-login-eyebrow { font-size: 9px; letter-spacing: 1.3px; }
   .nf-login-brand-note { display: none; }
@@ -271,7 +267,7 @@ html body #novaflow-web-login-gate .nf-login-card-title { margin: 0 0 8px; color
 }
 @media (max-width: 700px) {
   .nf-login-header { padding: 26px 7% 0; }
-  .nf-login-logo { width: 101px; height: 36px; }
+  .nf-login-logo { width: 146px; height: 58px; }
   .nf-login-support { font-size: 11px; }
   .nf-login-main { width: 84%; max-width: 380px; display: flex; flex-direction: column; align-items: stretch; gap: 36px; padding: 44px 0 46px; }
   .nf-login-brand { padding: 0; }
@@ -283,9 +279,6 @@ html body #novaflow-web-login-gate .nf-login-card-title { margin: 0 0 8px; color
   .nf-login-card-note { margin-bottom: 22px; }
   #novaflow-web-login-gate input.nf-login-input { font-size: 16px !important; }
   .nf-login-footer { margin: 0 8%; flex-wrap: wrap; gap: 10px 18px; padding: 20px 0; font-size: 10px; }
-  .nf-login-ribbon-green { left: -90px; top: -475px; }
-  .nf-login-ribbon-red { right: -1070px; top: 110px; }
-  .nf-login-ribbon-low { left: -970px; top: 330px; }
 }
 @media (max-width: 380px) {
   .nf-login-eyebrow { font-size: 8px; letter-spacing: 1px; }
@@ -300,8 +293,7 @@ html body #novaflow-web-login-gate .nf-login-card-title { margin: 0 0 8px; color
   .nf-login-footer { padding-top: 16px; padding-bottom: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .nf-login-flow ellipse { animation: none; }
-  .nf-login-flow { opacity: 0; }
+  .nf-login-fog { animation: none; }
   #novaflow-web-login-gate * { transition: none !important; }
 }
 
