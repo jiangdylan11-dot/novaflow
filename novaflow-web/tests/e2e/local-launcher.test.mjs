@@ -62,7 +62,7 @@ f.licenseState.locked = true;
 equal((await f.call('start')).needsLicense, true);
 equal((await f.call('share')).ok, true);
 await f.call('openWebsite');
-equal(f.opened.at(-1), 'https://novaflow.jiangdylan11.workers.dev/');
+equal(f.opened.at(-1), 'https://foart.net/');
 equal(f.windows.length, 1);
 equal((await f.call('openLocal')).ok, false);
 f.licenseState.locked = false;

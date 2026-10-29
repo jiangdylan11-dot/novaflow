@@ -277,7 +277,7 @@ ipcMain.handle('worker:setConfig', (_e, patch) => { configDirty = true; return w
 ipcMain.handle('worker:getState', launcherState);
 ipcMain.handle('worker:getLogs', () => logLines.slice(-400));
 ipcMain.handle('worker:openLogFolder', () => shell.openPath(DATA_DIR));
-ipcMain.handle('worker:openWebsite', () => shell.openExternal('https://novaflow.jiangdylan11.workers.dev/'));
+ipcMain.handle('worker:openWebsite', () => shell.openExternal('https://foart.net/'));
 ipcMain.handle('worker:openLocal', async () => {
   try {
     if (!worker?.getState().localRunning) throw new Error('请先启动 Foart');
