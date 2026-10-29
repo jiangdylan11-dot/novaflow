@@ -356,6 +356,27 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     if (gate && gate.parentNode) gate.parentNode.removeChild(gate);
   }
 
+  // Static, local icons: the login page must render before any remote service
+  // is available. These labels describe capabilities; they are not navigation.
+  function loginIcon(name) {
+    const paths = {
+      user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
+      lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4m-4 5v2"/>',
+      bone: '<path d="M17 10c1.7 0 3-1.3 3-3a3 3 0 0 0-3-3c0-1.7-1.3-3-3-3s-3 1.3-3 3c0 .5.1 1 .3 1.4l-5.9 5.9A3 3 0 0 0 4 11c-1.7 0-3 1.3-3 3s1.3 3 3 3c0 1.7 1.3 3 3 3s3-1.3 3-3c0-.5-.1-1-.3-1.4l5.9-5.9c.4.2.9.3 1.4.3Z"/>',
+      video: '<rect x="3" y="6" width="18" height="15" rx="2"/><path d="M3 11h18M8 6l3 5m4-5 3 5m-8 3 5 3-5 3z"/>',
+      audio: '<path d="M4 10v4m4-8v12m4-15v18m4-15v12m4-8v4"/>',
+      ui: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/>',
+      brush: '<path d="m14 6 4-4 4 4-10 10-4-4 6-6Zm-6 6c-6 0-1 7-6 9 7 1 10-2 10-5"/>',
+      box: '<path d="m12 3 9 5v9l-9 5-9-5V8l9-5Zm-9 5 9 5 9-5m-9 5v9"/>',
+      shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Zm-4 9 3 3 5-6"/>'
+    };
+    const icon = el('span');
+    icon.className = 'nf-login-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + paths[name] + '</svg>';
+    return icon;
+  }
+
   function buildGate() {
     // The shared modal scanner may clear inline backdrop styles. Keep the
     // login screen opaque and above the editor while it is signed out.
@@ -363,7 +384,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       // background-COLOR, not the `background` shorthand: this rule is injected
       // after the theme stylesheet and carries !important, so a shorthand here
       // would reset the theme's background-image and wipe the backdrop.
-      const style = el('style', '', '#' + GATE_ID + '{background-color:#0b0b0c!important;z-index:2147483640!important}');
+      const style = el('style', '', '#' + GATE_ID + '{background-color:#090c0d!important;z-index:2147483640!important}');
       style.id = GATE_ID + '-style';
       root.document.head.appendChild(style);
     }
@@ -375,55 +396,90 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       'position:fixed', 'inset:0', 'z-index:2147483640',
       // Colour only, for the same reason as the rule above: the shorthand
       // would take the theme's backdrop layers with it.
-      'background-color:#0b0b0c', 'display:flex', 'align-items:center',
+      'background-color:#090c0d', 'display:flex', 'align-items:center',
       'justify-content:center', 'overflow:hidden',
       'font:13px "Segoe UI","Microsoft YaHei",sans-serif'
     ].join(';'));
     gate.id = GATE_ID;
+    gate.setAttribute('aria-label', 'Foart 登录');
     // Keep the signed-out layout independent of the editor's radius scanner.
     gate.setAttribute('data-novaflow-keep-radius', '1');
 
-    const artwork = el('img'); artwork.className = 'nf-login-art';
-    artwork.src = './assets/login-game-art.png';
-    artwork.alt = '';
-    artwork.draggable = false;
-    artwork.setAttribute('aria-hidden', 'true');
-    artwork.decoding = 'async';
-    gate.appendChild(artwork);
+    const atmosphere = el('div'); atmosphere.className = 'nf-login-atmosphere';
+    atmosphere.setAttribute('aria-hidden', 'true');
+    for (const tone of ['green', 'red', 'low']) {
+      const ribbon = el('div'); ribbon.className = 'nf-login-ribbon nf-login-ribbon-' + tone;
+      if (tone !== 'low') {
+        const [width, height] = tone === 'green' ? [920, 570] : [1240, 650];
+        const flow = el('span'); flow.className = 'nf-login-flow';
+        flow.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '" fill="none"><ellipse cx="' + width / 2 + '" cy="' + height / 2 + '" rx="' + (width / 2 - 1) + '" ry="' + (height / 2 - 1) + '" pathLength="100" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-dasharray="4 21"/></svg>';
+        ribbon.appendChild(flow);
+      }
+      atmosphere.appendChild(ribbon);
+    }
+    gate.appendChild(atmosphere);
 
     const shell = el('div'); shell.className = 'nf-login-shell';
-
-    const brand = el('div'); brand.className = 'nf-login-brand';
+    const header = el('header'); header.className = 'nf-login-header';
+    const identity = el('div'); identity.className = 'nf-login-identity';
     const logo = el('img'); logo.className = 'nf-login-logo';
     logo.src = './assets/foart-logo-dark.svg?brand=geo-v3';
     logo.alt = 'Foart';
     logo.draggable = false;
-    brand.appendChild(logo);
+    identity.appendChild(logo);
+    const brandNote = el('span', '', 'GAME × ART × AI'); brandNote.className = 'nf-login-brand-note';
+    identity.appendChild(brandNote);
+    header.appendChild(identity);
 
-    const headline = el('h1', '', '让游戏灵感，成为作品。');
+    // Native disclosure keeps help usable by keyboard, without adding a
+    // second modal or shipping placeholder contact/policy links.
+    const support = el('details'); support.className = 'nf-login-support';
+    support.appendChild(el('summary', '', '登录帮助'));
+    const supportCopy = el('div'); supportCopy.className = 'nf-login-support-copy';
+    supportCopy.appendChild(el('p', '', '账号由管理员开通。'));
+    supportCopy.appendChild(el('p', '', '忘记密码、账号到期或无法登录，请联系为你开通账号的管理员。'));
+    support.appendChild(supportCopy);
+    header.appendChild(support);
+    shell.appendChild(header);
+
+    const main = el('main'); main.className = 'nf-login-main';
+    const brand = el('section'); brand.className = 'nf-login-brand';
+    brand.setAttribute('aria-label', 'Foart 游戏美术创作工作台');
+    const eyebrow = el('div', '', 'A LITTLE IDEA. A NEW POSSIBILITY.');
+    eyebrow.className = 'nf-login-eyebrow'; brand.appendChild(eyebrow);
+    const headline = el('h1');
     headline.className = 'nf-login-headline';
+    headline.appendChild(root.document.createTextNode('让创意'));
+    headline.appendChild(el('br'));
+    headline.appendChild(el('em', '', '更快'));
+    headline.appendChild(root.document.createTextNode('变成作品。'));
     brand.appendChild(headline);
 
     const lede = el('p'); lede.className = 'nf-login-lede';
-    lede.appendChild(root.document.createTextNode('Foart 游戏美术创作工作台'));
+    lede.appendChild(root.document.createTextNode('游戏美术与动画的 AI 创作平台'));
     brand.appendChild(lede);
 
     // Descriptive labels for what is inside. They are deliberately not
     // controls: the only way in from this screen is the form on the right.
     const tags = el('div'); tags.className = 'nf-login-tags';
-    for (const label of ['AI 绘图', 'UI 设计', '智能拆图', '动画与特效']) {
+    tags.setAttribute('aria-label', '平台能力说明');
+    for (const [icon, label] of [['bone', '骨骼动画'], ['video', 'AI 视频'], ['audio', 'AI 音频'], ['ui', 'UI 设计'], ['brush', '绘画编辑'], ['box', '常用工具']]) {
       const tag = el('div'); tag.className = 'nf-login-tag';
+      tag.appendChild(loginIcon(icon));
       tag.appendChild(el('span', '', label));
       tags.appendChild(tag);
     }
     brand.appendChild(tags);
 
-    shell.appendChild(brand);
+    main.appendChild(brand);
 
-    const card = el('div'); card.className = 'nf-login-card';
+    const card = el('section'); card.className = 'nf-login-card';
+    card.setAttribute('aria-label', '登录账号');
+    const kicker = el('div', '', 'YOUR CREATIVE SPACE'); kicker.className = 'nf-login-card-kicker';
+    card.appendChild(kicker);
     const cardTitle = el('h2', '', '欢迎回来'); cardTitle.className = 'nf-login-card-title';
     card.appendChild(cardTitle);
-    const cardNote = el('p', '', '登录你的创作工作空间');
+    const cardNote = el('p', '', '登录，继续你的创作。');
     cardNote.className = 'nf-login-card-note';
     card.appendChild(cardNote);
 
@@ -433,8 +489,12 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     const account = el('input');
     account.className = 'nf-login-input';
     account.id = 'novaflow-web-login-account';
-    account.placeholder = '账号';
+    account.placeholder = '请输入账号';
     account.autocomplete = 'username';
+    account.name = 'username';
+    account.spellcheck = false;
+    account.setAttribute('autocapitalize', 'none');
+    account.setAttribute('aria-required', 'true');
 
     const passwordLabel = el('label', '', '密码');
     passwordLabel.className = 'nf-login-field';
@@ -442,9 +502,11 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     const password = el('input');
     password.className = 'nf-login-input';
     password.id = 'novaflow-web-login-password';
-    password.placeholder = '密码';
+    password.placeholder = '请输入密码';
     password.type = 'password';
     password.autocomplete = 'current-password';
+    password.name = 'password';
+    password.setAttribute('aria-required', 'true');
 
     // The icon is drawn on the wrapper, not on the input: Chrome paints an
     // autofilled field with its own background, which would cover a
@@ -452,6 +514,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     const wrap = (kind, field) => {
       const node = el('div');
       node.className = 'nf-login-input-wrap nf-login-input-wrap-' + kind;
+      node.appendChild(loginIcon(kind));
       node.appendChild(field);
       return node;
     };
@@ -466,6 +529,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     revealPassword.setAttribute('aria-label', '显示密码');
     revealPassword.setAttribute('aria-pressed', 'false');
     revealPassword.setAttribute('aria-controls', password.id);
+    revealPassword.setAttribute('data-foart-button-theme', 'off');
     revealPassword.addEventListener('click', () => {
       const visible = password.type === 'password';
       password.type = visible ? 'text' : 'password';
@@ -478,14 +542,14 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     const submit = el('button', '', '进入工作台');
     submit.className = 'nf-login-submit';
     submit.type = 'button';
+    submit.setAttribute('data-foart-button-theme', 'off');
     card.appendChild(submit);
-    const help = el('p', '', '账号由管理员开通'); help.className = 'nf-login-help';
-    card.appendChild(help);
 
     const note = el('div');
     note.className = 'nf-login-note';
     note.style.color = '#a0a0a0';
     note.setAttribute('role', 'status');
+    note.setAttribute('aria-live', 'polite');
     card.appendChild(note);
     // Why the last session ended, when the server said: 账号已在其他设备登录 / 账号已到期.
     try {
@@ -497,7 +561,20 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       }
     } catch (_) {}
 
-    shell.appendChild(card);
+    const help = el('p'); help.className = 'nf-login-help';
+    help.appendChild(loginIcon('shield'));
+    help.appendChild(root.document.createTextNode('账号由管理员开通'));
+    card.appendChild(help);
+    main.appendChild(card);
+    shell.appendChild(main);
+    const footer = el('footer'); footer.className = 'nf-login-footer';
+    const copyright = el('div'); copyright.className = 'nf-login-copyright';
+    const footerBrand = el('span', '', 'Foart'); footerBrand.className = 'nf-login-footer-brand';
+    copyright.appendChild(footerBrand);
+    copyright.appendChild(el('span', '', '© ' + new Date().getFullYear() + ' Foart'));
+    footer.appendChild(copyright);
+    footer.appendChild(el('span', '', '为创作，留一点想象。'));
+    shell.appendChild(footer);
 
     async function login() {
       if (submit.disabled) return;

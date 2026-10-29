@@ -82,229 +82,228 @@
    the right. Every control in it is the module's own; this only dresses them.
    ========================================================================== */
 
+/* Keep the covered editor from adding a second scrollbar on narrow windows.
+   Removing the gate automatically restores the editor's own overflow rules. */
+html:has(#novaflow-web-login-gate),
+body:has(> #novaflow-web-login-gate) { overflow: hidden !important; }
 #novaflow-web-login-gate {
-  background-color: #101212 !important;
+  display: block !important;
+  background-color: #090c0d !important;
   background-image: none !important;
   overflow: auto !important;
+  overscroll-behavior: contain;
   isolation: isolate;
+  color: #eef2f0;
   color-scheme: dark;
 }
-/* Editor-wide font rules target descendants directly; keep login typography
-   explicit so Chinese labels and native buttons use the same sans-serif. */
-html body #novaflow-web-login-gate :is(h1, h2, p, label, input, button, span, .nf-login-tag, .nf-login-note) {
+#novaflow-web-login-gate * { box-sizing: border-box; }
+html body #novaflow-web-login-gate :is(h1, h2, p, label, input, button, span, summary, .nf-login-tag, .nf-login-note) {
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif !important;
 }
-
-/* Artwork is decorative; all text, fields and feedback remain real DOM. */
-.nf-login-art {
-  position: absolute;
+/* Pure CSS surfaces and local SVG strokes keep the first paint independent
+   of remote artwork. Only the two short edge highlights animate. */
+.nf-login-atmosphere {
+  position: fixed;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  pointer-events: none;
-  user-select: none;
+  overflow: hidden;
   z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 45% -8%, #133e332e, transparent 52%),
+    radial-gradient(ellipse at 92% 72%, #2d15131f, transparent 45%);
 }
-
+.nf-login-ribbon { position: absolute; border-radius: 50%; opacity: .7; }
+.nf-login-ribbon-green {
+  width: 920px; height: 570px; left: 24%; top: -495px;
+  transform: rotate(36deg);
+  background: linear-gradient(180deg, transparent 54%, #163c322e 84%, #249d7c1e 98%, #3be5b51c);
+  border-bottom: 1px solid #43dcb87d;
+  box-shadow: 0 2px 0 #34d9b20b, 0 18px 58px -24px #24bb8e4d;
+  color: #88edca;
+}
+.nf-login-ribbon-red {
+  width: 1240px; height: 650px; right: -820px; top: 170px;
+  transform: rotate(-32deg);
+  background: linear-gradient(180deg, #d3513b09, transparent 29%);
+  border-top: 1px solid #ea6a576e;
+  box-shadow: 0 -20px 64px -45px #ee5c3f80;
+  color: #ef8b72;
+}
+.nf-login-ribbon-low {
+  width: 1300px; height: 740px; left: -780px; top: 250px;
+  transform: rotate(-18deg);
+  border-right: 1px solid #60af9714;
+  background: linear-gradient(110deg, transparent 60%, #16433812);
+}
+.nf-login-flow { position: absolute; inset: -1px; opacity: .38; }
+.nf-login-flow svg { display: block; width: 100%; height: 100%; }
+.nf-login-flow ellipse { animation: nf-login-flow 24s linear infinite; }
+.nf-login-ribbon-red .nf-login-flow ellipse { animation-duration: 32s; animation-delay: -14s; animation-direction: reverse; }
+@keyframes nf-login-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
 .nf-login-shell {
   position: relative;
-  width: 100%;
-  max-width: 1920px;
-  min-height: 100%;
-  margin: auto;
-  padding: clamp(32px, 4.5vw, 86px) clamp(40px, 5.6vw, 108px);
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 31%);
-  align-items: center;
-  gap: clamp(64px, 8vw, 160px);
-  background: none;
-  border: 0;
-  box-shadow: none;
+  width: 100%; max-width: 1672px; min-height: 100%; min-height: 100svh;
+  margin: 0 auto;
+  display: grid; grid-template-rows: auto 1fr auto;
+  background: none; border: 0; box-shadow: none;
 }
-
-.nf-login-brand {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  align-self: stretch;
-  min-width: 0;
-  min-height: min(720px, calc(100svh - 140px));
+.nf-login-header {
+  display: flex; justify-content: space-between; align-items: center; gap: 24px;
+  padding: 42px 6% 0;
 }
-
-.nf-login-logo {
-  display: block;
-  width: clamp(205px, 17vw, 280px);
-  max-width: 100%;
-  height: auto;
-  object-fit: contain;
-  margin-bottom: clamp(42px, 5vh, 68px);
+.nf-login-identity { display: flex; align-items: center; gap: 20px; min-width: 0; }
+.nf-login-logo { display: block; width: 117px; height: 41px; object-fit: contain; object-position: left center; }
+.nf-login-brand-note { padding-left: 20px; border-left: 1px solid #ffffff1a; color: #8e9894; font-size: 10px; letter-spacing: 2.6px; white-space: nowrap; }
+.nf-login-support { position: relative; color: #89938f; font-size: 12px; z-index: 2; }
+.nf-login-support summary { list-style: none; cursor: pointer; padding: 10px 0; }
+.nf-login-support summary::-webkit-details-marker { display: none; }
+.nf-login-support summary:hover { color: #edf3ef; }
+.nf-login-support-copy { position: absolute; top: 100%; right: 0; width: 260px; max-width: calc(100vw - 40px); padding: 15px 18px; border: 1px solid #ffffff16; border-radius: 9px; background: #17201b; box-shadow: 0 12px 35px #0006; color: #aab9af; line-height: 1.8; }
+.nf-login-support-copy p { margin: 0; }
+.nf-login-support-copy p + p { margin-top: 6px; }
+.nf-login-main {
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px;
+  gap: clamp(70px, 10vw, 168px); align-items: center;
+  width: 80%; max-width: 1200px; min-height: 540px;
+  margin: 0 auto; padding: 78px 0 88px;
 }
-
-.nf-login-headline {
-  margin: 0 0 16px;
-  font-size: clamp(27px, 2.65vw, 44px);
-  line-height: 1.4;
-  font-weight: 600;
-  letter-spacing: .02em;
-  color: #eef0ef;
-  text-wrap: balance;
-  text-shadow: 0 2px 18px #101212;
+.nf-login-brand { min-width: 0; padding-bottom: 9px; }
+.nf-login-eyebrow { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; color: #9aaba3; font-size: 10px; letter-spacing: 2px; }
+.nf-login-eyebrow::before { content: ''; width: 19px; height: 1px; flex: 0 0 19px; background: #36d8aa; opacity: .85; }
+html body #novaflow-web-login-gate .nf-login-headline {
+  margin: 0 0 16px; color: #eef2f0; font-size: 42px; line-height: 1.55;
+  font-weight: 500 !important; letter-spacing: 1px; white-space: nowrap;
 }
-
-.nf-login-lede {
-  margin: 0;
-  font-size: clamp(14px, 1.4vw, 21px);
-  line-height: 1.7;
-  color: #929a98;
-  text-shadow: 0 2px 12px #101212;
-}
-
-.nf-login-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 0;
-  margin-top: auto;
-  padding-top: 48px;
-}
-
-/* Plain descriptive labels, never imitation buttons. */
-.nf-login-tag {
-  display: inline-flex;
-  align-items: center;
-  font-size: clamp(11px, .9vw, 14px);
-  line-height: 1.7;
-  letter-spacing: .08em;
-  color: #858e8a;
-  cursor: default;
-  user-select: none;
-}
-.nf-login-tag + .nf-login-tag::before {
-  content: '·';
-  margin: 0 14px;
-  color: #59645e;
-}
-
+html body #novaflow-web-login-gate .nf-login-headline em { color: #36d8aa; font-style: normal; font-weight: inherit !important; }
+.nf-login-lede { margin: 0; color: #89958e; font-size: 13px; line-height: 1.9; letter-spacing: .5px; }
+.nf-login-tags { display: grid; grid-template-columns: repeat(3, max-content); gap: 13px 20px; margin-top: 32px; }
+.nf-login-tag { display: inline-flex; align-items: center; gap: 6px; color: #86938d; font-size: 11px; line-height: 1.5; white-space: nowrap; }
+.nf-login-icon { display: inline-flex; flex: 0 0 auto; width: 14px; height: 14px; color: #8da89b; pointer-events: none; }
+.nf-login-icon svg { display: block; width: 100%; height: 100%; }
+.nf-login-tag .nf-login-icon { width: 13px; height: 13px; opacity: .9; }
 .nf-login-card {
-  width: 100%;
-  max-width: 430px;
-  justify-self: end;
-  box-sizing: border-box;
-  padding: 24px 0 0;
-  display: flex;
-  flex-direction: column;
-  color: var(--nf-text);
-  background: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  position: relative; width: 100%; min-width: 0; padding: 33px 30px 25px;
+  display: flex; flex-direction: column;
+  border: 1px solid #ffffff12; border-radius: 14px;
+  background: linear-gradient(145deg, #141918, #0e1211);
+  box-shadow: 0 22px 70px #00000030, inset 0 1px 0 #ffffff04;
 }
-.nf-login-card-title {
-  margin: 0 0 12px;
-  font-size: clamp(26px, 2.2vw, 36px);
-  line-height: 1.4;
-  font-weight: 600;
-  color: #eef0ef;
-}
-.nf-login-card-note {
-  margin: 0 0 46px;
-  font-size: 15px;
-  line-height: 1.7;
-  color: #8f9893;
-}
-.nf-login-field {
-  display: block;
-  margin-bottom: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: #c4cbc6;
-}
-.nf-login-gap { height: 26px; }
-.nf-login-input-wrap { position: relative; display: block; }
-
+.nf-login-card::before { content: ''; position: absolute; left: 25px; right: 55%; top: -1px; height: 1px; background: linear-gradient(90deg, transparent, #c9e3d84d, transparent); }
+.nf-login-card-kicker { margin-bottom: 11px; color: #71857b; font-size: 10px; letter-spacing: 2px; }
+html body #novaflow-web-login-gate .nf-login-card-title { margin: 0 0 8px; color: #eef4f0; font-size: 24px; line-height: 1.4; font-weight: 500 !important; letter-spacing: 1px; }
+.nf-login-card-note { margin: 0 0 28px; color: #87948d; font-size: 12px; line-height: 1.6; }
+.nf-login-field { display: block; margin-bottom: 8px; color: #a7b1ab; font-size: 11px; line-height: 1.5; letter-spacing: .4px; }
+.nf-login-gap { height: 17px; }
+.nf-login-input-wrap { position: relative; display: flex; align-items: center; }
+.nf-login-input-wrap > .nf-login-icon { position: absolute; left: 12px; color: #708179; }
 #novaflow-web-login-gate input.nf-login-input {
-  width: 100%;
-  min-width: 0;
-  height: 50px;
-  box-sizing: border-box;
-  background: #1b1e1d !important;
-  background-image: none !important;
-  border: 1px solid #343a37 !important;
-  border-radius: 6px !important;
-  padding: 0 16px !important;
-  font: inherit;
-  font-size: 14px !important;
-  color: #e7ece8 !important;
-  caret-color: #e7ece8;
-  transition: border-color 120ms linear;
+  width: 100%; min-width: 0; height: 44px;
+  background: #1a201e !important; background-image: none !important;
+  border: 1px solid #ffffff0e !important; border-radius: 7px !important;
+  padding: 0 12px 0 35px !important;
+  font: inherit; font-size: 13px !important;
+  color: #e1e9e4 !important; caret-color: #e1e9e4;
+  transition: border-color 150ms linear, background-color 150ms linear;
 }
-#novaflow-web-login-gate .nf-login-input-wrap-lock input.nf-login-input {
-  padding-right: 52px !important;
-}
-#novaflow-web-login-gate input.nf-login-input::placeholder { color: #79827c !important; }
-#novaflow-web-login-gate input.nf-login-input:hover { border-color: #56635a !important; }
-#novaflow-web-login-gate input.nf-login-input:focus {
-  border-color: #1ea672 !important;
-  box-shadow: 0 0 0 2px #1ea67222 !important;
-}
+#novaflow-web-login-gate .nf-login-input-wrap-lock input.nf-login-input { padding-right: 44px !important; }
+#novaflow-web-login-gate input.nf-login-input::placeholder { color: #718078 !important; font-size: 11px; }
+#novaflow-web-login-gate input.nf-login-input:hover { border-color: #ffffff25 !important; }
+#novaflow-web-login-gate input.nf-login-input:focus { background: #1c2521 !important; border-color: #36d8aa80 !important; box-shadow: 0 0 0 2px #1ea67214 !important; }
 #novaflow-web-login-gate input.nf-login-input:-webkit-autofill,
 #novaflow-web-login-gate input.nf-login-input:-webkit-autofill:hover,
 #novaflow-web-login-gate input.nf-login-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #e7ece8 !important;
-  -webkit-box-shadow: 0 0 0 1000px #1b1e1d inset !important;
-  box-shadow: 0 0 0 1000px #1b1e1d inset !important;
-  caret-color: #e7ece8;
-  transition: background-color 100000s ease-in-out 0s;
+  -webkit-text-fill-color: #e1e9e4 !important;
+  -webkit-box-shadow: 0 0 0 1000px #1a201e inset !important;
+  box-shadow: 0 0 0 1000px #1a201e inset !important;
+  caret-color: #e1e9e4;
 }
-#novaflow-web-login-gate button.nf-login-reveal {
-  position: absolute;
-  right: 4px;
-  top: 3px;
-  width: 44px;
-  height: 44px;
-  padding: 12px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #98a39b;
-  cursor: pointer;
-}
+#novaflow-web-login-gate button.nf-login-reveal { position: absolute; right: 0; top: 0; width: 42px; height: 44px; padding: 14px 13px; border: 0; border-radius: 7px; background: transparent; color: #83988c; cursor: pointer; }
 .nf-login-reveal::before {
-  content: '';
-  display: block;
-  width: 20px;
-  height: 20px;
-  background: currentColor;
+  content: ''; display: block; width: 16px; height: 16px; background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 #novaflow-web-login-gate button.nf-login-reveal:hover,
 #novaflow-web-login-gate button.nf-login-reveal[aria-pressed='true'] { color: #6fd9b8; }
 #novaflow-web-login-gate button.nf-login-submit {
-  width: 100%;
-  height: 50px;
-  margin-top: 34px;
-  border: 1px solid #1ea672;
-  border-radius: 6px;
-  background: var(--nf-primary);
-  background-image: none;
-  box-shadow: none;
-  color: #fff;
-  font: inherit;
-  font-size: 16px;
-  font-weight: 500;
-  letter-spacing: .08em;
-  cursor: pointer;
-  transition: background-color 120ms linear;
+  display: flex; align-items: center; justify-content: center; gap: 17px;
+  width: 100%; height: 44px; margin-top: 23px; padding: 0 16px;
+  border: 1px solid #74e3bf24; border-radius: 7px;
+  background: linear-gradient(115deg, #249f7b, #187458);
+  color: #ecfff6; font: inherit; font-size: 13px; font-weight: 500;
+  letter-spacing: 1px; cursor: pointer;
+  transition: filter 150ms linear;
 }
-#novaflow-web-login-gate button.nf-login-submit:hover:not(:disabled) { background: var(--nf-primary-hover); }
-#novaflow-web-login-gate button.nf-login-submit:active:not(:disabled) { background: var(--nf-primary-press); }
-#novaflow-web-login-gate button.nf-login-submit:disabled { background: #28332d; border-color: #28332d; color: #829389; cursor: wait; }
-#novaflow-web-login-gate button:focus-visible { outline: 2px solid #6fd9b8 !important; outline-offset: 3px; }
-.nf-login-help { margin: 20px 0 0; text-align: center; color: #7b867f; font-size: 12px; line-height: 1.6; }
-.nf-login-note { min-height: 22px; margin-top: 14px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+#novaflow-web-login-gate button.nf-login-submit::after { content: '\2192'; font-size: 18px; font-weight: 400; line-height: 1; }
+#novaflow-web-login-gate button.nf-login-submit:disabled::after { display: none; }
+/* The shared button layer uses !important. Keep this exception in that same
+   layer and scoped to the signed-out gate, leaving editor controls untouched. */
+@layer foart-buttons {
+  #novaflow-web-login-gate button.nf-login-submit {
+    border: 1px solid #74e3bf24 !important;
+    background: linear-gradient(115deg, #249f7b, #187458) !important;
+    color: #ecfff6 !important;
+    box-shadow: inset 0 1px 0 #b6ffe51a, 0 5px 20px #0d583a1a !important;
+  }
+  #novaflow-web-login-gate button.nf-login-submit:hover:not(:disabled) { background: linear-gradient(115deg, #2ab18a, #1c8263) !important; }
+  #novaflow-web-login-gate button.nf-login-submit:active:not(:disabled) { background: linear-gradient(115deg, #208b6c, #14644c) !important; }
+  #novaflow-web-login-gate button.nf-login-submit:disabled { background: #28332d !important; border-color: #28332d !important; color: #829389 !important; box-shadow: none !important; cursor: wait; }
+  #novaflow-web-login-gate :is(button, summary):focus-visible { outline: 2px solid #6fd9b8 !important; outline-offset: 3px !important; }
+}
+.nf-login-help { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 19px 0 0; padding-top: 16px; border-top: 1px solid #ffffff08; color: #7d8d83; font-size: 11px; line-height: 1.6; }
+.nf-login-help .nf-login-icon { width: 12px; height: 12px; }
+.nf-login-note { margin-top: 12px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.nf-login-note:empty { display: none; }
+.nf-login-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin: 0 6%; padding: 23px 0 25px; border-top: 1px solid #ffffff08; color: #66776c; font-size: 11px; line-height: 1.5; }
+.nf-login-copyright { display: flex; align-items: center; gap: 15px; }
+.nf-login-footer-brand { color: #a6b4ac; font-size: 13px; letter-spacing: .5px; }
+@media (max-width: 1249px) {
+  .nf-login-main { grid-template-columns: minmax(0, 1fr) 310px; gap: 9%; }
+  html body #novaflow-web-login-gate .nf-login-headline { font-size: 36px; }
+  .nf-login-card { padding: 29px 26px 22px; }
+}
+@media (max-width: 850px) {
+  .nf-login-main { width: 86%; grid-template-columns: minmax(0, 1fr) 285px; gap: 6%; }
+  html body #novaflow-web-login-gate .nf-login-headline { font-size: 29px; }
+  .nf-login-eyebrow { font-size: 9px; letter-spacing: 1.3px; }
+  .nf-login-brand-note { display: none; }
+  .nf-login-tags { gap: 12px; }
+  .nf-login-card { padding: 27px 22px 22px; }
+}
+@media (max-width: 700px) {
+  .nf-login-header { padding: 26px 7% 0; }
+  .nf-login-logo { width: 101px; height: 36px; }
+  .nf-login-support { font-size: 11px; }
+  .nf-login-main { width: 84%; max-width: 380px; display: flex; flex-direction: column; align-items: stretch; gap: 36px; padding: 44px 0 46px; }
+  .nf-login-brand { padding: 0; }
+  .nf-login-eyebrow { margin-bottom: 14px; }
+  html body #novaflow-web-login-gate .nf-login-headline { font-size: 30px; line-height: 1.5; margin-bottom: 12px; }
+  .nf-login-lede { font-size: 12px; }
+  .nf-login-tags { margin-top: 23px; gap: 11px 15px; }
+  .nf-login-card { padding: 28px 25px 24px; }
+  .nf-login-card-note { margin-bottom: 22px; }
+  #novaflow-web-login-gate input.nf-login-input { font-size: 16px !important; }
+  .nf-login-footer { margin: 0 8%; flex-wrap: wrap; gap: 10px 18px; padding: 20px 0; font-size: 10px; }
+  .nf-login-ribbon-green { left: -90px; top: -475px; }
+  .nf-login-ribbon-red { right: -1070px; top: 110px; }
+  .nf-login-ribbon-low { left: -970px; top: 330px; }
+}
+@media (max-width: 380px) {
+  .nf-login-eyebrow { font-size: 8px; letter-spacing: 1px; }
+  .nf-login-tags { gap: 11px 10px; }
+  .nf-login-tag { font-size: 10px; }
+  .nf-login-tag .nf-login-icon { width: 12px; height: 12px; }
+  .nf-login-card { padding: 26px 22px 22px; }
+}
+@media (min-width: 701px) and (max-height: 650px) {
+  .nf-login-header { padding-top: 24px; }
+  .nf-login-main { min-height: 0; padding-top: 30px; padding-bottom: 36px; }
+  .nf-login-footer { padding-top: 16px; padding-bottom: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nf-login-flow ellipse { animation: none; }
+  .nf-login-flow { opacity: 0; }
+  #novaflow-web-login-gate * { transition: none !important; }
+}
 
 /* ==========================================================================
    2. Workspace shell - the reference's panel system
@@ -501,35 +500,6 @@ html body #novaflow-audio-studio :is(.nf-as-left, .nf-as-sidebar, .nf-as-dock, .
 html body :focus,
 html body :focus-visible {
   outline: none !important;
-}
-
-/* On narrow/short windows the real form remains reachable by scrolling. */
-@media (max-width: 900px) {
-  #novaflow-web-login-gate { align-items: flex-start !important; }
-  .nf-login-art { position: fixed; object-position: 32% center; opacity: .24; }
-  .nf-login-shell { grid-template-columns: minmax(0, 1fr); max-width: 540px; padding: 32px 28px; gap: 34px; }
-  .nf-login-brand { min-height: 0; }
-  .nf-login-logo { width: 210px; margin-bottom: 24px; }
-  .nf-login-headline { font-size: 25px; }
-  .nf-login-lede { font-size: 14px; }
-  .nf-login-tags { padding-top: 22px; }
-  .nf-login-tag { font-size: 11px; letter-spacing: 0; }
-  .nf-login-tag + .nf-login-tag::before { margin: 0 9px; }
-  .nf-login-card { max-width: none; padding: 0; justify-self: stretch; }
-  .nf-login-card-title { font-size: 26px; }
-  .nf-login-card-note { margin-bottom: 28px; font-size: 14px; }
-  #novaflow-web-login-gate input.nf-login-input { font-size: 16px !important; }
-}
-@media (max-width: 380px) {
-  .nf-login-shell { padding: 24px 20px; gap: 26px; }
-  .nf-login-headline { font-size: 22px; }
-  .nf-login-tag + .nf-login-tag::before { margin: 0 6px; }
-}
-@media (min-width: 901px) and (max-height: 650px) {
-  .nf-login-shell { padding-top: 28px; padding-bottom: 28px; }
-  .nf-login-brand { min-height: 440px; }
-  .nf-login-logo { margin-bottom: 28px; }
-  .nf-login-card-note { margin-bottom: 24px; }
 }
 
 /* 2.0f Canvas bar hover.

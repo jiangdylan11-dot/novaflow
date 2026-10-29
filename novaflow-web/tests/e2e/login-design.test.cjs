@@ -28,16 +28,16 @@ app.whenReady().then(async () => {
   // No external account/control-plane calls, even if the compiled app tries to poll.
   isolated.webRequest.onBeforeRequest((details, callback) => callback({ cancel: /^https?:/.test(details.url) && !details.url.startsWith(`http://127.0.0.1:${port}/`) }));
   const win = new BrowserWindow({ show: false, width: 1672, height: 941, useContentSize: true,
-    webPreferences: { session: isolated, contextIsolation: true, nodeIntegration: false } });
+    webPreferences: { session: isolated, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   const run = code => win.webContents.executeJavaScript(code);
   await win.loadURL(`http://127.0.0.1:${port}/`);
   await run(`new Promise((resolve, reject) => {
     const limit = Date.now() + 15000;
     const timer = setInterval(() => {
       const gate = document.getElementById('novaflow-web-login-gate');
-      const art = document.querySelector('.nf-login-art');
-      if (gate && art?.complete && art.naturalWidth && !document.getElementById('novaflow-boot-splash')) { clearInterval(timer); resolve(); }
-      else if (Date.now() > limit) { clearInterval(timer); reject(new Error('login artwork not ready')); }
+      const logo = document.querySelector('.nf-login-logo');
+      if (gate && logo?.complete && logo.naturalWidth && document.querySelectorAll('.nf-login-flow ellipse').length === 2 && !document.getElementById('novaflow-boot-splash')) { clearInterval(timer); resolve(); }
+      else if (Date.now() > limit) { clearInterval(timer); reject(new Error('login surface not ready')); }
     }, 50);
   })`);
   for (const [width, height] of [[1672, 941], [1440, 900], [1280, 580], [390, 844], [320, 640]]) {
@@ -47,23 +47,45 @@ app.whenReady().then(async () => {
       const gate = document.getElementById('novaflow-web-login-gate');
       const card = document.querySelector('.nf-login-card');
       const input = document.querySelector('.nf-login-input');
-      const art = document.querySelector('.nf-login-art');
+      const tags = document.querySelector('.nf-login-tags');
+      const headline = document.querySelector('.nf-login-headline');
       return { width: innerWidth, overflow: gate.scrollWidth > gate.clientWidth,
+        editorOverflow: getComputedStyle(document.body).overflow,
         card: { left: card.getBoundingClientRect().left, right: card.getBoundingClientRect().right },
         fieldBackground: getComputedStyle(input).backgroundColor,
-        artwork: art.naturalWidth > 0, artOpacity: getComputedStyle(art).opacity,
+        headlineSize: parseFloat(getComputedStyle(headline).fontSize),
+        capabilities: { count: tags.children.length, controls: tags.querySelectorAll('button, a, [role="button"]').length,
+          belowTitle: tags.getBoundingClientRect().top > headline.getBoundingClientRect().bottom },
+        flows: [...document.querySelectorAll('.nf-login-flow ellipse')].map(node => getComputedStyle(node).animationName),
         font: getComputedStyle(document.querySelector('.nf-login-card-title')).fontFamily,
         help: document.querySelector('.nf-login-help').textContent };
     })()`);
     assert.equal(metrics.overflow, false, `horizontal overflow at ${width}`);
+    assert.equal(metrics.editorOverflow, 'hidden', 'covered editor cannot add another scrollbar');
     assert(metrics.card.left >= 0 && metrics.card.right <= width, `form clipped at ${width}`);
-    assert.equal(metrics.fieldBackground, 'rgb(27, 30, 29)');
-    assert.equal(metrics.artwork, true);
+    assert(['rgb(26, 32, 30)', 'rgb(28, 37, 33)'].includes(metrics.fieldBackground));
+    assert(metrics.headlineSize <= 42, 'headline remains restrained');
+    assert.deepEqual(metrics.capabilities, { count: 6, controls: 0, belowTitle: true });
+    assert.deepEqual(metrics.flows, ['nf-login-flow', 'nf-login-flow']);
     assert.equal(metrics.help, '账号由管理员开通');
     console.log(JSON.stringify({ size: [width, height], ...metrics }));
     if (width < 901) await run(`document.querySelector('.nf-login-submit').scrollIntoView({ block: 'end' })`);
     await fs.writeFile(path.join(out, `login-${width}x${height}.png`), (await win.webContents.capturePage()).toPNG());
   }
+  const motion = await run(`(async () => {
+    const node = document.querySelector('.nf-login-flow ellipse');
+    const before = getComputedStyle(node).strokeDashoffset;
+    await new Promise(resolve => setTimeout(resolve, 120));
+    return { before, after: getComputedStyle(node).strokeDashoffset };
+  })()`);
+  assert.notEqual(motion.before, motion.after, 'edge highlight flows along its arc');
+  win.webContents.debugger.attach('1.3');
+  await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  const reduced = await run(`({ animation: getComputedStyle(document.querySelector('.nf-login-flow ellipse')).animationName,
+    opacity: getComputedStyle(document.querySelector('.nf-login-flow')).opacity })`);
+  assert.deepEqual(reduced, { animation: 'none', opacity: '0' });
+  await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] });
+  win.webContents.debugger.detach();
   const result = await run(`(async () => {
     const account = document.getElementById('novaflow-web-login-account');
     const password = document.getElementById('novaflow-web-login-password');
@@ -89,7 +111,7 @@ app.whenReady().then(async () => {
   assert.deepEqual(result.during, { disabled: true, label: '登录中…', calls: 1 });
   assert.deepEqual(result.submitted, { account: 'fixture-account', password: 'fixture-password' });
   assert.deepEqual(result.after, { disabled: false, label: '进入工作台', message: '测试登录失败' });
-  console.log('PASS: built login artwork/layout at 5 sizes; validation, reveal, Enter, duplicate prevention and failed-auth recovery (fixture API)');
+  console.log('PASS: built login at 5 sizes; capability descriptions, flowing background/reduced motion, validation, reveal, Enter, duplicate prevention and failed-auth recovery (fixture API)');
   win.destroy();
   server.close();
   app.exit(0);
