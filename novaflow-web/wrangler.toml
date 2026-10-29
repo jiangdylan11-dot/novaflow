@@ -17,6 +17,11 @@ name = "novaflow"
 compatibility_date = "2026-10-13"
 main = "deploy/_worker.js"
 preview_urls = false
+workers_dev = true
+routes = [
+  { pattern = "foart.net", custom_domain = true },
+  { pattern = "www.foart.net", custom_domain = true }
+]
 
 [assets]
 directory = "web-dist"
