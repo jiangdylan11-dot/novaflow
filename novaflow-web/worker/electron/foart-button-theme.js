@@ -1,13 +1,13 @@
 /* Preserve transparent controls. Normalize only existing painted button fills. */
 (function () {
   'use strict';
-  const excluded = '[role="switch"], [aria-checked], [data-novaflow-toggle-switch], [data-novaflow-ai-state-toggle], .novaflow-art-generate-ref, [data-nf-upload-dropzone], .nf-upload-dropzone, [data-novaflow-art-generate-state-toggle], [data-color], [data-color-value], [data-foart-button-theme="off"], [class*="swatch"], [class*="Swatch"]';
+  const excluded = '[role="switch"], [aria-checked], [data-novaflow-ai-preview-bg-option], [data-novaflow-toggle-switch], [data-novaflow-ai-state-toggle], .novaflow-art-generate-ref, [data-nf-upload-dropzone], .nf-upload-dropzone, [data-novaflow-art-generate-state-toggle], [data-color], [data-color-value], [data-foart-button-theme="off"], [class*="swatch"], [class*="Swatch"]';
   function isButton(node) {
     return node instanceof HTMLElement && node.matches('button, [role="button"], input[type="button"], input[type="submit"]') && !node.matches(excluded);
   }
   function normalize(node, property, value) {
     if (!isButton(node)) return value;
-    const generation = node.matches('[data-novaflow-ai-generate-button], [data-novaflow-art-generate-submit], .nf-as-go, .aifx-primary, .nf-vfe-apply');
+    const generation = node.matches('[data-novaflow-manual-export-action], [data-novaflow-skeleton-spine-export], .novaflow-art-export-action, [data-novaflow-ai-generate-button], [data-novaflow-art-generate-submit], .nf-as-go, .aifx-primary, .nf-vfe-apply');
     if (generation && property === 'color') return '#fff';
     if (property === 'border' || property === 'outline' || /border.*width$/.test(property)) return '0';
     if (/border.*color$/.test(property)) return 'transparent';

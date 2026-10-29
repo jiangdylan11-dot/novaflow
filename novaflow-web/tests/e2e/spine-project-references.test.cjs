@@ -90,7 +90,7 @@ function fixture() {
     Attach, lower: s => String(s).toLowerCase(), stem: s => s.replace(/\.[^.]+$/, ''), baseName: s => s.split('/').pop(),
     rt: {}, pagePixels: new Map(), frameThumbs: new Map(), imgTree: null, refresh() {}, applyJson(j) { state.json = j }, prepareExternalPage: im => im,
     imageFromBlob: async blob => ({ naturalWidth: 1, naturalHeight: 1, blob }),
-    folderDbDo: async (_mode, run) => run({ get: k => records.get(k), put: (v, k) => records.set(k, v) }),
+    folderDbDo: async (_mode, run) => run({ get: k => records.get(k), getAll: () => [...records.values()], put: (v, k) => records.set(k, v) }),
     status: (...a) => status.push(a),
   })
   vm.runInContext(section('  const IMG_RX =', '  /**\n   * New material into the image folder:') +
@@ -776,4 +776,39 @@ test('an empty project file shows the empty-file message and does not import', a
   assert.equal(alerts[0], message)
   assert.equal(f.status.at(-1)[0], message)
   assert.equal(f.state.json, null)
+})
+
+for (const uploadOnly of [false, true]) test(`project directory grant survives a changed folderKey (${uploadOnly ? 'upload File' : 'file handle'})`, async () => {
+  const d = disk(), f = fixture()
+  await d.put('img/pic.png', 'authorized current pixels')
+  const p = { name: 'scene', json: json(), atlasText: atlas(), imagePath: 'img', folderKey: 'copied-new-key', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
+  const file = await d.put('scene.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] }))
+  f.records.set('previous-key', { projectDirectory: d.root, handle: await d.root.getDirectoryHandle('img') })
+  await f.open(await file.getFile(), uploadOnly ? null : file)
+  assert.equal(f.picker.length, 0)
+  assert.equal(await f.state.images.get('pic.png').blob.text(), 'authorized current pixels')
+  assert.equal(f.state.projectDirectory, d.root)
+})
+
+test('upload file must match complete bytes before reusing a remembered directory', async () => {
+  const d = disk(), f = fixture()
+  await d.put('img/pic.png', 'wrong project pixels')
+  await d.put('scene.nfproj', 'a different project with the same filename')
+  f.records.set('previous-key', { projectDirectory: d.root })
+  const p = { name: 'scene', json: json(), atlasText: atlas(), imagePath: 'img', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
+  await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] })], 'scene.nfproj'))
+  assert.equal(f.state.imageFolder, null)
+  assert.equal(f.state.images.size, 0)
+})
+
+test('identical copied upload projects in different authorized directories are ambiguous', async () => {
+  const a = disk('left'), b = disk('right'), f = fixture()
+  const p = { name: 'scene', json: json(), atlasText: atlas(), imagePath: 'img', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
+  const bytes = await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] })
+  await a.put('scene.nfproj', bytes); await b.put('scene.nfproj', bytes)
+  await a.put('img/pic.png', 'left pixels'); await b.put('img/pic.png', 'right pixels')
+  f.records.set('left', { projectDirectory: a.root }); f.records.set('right', { projectDirectory: b.root })
+  await f.open(new File([bytes], 'scene.nfproj'))
+  assert.equal(f.state.imageFolder, null)
+  assert.equal(f.state.images.size, 0)
 })

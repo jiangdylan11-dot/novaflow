@@ -1203,6 +1203,57 @@
     return hits.length === 1 ? hits[0] : null
   }
 
+  /** Locate a picked project only inside directories this origin can already read. */
+  async function locateReadableProject(data, handle, roots) {
+    const candidates = []
+    for (const root of new Set(roots.filter(Boolean))) {
+      if (!await folderHandleReadable(root)) continue
+      if (handle && typeof root.resolve === 'function') {
+        const parts = await root.resolve(handle).catch(() => null)
+        if (parts && parts.length) return { directory: root, parentParts: parts.slice(0, -1) }
+      }
+      // Upload-input fallback has a File, not a FileSystemFileHandle. A matching name
+      // alone is unsafe; confirm the already-authorized file's complete bytes.
+      if (!handle && data.name && typeof root.getFileHandle === 'function') {
+        try {
+          const picked = await root.getFileHandle(data.name), file = await picked.getFile()
+          if (file.size !== data.size) continue
+          const a = new Uint8Array(await file.arrayBuffer()), b = new Uint8Array(await data.arrayBuffer())
+          if (a.length === b.length && a.every((v, i) => v === b[i])) {
+            let duplicate = false
+            for (const candidate of candidates) if (candidate.file === picked || (picked.isSameEntry && await picked.isSameEntry(candidate.file).catch(() => false))) duplicate = true
+            if (!duplicate) candidates.push({ file: picked, directory: root, parentParts: [] })
+          }
+        } catch { /* this permitted directory does not contain the selected file */ }
+      }
+    }
+    return candidates.length === 1 ? candidates[0] : null
+  }
+
+  /** A new browser/origin needs a directory grant once; never silently substitute a sibling. */
+  function askProjectAccessDirectory(data, handle) {
+    if (typeof document === 'undefined' || !document.body || typeof window === 'undefined' ||
+      ![window, window.parent].some(w => w && typeof w.showDirectoryPicker === 'function')) return Promise.resolve(undefined)
+    return new Promise(resolve => {
+      const finish = result => { mask.remove(); window.removeEventListener('keydown', key, true); resolve(result) }
+      const key = e => { if (e.key === 'Escape') { e.preventDefault(); finish(null) } }
+      const message = h('div', {}, '首次打开这个位置，需要允许访问工程所在文件夹；之后会自动恢复，并按工程记录定位图片子目录。')
+      const choose = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+        try {
+          const root = await pickDirectory({ startIn: handle || undefined })
+          if (!root) return
+          const found = await locateReadableProject(data, handle, [root])
+          if (!found) { message.textContent = '请选择包含当前 .nfproj 的文件夹，或它的上级目录。'; return }
+          finish(found)
+        } catch (e) { message.textContent = '无法连接工程文件夹：' + ((e && e.message) || e) }
+      } }, '选择工程文件夹')
+      const mask = h('div', { class: 'mask' }, h('div', { class: 'dialog ask', 'data-nf-project-directory-access': '1' },
+        h('div', { class: 'hd' }, h('b', {}, '连接工程图片目录'), h('button', { class: 'xx', onclick: () => finish(null) }, '×')),
+        h('div', { class: 'msg' }, message), h('div', { class: 'ft' }, btn('取消导入', () => finish(null)), choose)))
+      document.body.append(mask); window.addEventListener('keydown', key, true)
+    })
+  }
+
   /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
   async function openProjectFile(data, handle, options = {}) {
     const blob = data instanceof Blob ? data : new Blob([data])
@@ -1254,6 +1305,19 @@
         }
       }
     }
+    if (!directory && !supplied) {
+      const records = await folderDbDo('readonly', store => store.getAll()).catch(() => []) || []
+      // folderKey can change on Save As. The file's real containment, not its key,
+      // decides whether a previously granted project directory can be reused.
+      const roots = records.flatMap(rec => [rec.projectDirectory, rec.projectAccessRoot])
+      const restored = await locateReadableProject(data, handle, roots)
+      if (restored) { directory = restored.directory; parentParts = restored.parentParts }
+      else if (d.version === 2 && d.projects.some(p => (p.images || []).length)) {
+        const picked = await askProjectAccessDirectory(data, handle)
+        if (picked === null) return 0
+        if (picked) { directory = picked.directory; parentParts = picked.parentParts }
+      }
+    }
     let projectDirectory = directory ? await projectSubdir(directory, parentParts) : null
     const imported = []
     const missing = []
@@ -1263,7 +1327,8 @@
       const record = cachedRecords.get(p.folderKey) || null
       // Replace and reopen both re-resolve from imagePath below. A shared folderKey
       // becomes a new slot when this file's image directory is not the cached one.
-      const duplicate = await folderKeyIsDuplicate(p.folderKey || '', imagePath, directory, parentParts, record)
+      const keyRecord = record || await folderDbDo('readonly', store => store.get(p.folderKey)).catch(() => null)
+      const duplicate = await folderKeyIsDuplicate(p.folderKey || '', imagePath, directory, parentParts, keyRecord)
       const ignoreCache = duplicate
       if (directory) {
         try { const imageDir = await projectSubdir(directory, projectPath(imagePath, parentParts)); folder = folderFromHandle(imageDir, imageDir.name) }
@@ -1304,6 +1369,7 @@
         label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey, operation: imported.length ? 'append' : operation,
         replace: operation === 'replace' && imported.length === 0 && !!state.json })
       imported.push(activeProject)
+      if (folder && folder.handle && typeof rememberFolder === 'function') await rememberFolder(folder.handle)
       if (projects[activeProject]) projects[activeProject].pendingSwapFolder = offer || null
       // The saved references already supply the pages. Do not guess replacement pixels
       // from another subtree merely because an attachment has the same short name.
@@ -3084,7 +3150,7 @@
     const record = { handle, projectDirectory: state.projectDirectory,
       projectAccessRoot: state.projectAccessRoot, name: handle.name,
       imagePath: state.imagePath || '.', at: Date.now() }
-    folderDbDo('readwrite', (store) => store.put(record, key)).catch(() => {})
+    return folderDbDo('readwrite', (store) => store.put(record, key)).catch(() => {})
   }
   /** The project (picked, or one in the tree) that `fill` writes to, wherever it now sits. */
   function projectState(proj) { return projects[activeProject] === proj ? state : proj && proj.snap }

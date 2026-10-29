@@ -102,7 +102,7 @@ app.whenReady().then(async () => {
       const appearance = await win.webContents.executeJavaScript(`(()=>{const root=document.querySelector('[data-preview-ui="1"]');return [...root.querySelectorAll('button')].filter(n=>n.getBoundingClientRect().height>0).map(n=>({text:n.textContent.trim(),bg:getComputedStyle(n).backgroundColor,border:getComputedStyle(n).borderTopWidth}))})()`);
       fs.writeFileSync(path.join(output, name + '-appearance.json'), JSON.stringify(appearance,null,2));
       assert(appearance.every(n=>n.border==='0px'), 'export buttons must have no outlines');
-      assert(!appearance.some(n=>n.bg==='rgb(30, 166, 114)'), 'export actions must not retain solid green');
+      assert(appearance.filter(n=>/^导出/.test(n.text)).every(n=>n.bg==='rgb(30, 166, 114)'), 'final export actions must use solid green');
       await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
       fs.writeFileSync(path.join(output, name + '.png'), (await win.webContents.capturePage()).toPNG());
     }

@@ -102,3 +102,6 @@
 .nf-xiaotao-estimate[data-idle] { visibility:hidden; }
 @media (max-width:600px) { #nf-xiaotao-art-root { right:12px; bottom:12px; } .nf-xiaotao-panel { width:min(390px,calc(100vw - 24px)); height:calc(100dvh - 95px); bottom:52px; } }
 @media (prefers-reduced-motion:reduce) { .nf-xiaotao-robot svg, .nf-xiaotao-eyes, .nf-xiaotao-antenna, .nf-xiaotao-staged-spinner::after { animation:none !important; } }
+
+#nf-xiaotao-art-root .nf-xiaotao-compose-actions .nf-xiaotao-primary { background:#343434; color:#eeeeee; }
+#nf-xiaotao-art-root .nf-xiaotao-compose-actions .nf-xiaotao-primary:hover:not(:disabled) { background:#424242; }

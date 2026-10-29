@@ -16,7 +16,7 @@ app.whenReady().then(async () => {
     <button id="selected" class="selected" aria-pressed="true">选中工具</button>
     <button id="import" data-novaflow-spine-inline-import-action="1" class="primary">导入</button>
     <button id="swatch" data-color="#ff0000" style="background:rgb(255,0,0)!important">色板</button>
-    <input id="field"><aside data-novaflow-left-content-root><div><p id="usage">快捷键：空格播放，S 分割</p></div><p id="status">保存失败：文件不可写</p><p id="price">预计消耗 10 积分</p></aside>`));
+    <button id="preview-white" data-novaflow-ai-preview-bg-option="white" style="background:#fff;outline:2px solid #20c997">白底</button><input id="field"><aside data-novaflow-left-content-root><div><p id="usage">快捷键：空格播放，S 分割</p></div><p id="status">保存失败：文件不可写</p><p id="price">预计消耗 10 积分</p></aside>`));
   await win.webContents.executeJavaScript(js);
   const read=id=>win.webContents.executeJavaScript(`(()=>{const n=document.getElementById(${JSON.stringify(id)}),s=getComputedStyle(n);return {bg:s.backgroundColor,border:s.borderTopWidth,shadow:s.boxShadow}})()`);
   for(const id of ['nav','heading','tab'])assert.equal((await read(id)).bg,'rgba(0, 0, 0, 0)',id+' must not acquire a background');
@@ -27,6 +27,7 @@ app.whenReady().then(async () => {
   for(const id of ['nav','heading','tab','grey','primary','selected','import']){assert.equal((await read(id)).border,'0px',id);assert.equal((await read(id)).shadow,'none',id);}
   const legacy=await win.webContents.executeJavaScript(`['transparent','rgba(0,0,0,0)','#333333','#1c4136','#1ea672'].map(v=>FoartButtonTheme.normalize(document.getElementById('grey'),'background',v))`);
   assert.deepEqual(legacy,['transparent','rgba(0,0,0,0)','#272727','#1c4136','var(--foart-action-green, rgba(30,166,114,.24))']);
+  assert.equal((await read('preview-white')).bg,'rgb(255, 255, 255)');
   assert.equal((await read('swatch')).bg,'rgb(255, 0, 0)');assert.equal((await read('field')).bg,'rgb(52, 52, 52)');
   const notes=await win.webContents.executeJavaScript(`(()=>{FoartButtonTheme.compactUsageNotes();return ['usage','status','price'].map(id=>getComputedStyle(document.getElementById(id)).display)})()`);
   assert.equal(notes[0],'none');assert.notEqual(notes[1],'none');assert.notEqual(notes[2],'none');

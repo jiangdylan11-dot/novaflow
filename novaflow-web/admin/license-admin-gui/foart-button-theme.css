@@ -8,7 +8,7 @@
     --foart-action-green: rgba(30,166,114,.24);
     --foart-action-green-hover: rgba(30,166,114,.32);
   }
-  :where(button, [role="button"]):not(:where([role="switch"], [aria-checked], [data-novaflow-ai-state-toggle], [data-novaflow-art-generate-state-toggle], [data-novaflow-toggle-switch], .novaflow-art-generate-ref, [data-nf-upload-dropzone], .nf-upload-dropzone, [data-color], [data-color-value], [class*="swatch"], [class*="Swatch"])) {
+  :where(button, [role="button"]):not(:where([role="switch"], [aria-checked], [data-novaflow-ai-preview-bg-option], [data-novaflow-ai-state-toggle], [data-novaflow-art-generate-state-toggle], [data-novaflow-toggle-switch], .novaflow-art-generate-ref, [data-nf-upload-dropzone], .nf-upload-dropzone, [data-color], [data-color-value], [class*="swatch"], [class*="Swatch"])) {
     border: 0 !important;
     outline: none !important;
     box-shadow: none !important;
@@ -43,14 +43,14 @@
   body.novaflow-primary-target-tools :is(.nf-prb-btn, .nf-mp4-btn, .nf-vfc-btn, .nf-saw-btn, [data-novaflow-tools-start-button], [data-novaflow-tools-run], [data-foart-tool-action]):hover:not(:disabled) {
     background: var(--foart-action-grey-hover) !important;
   }
-  .novaflow-art-export-action { background: var(--foart-action-grey) !important; color: #eaeaea !important; }
-  .novaflow-art-export-action:hover { background: var(--foart-action-grey-hover) !important; }
+  .novaflow-art-export-action { background: var(--foart-generation-green) !important; color: #fff !important; }
+  .novaflow-art-export-action:hover { background: var(--foart-generation-green-hover) !important; }
   :is(#ve-save, [data-novaflow-ai-sequence-save-button="1"], [data-nf-cutout-panel-action], [data-novaflow-ai-cutout-save-button="1"], [data-novaflow-ai-cutout-save-bound="1"]) { background: var(--foart-action-grey) !important; color: #eaeaea !important; }
   :is(#ve-save, [data-novaflow-ai-sequence-save-button="1"], [data-nf-cutout-panel-action], [data-novaflow-ai-cutout-save-button="1"], [data-novaflow-ai-cutout-save-bound="1"]):hover:not(:disabled) { background: var(--foart-action-grey-hover) !important; }
   .nf-tl-track-name { font-size:11px !important; font-weight:400 !important; line-height:16px !important; }
   .nf-tl-add-track { display:inline-flex !important; align-items:center !important; justify-content:center !important; line-height:1 !important; }
-  :is([data-novaflow-ai-generate-button="1"], [data-novaflow-art-generate-submit="1"], .nf-as-go, .aifx-primary, .nf-vfe-apply) { background: var(--foart-generation-green) !important; color:#fff !important; }
-  :is([data-novaflow-ai-generate-button="1"], [data-novaflow-art-generate-submit="1"], .nf-as-go, .aifx-primary, .nf-vfe-apply):hover:not(:disabled):not([aria-disabled="true"]) { background:var(--foart-generation-green-hover) !important; }
+  :is([data-novaflow-manual-export-action], [data-novaflow-skeleton-spine-export], .novaflow-art-export-action, [data-novaflow-ai-generate-button="1"], [data-novaflow-art-generate-submit="1"], .nf-as-go, .aifx-primary, .nf-vfe-apply) { background: var(--foart-generation-green) !important; color:#fff !important; }
+  :is([data-novaflow-manual-export-action], [data-novaflow-skeleton-spine-export], .novaflow-art-export-action, [data-novaflow-ai-generate-button="1"], [data-novaflow-art-generate-submit="1"], .nf-as-go, .aifx-primary, .nf-vfe-apply):hover:not(:disabled):not([aria-disabled="true"]) { background:var(--foart-generation-green-hover) !important; }
   .aifx-button:not(.aifx-primary):hover:not(:disabled), .aifx-library-btn:not(.aifx-library-close):hover:not(:disabled), .fxm-btn:not(.fxm-primary):not([data-on="1"]):hover:not(:disabled) { background:var(--foart-action-grey-hover) !important; }
   [data-foart-selection="0"] { background:var(--foart-action-grey) !important; color:#eaeaea !important; }
   [data-foart-selection="1"] { background:#1c4136 !important; color:#9be4cd !important; }
