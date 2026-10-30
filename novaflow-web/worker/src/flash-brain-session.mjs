@@ -261,6 +261,8 @@ export function createFlashBrainSession({ baseUrl = FLASH_BRAIN_BASE_URL, expect
           requireValue(!inferBusy, 'strata-busy', '同一 Flash 会话中的推理必须顺序执行');
           requireValue(object(input), 'strata-invalid-request', 'Flash 推理输入无效');
           const conversation = conversationMode ? conversationInput(input, defaults) : null;
+          requireValue(input.toolChoice === undefined || conversationMode && conversation.tools.length > 0
+            && ['auto','required'].includes(input.toolChoice), 'strata-invalid-request','Flash 工具选择无效');
           if (!conversationMode) requireValue(input.tools === undefined && input.messages === undefined,
             'strata-invalid-request', '普通 Flash infer 不接受对话或工具参数');
           const system = conversationMode ? null : text(input.system, '系统提示词', defaults.maxInputChars);
@@ -291,7 +293,7 @@ export function createFlashBrainSession({ baseUrl = FLASH_BRAIN_BASE_URL, expect
             seed: defaults.seed, reasoning_effort: reasoningEffort,
             reasoning_budget_tokens: reasoningBudgetTokens, presence_penalty: 0, frequency_penalty: 0, repetition_penalty: defaults.repetitionPenalty,
             ...(format ? { response_format: format } : {}),
-            ...(conversationMode && conversation.tools.length ? { tools: conversation.tools, tool_choice: 'auto', parallel_tool_calls: false } : {}) };
+            ...(conversationMode && conversation.tools.length ? { tools: conversation.tools, tool_choice: input.toolChoice || 'auto', parallel_tool_calls: false } : {}) };
           inferBusy = true;
           const requestStart = performance.now(), requestScope = scope(operation.signal, defaults.requestTimeoutMs), auditRequestId = randomUUID();
           const audit = async outcome => {

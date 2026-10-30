@@ -36,6 +36,18 @@ const conversationTools = [{ type: 'function', function: { name: 'get_art_contex
 const conversationMessages = [{ role: 'system', content: '只调用声明工具。' }, { role: 'user', content: [
   { type: 'text', text: '检查当前绘图。' }, { type: 'image_url', image_url: { url: PNG } }] }];
 
+test('explicit media execution may require a native tool without changing ordinary defaults', async () => {
+  const f=fixture({answer:{model:MODEL,choices:[{finish_reason:'stop',message:{role:'assistant',content:'fixture'}}]}});
+  await f.session.withSession(async({inferConversation,infer})=>{
+    await inferConversation({messages:conversationMessages,tools:conversationTools,toolChoice:'required'});
+    await inferConversation({messages:conversationMessages,tools:conversationTools});
+    await assert.rejects(infer(input({toolChoice:'required'})),code('strata-invalid-request'));
+    await assert.rejects(inferConversation({messages:conversationMessages,toolChoice:'required'}),code('strata-invalid-request'));
+  });
+  const bodies=f.calls.filter(c=>c.body).map(c=>c.body);
+  assert.equal(bodies[0].tool_choice,'required');assert.equal(bodies[1].tool_choice,'auto');
+});
+
 test('conversation transport supports text-only history with no tool capability', async () => {
   for (const extra of [{}, { tools: [] }]) {
     const f = fixture({ answer: { id: 'plain-chat', model: MODEL, choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '你好。' } }] } });

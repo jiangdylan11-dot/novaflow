@@ -872,6 +872,7 @@
       setZoom, fitToWindow, zoom: () => state.zoom,
       projectEnd, playhead: () => state.playhead, formatTime, activeClips, allClips,
       layout, draw,
+      commitEdit() { layout(); changed(); restartIfPlaying(); },
       clipCount: () => state.tracks.reduce((n, t) => n + t.clips.length, 0),
       destroy() { pause(); document.removeEventListener('drop', onLaneDrop, true); wrap.remove(); }
     };

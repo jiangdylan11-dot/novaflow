@@ -11,6 +11,7 @@ import { audioFlashMessages, cleanAudioCaption } from './comfy/audio-reprompt.mj
 import { isFlashArtDirectionRequest, planFlashArtDirection, FLASH_ART_SYSTEM_SHA256 } from './flash-art-direction.mjs';
 import { createFlashArtAgent, FLASH_ART_AGENT_TOOLS, FLASH_ART_AGENT_STYLE_VERSION, FLASH_ART_AGENT_PARENT_SYSTEM_SHA256, FLASH_ART_AGENT_SYSTEM_SHA256 } from './flash-art-agent.mjs';
 import { createFlashChatResidency } from './flash-chat-residency.mjs';
+import { FLASH_MEDIA_AGENT_TOOLS } from './flash-media-agent.mjs';
 
 export function strataConfigPath(runtimeJsonPath) {
   return process.env.NOVAFLOW_STRATA_CONFIG || join(runtimeJsonPath ? dirname(runtimeJsonPath) : join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime'), 'strata-prompt.json');
@@ -111,7 +112,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     analysisBackend:'strata',drawingBackend:'strata',otherBackend:'strata',supportsOriginalImages:true,supportsStructuredPromptIR:true,
     supportedSurfaces:['art','animation','video','ui-design','audio','aifx'],modelType:'swift15_qwen38_flash_next_iq2_xs',
     artDirectionProtocol:{version:'art-direction-v1',systemSHA256:FLASH_ART_SYSTEM_SHA256},
-    artAgent:{version:'xiaotao-art-agent-v2',localOnly:true,maxModelRounds:3,modes:['chat','drawing','creation'],tools:FLASH_ART_AGENT_TOOLS.map(tool=>tool.function.name),supportsFeedbackImages:true,
+    artAgent:{version:'xiaotao-art-agent-v3',localOnly:true,maxModelRounds:3,modes:['chat','drawing','creation','media'],tools:[...FLASH_ART_AGENT_TOOLS,...FLASH_MEDIA_AGENT_TOOLS].map(tool=>tool.function.name),supportsFeedbackImages:true,
       styleProtocol:{version:FLASH_ART_AGENT_STYLE_VERSION,parentSystemSHA256:FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,systemSHA256:FLASH_ART_AGENT_SYSTEM_SHA256}},
     chatSession,modelLoaded:chatSession.modelLoaded,operation:operation?{...operation}:null,
     modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping || operation?.phase==='releasing' || chatSession.state==='releasing'?'释放中':operation?.phase==='loading'?'加载中':operation?.phase==='analyzing'?'分析中':lease?'推理中':chatSession.state==='warm'?'聊天模型已加载，待机中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
@@ -211,7 +212,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       if(context.isCancelled?.())throw Object.assign(Error('任务已取消'),{errorCode:'task-cancelled'});
       const handoff=await releaseRuntimes(context.taskId);if(!handoff.ok)return handoff;
       stopGuard=startGuard(abort);
-      if(method==='artAgentChat' && ['drawing','creation'].includes(payload.mode || 'drawing')) {
+      if(method==='artAgentChat' && ['drawing','creation','media'].includes(payload.mode || 'drawing')) {
         const now=Date.now();operationTicket=ticket;
         operation={requestId:ticket.requestId,mode:payload.mode || 'drawing',phase:'loading',startedAt:ticket.startedAt,phaseStartedAt:now};
       }
@@ -250,7 +251,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       logger('flash local brain finished',{method,ms:lastTiming.beforeGenerationMs,resourcesReleased:true});
       // These credentials are attached only after withSession has independently
       // proved the owned model processes exited. The producer cannot grant them.
-      const released={analysisBackend:'strata',modelIdentity:answer.identity,resourcesReleased:true,generationReady:result?.ok===true && (method!=='artAgentChat' || Boolean(result.data?.proposal))};
+      const released={analysisBackend:'strata',modelIdentity:answer.identity,resourcesReleased:true,generationReady:result?.ok===true && (method!=='artAgentChat' || Boolean(result.data?.proposal || result.data?.mediaPlan))};
       const data=result?.data ? {...result.data,...released,timing:lastTiming} : undefined;
       if(data?.artDirection?.editEnhancer?.kind==='qwen21-strata-native') {
         data.artDirection={...data.artDirection,editEnhancer:{...data.artDirection.editEnhancer,...released}};

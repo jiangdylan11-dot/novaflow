@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { FLASH_ART_SYSTEM, FLASH_ART_SYSTEM_SHA256, FLASH_ART_BASE_SKILL } from './flash-art-direction.mjs';
 import { isArtPromptLanguage, artPromptLanguageSystem, artPromptLanguageTools } from '../../packages/shared/src/art-prompt-language.mjs';
+import { planFlashMedia } from './flash-media-agent.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -159,7 +160,7 @@ export function prepareFlashArtAgentPayload(payload) {
     '本地智能仅使用 Flash；在线智能必须通过已授权的云端聊天接口');
   need(typeof payload.requestId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(payload.requestId),
     'flash-agent-invalid-request-id', '绘图请求编号无效');
-  need(payload.mode === undefined || ['chat', 'drawing', 'creation'].includes(payload.mode), 'flash-agent-invalid-input', '小桃对话模式无效');
+  need(payload.mode === undefined || ['chat', 'drawing', 'creation', 'media'].includes(payload.mode), 'flash-agent-invalid-input', '小桃对话模式无效');
   const mode = payload.mode || 'drawing';
   need(isArtPromptLanguage(payload.promptLanguage), 'flash-agent-invalid-input', '提示词语言无效');
   const history = historyValue(payload.history ?? []);
@@ -167,6 +168,15 @@ export function prepareFlashArtAgentPayload(payload) {
     && /^[A-Za-z0-9_-]{8,128}$/.test(payload.conversationId), 'flash-agent-invalid-history', '会话编号无效');
   const common = { requestId: payload.requestId, ...(payload.conversationId ? { conversationId: payload.conversationId } : {}),
     mode, message: payload.message, history, ...(payload.promptLanguage ? {promptLanguage:payload.promptLanguage} : {}) };
+  if (mode === 'media') {
+    need(payload.executionApproval === undefined && plain(payload.artContext) && payload.artContext.surface === 'media'
+      && (!payload.images || Array.isArray(payload.images) && payload.images.length===0), 'flash-agent-invalid-input','音视上下文无效');
+    const context=JSON.parse(canonicalArtAgentJSON(payload.artContext));
+    need(JSON.stringify(context).length<=100000,'flash-agent-invalid-input','音视上下文过大');
+    const fingerprint=hash(canonicalArtAgentJSON({schema:'nf.flash.art-agent.snapshot.v1',artContext:context,images:[]}));
+    need(fingerprint===payload.contextFingerprint,'flash-agent-stale-context','音视内容已变化，请重新发送');
+    return {...common,artContext:context,images:[],contextFingerprint:fingerprint};
+  }
   if (mode === 'chat') {
     need(payload.executionApproval === undefined, 'flash-agent-invalid-approval', '普通对话不接受生图确认');
     need(payload.artContext === undefined || plain(payload.artContext), 'flash-agent-invalid-input', '小桃当前页面信息无效');
@@ -228,6 +238,17 @@ export function createFlashArtAgent({ maxConversations = 32 } = {}) {
     payload = preflight(payload);
     need(typeof flash?.inferConversation === 'function' && typeof flash?.identity?.id === 'string'
       && flash.identity.id, 'flash-agent-session-required', '缺少已核验的本地 Flash 对话会话');
+    if (payload.mode === 'media') {
+      const id=payload.conversationId || randomUUID(),previous=conversations.get(id);
+      const state=previous || {history:payload.history};
+      conversations.set(id,state);state.busy=true;usedRequests.add(payload.requestId);
+      try {
+        const result=await planFlashMedia({payload,flash,signal});
+        state.history=[...payload.history,{role:'user',content:payload.message},{role:'assistant',content:result.reply}].slice(-MAX_HISTORY);
+        return {...result,mode:'media',conversationId:id,history:state.history,model:flash.identity.id,contextFingerprint:payload.contextFingerprint};
+      } catch(error) {if(!previous)conversations.delete(id);throw error;}
+      finally {state.busy=false;}
+    }
     const chat = payload.mode === 'chat', creation = payload.mode === 'creation', context = payload.artContext, fingerprint = payload.contextFingerprint;
     let system = chat ? FLASH_CHAT_AGENT_SYSTEM : creation ? FLASH_CREATION_AGENT_SYSTEM : FLASH_ART_AGENT_SYSTEM;
     let effectiveStyleProtocol = styleProtocol;

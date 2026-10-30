@@ -478,10 +478,10 @@
         return { source, name: text(source.fileName, '片段').replace(/\.[^.]+$/, '') }
       } catch (error) { setStatus(String(error?.message || error), true); return null }
     }
-    async function importResource(resourceId) {
+    async function importResource(resourceId, { signal } = {}) {
       const resolved = await resolvePayload(resourceId, null)
-      if (!resolved || !alive) return
-      adoptFps(resolved.source); editor.addClip({ ...resolved, start: editor.playhead() }); preview.refresh()
+      if (!resolved || !alive || signal?.aborted) return
+      adoptFps(resolved.source); const clip = editor.addClip({ ...resolved, start: editor.playhead() }); preview.refresh(); return clip
     }
     function handleSharedResourceImport(event) {
       // a click only picks the card; resources come in by dragging them onto a track or the stage
@@ -876,5 +876,7 @@
   function exportToFile() { return activeHandle?.export?.() || Promise.resolve({ ok: false, inactive: true }) }
   function isOpen() { return Boolean(activeHandle?.debugSnapshot?.().open) }
 
-  return Object.freeze({ version: 4, RESOURCE_IMPORT_EVENT, open, close, saveAndClose, exportToFile, isOpen, snapshot: () => activeHandle?.debugSnapshot?.() || null })
+  return Object.freeze({ version: 4, RESOURCE_IMPORT_EVENT, open, close, saveAndClose, exportToFile, isOpen,
+    editor: () => activeHandle?.editor || null, importResource: (id, options) => activeHandle?.importResource(id, options), refresh: () => activeHandle?.preview.refresh(),
+    snapshot: () => activeHandle?.debugSnapshot?.() || null })
 })

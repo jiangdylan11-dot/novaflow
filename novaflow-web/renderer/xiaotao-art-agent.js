@@ -581,6 +581,7 @@
     }
     function onlineQuote(message) {return predictOnline(onlineEstimateInput(message));}
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
+    let mediaAbort = null;
     const recapture = snapshot => snapshot.artContext.task === 'creation' ? bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')}) : bridge.capture({includeResult:snapshot.images.length===3});
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
     state.learningTask = null; state.learningWarning = '';
@@ -752,7 +753,8 @@
             if (progress?.requestId === requestId && ['loading','analyzing','releasing'].includes(progress.phase)) {
               state.operation = copy(progress);
               const elapsed = Math.max(0,Math.floor((Date.now() - (Number(progress.startedAt) || activeStartedAt)) / 1000));
-              state.status = `${({loading:'正在加载本地模型',analyzing:'正在分析当前绘图',releasing:'正在释放模型资源，准备生图'})[progress.phase]} · 本次已用 ${elapsed} 秒`; onChange(state);
+              const labels=activeMode==='media'?{loading:'正在加载本地模型',analyzing:'正在分析音视素材和时间轴',releasing:'正在释放模型资源，准备音视操作'}:{loading:'正在加载本地模型',analyzing:'正在分析当前绘图',releasing:'正在释放模型资源，准备生图'};
+              state.status = `${labels[progress.phase]} · 本次已用 ${elapsed} 秒`; onChange(state);
             } else if (activeMode === 'chat' && (!session?.activeRequestId || session.activeRequestId === requestId)) updateLocalSession(session,true);
             else if (!progress && (!session?.activeRequestId || session.activeRequestId === requestId)) {
               state.operation = null; state.status = `请求已提交，正在等待本地分析启动 · 本次已用 ${Math.max(0,Math.floor((Date.now()-activeStartedAt)/1000))} 秒`; onChange(state);
@@ -808,11 +810,55 @@
         contextText,
         files:[...images.map(image => ({kind:'image',...imageDimensions(image)})), ...Array.from({length:Math.max(0,staged.filter(item => item.kind === 'image').length-images.length)},()=>({kind:'image'})), ...staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => ({kind:item.kind}))]};
     }
+    async function sendMedia(message) {
+      const media=root.NovaFlowMediaAgent;
+      if(state.provider!=='local') {state.error='执行音视操作请切换“本地智能”，在线智能目前提供对话建议';notify();return false;}
+      if((state.staged || []).length) {state.error='请先将音视频素材导入音视资源列表，再告诉小桃如何处理';notify();return false;}
+      const operation=++serial;
+      stopped=false;activeMode='media';activeRequest=root.crypto.randomUUID();
+      state.pending=true;state.mode='media';state.error='';state.mediaReceipt=null;state.proposal=null;state.confirmation=null;state.operation=null;state.toolTrace=[];
+      pushUser(message);state.status='正在读取音视素材和时间轴…';notify();
+      try {
+        const snapshot=media.capture(),contextFingerprint=await fingerprint(snapshot);
+        if(operation!==serial || stopped)return false;
+        activeStartedAt=Date.now();
+        const responsePromise=api()?.artAgentChat?.({requestId:activeRequest,provider:'local',mode:'media',promptLanguage:'en',
+          conversationId:state.conversationId || undefined,message,history:copy(state.history),artContext:snapshot.artContext,images:[],contextFingerprint});
+        startStatusPolling(operation,activeRequest);
+        const response=await responsePromise;stopStatusPolling();
+        if(operation!==serial || stopped)return false;
+        if(!response?.ok) {if(['unknown-conversation','flash-agent-unknown-conversation'].includes(response?.errorCode))state.conversationId='';fail(response?.error || '音视分析未完成，请检查本地助手');}
+        const data=response.data;
+        if(typeof data?.reply!=='string')fail('音视分析回复不完整');
+        state.conversationId=data.conversationId || state.conversationId;
+        if(Array.isArray(data.history))state.history=copy(data.history);
+        state.model=data.model || '本地 Flash';state.toolTrace=data.toolTrace || [];
+        state.messages.push({role:'assistant',content:data.reply});notify();
+        if(data.mediaPlan && !media.discussionOnly(message)) {
+          if(data.resourcesReleased!==true || data.generationReady!==true || data.analysisBackend!=='strata')fail('本地模型尚未确认释放资源，音视操作未执行');
+          mediaAbort=new root.AbortController();state.generating=true;
+          const result=await media.execute(data.mediaPlan,{snapshot,fingerprint,signal:mediaAbort.signal,onProgress:op=>{
+            state.status='正在'+({generate_video:'生成视频',generate_music:'生成音乐',generate_sfx:'生成音效',import_resource:'导入素材',split:'分割片段',trim:'裁切片段',move:'移动片段',rate:'调整速度',volume:'调整音量',fade:'设置淡入淡出',duplicate:'复制片段',remove:'移除片段',export:'导出音视'}[op.action] || '处理音视')+'…';notify();
+          }});
+          const rows=result.results.map(r=>r.action?.startsWith('generate_') || r.taskId
+            ? '生成完成：'+(r.name || r.resources?.map(item=>item.name).join('、') || r.resourceId || '')
+            : r.action==='export' ? '导出完成：'+r.fileName+'（'+r.bytes+' 字节）'
+              : ({split:'已分割片段',trim:'已裁切片段',move:'已移动片段',rate:'已调整速度',volume:'已调整音量',fade:'已设置淡入淡出',duplicate:'已复制片段',remove:'已移除片段',import_resource:'已导入时间轴'}[r.action] || '操作已完成'));
+          state.mediaReceipt=copy(result);state.messages.push({role:'assistant',content:rows.join('\n')});
+          state.status='音视操作已完成';
+        } else state.status='已回复';
+        return true;
+      } catch(error) {
+        if(operation===serial){state.error=String(error?.message || error);state.status=mediaAbort?.signal.aborted?'音视操作已停止':'音视操作未全部完成';}
+        return false;
+      } finally {if(operation===serial){stopStatusPolling();state.pending=false;state.generating=false;state.operation=null;activeRequest='';mediaAbort=null;notify();}}
+    }
     async function send(message, {includeResult = false, confirmed = false, recordMessage = true} = {}) {
       if(state.uploading)return false;
       if (state.pending || state.generating || state.applying) return false;
       message = String(message || '').trim();
       if (!message) {if ((state.staged || []).length) {state.error = '请先说明这些文件的用途，再发送'; notify();} return false;}
+      if(root.NovaFlowMediaAgent?.wantsMedia(message) && !/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message)) return sendMedia(message);
       const predictionInput = state.provider === 'api' ? onlineEstimateInput(message) : null;
       const prediction = predictionInput ? predictOnline(predictionInput) : null;
       let stagedReady = false;
@@ -934,6 +980,7 @@
       finally {if (operation === serial) {stopStatusPolling(); state.pending = false; state.operation = null; activeRequest = ''; activeSnapshot = null; notify();}}
     }
     async function stop() {
+      if(mediaAbort) {state.status='正在停止本次音视任务…';mediaAbort.abort();notify();return;}
       if (state.confirmation && !state.pending && !state.generating) return cancelConfirmation();
       if (state.generating) {state.status = '正在停止生成…'; notify(); await bridge.cancelGeneration(); return;}
       if (!state.pending || stopped) return;
@@ -988,7 +1035,7 @@
     title.append(titleText); header.append(title, close);
     const context = el('div', 'nf-xiaotao-context'), contextLabel = el('span'), thumbs = el('div', 'nf-xiaotao-thumbs'); context.append(contextLabel, thumbs);
     const messages = el('div', 'nf-xiaotao-messages'); messages.setAttribute('role', 'log'); messages.setAttribute('aria-label', '绘图对话');
-    const intro = el('p', 'nf-xiaotao-intro', '你好，我是小桃AI。可以让我给你提示词、写入提示框，或直接做图。有参考图时我会结合参考；做完后告诉我哪里需要改，我会查看当前成图继续修改。'); messages.append(intro);
+    const intro = el('p', 'nf-xiaotao-intro', '你好，我是小桃AI。可以让我写提示词、直接做图，也可以在本地智能下控制音视：生成视频、音乐和音效，编辑当前时间轴并导出。请先导入要处理的素材，再告诉我怎么做。'); messages.append(intro);
     const proposal = el('details', 'nf-xiaotao-proposal'), summary = el('summary', '', '提示词与执行'), proposalText = el('pre'), copyPrompt=el('button','','复制完整提示词'); copyPrompt.type='button'; copyPrompt.onclick=()=>void copyText(controller.state.proposal?.prompt || '',copyPrompt); proposal.hidden = true; proposal.append(summary,copyPrompt,proposalText);
     const actions = el('div', 'nf-xiaotao-actions'), applyButton = el('button', '', '应用到绘图'), generateButton = el('button', 'nf-xiaotao-primary', '应用并生成一张'); for (const b of [applyButton, generateButton]) b.type = 'button'; actions.append(applyButton, generateButton); proposal.append(actions);
     const confirmation = el('section','nf-xiaotao-proposal'), confirmationText = el('p'), samplingActions = el('div','nf-xiaotao-actions'); confirmation.hidden = true; confirmation.setAttribute('aria-label','确认本次生图参数'); samplingActions.style.flexWrap = 'wrap';
@@ -1118,6 +1165,12 @@
       if (drag.dragging() || robotDrag.dragging()) return;
       closeOnNavigation();
       controller.refreshContext(); if (!open) return;
+      if(root.NovaFlowAudioStudio?.isOpen?.()) {
+        const media=root.NovaFlowMediaAgent?.capture?.().artContext;
+        contextLabel.textContent='当前音视 · '+(media?.sub==='audio'?'音频':'视频')+' · 本地智能可直接操作';
+        if(previewImages.length){thumbs.replaceChildren();previewImages=[];}
+        return;
+      }
       try {const snapshot = bridge.captureAny({includeResult:bridge.hasResult()}), stamp = JSON.stringify(snapshot.artContext); if (stamp !== contextStamp || snapshot.images.some((img, i) => img.dataUrl !== previewImages[i]) || snapshot.images.length!==previewImages.length) {contextStamp = stamp; previewImages = snapshot.images.map(img => img.dataUrl); contextLabel.textContent = snapshot.artContext.sourceSurface && snapshot.artContext.sourceSurface!=='drawing' ? '普通对话 · 也可直接让小桃做图' : `当前绘图 · ${snapshot.artContext.mode==='txt2img'?'文生图 · ':''}${snapshot.artContext.width} × ${snapshot.artContext.height} · 原负向与手动参数保留`; thumbs.replaceChildren(); for (const ref of snapshot.images) {const item = el('span'), img = el('img'), name=ref.role==='subject'?'主体':ref.role==='style'?'画风':'当前成图'; img.src = ref.dataUrl; img.alt=name; item.append(img, el('small', '',ref.source?`图${ref.source} · ${name}`:name)); thumbs.append(item);}}}
       catch {const current = bridge.captureChat(); contextLabel.textContent = current.artContext.surface === 'drawing' ? '当前仅对话，尚未形成可生图双图上下文' : '普通对话 · 无需参考图'; if (previewImages.length) {thumbs.replaceChildren(); previewImages = [];}}
     }

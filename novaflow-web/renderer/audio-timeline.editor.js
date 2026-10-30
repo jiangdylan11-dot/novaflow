@@ -723,6 +723,7 @@
       setZoom, fitToWindow, zoom: () => state.zoom,
       projectEnd, playhead: () => state.playhead, formatTime,
       layout, draw, exportMix, encodeWav,
+      commitEdit() { layout(); changed(); restartIfPlaying(); },
       clipCount: () => state.tracks.reduce((n, t) => n + t.clips.length, 0),
       destroy() { pause(); wrap.remove(); }
     };

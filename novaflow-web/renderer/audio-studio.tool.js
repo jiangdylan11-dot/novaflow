@@ -1557,9 +1557,10 @@
     const parameters = { prompt: sfxCaption(), duration_seconds: m.seconds, reprompt: m.rewrite && !optimizedCaption(m) };
     for (let i = 0; i < m.count; i += 1) submit('audio_sfx', 'sfx', describeSfx(), parameters);
   }
-  async function submit(taskType, kind, label, parameters) {
+  async function submit(taskType, kind, label, parameters, { strict = false, signal } = {}) {
     const runtime = window.NovaFlowWebRuntime;
-    if (!runtime) return;
+    if (!runtime) { if (strict) throw new Error('音频算力接口尚未就绪'); return; }
+    if (signal?.aborted) throw new Error('音频生成已停止');
     const pending = { id: 'pending-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), kind, name: kind === 'music' ? '音乐 生成中' : '音效 生成中', label, pending: true, progress: 0 };
     state.resources.unshift(pending);
     renderList();
@@ -1570,31 +1571,40 @@
       if (!task?.id) throw new Error('任务未创建');
     } catch (error) {
       failPending(pending, String(error?.message || error));
+      if (strict) throw error;
       return;
     }
     const entry = { cancelled: false, pending };
     state.running.set(task.id, entry);
     pending.taskId = task.id;
+    const abort = () => { entry.cancelled = true; void runtime.control('POST', '/api/web/tasks/' + task.id + '/cancel').catch(() => {}); };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
     tell();
     try {
-      const finished = await waitForTask(runtime, task.id, (t) => { pending.progress = Number(t.progress) || 0; ui.statusPct.textContent = Math.round(pending.progress) + '%'; setProgress(pending.progress); renderProgress(pending); });
-      if (entry.cancelled) return;
+      const finished = await waitForTask(runtime, task.id, (t) => { pending.progress = Number(t.progress) || 0; ui.statusPct.textContent = Math.round(pending.progress) + '%'; setProgress(pending.progress); renderProgress(pending); }, signal);
+      if (entry.cancelled) throw new Error('音频生成已停止');
       if (finished.status !== 'completed') throw new Error(finished.error_message || ('任务' + finished.status));
       const files = (finished.output_manifest?.files || []).filter((f) => /\.(wav|flac|mp3|ogg)$/i.test(f.name));
       if (!files.length) throw new Error('没有产出音频文件');
       const bytes = await runtime.fetchTaskOutput(finished, files[0].name);
       const blob = new Blob([bytes], { type: 'audio/wav' });
-      await completed(pending, kind, label, parameters, files[0], blob, finished);
+      const resource = await completed(pending, kind, label, parameters, files[0], blob, finished);
+      return {ok:true,taskId:task.id,resourceId:resource.id,name:resource.name,seconds:resource.seconds,bytes:blob.size};
     } catch (error) {
       if (!entry.cancelled) failPending(pending, String(error?.message || error));
+      else {state.resources = state.resources.filter(r=>r!==pending);renderList();}
+      if (strict) throw error;
     } finally {
       state.running.delete(task.id);
+      signal?.removeEventListener('abort', abort);
       tell();
     }
   }
-  async function waitForTask(runtime, id, onTick) {
+  async function waitForTask(runtime, id, onTick, signal) {
     const started = Date.now();
     for (;;) {
+      if (signal?.aborted) throw new Error('音频生成已停止');
       await new Promise((r) => setTimeout(r, 1000));
       const { task } = await runtime.control('GET', '/api/web/tasks/' + id);
       if (!task) throw new Error('任务不存在');
@@ -1635,6 +1645,7 @@
     if (buffer) editor.addClip({ buffer, name, kind, loopable: resource.loopable });
     await publishAudio(resource, name + '.wav');
     try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: name + '.wav' }); } catch (_) { /* the warehouse reports its own state */ }
+    return resource;
   }
 
   // ---- the shared resource list -----------------------------------------------------------
@@ -1997,6 +2008,29 @@
     resources: () => state.resources.slice(),
     importFile,
     editor: () => editor,
+    agentSettings: () => ({mode:state.mode,board:state.boards[state.board]?.id || '',music:{...state.music},sfx:{...state.sfx}}),
+    async agentImportResource(id, {signal} = {}) {activate('audio');const source=await resourceAudio(id);if(signal?.aborted)throw new Error('音频导入已停止');return editor.addClip(source);},
+    async agentGenerate(op, {signal} = {}) {
+      const music = op.action === 'generate_music', kind = music ? 'music' : 'sfx';
+      if (!['generate_music','generate_sfx'].includes(op.action) || typeof op.prompt !== 'string' || !op.prompt.trim()) throw new Error('缺少音频生成描述');
+      const seconds = op.seconds ?? state[kind].seconds;
+      if (!Number.isFinite(seconds) || seconds < (music ? 8 : 1) || seconds > (music ? 300 : 30)) throw new Error('音频生成时长超出范围');
+      const bpm = op.bpm ?? state.music.bpm;
+      if (music && (!Number.isInteger(bpm) || bpm < 0 || bpm > 300)) throw new Error('音乐节拍超出范围');
+      activate('audio');setMode(kind);
+      Object.assign(state[kind],{text:op.prompt,optimized:op.prompt,seconds,...(music?{bpm,loop:op.loop ?? state.music.loop}:{})});
+      syncDockValues();
+      return submit(music ? 'audio_music' : 'audio_sfx',kind,op.prompt,{prompt:op.prompt,duration_seconds:seconds,reprompt:false,
+        ...(music ? {bpm,loop:state.music.loop,crossfade_ms:800} : {})},{strict:true,signal});
+    },
+    async agentExport() {
+      const {blob,name} = await mixdown();
+      const resource = {id:'res-mix-'+Date.now(),kind:'import',name,seconds:editor.projectEnd(),blob,buffer:await decode(blob),url:URL.createObjectURL(blob),loopable:true};
+      state.resources.unshift(resource);renderList();await publishAudio(resource,name+'.wav');
+      await window.NovaFlowWebWarehouse?.save?.({blob,name:name+'.wav'});
+      const link=document.createElement('a');link.href=resource.url;link.download=name+'.wav';document.body.appendChild(link);link.click();link.remove();
+      return {ok:true,action:'export',target:'audio',resourceId:resource.id,fileName:name+'.wav',bytes:blob.size,seconds:resource.seconds};
+    },
     captions: { music: musicCaption, sfx: sfxCaption, translate }
   };
 })();
