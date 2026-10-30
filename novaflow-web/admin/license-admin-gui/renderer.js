@@ -76,8 +76,6 @@ let passwordEditState = {
   userId: "",
   accountLabel: ""
 };
-// Last signing-key status from refresh(); the dashboard's system panel shows it.
-let signingKeyStatusText = "";
 
 const USER_STATUS_OPTIONS = [
   ["active", "active"],
@@ -85,10 +83,10 @@ const USER_STATUS_OPTIONS = [
 ];
 
 // users.plan decides where a user's work may run: 普通 (trial) only on the
-// machine the local assistant opened, 中级 (standard) also on 普通 pool
+// machine assigned to that account, 中级 (standard) also on 普通 pool
 // nodes, 高级 (pro) on every pool node. Legacy team is the same as pro.
 const USER_PLAN_OPTIONS = [
-  ["trial", "普通（仅本机）"],
+  ["trial", "普通（本人算力）"],
   ["standard", "中级（普通节点）"],
   ["pro", "高级（所有节点）"]
 ];
@@ -114,18 +112,9 @@ function setGlobalStatus(text, tone, options = {}) {
   if (tone) el.classList.add(tone);
 }
 
-function showTab(tabName) {
-  const name = String(tabName || "online");
-  document.querySelectorAll(".tab[data-tab]").forEach((el) => {
-    el.classList.toggle("active", el.getAttribute("data-tab") === name);
-  });
-  document.querySelectorAll(".tabPanel").forEach((el) => {
-    el.classList.toggle("active", el.id === `tab-${name}`);
-  });
-}
-
 function showModule(moduleName) {
-  const name = String(moduleName || "dashboard");
+  const requested = String(moduleName || "dashboard");
+  const name = ["dashboard", "users", "ai-services", "compute", "art-knowledge"].includes(requested) ? requested : "dashboard";
   document.querySelectorAll(".moduleNavButton").forEach((el) => {
     el.classList.toggle("active", el.getAttribute("data-module") === name);
   });
@@ -1200,6 +1189,7 @@ function renderDashboard(data) {
   const creditEl = $("dashboardCreditCost");
   if (creditEl) creditEl.textContent = creditsUnconfigured ? "—" : formatCreditAmount(totalCredits);
   setDataBadge("dashboardDataBadge", hasErrorResult(results) ? { status: "error" } : hasSupabaseResult(results) ? { source: "supabase" } : { source: "mock" });
+  setText("dashboardWorkersCount", isUnconfiguredResult(data.workers) ? "—" : formatNumber(data.workers?.records?.length || 0));
   renderDashboardRecentActivity();
   const activeUsers = users.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
   const rh = data.runninghubStatus || {};
@@ -1208,7 +1198,7 @@ function renderDashboard(data) {
     { label: "数据源", value: sourceLabel },
     { label: "RunningHub 连接", value: connection },
     { label: "在线语言模型", value: rh.configured ? `已配置 · ${rh.llmModel || "xai/grok-4.7"}` : "未配置" },
-    { label: "签名密钥", value: signingKeyStatusText || "读取中..." },
+    { label: "算力机器", value: isUnconfiguredResult(data.workers) ? "—" : formatNumber(data.workers?.records?.length || 0) },
     { label: "启用用户", value: usersUnconfigured ? "—" : `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
   ], "暂无状态数据");
 }
@@ -2366,146 +2356,6 @@ function stringifyPermissions(value) {
   }
 }
 
-function formatOnlineRecord(record) {
-  if (!record) return "-";
-  return JSON.stringify(record, null, 2);
-}
-
-function formatShortDate(value) {
-  const s = String(value || "").trim();
-  if (!s) return "-";
-  return s.replace("T", " ").replace(/\.\d+Z$/, "Z").replace(/\+00:00$/, "Z");
-}
-
-function setOnlineStatus(text) {
-  $("onlineActionStatus").textContent = String(text || "-");
-}
-
-function fillOnlineFormFromRecord(record) {
-  if (!record) return;
-  if (record.license_key) $("onlineLicenseKey").value = String(record.license_key);
-  if (record.machine_id) $("onlineMachineId").value = String(record.machine_id);
-  if (record.status) $("onlineStatus").value = String(record.status);
-  if (record.expire_at) $("onlineExpireAt").value = toDateInputValue(record.expire_at);
-  $("onlinePermissions").value = stringifyPermissions(record.permissions);
-}
-
-function renderOnlineRecords(records) {
-  const list = Array.isArray(records) ? records : [];
-  $("onlineResult").textContent = list.length ? JSON.stringify(list, null, 2) : "未找到记录";
-  renderOnlineList(list);
-  if (list[0]) fillOnlineFormFromRecord(list[0]);
-}
-
-function renderOnlineList(records, selectedLicenseKey) {
-  const list = Array.isArray(records) ? records : [];
-  const container = $("onlineList");
-  const status = $("onlineListStatus");
-  if (!container) return;
-  container.replaceChildren();
-  if (status) status.textContent = list.length ? `共 ${list.length} 条记录` : "暂无记录";
-
-  // Status summary above the table, and the dashboard's "有效授权" card, which
-  // used to show a hard-coded number.
-  const countStatus = (value) => list.filter((record) => String(record.status || "").toLowerCase() === value).length;
-  setText("licStatTotal", formatNumber(list.length));
-  setText("licStatActive", formatNumber(countStatus("active")));
-  setText("licStatExpired", formatNumber(countStatus("expired")));
-  setText("licStatBanned", formatNumber(countStatus("banned")));
-  setText("dashboardLicensesCount", formatNumber(countStatus("active")));
-
-  if (!list.length) {
-    replaceRows("onlineList", [], 6, "没有可显示的授权记录");
-    return;
-  }
-  const current = String(selectedLicenseKey || $("onlineLicenseKey")?.value || "").trim();
-  list.forEach((record) => {
-    // One table row per licence; click or Enter selects it into the form.
-    const item = document.createElement("tr");
-    item.tabIndex = 0;
-    item.className = "recordItem";
-    if (record.license_key && record.license_key === current) item.classList.add("active");
-
-    item.appendChild(textCell(record.license_key || "(空 license_key)", "recordKey"));
-    const badge = document.createElement("span");
-    badge.className = `badge ${String(record.status || "").toLowerCase()}`;
-    badge.textContent = record.status || "-";
-    item.appendChild(nodeCell(badge));
-    const machine = textCell(record.machine_id || "-", "recordMachine");
-    machine.title = record.machine_id || "";
-    item.appendChild(machine);
-    item.appendChild(textCell(formatShortDate(record.expire_at)));
-    item.appendChild(textCell(formatShortDate(record.created_at)));
-
-    const actions = document.createElement("div");
-    actions.className = "recordActions";
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "btn danger recordDeleteButton";
-    deleteButton.textContent = "删除";
-    deleteButton.title = "删除该授权记录";
-    deleteButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      await deleteOnlineLicense(record);
-    });
-
-    // The licence code is not stored on the record - it is made when the
-    // licence is issued and then only lives in the issue tab and the .nfl.
-    // Reading one back meant re-issuing and retyping the machine id, so this
-    // signs a fresh one from what the record already holds.
-    const copyButton = document.createElement("button");
-    copyButton.type = "button";
-    copyButton.className = "btn secondary recordCopyButton";
-    copyButton.textContent = "复制授权码";
-    copyButton.title = "为这条记录生成并复制一个授权码";
-    copyButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      const original = copyButton.textContent;
-      copyButton.disabled = true;
-      copyButton.textContent = "生成中...";
-      try {
-        const res = await window.adminAPI.licenseCodeFor({
-          licenseKey: record.license_key,
-          machineId: record.machine_id,
-          expiresAt: record.expire_at,
-          featuresText: record.permissions == null
-            ? ""
-            : typeof record.permissions === "string"
-              ? record.permissions
-              : JSON.stringify(record.permissions)
-        });
-        const text = res?.result?.licenseText;
-        if (!res?.ok || !text) throw new Error(String(res?.error || "生成授权码失败"));
-        await copyToClipboard(text, "已复制授权码");
-      } catch (err) {
-        alert(`生成授权码失败：${String(err?.message || err)}`);
-      } finally {
-        copyButton.disabled = false;
-        copyButton.textContent = original;
-      }
-    });
-
-    actions.appendChild(copyButton);
-    actions.appendChild(deleteButton);
-    item.appendChild(nodeCell(actions));
-
-    const selectRecord = () => {
-      fillOnlineFormFromRecord(record);
-      $("onlineResult").textContent = formatOnlineRecord(record);
-      renderOnlineList(list, record.license_key);
-      setOnlineStatus("已选择记录");
-    };
-    item.addEventListener("click", selectRecord);
-    item.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        selectRecord();
-      }
-    });
-    container.appendChild(item);
-  });
-}
-
 async function loadOnlineConfig() {
   const res = await window.adminAPI.getOnlineConfig();
   if (!res?.ok) {
@@ -2515,7 +2365,6 @@ async function loadOnlineConfig() {
   const cfg = res.config || {};
   $("onlineSupabaseUrl").value = cfg.supabaseUrl || "";
   $("onlineSecretKey").value = "";
-  $("issueSyncOnline").checked = Boolean(cfg.hasSecretKey);
   $("onlineConfigStatus").textContent = cfg.hasSecretKey
     ? `已保存：${cfg.secretPreview || "secret"}`
     : "未保存 Secret Key";
@@ -2534,12 +2383,13 @@ async function saveOnlineConfig() {
   }
   $("onlineSecretKey").value = "";
   const cfg = res.config || {};
-  $("issueSyncOnline").checked = Boolean(cfg.hasSecretKey);
   $("onlineConfigStatus").textContent = cfg.hasSecretKey
     ? `已保存：${cfg.secretPreview || "secret"}`
     : "未保存 Secret Key";
   setGlobalStatus(cfg.hasSecretKey ? "在线管理已配置" : "在线管理未配置");
-  toast("在线配置已保存");
+  toast("后台连接已保存");
+  await loadAdminData();
+  if (document.querySelector('.moduleNavButton.active[data-module="compute"]')) await loadComputeData();
 }
 
 async function testOnlineConfig() {
@@ -2552,173 +2402,6 @@ async function testOnlineConfig() {
   }
   $("onlineConfigStatus").textContent = "连接正常";
   toast("Supabase 连接正常");
-}
-
-function onlinePayload() {
-  return {
-    licenseKey: $("onlineLicenseKey").value.trim(),
-    machineId: $("onlineMachineId").value.trim(),
-    status: $("onlineStatus").value,
-    expireAt: $("onlineExpireAt").value.trim(),
-    permissionsText: $("onlinePermissions").value.trim(),
-    limit: 100
-  };
-}
-
-async function queryOnlineLicense() {
-  const payload = onlinePayload();
-  const hasFilter = Boolean(payload.licenseKey || payload.machineId);
-  setOnlineStatus(hasFilter ? "查询中..." : "刷新列表中...");
-  const res = await window.adminAPI.queryOnlineLicense(payload);
-  if (!res?.ok) {
-    setOnlineStatus("查询失败");
-    alert(`查询失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  renderOnlineRecords(res?.result?.records || []);
-  setOnlineStatus(hasFilter ? "查询完成" : "列表已刷新");
-}
-
-async function refreshOnlineList(options) {
-  const silent = Boolean(options?.silent);
-  if (!silent) setOnlineStatus("刷新列表中...");
-  const res = await window.adminAPI.queryOnlineLicense({ limit: 100 });
-  if (!res?.ok) {
-    if (!silent) {
-      setOnlineStatus("列表刷新失败");
-      alert(`刷新列表失败：${String(res?.error || "unknown")}`);
-    }
-    return;
-  }
-  const records = res?.result?.records || [];
-  renderOnlineList(records);
-  if (!silent) setOnlineStatus("列表已刷新");
-}
-
-async function upsertOnlineLicense() {
-  const payload = onlinePayload();
-  if (!payload.licenseKey) {
-    alert("请先从列表选择一条授权记录，或填写 License Key。");
-    return;
-  }
-
-  // This card edits an existing licence. A new one comes from 新建授权码,
-  // which signs the file and the record together - a record created here
-  // would have no licence file behind it and nothing could be issued from it.
-  setOnlineStatus("查询中...");
-  const existing = await window.adminAPI.queryOnlineLicense({ licenseKey: payload.licenseKey, limit: 1 });
-  if (!existing?.ok) {
-    setOnlineStatus("查询失败");
-    alert(`查询失败：${String(existing?.error || "unknown")}`);
-    return;
-  }
-  if (!(existing?.result?.records || []).length) {
-    setOnlineStatus("没有这条记录");
-    alert(`线上没有 ${payload.licenseKey} 这条授权记录。
-新建请到「新建授权码」页签，那里会连授权文件一起签发。`);
-    return;
-  }
-
-  setOnlineStatus("写入中...");
-  const res = await window.adminAPI.upsertOnlineLicense(payload);
-  if (!res?.ok) {
-    setOnlineStatus("更新失败");
-    alert(`更新失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const record = res?.result?.record;
-  $("onlineResult").textContent = formatOnlineRecord(record);
-  fillOnlineFormFromRecord(record);
-  await refreshOnlineList({ silent: true });
-  setOnlineStatus("已更新");
-  toast("线上授权已更新");
-}
-
-async function setOnlineLicenseStatus(status) {
-  const licenseKey = $("onlineLicenseKey").value.trim();
-  if (!licenseKey) {
-    alert("请先填写 License Key");
-    return;
-  }
-  setOnlineStatus("更新状态中...");
-  const res = await window.adminAPI.setOnlineLicenseStatus({ licenseKey, status });
-  if (!res?.ok) {
-    setOnlineStatus("状态更新失败");
-    alert(`状态更新失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const records = res?.result?.records || [];
-  renderOnlineRecords(records);
-  await refreshOnlineList({ silent: true });
-  setOnlineStatus(status === "active" ? "已启用" : status === "banned" ? "已关闭" : "已设为过期");
-  toast(status === "active" ? "授权已启用" : status === "banned" ? "授权已关闭" : "授权已设为过期");
-}
-
-async function verifyDeletedLicenseGone(target) {
-  const licenseKey = String(target?.licenseKey || "").trim();
-  const id = target?.id == null || target?.id === "" ? "" : String(target.id).trim();
-  if (!licenseKey) throw new Error("删除后校验缺少授权码");
-  const res = await window.adminAPI.queryOnlineLicense({ licenseKey, limit: 100 });
-  if (!res?.ok) throw new Error(String(res?.error || "授权删除后刷新失败"));
-  const records = res?.result?.records || [];
-  const stillExists = id
-    ? records.some((item) => String(item?.id || "") === id)
-    : records.some((item) => String(item?.license_key || "").trim() === licenseKey);
-  if (stillExists) {
-    throw new Error("删除请求已返回成功，但刷新后仍能看到该授权记录；请检查 Supabase Service Role 权限。");
-  }
-}
-
-async function deleteOnlineLicense(record) {
-  const licenseKey = String(record?.license_key || $("onlineLicenseKey")?.value || "").trim();
-  const id = record?.id == null ? "" : String(record.id);
-  if (!licenseKey) {
-    alert("请先选择或填写要删除的授权码");
-    return;
-  }
-
-  const scopeText = id
-    ? `将删除该条授权记录：ID ${id}`
-    : "将按 license_key 删除匹配记录；如果历史数据存在同名授权码，会一起删除。";
-  const confirmed = await confirmByTyping({
-    title: "删除授权码",
-    hint: licenseKey,
-    warning: scopeText + " 不可恢复。",
-    label: "输入授权码确认",
-    expected: licenseKey
-  });
-  if (!confirmed) return;
-
-  setOnlineStatus("删除中...");
-  const res = await window.adminAPI.deleteOnlineLicense({ id, licenseKey });
-  if (!res?.ok) {
-    setOnlineStatus("删除失败");
-    alert(`删除授权失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const deletedCount = Number(res?.result?.deletedCount || 0);
-  if (deletedCount <= 0) {
-    setOnlineStatus("删除失败");
-    alert("删除授权失败：Supabase 没有返回已删除记录");
-    return;
-  }
-  try {
-    await verifyDeletedLicenseGone({ id, licenseKey });
-  } catch (err) {
-    setOnlineStatus("删除校验失败");
-    alert(`删除授权校验失败：${String(err?.message || err)}`);
-    return;
-  }
-  $("onlineResult").textContent = formatOnlineRecord({
-    deletedCount,
-    records: res?.result?.records || []
-  });
-  if (String($("onlineLicenseKey")?.value || "").trim() === licenseKey) {
-    $("onlineLicenseKey").value = "";
-  }
-  setOnlineStatus(`已删除 ${deletedCount} 条授权记录`);
-  await refreshOnlineList({ silent: true });
-  toast("授权记录已删除");
 }
 
 async function copyToClipboard(text, okMsg) {
@@ -2737,128 +2420,8 @@ async function copyToClipboard(text, okMsg) {
   }
 }
 
-async function refresh() {
-  const pubPath = $("pubPath").value;
-  const privPath = $("privPath").value;
-  const res = await window.adminAPI.getStatus({ publicKeyPath: pubPath, privateKeyPath: privPath });
-  if (!res?.ok) {
-    signingKeyStatusText = "状态读取失败";
-    $("statusText").textContent = signingKeyStatusText;
-    $("fingerprint").textContent = "-";
-    $("pubPreview").textContent = "-";
-    return;
-  }
-  const st = res.status;
-  const ok = st.pubExists && st.privExists;
-  signingKeyStatusText = ok ? "密钥已存在" : st.pubExists || st.privExists ? "密钥不完整" : "未生成密钥";
-  $("statusText").textContent = signingKeyStatusText;
-  $("fingerprint").textContent = st.pubFingerprint || "-";
-  $("pubPreview").textContent = st.pubPreview || "-";
-  setGlobalStatus(ok ? "密钥正常" : "密钥未就绪");
-}
-
-async function issueLicense() {
-  const priv = $("privPath").value;
-  const machineId = $("issueMachineId").value.trim();
-  const licenseKey = $("issueLicenseKey").value.trim();
-  const expiresAt = $("issueExpiresAt").value.trim();
-  const featuresText = $("issueFeatures").value.trim();
-  const outPath = $("issueOutPath").value.trim();
-  const syncOnline = Boolean($("issueSyncOnline")?.checked);
-
-  if (!machineId) {
-    alert("请先填写机器码");
-    return;
-  }
-  if (!outPath) {
-    alert("请先选择输出文件路径");
-    return;
-  }
-
-  const res = await window.adminAPI.issueLicense({
-    machineId,
-    licenseKey,
-    privateKeyPath: priv,
-    expiresAt: expiresAt || "",
-    featuresText: featuresText || "",
-    outPath,
-    syncOnline,
-    remoteExpireAt: expiresAt || ""
-  });
-  if (!res?.ok) {
-    $("issueResult").textContent = "失败";
-    alert(`签发失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const p = res?.result?.outPath;
-  const t = res?.result?.licenseText;
-  const generatedLicenseKey = res?.result?.payload?.licenseKey;
-  const onlineResult = res?.result?.online;
-  const onlineRecord = res?.result?.online?.record;
-  if (typeof t === "string") $("issueLicenseText").value = t;
-  if (generatedLicenseKey) $("issueLicenseKey").value = String(generatedLicenseKey);
-  if (generatedLicenseKey) $("onlineLicenseKey").value = String(generatedLicenseKey);
-  if (machineId) $("onlineMachineId").value = machineId;
-  if (expiresAt) $("onlineExpireAt").value = expiresAt;
-  if (featuresText) $("onlinePermissions").value = featuresText;
-  if (onlineRecord) {
-    $("onlineResult").textContent = formatOnlineRecord(onlineRecord);
-    fillOnlineFormFromRecord(onlineRecord);
-  }
-  if (syncOnline && onlineResult && onlineResult.ok === false) {
-    $("issueResult").textContent = `已生成：${safePathText(p)} | license_key: ${String(generatedLicenseKey || "-")} | 线上同步失败`;
-    $("onlineResult").textContent = `线上同步失败：${String(onlineResult.error || "unknown")}`;
-    toast("授权文件已生成，线上同步失败");
-    return;
-  }
-  // Put it in the list. Issuing with 在线同步 writes the record and then said
-  // "已同步线上" while the 授权列表 tab still showed what it had loaded
-  // earlier - usually 暂无记录 - so a licence that had just been created
-  // looked as though it had not been.
-  if (syncOnline) await refreshOnlineList({ silent: true });
-
-  $("issueResult").textContent = `已生成：${safePathText(p)} | license_key: ${String(generatedLicenseKey || "-")}${syncOnline ? " | 已同步线上" : ""}`;
-  toast(syncOnline ? "已生成并同步线上授权" : "已生成授权文件");
-}
-
-async function verifyLicense() {
-  const pub = $("pubPath").value;
-  const licensePath = $("verifyLicensePath").value.trim();
-  const machineId = $("verifyMachineId").value.trim();
-  if (!licensePath) {
-    alert("请先选择或拖入授权文件");
-    return;
-  }
-  const res = await window.adminAPI.verifyLicense({
-    licensePath,
-    publicKeyPath: pub,
-    machineId: machineId || ""
-  });
-  if (!res?.ok) {
-    $("verifyResult").textContent = "失败";
-    alert(`校验失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const r = res?.result;
-  $("verifyResult").textContent = r?.ok ? "OK" : String(r?.code || "NOT_OK");
-  toast(r?.ok ? "校验通过" : "校验不通过");
-}
-
 async function init() {
-  const def = await window.adminAPI.getDefaultPaths();
-  $("pubPath").value = def.publicKeyPath || "";
-  $("privPath").value = def.privateKeyPath || "";
-  $("issueOutPath").value = def.defaultLicenseOutPath || "";
-  await refresh();
-  const onlineConfig = await loadOnlineConfig();
-  if (onlineConfig?.hasSecretKey) await refreshOnlineList({ silent: true });
-  const bundledKeyMode = def.mode === "bundled";
-  if (bundledKeyMode) {
-    $("generate").disabled = true;
-    $("delete").disabled = true;
-    $("generate").title = "Bundled keys are read-only in the packaged NovaFlow 后台管理.";
-    $("delete").title = "Bundled keys are read-only in the packaged NovaFlow 后台管理.";
-  }
+  await loadOnlineConfig();
 
   $("userSearchInput").addEventListener("input", () => {
     renderUsers(
@@ -2902,141 +2465,12 @@ async function init() {
     void checkRunningHubProvider();
   }, 5 * 60 * 1000);
 
-  $("pickPub").addEventListener("click", async () => {
-    const res = await window.adminAPI.pickPublicPath({ defaultPath: $("pubPath").value });
-    if (res?.canceled) return;
-    if (res?.filePath) $("pubPath").value = res.filePath;
-    await refresh();
-  });
-
-  $("pickPriv").addEventListener("click", async () => {
-    const res = await window.adminAPI.pickPrivatePath({ defaultPath: $("privPath").value });
-    if (res?.canceled) return;
-    if (res?.filePath) $("privPath").value = res.filePath;
-    await refresh();
-  });
-
-  $("refresh").addEventListener("click", async () => {
-    await refresh();
-    toast("已刷新");
-  });
-
   $("saveOnlineConfig").addEventListener("click", async () => {
     await saveOnlineConfig();
   });
 
   $("testOnlineConfig").addEventListener("click", async () => {
     await testOnlineConfig();
-  });
-
-  $("refreshOnlineList").addEventListener("click", async () => {
-    await refreshOnlineList();
-  });
-
-  $("queryOnlineLicense").addEventListener("click", async () => {
-    await queryOnlineLicense();
-  });
-
-  $("upsertOnlineLicense").addEventListener("click", async () => {
-    await upsertOnlineLicense();
-  });
-
-  $("activateOnlineLicense").addEventListener("click", async () => {
-    await setOnlineLicenseStatus("active");
-  });
-
-  $("expireOnlineLicense").addEventListener("click", async () => {
-    const confirmed = confirm("确定把该授权设为过期吗？\n用户重启 NovaFlow 后会被锁定。");
-    if (!confirmed) return;
-    await setOnlineLicenseStatus("expired");
-  });
-
-  $("openFolder").addEventListener("click", async () => {
-    const p = $("privPath").value || $("pubPath").value;
-    if (!p) return;
-    await window.adminAPI.openFolder({ path: p });
-  });
-
-  $("copyPubKey").addEventListener("click", async () => {
-    const pubPath = $("pubPath").value;
-    const res = await window.adminAPI.readPublicKey({ publicKeyPath: pubPath });
-    if (!res?.ok) {
-      alert(`读取公钥失败：${String(res?.error || "unknown")}`);
-      return;
-    }
-    await copyToClipboard(res?.text, "已复制公钥");
-  });
-
-  $("copyPrivKey").addEventListener("click", async () => {
-    const confirmed = confirm("确定复制私钥吗？\n私钥只能保存在管理员电脑，泄露会导致任何人都能签发授权。");
-    if (!confirmed) return;
-    const privPath = $("privPath").value;
-    const res = await window.adminAPI.readPrivateKey({ privateKeyPath: privPath });
-    if (!res?.ok) {
-      alert(`读取私钥失败：${String(res?.error || "unknown")}`);
-      return;
-    }
-    await copyToClipboard(res?.text, "已复制私钥");
-  });
-
-  $("generate").addEventListener("click", async () => {
-    if (bundledKeyMode) {
-      alert("打包版内置密钥只读，不能在这里重新生成。请直接签发授权文件。");
-      return;
-    }
-    const pub = $("pubPath").value;
-    const priv = $("privPath").value;
-    const confirmed = confirm("确定生成新的密钥对吗？\n如果你替换了旧密钥，旧授权文件将全部失效。");
-    if (!confirmed) return;
-    const res = await window.adminAPI.generate({ publicKeyPath: pub, privateKeyPath: priv });
-    if (!res?.ok) {
-      alert(`生成失败：${String(res?.error || "unknown")}`);
-      return;
-    }
-    await refresh();
-    toast(`已生成，指纹：${String(res?.result?.pubFingerprint || "")}`);
-  });
-
-  $("delete").addEventListener("click", async () => {
-    if (bundledKeyMode) {
-      alert("打包版内置密钥只读，不能在这里删除。");
-      return;
-    }
-    const pub = $("pubPath").value;
-    const priv = $("privPath").value;
-    const confirmed = confirm("确定删除密钥文件吗？\n删除后无法再签发/校验已有授权（除非你有备份）。");
-    if (!confirmed) return;
-    const res = await window.adminAPI.deleteKeys({ publicKeyPath: pub, privateKeyPath: priv });
-    if (!res?.ok) {
-      alert(`删除失败：${String(res?.error || "unknown")}`);
-      return;
-    }
-    await refresh();
-    toast("已删除");
-  });
-
-  $("pickIssueOut").addEventListener("click", async () => {
-    const res = await window.adminAPI.pickLicenseOutPath({ defaultPath: $("issueOutPath").value });
-    if (res?.canceled) return;
-    if (res?.filePath) $("issueOutPath").value = res.filePath;
-  });
-
-  $("issue").addEventListener("click", async () => {
-    await issueLicense();
-  });
-
-  $("copyIssueText").addEventListener("click", async () => {
-    await copyToClipboard($("issueLicenseText").value, "已复制授权码");
-  });
-
-  $("pickVerifyIn").addEventListener("click", async () => {
-    const res = await window.adminAPI.pickLicenseInPath();
-    if (res?.canceled) return;
-    if (res?.filePath) $("verifyLicensePath").value = res.filePath;
-  });
-
-  $("verify").addEventListener("click", async () => {
-    await verifyLicense();
   });
 
   $("passwordEditClose").addEventListener("click", closePasswordEditDialog);
@@ -3098,8 +2532,6 @@ async function init() {
   document.querySelectorAll("[data-module-link]").forEach((el) => {
     el.addEventListener("click", () => {
       showModule(el.getAttribute("data-module-link") || "dashboard");
-      const tab = el.getAttribute("data-tab-after");
-      if (tab) showTab(tab);
       const drawer = el.getAttribute("data-drawer-after");
       if (drawer) openDrawer(drawer);
     });
@@ -3111,48 +2543,16 @@ async function init() {
     try {
       await loadAdminData();
       if (document.querySelector('.moduleNavButton.active[data-module="compute"]')) await loadComputeData();
-      await refreshOnlineList({ silent: true });
       toast("已刷新");
     } finally {
       button.disabled = false;
     }
   });
 
-  document.querySelectorAll(".tab[data-tab]").forEach((el) => {
-    el.addEventListener("click", () => showTab(el.getAttribute("data-tab") || "online"));
-  });
-
-  document.querySelectorAll(".moduleNavButton").forEach((el) => {
+  document.querySelectorAll(".moduleNavButton[data-module]").forEach((el) => {
     el.addEventListener("click", () => showModule(el.getAttribute("data-module") || "dashboard"));
   });
 
-  const dz = $("dropZone");
-  const stop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  dz.addEventListener("dragenter", (e) => {
-    stop(e);
-    dz.classList.add("drag");
-  });
-  dz.addEventListener("dragover", (e) => {
-    stop(e);
-    dz.classList.add("drag");
-  });
-  dz.addEventListener("dragleave", (e) => {
-    stop(e);
-    dz.classList.remove("drag");
-  });
-  dz.addEventListener("drop", async (e) => {
-    stop(e);
-    dz.classList.remove("drag");
-    const f = e.dataTransfer?.files?.[0];
-    const p = f?.path;
-    if (p) {
-      $("verifyLicensePath").value = p;
-      await verifyLicense();
-    }
-  });
   await loadAdminData();
 }
 

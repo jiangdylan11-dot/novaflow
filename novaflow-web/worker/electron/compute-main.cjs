@@ -36,6 +36,7 @@ function emit() { if (win && !win.isDestroyed()) win.webContents.send('compute:s
 function log(message, meta) {
   const line = new Date().toISOString() + ' ' + message + (meta ? ' ' + JSON.stringify(meta) : '');
   lines.push(line); if (lines.length > 400) lines.shift();
+  if (win && !win.isDestroyed()) win.webContents.send('compute:log', line);
   try { fs.appendFileSync(path.join(dataDir, 'compute.log'), line + '\n'); } catch { /* status remains available */ }
 }
 const resource = name => app.isPackaged ? path.join(process.resourcesPath, name) : path.join(__dirname, '../..', name);
@@ -72,8 +73,9 @@ async function stop() {
 async function quit() { quitting = true; await serial(stop).catch(() => {}); app.quit(); }
 function show() {
   if (!win || win.isDestroyed()) {
-    win = new BrowserWindow({ width: 700, height: 660, minWidth: 620, minHeight: 590,
-      title: 'Foart 算力助手', backgroundColor: '#202020', autoHideMenuBar: true,
+    win = new BrowserWindow({ width: 680, height: 550, minWidth: 620, minHeight: 500,
+      title: 'Foart 算力助手', backgroundColor: '#141414', autoHideMenuBar: true,
+      titleBarStyle: 'hidden', titleBarOverlay: { color: '#242424', symbolColor: '#e5e7eb', height: 38 },
       icon: path.join(__dirname, 'assets/foart-brush.ico'),
       webPreferences: { preload: path.join(__dirname, 'compute-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     win.loadFile(path.join(__dirname, 'compute-ui.html'));
@@ -100,6 +102,15 @@ handle('connect', () => serial(connect));
 handle('pause', () => serial(stop));
 handle('website', () => shell.openExternal(WEBSITE));
 handle('logs', () => shell.openPath(dataDir));
+handle('getLogs', () => lines.slice());
+handle('freeMemory', async () => {
+  if (!assistant?.getState().sharing) throw new Error('请先连接算力节点');
+  const result = await assistant.promptAssistant.releaseRuntimes();
+  if (!result.ok) throw new Error(result.errorCode === 'runtime-generation-busy' ? '正在执行任务，完成后再释放显存' : result.error || '释放显存失败');
+  if (!result.released) throw new Error('生成服务未运行，无需释放');
+  log('已释放显存');
+  return { ok: true };
+});
 handle('models', async () => {
   const result = await dialog.showOpenDialog(win, { title: '选择 models 目录', properties: ['openDirectory'] });
   return result.canceled ? '' : result.filePaths[0];

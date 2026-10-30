@@ -45,6 +45,15 @@ const RETIRED_PROVIDER_ENV_NAMES = new Set([
 
 let cachedClient = null;
 let cachedClientEnvKey = "";
+let adminConnectionResolver = null;
+
+// Main-process-only resolver for the saved, encrypted backend connection.
+// Credentials never cross the preload bridge.
+function setAdminConnectionResolver(resolve) {
+  adminConnectionResolver = typeof resolve === "function" ? resolve : null;
+  cachedClient = null;
+  cachedClientEnvKey = "";
+}
 
 const adminQueries = {
   users: {
@@ -256,7 +265,15 @@ function normalizeBaseUrl(value) {
 function readAdminEnvValue(name) {
   const fromProcess = String(process.env[name] || "").trim();
   if (fromProcess) return fromProcess;
-  return readWindowsUserEnvValue(name);
+  const fromRegistry = readWindowsUserEnvValue(name);
+  if (fromRegistry) return fromRegistry;
+  if (adminConnectionResolver && [ENV_SUPABASE_URL, ENV_SERVICE_ROLE_KEY].includes(name)) {
+    try {
+      const saved = adminConnectionResolver();
+      return String((name === ENV_SUPABASE_URL ? saved?.supabaseUrl : saved?.secretKey) || "").trim();
+    } catch { /* A fresh machine has no saved connection yet. */ }
+  }
+  return "";
 }
 
 function readWindowsUserEnvValue(name) {
@@ -3740,6 +3757,7 @@ async function migrateGrokQuotaToCredits(payload) {
 }
 
 module.exports = {
+  setAdminConnectionResolver,
   artKnowledgeRequest: (operation, payload) => require('./art-knowledge-manager.cjs').createArtKnowledgeManager({getClient:()=>getAdminClient().client}).request(operation,payload),
   ENV_SUPABASE_URL,
   ENV_SERVICE_ROLE_KEY,

@@ -29,6 +29,7 @@ function getDefaultPaths() {
 }
 
 function registerLicenseAdminIpc() {
+  adminData.setAdminConnectionResolver(() => licenseAdminOnline.requireSecretConfig(app.getPath("userData")));
   ipcMain.handle("admin-default-paths", async () => {
     return getDefaultPaths();
   });

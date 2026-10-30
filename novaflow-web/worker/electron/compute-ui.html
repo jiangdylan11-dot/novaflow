@@ -1,20 +1,165 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
 <title>Foart 算力助手</title><style>
-*{box-sizing:border-box}body{margin:0;background:#202020;color:#ddd;font:13px/1.6 'Segoe UI','Microsoft YaHei',sans-serif}main{max-width:720px;margin:auto;padding:25px 30px}h1{font-size:21px;margin:0}p{color:#aaa;margin:7px 0 18px}.card{padding:16px;background:#262626;border:1px solid #3a3a3a;border-radius:8px;margin:14px 0}.row{display:flex;gap:10px;align-items:center;justify-content:space-between}button{font:inherit;color:#ddd;background:#353535;border:1px solid #505050;border-radius:6px;padding:8px 15px;cursor:pointer}button.primary{background:#b84a40;color:#fff;border-color:#b84a40}button:disabled{opacity:.5;cursor:wait}label{display:block;color:#bbb;margin:10px 0 4px}input{width:100%;padding:8px 10px;background:#1c1c1c;border:1px solid #484848;border-radius:5px;color:#eee;font:inherit}.folder{display:flex;gap:8px}.folder input{flex:1;min-width:0}small{color:#aaa}#status{font-size:16px;color:#dedede}#error{color:#f2a49b;white-space:pre-wrap;overflow-wrap:anywhere}#policy{white-space:pre-line;color:#aaa}.footer{display:flex;gap:8px;justify-content:flex-end}#version{color:#888}progress{width:100%;accent-color:#bd5144}#progressText{color:#bbb}
-</style></head><body><main>
-<div class="row"><h1>Foart 算力助手</h1><span id="version"></span></div>
-<p>在官网使用 Foart；此助手连接本机模型和算力。</p>
-<button class="primary" id="website">打开 Foart 官网 ↗</button>
-<section class="card" aria-live="polite"><div class="row"><strong id="status">正在读取状态…</strong><button id="connection">连接节点</button></div>
-<div id="hardware"></div><div id="policy"></div><div id="activity"></div>
-<div id="progress" hidden><progress max="100" value="0"></progress><div id="progressText"></div></div>
-<div id="error" role="alert"></div></section>
-<section class="card"><strong>节点设置</strong>
-<label for="workerName">设备名称</label><input id="workerName" maxlength="80" autocomplete="off">
-<label for="modelsRoot">模型目录</label><div class="folder"><input id="modelsRoot" placeholder="自动读取已安装环境的模型目录"><button id="folder">选择</button></div>
-<label for="registrationCode">首次接入码</label><input id="registrationCode" placeholder="管理员提供的 NFW-… 接入码" autocomplete="off">
-<small>首次接入后自动保存节点身份。本人使用和对外分享权限由后台设置；以后启动自动连接。</small>
-<div class="footer"><button id="logs">查看日志</button><button id="save">保存并连接</button></div>
-</section></main><script src="compute-ui.js"></script></body></html>
+  :root {
+    --bg: #141414; --panel: #202020; --surface: #1b1b1b; --field: #161616;
+    --text: #ededed; --muted: #aaaaaa; --dim: #8b8b8b;
+    --accent: #1ea672; --accent-hover: #25bc84; --danger: #ef4444; --warn: #f59e0b;
+    --button: #272727;
+  }
+  /* Launcher primary actions use solid green. Override the shared theme's
+     translucent action tokens only in this local assistant document. */
+  @layer foart-buttons {
+    :root {
+      --foart-action-green: var(--accent);
+      --foart-action-green-hover: var(--accent-hover);
+    }
+    button.primary { color: #fff !important; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .titlebar { height: 38px; flex: none; display: flex; align-items: center;
+    padding: 0 150px 0 14px; background: #242424; -webkit-app-region: drag;
+    user-select: none; border: 0; }
+  .titlebar img { width: 90px; height: 32px; object-fit: contain; pointer-events: none; }
+  .ver { margin-left: 10px; font-size: 11px; color: #939393; }
+
+  main { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: flex; flex-direction: column; gap: 14px; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #303030; border-radius: 4px; }
+
+  .card { background: #1F1F1F; border: 1px solid #2E2E2E; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: none; }
+  .row { display: flex; align-items: center; gap: 9px; justify-content: space-between; }
+  .k { color: var(--muted); font-size: 12px; }
+  .v { font-weight: 500; text-align: right; word-break: break-all; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex: none; display: inline-block; }
+  .dot.on { background: var(--accent); box-shadow: 0 0 6px rgba(30,166,114,.7); }
+  .dot.busy { background: var(--warn); }
+  .dot.err { background: var(--danger); }
+
+  .status-line { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 600; }
+  .status-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 0 14px; }
+  .badge { border: 1px solid #79797944; border-radius: 20px; padding: 4px 10px; font-size: 11px; font-weight: 500; color: #a7a7a7; white-space: nowrap; }
+  #activityBadge[data-active="true"] { background: rgba(30,166,114,.12); border-color: rgba(30,166,114,.5); color: #6FD9B8; }
+  #sharing[data-active="true"] { background: #e9bc4610; border-color: #dfb64980; color: #efd078; }
+  .hardware { display: flex; align-items: center; gap: 12px; border-top: 1px solid #ffffff12; padding: 16px 0; }
+  .gpu-icon { width: 32px; height: 32px; flex: none; color: #a8a8a8; }
+  .hardware-name { min-width: 0; flex: 1; }
+  .hardware-name .v { display: block; text-align: left; margin-top: 5px; font-weight: 600; font-size: 14px; }
+  .memory { text-align: right; flex: none; }
+  .memory .v { display: block; font-size: 16px; font-weight: 600; margin-top: 4px; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid #ffffff12; border-bottom: 1px solid #ffffff12; padding: 13px 0; }
+  .metric + .metric { padding-left: 20px; border-left: 1px solid #ffffff15; }
+  .metric .v { display: block; text-align: left; font-size: 16px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .connection { display: flex; align-items: center; gap: 16px; padding-top: 12px; min-width: 0; }
+  #comfy { flex: none; font-size: 12px; color: #d3d3d3; }
+  #freeMemoryBtn { margin-left: auto; height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500; }
+  #tab-status > .card { gap: 0; }
+  button, a { transition: background .15s, border-color .15s, box-shadow .15s; }
+  button:focus-visible, a:focus-visible { outline: 2px solid #1EA672; outline-offset: 2px; }
+
+  label { color: var(--muted); font-size: 12px; display: block; margin-bottom: 4px; }
+  input, select {
+    width: 100%; background: var(--field); color: var(--text);
+    border: 1px solid #2a2a2a; border-radius: 6px; padding: 7px 9px; font: inherit;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+
+  button {
+    border: 0; border-radius: 8px; background: var(--button); color: var(--text);
+    padding: 0 14px; height: 34px; cursor: pointer; font: inherit;
+  }
+  button:hover:not(:disabled) { background: #373737; }
+  button:disabled { background: #2b2b2b; color: #666; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: #fff; font-weight: 600; box-shadow: none; }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  button.wide { flex: 1; }
+  button.sharing { background: #E8BD51; color: #27210e; font-weight: 600; box-shadow: none; }
+  button.sharing:hover:not(:disabled) { background: #F0C962; }
+  button.primary:disabled, button.sharing:disabled { opacity: .65; cursor: wait; }
+  #launcher-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 16px; }
+  .launch-column { min-width: 0; position: relative; }
+  .launch-column + .launch-column::before { content: ''; position: absolute; left: -12px; height: 100%; border-left: 1px solid #ffffff10; }
+  .launch-column > button { width: 100%; height: 46px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; border-radius: 8px; }
+  .launch-column svg { width: 23px; height: 23px; flex: none; }
+  .footer-note { margin-top: 14px; border-top: 1px solid #ffffff10; padding-top: 10px; font-size: 11px; color: #979797; }
+  .registration-info { margin-top: 9px; padding: 10px 12px; border: 1px solid #ffffff12; border-radius: 8px; background: #ffffff03; }
+  #registrationStatus { color: #d7d7d7; font-size: 12px; font-weight: 600; }
+  #registrationInfo[data-status="verified"] #registrationStatus { color: #6FD9B8; }
+  #registrationIdentity { margin-top: 6px; color: #b2b2b2; font-size: 11px; overflow-wrap: anywhere; user-select: text; }
+  #registrationHint { margin-top: 6px; }
+  .website[aria-disabled="true"] { color: var(--dim); cursor: default; text-decoration: none; }
+  .launch-progress { margin-top: 14px; font-size: 11px; color: #acacac; display: flex; flex-direction: column-reverse; gap: 8px; }
+  .launch-progress progress { width: 100%; height: 4px; accent-color: var(--accent); display: block; border: none; border-radius: 5px; overflow: hidden; }
+  progress::-webkit-progress-bar { background: #25453d; border-radius: 5px; }
+  progress::-webkit-progress-value { background: #1EA672; border-radius: 5px; }
+  #shareProgress progress::-webkit-progress-bar { background: #4c4228; }
+  #shareProgress progress::-webkit-progress-value { background: #eac65f; }
+  #shareProgress progress { accent-color: #f5c542; }
+
+
+  .settings-card { gap: 14px; }
+  .license-setting { padding: 12px 0; border-top: 1px solid #ffffff10; border-bottom: 1px solid #ffffff10; }
+  .license-setting .hint { margin-top: 5px; }
+  .license-setting #licenseState:empty { display: none; }
+  #logs {
+    background: #000; border-radius: 8px; padding: 9px; height: 150px; overflow-y: auto;
+    font: 11px ui-monospace, Consolas, monospace; color: #a5a5a5; white-space: pre-wrap; word-break: break-all;
+  }
+  .err-box { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+    color: #fca5a5; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.5; }
+  .hint { color: var(--dim); font-size: 11px; line-height: 1.6; }
+  .tabs { display: flex; gap: 12px; border-bottom: 1px solid #ffffff12; flex: none; }
+  .tab { min-width: 78px; height: 44px; background: transparent; border-radius: 0; font-size: 13px; color: #a7a7a7; border-bottom: 2px solid transparent; }
+  .tab.active { background: transparent; border-bottom-color: #1EA672; color: #f1f1f1; }
+  .tab:hover:not(:disabled) { background: #ffffff05; color: #fff; }
+
+  .hidden { display: none !important; }
+  .website { display: block; text-align: center; margin-top: 12px; color: #6FD9B8; font-size: 12px; text-decoration: none; }
+  #websiteLink { color: #dfc46f; }
+  .website:hover { text-decoration: underline; }
+
+  :root { --accent:#4fa477; --accent-hover:#5bb486; }
+  button.sharing { background:#e4c15e; }
+  button.sharing:hover:not(:disabled) { background:#edcd73; }
+  .tab.active { border-bottom-color:transparent; }
+  [hidden] { display:none!important; }
+  #error:empty { display:none; }
+  #policy { margin-top:8px; }
+  #progress { margin-top:12px; }
+  #progressText { color:var(--muted);font-size:11px; }
+  #freeMemory { margin-left:auto;height:28px;padding:0 12px;font-size:12px;font-weight:500; }
+  #websiteLink { color:#979797; }
+  #policyLink { color:#dfc46f; }
+  .folder { display:flex;gap:8px; }
+  .folder input { min-width:0;flex:1; }
+  #logs { height:260px; }
+</style></head><body>
+<div class="titlebar" aria-label="Foart 标题栏"><img src="assets/foart-logo-dark.svg" alt="Foart" draggable="false"><span class="ver" id="version"></span></div>
+<main>
+<div class="tabs" role="tablist" aria-label="算力助手"><button class="tab active" role="tab" aria-selected="true" data-tab="status">状态</button><button class="tab" role="tab" aria-selected="false" data-tab="settings">设置</button><button class="tab" role="tab" aria-selected="false" data-tab="logs">日志</button></div>
+<div id="error" class="err-box" role="alert"></div>
+<section id="tab-status" role="tabpanel">
+<div class="card">
+<div class="status-head"><div class="status-line"><span class="dot" id="statusDot"></span><span id="status">未启动</span><span class="badge" id="activityBadge">待启动</span></div><span class="badge" id="sharing">分享未开通</span></div>
+<div class="hardware"><svg class="gpu-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="7" y="7" width="18" height="18" rx="3"/><rect x="12" y="12" width="8" height="8" rx="1"/><path d="M11 2v5m5-5v5m5-5v5M11 25v5m5-5v5m5-5v5M2 11h5m-5 5h5m-5 5h5m18-10h5m-5 5h5m-5 5h5"/></svg><div class="hardware-name"><span class="k">GPU</span><span class="v" id="gpu">—</span></div><div class="memory"><span class="k">显存</span><span class="v" id="vram">—</span></div></div>
+<div class="metrics"><div class="metric"><span class="k">当前任务</span><span class="v" id="task">空闲</span></div><div class="metric"><span class="k">节点队列</span><span class="v" id="queue">由官网调度</span></div><div class="metric"><span class="k">已完成 / 失败</span><span class="v" id="stats">0 / 0</span></div></div>
+<div class="connection"><span class="k">生成服务</span><span id="comfy">—</span><button id="freeMemory" disabled>释放显存</button></div>
+</div>
+<div id="launcher-actions"><div class="launch-column"><button class="primary wide" id="website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span>启动Foart</span></button><a class="website" id="websiteLink" href="https://foart.net/">快捷打开官网界面 ↗</a></div>
+<div class="launch-column"><button class="sharing wide" id="connection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5" cy="12" r="3"/><circle cx="19" cy="5" r="3"/><circle cx="19" cy="19" r="3"/><path d="m8 10 8-4M8 14l8 4"/></svg><span id="connectionLabel">连接算力节点</span></button><a class="website" id="policyLink" href="#">查看算力权限 ↗</a></div></div>
+<div id="progress" class="launch-progress" hidden><progress max="100" value="0" aria-label="节点连接进度"></progress><span id="progressText"></span></div>
+<div class="footer-note">Foart 统一使用官网 · 关闭窗口后在托盘继续运行</div>
+</section>
+<section id="tab-settings" role="tabpanel" hidden><div class="card settings-card">
+<div><label for="registrationCode">节点接入码（仅首次接入使用）</label><input id="registrationCode" placeholder="NFW-XXXXXX-XXXXXX" autocomplete="off"><div class="registration-info"><div id="registrationStatus">首次接入后自动保存节点身份</div><div id="policy" class="hint">本人使用和对外分享权限由后台设置。</div></div></div>
+<div><label for="workerName">节点名称</label><input id="workerName" maxlength="80" autocomplete="off"></div>
+<div><label for="modelsRoot">模型目录</label><div class="folder"><input id="modelsRoot" placeholder="自动读取已安装环境"><button id="folder">选择</button></div></div>
+<button class="primary" id="save">保存并连接</button></div></section>
+<section id="tab-logs" role="tabpanel" hidden><div class="card"><div id="logs" role="log" aria-label="运行日志"></div><button id="openLogs">打开日志文件夹</button></div></section>
+</main><script src="compute-ui.js"></script></body></html>

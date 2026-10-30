@@ -28,7 +28,7 @@ const sandbox = createContext({ __dirname: 'C:/fixture/app/electron', process: {
   },
   async fixtureFactory(options) {
     let sharing = false;
-    const instance = { options, onChange() {}, getState: () => ({ sharing }),
+    const instance = { options, onChange() {}, getState: () => ({ sharing }), promptAssistant: { releaseRuntimes: async () => ({ ok: true, released: true }) },
       async start() { sharing = true; }, async stop() { sharing = false; } };
     instances.push(instance); return instance;
   }
@@ -38,6 +38,10 @@ runInContext('assistantFactory = fixtureFactory; show();', sandbox);
 const call = (name, payload) => handlers.get('compute:' + name)({ sender: windows[0].webContents }, payload);
 assert.equal(windows[0].file.endsWith('compute-ui.html'), true);
 assert.equal(windows[0].options.webPreferences.sandbox, true);
+assert.equal(windows[0].options.titleBarStyle, 'hidden');
+assert.equal(windows[0].options.width, 680);
+assert.equal(windows[0].options.height, 550);
+assert.equal((await call('freeMemory')).ok, false);
 assert.equal((await handlers.get('compute:connect')({ sender: {} })).ok, false);
 assert.equal(instances.length, 0, 'untrusted renderer must not connect');
 const connected = await call('connect');
@@ -47,6 +51,7 @@ assert.equal(instances[0].options.rendererDir, path.join('C:/fixture/resources',
 assert.equal(instances[0].options.license, undefined);
 assert.equal(instances[0].options.webRoot, undefined);
 assert.equal(config.registrationCode, '', 'successful registration clears the one-time code');
+assert.equal((await call('freeMemory')).ok, true);
 await call('website');
 assert.deepEqual(opened, ['https://foart.net/']);
 await call('pause');

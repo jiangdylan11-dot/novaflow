@@ -13,7 +13,7 @@
           <img class="brandMark" src="../build/icon.png?brand=geo-v3" alt="" />
           <div class="brandText">
             <div class="brandName"><img class="brandLogo" src="../build/foart-logo-dark.svg?brand=geo-v3" alt="Foart" /><span>后台管理</span></div>
-            <div class="brandSub">授权 · 积分 · 算力</div>
+            <div class="brandSub">账号 · 积分 · 算力</div>
           </div>
         </div>
         <nav class="moduleNav">
@@ -24,10 +24,6 @@
           <button class="moduleNavButton" data-module="users" type="button" title="用户管理">
             <svg class="navIcon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
             <span>用户管理</span>
-          </button>
-          <button class="moduleNavButton" data-module="licenses" type="button" title="授权管理">
-            <svg class="navIcon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2M17 6l3 3M14 9l2 2"/></svg>
-            <span>授权管理</span>
           </button>
           <button class="moduleNavButton" data-module="ai-services" type="button" title="AI 服务">
             <svg class="navIcon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>
@@ -40,6 +36,10 @@
           <button id="artKnowledgeOpen" class="moduleNavButton" data-module="art-knowledge" type="button" title="专业经验">
             <svg class="navIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h12l4 4v14H4zM8 11h8M8 15h8M8 7h4"/></svg>
             <span>专业经验</span>
+          </button>
+          <button class="moduleNavButton" data-drawer-open="backendConnectionDrawer" type="button" title="后台连接">
+            <svg class="navIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h8v5H8zM4 17h5v4H4zM15 17h5v4h-5zM12 10v4M6.5 17v-3h11v3"/></svg>
+            <span>后台连接</span>
           </button>
         </nav>
         <div class="sidebarFooter">
@@ -69,7 +69,7 @@
             <div class="pageHead">
               <div>
                 <h1 class="pageTitle">仪表盘</h1>
-                <div class="pageHint">用户、授权、已分配积分，以及 RunningHub 国内站余额。</div>
+                <div class="pageHint">用户、算力机器、已分配积分，以及 RunningHub 国内站余额。</div>
               </div>
               <div class="pageTools">
                 <span id="dashboardDataBadge" class="pill skeletonPill"></span>
@@ -83,9 +83,9 @@
                 <div class="metricMeta">users 表当前记录</div>
               </section>
               <section class="metricCard">
-                <div class="metricLabel">有效授权</div>
-                <div id="dashboardLicensesCount" class="metricValue">-</div>
-                <div class="metricMeta">licenses 中状态为 active 的记录</div>
+                <div class="metricLabel">算力机器</div>
+                <div id="dashboardWorkersCount" class="metricValue">-</div>
+                <div class="metricMeta">已接入平台的算力机器</div>
               </section>
               <section class="metricCard" id="dashboardRhCard">
                 <div class="metricLabel">RunningHub 余额 <span class="pill">国内站</span></div>
@@ -126,7 +126,7 @@
                   <div class="panelHeader">
                     <div>
                       <div class="cardTitle">系统状态</div>
-                      <div class="cardHint">数据源、Provider 连接和签名密钥。</div>
+                      <div class="cardHint">数据源、Provider 连接和算力机器。</div>
                     </div>
                   </div>
                   <div id="dashboardSystemRows" class="kvList">
@@ -148,10 +148,6 @@
                     <button class="quickLink" type="button" data-module-link="users">
                       <span class="quickTitle">用户积分</span>
                       <span class="quickHint">积分余额与充值</span>
-                    </button>
-                    <button class="quickLink" type="button" data-module-link="licenses" data-tab-after="issue">
-                      <span class="quickTitle">签发授权码</span>
-                      <span class="quickHint">生成 license.nfl 并同步在线</span>
                     </button>
                     <button class="quickLink" type="button" data-module-link="compute" data-drawer-after="computeMintDrawer">
                       <span class="quickTitle">接入算力节点</span>
@@ -214,307 +210,7 @@
                   </tbody>
                 </table>
               </div>
-              <div class="tableFootnote">普通账户只能用本机算力；中级账户可用普通算力节点；高级账户可用所有算力节点。删除会清理用户资料、积分余额和可匹配的 Auth 登录身份。点「流水」查看该用户记录。</div>
-            </section>
-          </section>
-
-          <!-- ============================ 授权管理 ============================ -->
-          <section id="module-licenses" class="modulePanel">
-            <div class="pageHead">
-              <div>
-                <h1 class="pageTitle">授权管理</h1>
-                <div class="pageHint">授权码查询、启用、停用、签发、密钥与校验。</div>
-              </div>
-              <div class="pageTools">
-                <span class="pill">licenses</span>
-              </div>
-            </div>
-
-            <nav class="tabs" aria-label="授权管理导航">
-              <button class="tab active" data-tab="online" type="button">授权列表</button>
-              <button class="tab" data-tab="issue" type="button">新建授权码</button>
-              <button class="tab" data-tab="keys" type="button">密钥设置</button>
-              <button class="tab" data-tab="verify" type="button">校验工具</button>
-            </nav>
-
-            <section id="tab-online" class="tabPanel active">
-              <div class="statStrip four">
-                <div class="stat"><div class="statLabel">授权记录</div><div id="licStatTotal" class="statValue">-</div></div>
-                <div class="stat"><div class="statLabel">active</div><div id="licStatActive" class="statValue ok">-</div></div>
-                <div class="stat"><div class="statLabel">expired</div><div id="licStatExpired" class="statValue warn">-</div></div>
-                <div class="stat"><div class="statLabel">banned</div><div id="licStatBanned" class="statValue">-</div></div>
-              </div>
-
-              <div class="licenseGrid">
-                <section class="panel tableCard">
-                  <div class="tableToolbar">
-                    <div class="cardTitle">授权码列表</div>
-                    <span id="onlineListStatus" class="countPill">-</span>
-                    <div class="spacer"></div>
-                    <button id="refreshOnlineList" class="btn secondary small" type="button">刷新列表</button>
-                  </div>
-                  <div class="tableViewport tall">
-                    <table class="dataTable licenseTable">
-                      <thead>
-                        <tr>
-                          <th>License Key</th>
-                          <th>状态</th>
-                          <th>机器码</th>
-                          <th>到期</th>
-                          <th>创建</th>
-                          <th class="actionsCol">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody id="onlineList">
-                        <tr><td colspan="6" class="emptyTableCell"><div class="tableEmpty"><div class="emptyTitle">暂无记录</div><div class="emptyText">配置 Supabase 后点击「刷新列表」</div></div></td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <div class="tableFootnote">默认显示最近 100 条。点击一行可在右侧查看并修改该授权。</div>
-                </section>
-
-                <section class="panel stickyPanel">
-                  <div class="panelHeader">
-                    <div>
-                      <div class="cardTitle">授权详情</div>
-                      <div class="cardHint">选择列表记录后可启用、关闭或更新。新建请到「新建授权码」。</div>
-                    </div>
-                    <div id="onlineActionStatus" class="hint">-</div>
-                  </div>
-                  <div class="formGrid">
-                    <div class="row full">
-                      <div class="label">License Key</div>
-                      <div class="field">
-                        <input id="onlineLicenseKey" type="text" spellcheck="false" placeholder="nf_..." />
-                      </div>
-                    </div>
-                    <div class="row full">
-                      <div class="label">机器码</div>
-                      <div class="field">
-                        <input id="onlineMachineId" type="text" spellcheck="false" placeholder="可按机器码查询，创建/更新时必填" />
-                      </div>
-                    </div>
-                    <div class="row">
-                      <div class="label">状态</div>
-                      <div class="field">
-                        <select id="onlineStatus">
-                          <option value="active">active / 启用</option>
-                          <option value="banned">banned / 关闭</option>
-                          <option value="expired">expired / 过期</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div class="row">
-                      <div class="label">到期</div>
-                      <div class="field">
-                        <input id="onlineExpireAt" type="date" title="空白表示远程到期时间 2099-12-31" />
-                      </div>
-                    </div>
-                    <div class="row full">
-                      <div class="label">Permissions</div>
-                      <div class="field">
-                        <textarea id="onlinePermissions" class="short" spellcheck="false" placeholder='空白默认 []，也可填 {"export": true}'></textarea>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="actions licenseActions">
-                    <button id="queryOnlineLicense" class="btn secondary">按条件查询</button>
-                    <button id="upsertOnlineLicense" class="btn primary">更新</button>
-                    <button id="activateOnlineLicense" class="btn primary">启用授权</button>
-                    <button id="expireOnlineLicense" class="btn secondary">设为过期</button>
-                  </div>
-                  <div class="row full topGap">
-                    <div class="label">当前记录</div>
-                    <div class="field">
-                      <pre id="onlineResult" class="resultBox">-</pre>
-                    </div>
-                  </div>
-                </section>
-              </div>
-
-              <details class="panel collapsePanel">
-                <summary class="collapseSummary">
-                  <div>
-                    <div class="cardTitle">Supabase 授权配置</div>
-                    <div class="cardHint">Secret Key 仅保存在本机后台管理配置中。</div>
-                  </div>
-                  <div id="onlineConfigStatus" class="hint">未配置</div>
-                </summary>
-                <div class="collapseBody">
-                  <div class="formGrid">
-                    <div class="row">
-                      <div class="label">Project URL</div>
-                      <div class="field">
-                        <input id="onlineSupabaseUrl" type="text" spellcheck="false" placeholder="https://xxx.supabase.co" />
-                      </div>
-                    </div>
-                    <div class="row">
-                      <div class="label">Secret Key</div>
-                      <div class="field">
-                        <input id="onlineSecretKey" type="password" spellcheck="false" placeholder="sb_secret_...（只保存在本机后台管理工具）" />
-                      </div>
-                    </div>
-                  </div>
-                  <div class="actions">
-                    <button id="saveOnlineConfig" class="btn primary">保存配置</button>
-                    <button id="testOnlineConfig" class="btn secondary">测试连接</button>
-                  </div>
-                </div>
-              </details>
-            </section>
-
-            <section id="tab-issue" class="tabPanel">
-              <div class="issueGrid">
-                <section class="panel">
-                  <div class="panelHeader">
-                    <div>
-                      <div class="cardTitle">新建授权码 / 签发 license.nfl</div>
-                      <div class="cardHint">生成后可直接复制授权码，也可导出 license.nfl。</div>
-                    </div>
-                    <div id="issueResult" class="hint">-</div>
-                  </div>
-                  <div class="formGrid">
-                    <div class="row full">
-                      <div class="label">机器码</div>
-                      <div class="field">
-                        <input id="issueMachineId" type="text" spellcheck="false" placeholder="从用户端复制的机器码（64位hex）" />
-                      </div>
-                    </div>
-                    <div class="row full">
-                      <div class="label">License Key</div>
-                      <div class="field">
-                        <input id="issueLicenseKey" type="text" spellcheck="false" placeholder="留空自动生成；需要与 Supabase licenses.license_key 一致" />
-                      </div>
-                    </div>
-                    <div class="row">
-                      <div class="label">到期日</div>
-                      <div class="field">
-                        <input id="issueExpiresAt" type="date" />
-                      </div>
-                    </div>
-                    <div class="row">
-                      <div class="label">在线同步</div>
-                      <div class="field">
-                        <label class="checkField">
-                          <input id="issueSyncOnline" type="checkbox" checked />
-                          <span>生成后写入 Supabase licenses 并设为 active</span>
-                        </label>
-                      </div>
-                    </div>
-                    <div class="row full">
-                      <div class="label">功能</div>
-                      <div class="field">
-                        <textarea id="issueFeatures" class="short" spellcheck="false" placeholder='例如：{ "export": true }'></textarea>
-                      </div>
-                    </div>
-                    <div class="row full">
-                      <div class="label">输出文件</div>
-                      <div class="field">
-                        <input id="issueOutPath" type="text" spellcheck="false" />
-                        <button id="pickIssueOut" class="btn">选择...</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="actions">
-                    <button id="issue" class="btn primary">一键生成授权文件</button>
-                  </div>
-                </section>
-
-                <section class="panel">
-                  <div class="panelHeader">
-                    <div>
-                      <div class="cardTitle">授权码</div>
-                      <div class="cardHint">生成后显示在这里，可直接复制给用户。</div>
-                    </div>
-                    <button id="copyIssueText" class="btn secondary small">复制授权码</button>
-                  </div>
-                  <textarea id="issueLicenseText" class="fill" spellcheck="false" placeholder="尚未生成"></textarea>
-                </section>
-              </div>
-            </section>
-
-            <section id="tab-keys" class="tabPanel">
-              <div class="keysGrid">
-                <section class="panel">
-                  <div class="panelHeader">
-                    <div>
-                      <div class="cardTitle">本地签名密钥</div>
-                      <div class="cardHint">公钥随应用使用，私钥只保存在管理员电脑。</div>
-                    </div>
-                    <div class="status">
-                      <div id="statusText" class="statusText">读取中...</div>
-                      <div class="statusMeta">
-                        <span>指纹</span><span id="fingerprint" class="mono">-</span>
-                        <span class="sep">|</span>
-                        <span>公钥</span><span id="pubPreview" class="mono">-</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="formGrid">
-                    <div class="row full">
-                      <div class="label">公钥文件（.b64）</div>
-                      <div class="field">
-                        <input id="pubPath" type="text" spellcheck="false" />
-                        <button id="pickPub" class="btn">选择...</button>
-                      </div>
-                    </div>
-                    <div class="row full">
-                      <div class="label">私钥文件（.pem）</div>
-                      <div class="field">
-                        <input id="privPath" type="text" spellcheck="false" />
-                        <button id="pickPriv" class="btn">选择...</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="actions">
-                    <button id="refresh" class="btn secondary">刷新状态</button>
-                    <button id="openFolder" class="btn secondary">打开目录</button>
-                    <button id="copyPubKey" class="btn secondary">复制公钥</button>
-                    <button id="copyPrivKey" class="btn secondary">复制私钥</button>
-                    <div class="spacer"></div>
-                    <button id="generate" class="btn primary">生成密钥对</button>
-                    <button id="delete" class="btn danger">删除密钥</button>
-                  </div>
-                </section>
-
-                <section class="notice">
-                  <div class="tipTitle">重要提示</div>
-                  <div class="tipItem">私钥不要发送给用户，不要提交到仓库。</div>
-                  <div class="tipItem">更换密钥对会导致旧授权文件全部失效。</div>
-                  <div class="tipItem">打包版内置密钥为只读，不能在这里重新生成或删除。</div>
-                </section>
-              </div>
-            </section>
-
-            <section id="tab-verify" class="tabPanel">
-              <section class="panel narrow">
-                <div class="panelHeader">
-                  <div>
-                    <div class="cardTitle">校验授权文件</div>
-                    <div class="cardHint">拖入 license.nfl，或选择文件校验签名和机器码。</div>
-                  </div>
-                  <div id="verifyResult" class="hint">-</div>
-                </div>
-                <div id="dropZone" class="dropZone">把 license.nfl 拖到这里</div>
-                <div class="formGrid topGap">
-                  <div class="row full">
-                    <div class="label">授权文件</div>
-                    <div class="field">
-                      <input id="verifyLicensePath" type="text" spellcheck="false" placeholder="拖入文件或点击选择" />
-                      <button id="pickVerifyIn" class="btn">选择...</button>
-                    </div>
-                  </div>
-                  <div class="row full">
-                    <div class="label">机器码</div>
-                    <div class="field">
-                      <input id="verifyMachineId" type="text" spellcheck="false" placeholder="填写后可校验是否绑定到该机器" />
-                    </div>
-                  </div>
-                </div>
-                <div class="actions">
-                  <button id="verify" class="btn primary">校验</button>
-                </div>
-              </section>
+              <div class="tableFootnote">普通账户可用后台允许的本人算力；中级账户可用普通算力节点；高级账户可用所有算力节点。删除会清理用户资料、积分余额和可匹配的 Auth 登录身份。点「流水」查看该用户记录。</div>
             </section>
           </section>
 
@@ -841,6 +537,21 @@
           </section>
         </div>
 
+        <div id="backendConnectionDrawer" class="drawerOverlay" hidden>
+          <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="backendConnectionTitle">
+            <div class="drawerHeader">
+              <div><div id="backendConnectionTitle" class="drawerTitle">后台连接</div><div class="drawerHint">账号、积分、AI 服务和算力机器共用的 Supabase 连接；Secret Key 仅保存在本机后台配置。</div></div>
+              <button class="iconButton" type="button" data-drawer-close aria-label="关闭">×</button>
+            </div>
+            <div class="drawerBody">
+              <div class="row full"><div class="label">Project URL</div><div class="field"><input id="onlineSupabaseUrl" type="url" spellcheck="false" placeholder="https://xxx.supabase.co" /></div></div>
+              <div class="row full"><div class="label">Secret Key</div><div class="field"><input id="onlineSecretKey" type="password" spellcheck="false" autocomplete="off" placeholder="留空保留现有密钥" /></div></div>
+              <div id="onlineConfigStatus" class="hint" role="status">读取中…</div>
+              <div class="actions"><button id="saveOnlineConfig" class="btn primary" type="button">保存配置</button><button id="testOnlineConfig" class="btn secondary" type="button">测试连接</button></div>
+            </div>
+          </aside>
+        </div>
+
         <!-- ============================ 抽屉：新建登录账号 ============================ -->
         <div id="userCreateDrawer" class="drawerOverlay" hidden>
           <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="userCreateDrawerTitle">
@@ -875,7 +586,7 @@
                   <div class="label">账户类型</div>
                   <div class="field">
                     <select id="newUserPlan">
-                      <option value="trial">普通（只能用本机算力）</option>
+                      <option value="trial">普通（本人算力）</option>
                       <option value="standard">中级（可用普通算力节点）</option>
                       <option value="pro">高级（可用所有算力节点）</option>
                     </select>

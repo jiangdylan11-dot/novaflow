@@ -30,10 +30,19 @@ assert(indexHtml.includes('data-module="art-knowledge"'), "专业经验 should b
 assert(!artReview.includes("showModal"), "专业经验 should not open a modal");
 assert(!artReview.includes("关闭"), "专业经验 page should not have a close button");
 assert(
-  renderer.includes("verifyDeletedUserGone") &&
-    renderer.includes("verifyDeletedLicenseGone"),
-  "admin UI should verify deleted users/licenses are gone after write calls"
+  renderer.includes("verifyDeletedUserGone"),
+  "admin UI should verify deleted users are gone after write calls"
 );
+assert(!indexHtml.includes('id="module-licenses"'), "online admin must retire machine-code licensing UI");
+assert(!indexHtml.includes('data-module="licenses"'), "licensing must not appear in navigation");
+assert(!indexHtml.includes('data-module-link="licenses"'), "licensing shortcuts must be removed");
+assert(!indexHtml.includes('id="dashboardLicensesCount"'), "dashboard must stop counting licenses");
+assert(indexHtml.includes('id="dashboardWorkersCount"'), "dashboard should show compute machines");
+assert(indexHtml.includes('id="backendConnectionDrawer"'), "backend connection settings must remain reachable");
+assert(indexHtml.includes('id="onlineSupabaseUrl"') && indexHtml.includes('id="onlineSecretKey"'), "backend connection fields must remain available");
+for (const operation of ["queryOnlineLicense", "getDefaultPaths", "getStatus", "readPrivateKey", "readPublicKey", "issueLicense", "verifyLicense"]) {
+  assert(!renderer.includes(`window.adminAPI.${operation}(`), `online admin must never call legacy ${operation}`);
+}
 assert(
   adminData.includes("verifyAdminUserDeleted") &&
     adminData.includes("verifyAdminUserPasswordReset"),

@@ -10,7 +10,7 @@ const guest = '22222222-2222-4222-8222-222222222222';
 const payload = () => ({ id: 'node-one', owner_id: owner, enabled: true, owner_enabled: true,
   sharing_enabled: false, sharing_scope: 'selected', allowed_user_ids: [guest] });
 
-function fixture({ error, missing = false } = {}) {
+function fixture({ error, missing = false, env = { NOVAFLOW_SUPABASE_URL: 'https://fixture.supabase.co', NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY: 'fixture-only' } } = {}) {
   const filename = path.resolve(__dirname, '../license-admin-gui/admin-data.js');
   const realRequire = createRequire(filename);
   const writes = [];
@@ -23,7 +23,7 @@ function fixture({ error, missing = false } = {}) {
   } };
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports,
-    console: { log() {}, warn() {} }, process: { env: { NOVAFLOW_SUPABASE_URL: 'https://fixture.supabase.co', NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY: 'fixture-only' }, platform: 'win32' },
+    console: { log() {}, warn() {} }, process: { env, platform: 'linux' },
     require: (name) => name === '@supabase/supabase-js' ? { createClient: () => client } : realRequire(name)
   }, { filename });
   return { api: module.exports, writes };
@@ -71,4 +71,28 @@ test('missing migration and missing node never report successful saves', async (
   const missing = fixture({ missing: true });
   assert.equal((await missing.api.setAdminGpuWorkerAccessPolicy(payload())).status, 'error');
   assert.equal((await missing.api.setAdminGpuWorkerStatus({ id: 'node-one', status: 'idle' })).status, 'error');
+});
+
+test('saved backend connection is shared with data management and environment retains precedence', () => {
+  const saved = fixture({ env: {} });
+  saved.api.setAdminConnectionResolver(() => ({ supabaseUrl: 'https://saved.supabase.co', secretKey: 'saved-fixture-only' }));
+  assert.equal(saved.api.readAdminSupabaseEnv().configured, true);
+  assert.equal(saved.api.readAdminSupabaseEnv().supabaseUrl, 'https://saved.supabase.co');
+  assert.equal(saved.api.readAdminSupabaseEnv().serviceRoleKey, 'saved-fixture-only');
+  const env = fixture();
+  env.api.setAdminConnectionResolver(() => ({ supabaseUrl: 'https://saved.supabase.co', secretKey: 'saved-fixture-only' }));
+  assert.equal(env.api.readAdminSupabaseEnv().serviceRoleKey, 'fixture-only');
+});
+
+test('connection test checks the current users table without querying historical licenses', async () => {
+  const filename = path.resolve(__dirname, '../license-admin-online.js');
+  const realRequire = createRequire(filename);
+  const module = { exports: {} };
+  const tables = [];
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
+    module, exports: module.exports, process: { env: { NOVAFLOW_SUPABASE_URL: 'https://fixture.supabase.co', NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY: 'fixture-only' } },
+    require: name => name === 'electron' ? { safeStorage: {} } : name === '@supabase/supabase-js' ? { createClient: () => ({ from(table) { tables.push(table); return { select() { return this; }, async limit() { return { data: [], status: 200 }; } }; } }) } : realRequire(name)
+  }, { filename });
+  assert.equal((await module.exports.testConnection('fixture-unused')).ok, true);
+  assert.deepEqual(tables, ['users']);
 });

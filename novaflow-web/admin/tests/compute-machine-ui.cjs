@@ -10,14 +10,18 @@ const guest = '22222222-2222-4222-8222-222222222222';
 const users = [{ id: owner, account: 'machine-owner', plan: 'trial', status: 'active' }, { id: guest, account: 'approved-guest', plan: 'pro', status: 'active' }];
 const worker = { id: 'node-one', owner_id: owner, worker_name: '合作方测试机器', status: 'idle', tier: 'standard',
   enabled: true, owner_enabled: true, sharing_enabled: false, sharing_scope: 'pool', allowed_user_ids: [], transport: 'tunnel', last_heartbeat: new Date().toISOString() };
-const writes = [], errors = [];
+const writes = [], errors = [], legacyCalls = [], connectionWrites = [];
+let connectionTests = 0;
 let failSave = false;
 const result = (records) => ({ ok: true, result: { source: 'supabase', status: 'connected', records } });
 for (const channel of new Set([...fs.readFileSync(path.join(root, 'preload.js'), 'utf8').matchAll(/ipcRenderer\.invoke\("([^"]+)"/g)].map((m) => m[1]))) {
   ipcMain.handle(channel, async (_event, payload) => {
+    if (['admin-default-paths', 'admin-status', 'admin-online-query', 'admin-read-public-key', 'admin-read-private-key', 'admin-issue-license', 'admin-verify-license'].includes(channel)) legacyCalls.push(channel);
     if (channel === 'admin-default-paths') return {};
     if (channel === 'admin-status') return { ok: true, status: {} };
-    if (channel === 'admin-online-config') return { ok: true, config: {} };
+    if (channel === 'admin-online-config') return { ok: true, config: { supabaseUrl: 'https://fixture.supabase.co', hasSecretKey: true, secretPreview: 'fixture' } };
+    if (channel === 'admin-online-save-config') { connectionWrites.push(payload); return { ok: true, config: { hasSecretKey: true, secretPreview: 'fixture' } }; }
+    if (channel === 'admin-online-test') { connectionTests++; return { ok: true, result: { ok: true } }; }
     if (channel === 'admin:data:users:list') return result(users);
     if (channel === 'admin:data:gpu_workers:list') return result([{ ...worker }]);
     if (channel === 'admin:data:gpu_workers:set-access-policy') {
@@ -34,6 +38,20 @@ app.whenReady().then(async () => {
   await win.loadFile(path.join(root, 'index.html'));
   const run = (code) => win.webContents.executeJavaScript(code);
   const wait = (condition) => run(`new Promise((resolve,reject)=>{const started=Date.now();const timer=setInterval(()=>{if(${condition}){clearInterval(timer);resolve();}else if(Date.now()-started>10000){clearInterval(timer);reject(Error(${JSON.stringify(condition)}));}},25);})`);
+  await wait(`$('onlineConfigStatus')?.textContent.includes('已保存')`);
+  assert.equal(await run(`!!document.querySelector('[data-module="licenses"], #module-licenses, #dashboardLicensesCount')`), false);
+  await run(`showModule('licenses')`);
+  assert.equal(await run(`$('module-dashboard').classList.contains('active')`), true);
+  await run(`document.querySelector('[data-drawer-open="backendConnectionDrawer"]').click()`);
+  assert.equal(await run(`$('backendConnectionDrawer').hidden`), false);
+  await run(`$('onlineSecretKey').value='fixture-only-not-a-real-key';$('saveOnlineConfig').click()`);
+  await wait(`$('onlineSecretKey').value === ''`);
+  assert.equal(connectionWrites.length, 1);
+  assert.equal(connectionWrites[0].supabaseUrl, 'https://fixture.supabase.co');
+  await run(`$('testOnlineConfig').click()`);
+  await wait(`$('onlineConfigStatus').textContent === '连接正常'`);
+  assert.equal(connectionTests, 1);
+  await run(`$('backendConnectionDrawer').querySelector('[data-drawer-close]').click()`);
   await run(`showModule('compute')`);
   await wait(`document.querySelector('#computeWorkersTableBody')?.textContent.includes('本人可用')`);
   assert.equal(await run(`document.querySelectorAll('.workerTable th').length`), 11);
@@ -62,7 +80,8 @@ app.whenReady().then(async () => {
   await run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
   assert.equal(await run(`document.querySelector('#computeMachineSettings')`), null);
   assert.deepEqual(errors, []);
-  fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR || app.getPath('temp'), 'compute-machine-ui-receipt.json'), JSON.stringify({ passed: true, writes, errors }, null, 2));
-  console.log('compute machine UI passed: private owner, selected sharing, validation and failed-save recovery');
+  assert.deepEqual(legacyCalls, []);
+  fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR || app.getPath('temp'), 'compute-machine-ui-receipt.json'), JSON.stringify({ passed: true, writes, errors, legacyCalls, connectionTests }, null, 2));
+  console.log('compute machine UI passed: private owner, selected sharing, validation, backend connection and no legacy license calls');
   win.destroy(); app.exit(0);
 }).catch((error) => { console.error(error); app.exit(1); });
