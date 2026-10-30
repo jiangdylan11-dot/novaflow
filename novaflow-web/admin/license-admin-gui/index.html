@@ -447,7 +447,7 @@
                     </tbody>
                   </table>
                 </div>
-                <div class="tableFootnote">使用记录长期保留。点击“查看明细”按用户查看任务、节点、耗时和结果；不保存提示词正文和生成产物。</div>
+                <div class="tableFootnote">使用记录默认保留，可手动删除已结束记录。点击“查看明细”按用户查看任务、节点、耗时和结果；不保存提示词正文和生成产物。</div>
               </section>
           </section>
 
@@ -486,9 +486,9 @@
             <div class="modalHeader"><div class="modalTitle" id="computeUsageTitle">用户算力使用明细</div><button class="iconButton" type="button" data-dialog-close="computeUsageDialog" aria-label="关闭">×</button></div>
             <div class="modalBody">
               <div class="panelTools"><label>任务状态 <select id="computeUsageDetailStatus" class="tableSelect"><option value="">全部状态</option><option value="completed">已完成</option><option value="failed">失败</option><option value="processing">处理中</option><option value="queued">排队中</option><option value="assigned">已分配</option><option value="uploading">上传中</option><option value="created">已创建</option><option value="cancelled">已取消</option><option value="expired">已过期</option></select></label><button id="computeUsageDetailRefresh" class="btn secondary small" type="button">刷新</button></div>
-              <div class="tableViewport"><table class="dataTable computeDetailTable"><thead><tr><th>提交时间 / 任务编号</th><th>功能 / 模型</th><th>算力节点</th><th>状态 / 失败原因</th><th>执行耗时</th><th class="num">扣除积分</th></tr></thead><tbody id="computeUsageDetailBody"></tbody></table></div>
+              <div class="tableViewport"><table class="dataTable computeDetailTable"><thead><tr><th>提交时间 / 任务编号</th><th>功能 / 模型</th><th>算力节点</th><th>状态 / 失败原因</th><th>执行耗时</th><th class="num">扣除积分</th><th>操作</th></tr></thead><tbody id="computeUsageDetailBody"></tbody></table></div>
               <div class="panelTools"><span id="computeUsageDetailCount" class="hint" role="status"></span><div class="spacer"></div><button id="computeUsageDetailPrevious" class="btn secondary small" type="button">上一页</button><button id="computeUsageDetailNext" class="btn secondary small" type="button">下一页</button></div>
-              <div class="hint">任务记录独立保留，删除账号或机器不会清除此处的历史。未分配机器的任务会明确标注。</div>
+              <div class="hint">任务记录独立保留，删除账号或机器不会自动清除此处的历史。可手动删除已结束记录，积分流水和生成文件不受影响。</div>
             </div>
           </div>
         </div>

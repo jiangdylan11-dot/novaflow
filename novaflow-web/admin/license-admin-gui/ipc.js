@@ -113,6 +113,7 @@ function registerLicenseAdminIpc() {
   registerAdminDataWrite("admin:data:gpu_workers:set-tier", adminData.setAdminGpuWorkerTier);
   registerAdminDataWrite("admin:data:gpu_workers:set-access-policy", adminData.setAdminGpuWorkerAccessPolicy);
   registerAdminDataWrite("admin:data:gpu_workers:delete", adminData.deleteAdminGpuWorker);
+  registerAdminDataWrite("admin:data:compute_usage:delete", adminData.deleteAdminComputeUsage);
   registerAdminDataWrite("admin:data:worker_codes:delete", adminData.deleteAdminWorkerRegistrationCode);
   registerAdminDataWrite("admin:data:worker_codes:purge", adminData.purgeAdminWorkerRegistrationCodes);
 

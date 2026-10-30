@@ -1099,6 +1099,20 @@ async function getAdminComputeUsageSummary() {
   } catch (err) { return supabaseErrorResult("web_compute_usage","使用记录读取失败，请确认已升级记录保留服务："+String(err?.message || err),"",{},Date.now()-startedAt); }
 }
 
+async function deleteAdminComputeUsage(payload = {}) {
+  const startedAt=Date.now(), operation='web_compute_usage.manual_delete';
+  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const userId=String(payload.userId || ''), taskId=payload.taskId == null ? null : String(payload.taskId);
+  if(payload.confirmed!==true || !uuid.test(userId) || (taskId!==null&&!uuid.test(taskId)) || !Number.isFinite(Date.parse(payload.before))) return adminWriteErrorResult(operation,'请明确确认用户、记录和删除时间范围',Date.now()-startedAt);
+  const {client,result}=adminWriteClient(operation,startedAt);if(!client)return result;
+  try {
+    const {data,error}=await client.rpc('admin_delete_compute_usage',{p_user_id:userId,p_task_id:taskId,p_before:new Date(payload.before).toISOString()});
+    if(error)throw error;
+    if(!Number.isInteger(data?.deleted)||data.deleted<0)throw Error('服务器未确认删除结果');
+    return adminWriteResult(operation,startedAt,{deleted:data.deleted});
+  } catch(error){return adminWriteErrorResult(operation,String(error?.message||error),Date.now()-startedAt);}
+}
+
 function getAdminWorkerRegistrationCodes() {
   return readTable(
     "web_worker_registration_codes",
@@ -3800,6 +3814,7 @@ module.exports = {
   getAdminGpuWorkers,
   getAdminWebTaskUsage,
   getAdminComputeUsageSummary,
+  deleteAdminComputeUsage,
   getAdminWorkerRegistrationCodes,
   createAdminWorkerRegistrationCode,
   revokeAdminWorkerRegistrationCode,

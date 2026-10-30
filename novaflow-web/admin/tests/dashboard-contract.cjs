@@ -45,7 +45,8 @@ for (const id of ['dashboardUsersMeta', 'dashboardWorkersMeta', 'dashboardRhConn
 assert(indexHtml.includes('id="backendConnectionDrawer"'), "backend connection settings must remain reachable");
 for (const id of ["computeMintDrawer", "computeCodesTableBody", "computeMintCode"]) assert(!indexHtml.includes(`id="${id}"`), "registration-code UI must be retired: " + id);
 for (const id of ["computePurgeUsage","computeUsagePurgeDays"]) assert(!indexHtml.includes(`id="${id}"`), "compute usage history must not expose cleanup: " + id);
-assert(!adminData.includes('async function purgeAdminWebTasks'), "compute usage history must not have a destructive write path");
+assert(!adminData.includes('async function purgeAdminWebTasks'), "unscoped legacy cleanup must stay removed");
+assert(adminData.includes('async function deleteAdminComputeUsage'), "explicit scoped manual deletion must be available");
 assert(indexHtml.includes('id="computeUsageDialog"'), "per-user usage details must be available");
 assert(!renderer.includes('loadAdminDataset("getAdminWorkerCodes")'), "node page must not load retired registration codes");
 assert(renderer.includes('workerPendingApproval'), "new unassigned nodes must be clearly pending approval");

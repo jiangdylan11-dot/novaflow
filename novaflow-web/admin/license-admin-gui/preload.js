@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("adminAPI", {
   getAdminGpuWorkers: () => ipcRenderer.invoke("admin:data:gpu_workers:list"),
   getAdminWebTaskUsage: (payload) => ipcRenderer.invoke("admin:data:web_task_usage:list", payload || {}),
   getAdminComputeUsageSummary: () => ipcRenderer.invoke("admin:data:compute_usage:summary"),
+  deleteAdminComputeUsage: (payload) => ipcRenderer.invoke("admin:data:compute_usage:delete", payload),
   getAdminWorkerCodes: () => ipcRenderer.invoke("admin:data:worker_codes:list"),
   createAdminWorkerCode: (payload) => ipcRenderer.invoke("admin:data:worker_codes:create", payload),
   revokeAdminWorkerCode: (payload) => ipcRenderer.invoke("admin:data:worker_codes:revoke", payload),

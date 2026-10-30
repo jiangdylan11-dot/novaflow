@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {createRequire}=require('node:module');
 function fixture(error=null){
   const file=path.resolve(__dirname,'../license-admin-gui/admin-data.js'),realRequire=createRequire(file),calls=[];
-  const client={rpc:async name=>{calls.push({rpc:name});return {data:[{total_tasks:61}],error};},from(table){
+  const client={rpc:async(name,payload)=>{calls.push(payload?{rpc:name,payload:JSON.parse(JSON.stringify(payload))}:{rpc:name});return {data:name==='admin_delete_compute_usage'?{deleted:1}:[{total_tasks:61}],error};},from(table){
     const call={table,filters:[],orders:[]};calls.push(call);
     return {select(fields,options){call.fields=fields;call.options=options;return this;},eq(key,value){call.filters.push([key,value]);return this;},order(key,options){call.orders.push([key,options]);return this;},async range(from,to){call.range=[from,to];return {data:[{id:'fixture'}],count:61,error};}};
   }};
@@ -19,6 +19,13 @@ test('per-user usage is paginated and reads only the retained operational record
   assert.deepEqual(calls[0].orders.map(x=>x[0]),['created_at','id']);assert.equal(calls[0].options.count,'exact');
   assert.doesNotMatch(calls[0].fields,/input_manifest|output_manifest|prompt_id/);
   assert.equal(typeof api.purgeAdminWebTasks,'undefined');
+});
+test('manual deletion requires confirmation and scopes the privileged RPC to one user',async()=>{
+  const {api,calls}=fixture(),userId='11111111-1111-4111-8111-111111111111',taskId='22222222-2222-4222-8222-222222222222';
+  const payload={userId,taskId,before:'2026-10-30T10:00:00Z',confirmed:true};
+  for(const patch of [{confirmed:false},{userId:''},{taskId:'bad'},{before:'bad'}])assert.equal((await api.deleteAdminComputeUsage({...payload,...patch})).status,'error');
+  assert.equal(calls.length,0);assert.equal((await api.deleteAdminComputeUsage(payload)).deleted,1);
+  assert.deepEqual(calls[0],{rpc:'admin_delete_compute_usage',payload:{p_user_id:userId,p_task_id:taskId,p_before:'2026-10-30T10:00:00.000Z'}});
 });
 test('usage summary aggregates in the database instead of loading all task payloads',async()=>{
   const {api,calls}=fixture();const result=await api.getAdminComputeUsageSummary();assert.equal(result.records[0].total_tasks,61);assert.deepEqual(calls,[{rpc:'admin_compute_usage_summary'}]);

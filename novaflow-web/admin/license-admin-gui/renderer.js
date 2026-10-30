@@ -1599,6 +1599,25 @@ function renderComputeWorkers(workersResult) {
 let computeUsageSnapshot = { records: [] }, computeUsageUsers = new Map();
 let computeUsageDetail = { userId:'', name:'', offset:0, total:0, loading:false, sequence:0 };
 const COMPUTE_USAGE_PAGE_SIZE = 50;
+let computeUsageDeleting=false;
+const computeUsageFinished=task=>['completed','failed','cancelled','expired'].includes(task.status);
+async function deleteComputeUsageRecords(userId,name,taskId=null) {
+  if(computeUsageDeleting)return;
+  computeUsageDeleting=true;
+  const before=new Date().toISOString();
+  try {
+    const confirmed=await confirmByTyping({title:taskId?'删除这条使用记录':'删除此用户的已结束记录',hint:name,
+      warning:taskId?'只删除这条使用记录，不修改积分流水、余额或生成文件。删除后不可恢复。':'删除本次确认之前提交的已结束记录；排队和执行中的任务保留。不修改积分流水、余额或生成文件。删除后不可恢复。',
+      label:'输入用户名确认',expected:name,confirmText:'确认删除'});
+    if(!confirmed)return;
+    const response=await window.adminAPI.deleteAdminComputeUsage({userId,taskId,before,confirmed:true});
+    if(!response?.ok||response.result?.ok!==true)throw Error(response?.error||response?.result?.error||'删除失败');
+    toast('已删除 '+response.result.deleted+' 条使用记录');
+    await Promise.all([loadComputeData(),loadAdminData()]);
+    if(!$('computeUsageDialog').hidden){computeUsageDetail.offset=0;await loadComputeUsageDetail();}
+  } catch(error){toast(String(error?.message||error));setText('computeUsageStatus','删除失败：'+String(error?.message||error));}
+  finally {computeUsageDeleting=false;}
+}
 function computeHistoryNode(task) {
   return task.worker_name || (task.assigned_worker_id ? '历史节点 · ' + task.assigned_worker_id.slice(0,8) : '未分配节点');
 }
@@ -1607,7 +1626,7 @@ function renderComputeUsage(usageResult, usersResult) {
   if (usersResult) computeUsageUsers = new Map((usersResult.records || []).map(user=>[user.id,user]));
   const result = computeUsageSnapshot, records = result.records || [];
   const total = records.reduce((sum,row)=>sum+Number(row.total_tasks || 0),0);
-  setText('computeUsageStatus',isErrorResult(result) ? computeErrorText(result) : total+' 条任务 · 长期保留');
+  setText('computeUsageStatus',isErrorResult(result) ? computeErrorText(result) : total+' 条任务');
   const query = ($('computeUsageSearch')?.value || '').trim().toLocaleLowerCase();
   const rows = records.filter(row=>{
     const user=computeUsageUsers.get(row.user_id);
@@ -1619,7 +1638,11 @@ function renderComputeUsage(usageResult, usersResult) {
     tr.appendChild(textCell((row.workers || []).map(node=>(node.name || '历史节点 · '+node.id.slice(0,8))+' ×'+node.tasks).join('、') || '未分配节点'));
     tr.appendChild(textCell(row.latest_at?formatDateTime(row.latest_at):'—'));
     const detail=document.createElement('button');detail.type='button';detail.className='btn secondary small';detail.textContent='查看明细';
-    detail.addEventListener('click',()=>openComputeUsageDetail(row.user_id,name));tr.appendChild(nodeCell(detail));return tr;
+    detail.addEventListener('click',()=>openComputeUsageDetail(row.user_id,name));
+    const actions=document.createElement('div');actions.className='tableActions';actions.appendChild(detail);
+    const remove=document.createElement('button');remove.type='button';remove.className='btn danger small';remove.textContent='删除已结束记录';
+    remove.addEventListener('click',()=>deleteComputeUsageRecords(row.user_id,name));actions.appendChild(remove);
+    tr.appendChild(nodeCell(actions));return tr;
   });
   replaceRows('computeUsageTableBody',rows,5,isErrorResult(result)?computeErrorText(result):query?'没有匹配的用户记录':'暂无使用记录');
 }
@@ -1633,7 +1656,7 @@ async function loadComputeUsageDetail() {
   const userId=computeUsageDetail.userId, offset=computeUsageDetail.offset;
   computeUsageDetail.loading=true;
   $('computeUsageDetailPrevious').disabled=true;$('computeUsageDetailNext').disabled=true;$('computeUsageDetailRefresh').disabled=true;
-  setText('computeUsageDetailCount','正在读取…');replaceRows('computeUsageDetailBody',[],6,'正在读取任务明细…');
+  setText('computeUsageDetailCount','正在读取…');replaceRows('computeUsageDetailBody',[],7,'正在读取任务明细…');
   try {
     const response=await window.adminAPI.getAdminWebTaskUsage({userId,offset,limit:COMPUTE_USAGE_PAGE_SIZE,status:$('computeUsageDetailStatus').value});
     if(sequence!==computeUsageDetail.sequence)return;
@@ -1650,15 +1673,17 @@ async function loadComputeUsageDetail() {
       const ended=task.completed_at||task.failed_at||task.cancelled_at;
       const elapsed=ended&&task.started_at?Date.parse(ended)-Date.parse(task.started_at):NaN;
       tr.appendChild(cell(Number.isFinite(elapsed)&&elapsed>=0?durationText(elapsed):'—',Number(task.attempt_count)>1?'尝试 '+task.attempt_count+' 次':''));
-      tr.appendChild(textCell(formatCreditAmount(task.charged_credit_cost),'num'));return tr;
+      tr.appendChild(textCell(formatCreditAmount(task.charged_credit_cost),'num'));
+      const remove=document.createElement('button');remove.type='button';remove.className='btn danger small';remove.textContent='删除';remove.disabled=!computeUsageFinished(task);remove.title=remove.disabled?'排队或执行中的记录不能删除':'仅删除这条使用记录';
+      remove.addEventListener('click',()=>deleteComputeUsageRecords(userId,computeUsageDetail.name,task.id));tr.appendChild(nodeCell(remove));return tr;
     });
-    replaceRows('computeUsageDetailBody',rows,6,'该用户在此状态下暂无任务记录');
+    replaceRows('computeUsageDetailBody',rows,7,'该用户在此状态下暂无任务记录');
     setText('computeUsageDetailCount','共 '+formatNumber(computeUsageDetail.total)+' 条 · 第 '+(Math.floor(offset/COMPUTE_USAGE_PAGE_SIZE)+1)+' 页');
     $('computeUsageDetailPrevious').disabled=offset===0;
     $('computeUsageDetailNext').disabled=!result.hasMore;
   } catch(error) {
     if(sequence!==computeUsageDetail.sequence)return;
-    replaceRows('computeUsageDetailBody',[],6,'读取失败：'+String(error?.message||error));setText('computeUsageDetailCount','读取失败，请重试');
+    replaceRows('computeUsageDetailBody',[],7,'读取失败：'+String(error?.message||error));setText('computeUsageDetailCount','读取失败，请重试');
   } finally {
     if(sequence===computeUsageDetail.sequence){computeUsageDetail.loading=false;$('computeUsageDetailRefresh').disabled=false;}
   }

@@ -27,13 +27,41 @@ test('compute history survives task, node and account deletion and remains read-
     assert.equal(history.user_account,'历史用户'); assert.equal(history.status,'completed');
     const summary=(await db.query('select * from public.admin_compute_usage_summary()')).rows;
     assert.equal(summary.length,1); assert.equal(Number(summary[0].total_tasks),1); assert.equal(summary[0].workers[0].name,'历史机器');
-    await assert.rejects(db.exec('delete from public.web_compute_usage'),/must be retained/);
     await assert.rejects(db.exec('truncate public.web_compute_usage'),/must be retained/);
     await db.exec('set role service_role');
     assert.equal((await db.query('select count(*) from public.web_compute_usage')).rows[0].count,1);
     await assert.rejects(db.exec("update public.web_compute_usage set worker_name='tampered'"),/permission denied/);
     await assert.rejects(db.exec('delete from public.web_compute_usage'),/permission denied/);
     await db.exec('reset role');
+  } finally {await db.close();}
+});
+
+test('explicit deletion is scoped, protects active tasks, and deleted records never reappear',async()=>{
+  const db=await createDatabase();
+  try {
+    const a=await seedUser(db,{email:'delete-history-a@test.local'}),b=await seedUser(db,{email:'delete-history-b@test.local'});
+    const insert=async(user,status)=>(await db.query(`insert into public.web_ai_tasks(user_id,task_type,status) values($1,'image',$2) returning id`,[user,status])).rows[0].id;
+    const one=await insert(a.id,'completed'),two=await insert(a.id,'failed'),active=await insert(a.id,'processing'),queued=await insert(a.id,'queued'),other=await insert(b.id,'completed');
+    await db.exec('set role anon');
+    await assert.rejects(db.query('select public.admin_delete_compute_usage($1,$2,$3)',[a.id,one,'2100-01-01']),/permission denied/);
+    await db.exec('reset role; set role service_role');
+    await assert.rejects(db.query('select public.admin_delete_compute_usage($1,$2,$3)',[b.id,one,'2100-01-01']),/not found/);
+    for(const id of [active,queued]) await assert.rejects(db.query('select public.admin_delete_compute_usage($1,$2,$3)',[a.id,id,'2100-01-01']),/Active task/);
+    const deleted=(await db.query('select public.admin_delete_compute_usage($1,$2,$3) as result',[a.id,one,'2100-01-01'])).rows[0].result;
+    assert.equal(deleted.deleted,1);
+    await assert.rejects(db.exec('delete from public.web_compute_usage'),/permission denied/);
+    await db.exec('reset role');
+    assert.equal((await db.query('select id from public.web_ai_tasks where id=$1',[one])).rows.length,1,'task state and results remain untouched');
+    await db.query("update public.web_ai_tasks set error_code='post-deletion-update' where id=$1",[one]);
+    await db.query('delete from public.web_ai_tasks where id=$1',[one]);
+    assert.equal((await db.query('select id from public.web_compute_usage where id=$1',[one])).rows.length,0,'later updates and deletion must not restore the record');
+    await db.exec('set role service_role');
+    assert.equal((await db.query('select public.admin_delete_compute_usage($1,null,$2) as result',[a.id,'2100-01-01'])).rows[0].result.deleted,1);
+    await db.exec('reset role');
+    const remaining=(await db.query('select id from public.web_compute_usage order by id')).rows.map(row=>row.id);
+    assert.deepEqual(remaining.sort(),[active,queued,other].sort());
+    assert.equal((await db.query('select count(*) from public.web_compute_usage_deleted')).rows[0].count,2);
+    assert.equal((await db.query('select id from public.web_ai_tasks where id=$1',[two])).rows.length,1);
   } finally {await db.close();}
 });
 
