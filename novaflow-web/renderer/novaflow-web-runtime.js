@@ -230,8 +230,9 @@
   const PROMPT_ASSISTANT_REFUSAL = '提示词助手在 Web 版通过智能 AI 提供';
   const PROMPT_ASSISTANT_TIMEOUT_MS = 16 * 60 * 1000;
   const pooledPromptRequests = new Map();
+  const pooledConversationNodes = new Map();
   async function localPromptAssistant(action, payload) {
-    if (computeMode === 'local') {
+    if (taskMode() === 'local') {
       try { return await localControl('POST', '/local/prompt-assistant/' + action, payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS); }
       catch (error) { return { ok: false, error: String(error.message || error) }; }
     }
@@ -247,13 +248,17 @@
     if (requestId) pooledPromptRequests.set(requestId, owned);
     const check = () => { if (owned.cancelled) throw new Error('本次提示词分析已取消'); };
     try {
-    const caps = await control('GET', '/api/web/capabilities');
+    const conversationNode=action==='art-agent-chat' && !computeNode ? pooledConversationNodes.get(payload.conversationId) : '';
+    const caps = await control('GET', '/api/web/capabilities'+(conversationNode?'?worker='+encodeURIComponent(conversationNode):''));
     check();
     const type = (caps && caps.taskTypes || []).find((t) => t.task_type === 'prompt_assistant');
-    if (!type || !(type.available_workers > 0)) throw new Error(PROMPT_ASSISTANT_REFUSAL + '：当前算力池没有带本地模型的节点');
+    if (!type || !(type.available_workers > 0)) throw new Error(action==='art-agent-chat'
+      ? '当前算力节点没有就绪的小桃模型服务，请检查节点助手的模型状态；机器开机不代表模型服务已就绪'
+      : PROMPT_ASSISTANT_REFUSAL + '：当前算力池没有带本地模型的节点');
     const bytes = new TextEncoder().encode(JSON.stringify(payload));
     const created = await control('POST', '/api/web/tasks', {
       task_type: 'prompt_assistant',
+      ...(conversationNode ? {target_worker_id:conversationNode} : {}),
       parameters: { action },
       references: [{ name: 'request.json', kind: 'json', bytes: bytes.length }]
     });
@@ -273,13 +278,18 @@
     const finished = await waitForTaskEnd(created.task.id, PROMPT_ASSISTANT_TIMEOUT_MS);
     const reply = await fetchTaskOutput(finished, 'result.json');
     check();
-    return JSON.parse(new TextDecoder().decode(reply));
+    const result=JSON.parse(new TextDecoder().decode(reply));
+    if(action==='art-agent-chat' && result?.data?.conversationId && finished.assigned_worker_id){
+      pooledConversationNodes.set(result.data.conversationId,finished.assigned_worker_id);
+      if(pooledConversationNodes.size>128)pooledConversationNodes.delete(pooledConversationNodes.keys().next().value);
+    }
+    return result;
     } finally { if (requestId && pooledPromptRequests.get(requestId) === owned) pooledPromptRequests.delete(requestId); }
   }
   async function cancelPromptAssistantRequest(payload={}) {
     const requestId=typeof payload.requestId==='string' && payload.requestId.length<=160 ? payload.requestId : '';
     if (!requestId) return {ok:false,error:'缺少要取消的提示词分析请求'};
-    if (computeMode === 'local') {
+    if (!pooledPromptRequests.has(requestId) && taskMode() === 'local') {
       try { return await localControl('POST','/local/prompt-assistant/cancel-request',{requestId},PROMPT_ASSISTANT_TIMEOUT_MS); }
       catch(error) { return {ok:false,error:String(error.message || error)}; }
     }
@@ -1418,9 +1428,9 @@
     runtimeOpenOutputFolder: async () => root.NovaFlowWebWarehouse
       ? root.NovaFlowWebWarehouse.open() : ({ ok: false, error: '仓库组件未加载，请刷新网页后重试' }),
     runtimeFreeMemory: async () => ({ ok: true, result: {} }),
-    promptAssistantGetStatus: async () => computeMode === 'local'
+    promptAssistantGetStatus: async () => taskMode() === 'local'
       ? localControl('GET', '/local/prompt-assistant/status').catch(error => ({ ok: false, enabled: false, error: String(error.message || error) }))
-      : ({ ok: true, result: { available: false, reason: 'web' } }),
+      : control('GET','/api/web/capabilities').then(caps=>({ok:true,result:{available:(caps.taskTypes || []).some(t=>t.task_type==='prompt_assistant' && t.available_workers>0),reason:'compute-node'}})).catch(error=>({ok:false,error:String(error.message || error)})),
     promptAssistantOptimizePrompt: async (payload) => localPromptAssistant('optimize-prompt', payload),
     promptAssistantUiDesignCpu: async (payload) => {
       // The old node rejects the deliberately empty image record during normalization, before any model work.
@@ -1436,14 +1446,14 @@
     async artKnowledgeState(){if(CONFIG.artKnowledgeEnabled!==true)return {ok:true,enabled:false};try{const consent=await artKnowledgeRequest('GET','/consent');return {ok:true,enabled:true,allowed:consent.allowed,publisher:false};}catch(error){return {ok:false,enabled:true,error:String(error.message||error)};}},
     artKnowledgeConsent:allow=>artKnowledgeRequest('POST','/consent',{allow}),
     artLearning: artLearningCommand,
-    artAgentChat: async (payload) => payload?.provider === 'api' ? companionCloudChat(payload) : computeMode === 'local'
+    artAgentChat: async (payload) => payload?.provider === 'api' ? companionCloudChat(payload) : taskMode() === 'local'
       ? localControl('POST', '/local/prompt-assistant/art-agent-chat', {...payload,accountId:currentSession()?.user?.id || '',accountToken:currentSession()?.token || ''}, PROMPT_ASSISTANT_TIMEOUT_MS)
           .catch(error => ({ ok: false, error: String(error.message || error) }))
-      : ({ ok: false, error: '小桃使用本机 Flash，请先连接本地助手并选择本地算力' }),
-    artAgentStop: async (payload) => payload?.provider === 'api' ? stopCompanionCloud(payload) : computeMode === 'local'
+      : localPromptAssistant('art-agent-chat',payload || {}),
+    artAgentStop: async (payload) => payload?.provider === 'api' ? stopCompanionCloud(payload) : !pooledPromptRequests.has(payload?.requestId) && taskMode() === 'local'
       ? localControl('POST', '/local/prompt-assistant/art-agent-stop', payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS)
           .catch(error => ({ ok: false, error: String(error.message || error) }))
-      : ({ ok: false, error: '小桃使用本地任务，没有停止其他算力上的任务' }),
+      : cancelPromptAssistantRequest(payload || {}),
     // 万物迁移 names the scene's style from this when it exists and paints without it otherwise.
     promptAssistantDescribeArtStyle: async (payload) => localPromptAssistant('describe-art-style', payload),
 

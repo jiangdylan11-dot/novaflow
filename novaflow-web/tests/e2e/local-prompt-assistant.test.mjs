@@ -350,6 +350,12 @@ try {
   equal(JSON.parse(new TextDecoder().decode(upload.init.body)).surface, 'art', 'the whole payload is the uploaded request');
   await pool.electronAPI.promptAssistantReverseImagePrompt({ images: [{ name: 'a.png', dataUrl: 'data:image/png;base64,QQ==' }] });
   equal(JSON.parse(poolRequests.filter(r => r.url.endsWith('/api/web/tasks') && r.init.method === 'POST').at(-1).init.body).parameters.action, 'reverse-image-prompt');
+  await pool.electronAPI.artAgentChat({provider:'local',mode:'chat',requestId:'pooled-agent-request',message:'你好',history:[]});
+  equal(JSON.parse(poolRequests.filter(r=>r.url.endsWith('/api/web/tasks') && r.init.method==='POST').at(-1).init.body).parameters.action,'art-agent-chat','hosted 小桃 reaches the compute pool instead of rejecting the page');
+  const pin='11111111-1111-4111-8111-111111111111';pool.NovaFlowWebRuntime.setComputeNode({id:pin,name:'当前节点'});
+  pool.fetch=async(url,init)=>{const u=String(url);poolRequests.push({url:u,init});if(u.includes('/api/web/capabilities'))return Response.json({taskTypes:[{task_type:'prompt_assistant',available_workers:1}]});if(u.endsWith('/api/web/tasks') && init.method==='POST')return Response.json({task:{id:'pa-1',status:'queued'}});if(u.endsWith('/grant'))return Response.json({grant:{endpoint:'https://node.test',token:'g-1',expiresAt:new Date(Date.now()+600000).toISOString()}});if(u.endsWith('/api/web/tasks/pa-1'))return Response.json({task:{id:'pa-1',status:'completed',assigned_worker_id:pin}});return Response.json({ok:true,data:{reply:'已连接节点'}});};
+  await pool.electronAPI.artAgentChat({provider:'local',mode:'chat',requestId:'pinned-agent-request',message:'你好',history:[]});
+  equal(JSON.parse(poolRequests.filter(r=>r.url.endsWith('/api/web/tasks') && r.init.method==='POST').at(-1).init.body).target_worker_id,pin,'小桃 follows the selected compute node');
 } finally {
   if (previousLegacyFlag === undefined) delete process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT; else process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT = previousLegacyFlag;
   await assistant.stop(); comfy.closeAllConnections(); comfy.close();

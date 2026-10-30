@@ -40,12 +40,10 @@
       audioSettings:audio?.agentSettings?.() || null},images:[]};
   }
   function wantsMedia(message) {
-    const audio=root.NovaFlowAudioStudio;
-    return Boolean(audio?.isOpen?.() || root.NovaFlowAiSequenceVideoMergeWorkspace?.isOpen?.()
-      || /视频|音频|音效|音乐|配乐|剪辑|时间轴|淡入|淡出|音轨|音视/.test(message));
+    return /视频|动画|动起来|音频|音效|音乐|配乐|剪辑|时间轴|淡入|淡出|音轨|音视/.test(message);
   }
   function discussionOnly(message) {
-    return !/(?:请|帮我|给我|把|将|生成|制作|开始|执行|裁切|剪辑|分割|剪掉|截取|移动|变速|调|设置|导入|导出|复制|删除|移除|淡入|淡出|增大|减小|小点|大点|处理)|\b(?:generate|create|trim|split|move|set|export|import|delete|duplicate|fade|adjust)\b/i.test(message)
+    return !/(?:请|帮我|给我|把|将|做|让|换|改|生成|制作|开始|执行|裁切|剪辑|分割|剪掉|截取|移动|变速|调|设置|导入|导出|复制|删除|移除|淡入|淡出|增大|减小|小点|大点|处理)|\b(?:generate|create|trim|split|move|set|export|import|delete|duplicate|fade|adjust)\b/i.test(message)
       || /[?？]|(?:能不能|可不可以|能否|是否|怎么|如何|为什么)|吗[。！!]?\s*$|(?:不要|不用|别|先不|暂不|只需|只要).{0,10}(?:生成|执行|剪辑|修改|导出|处理)|(?:只|仅).{0,6}(?:提示词|方案|建议|聊聊|讨论|解释)/.test(message)
       || /(?:给我|提供|输出|写).{0,10}(?:提示词|方案|建议)/.test(message) && !/并生成|直接生成|执行|写入|填入/.test(message);
   }

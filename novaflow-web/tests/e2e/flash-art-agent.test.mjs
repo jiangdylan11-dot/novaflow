@@ -54,6 +54,11 @@ test('native write and generation tools return bounded application actions while
     const result=await invoke(createFlashArtAgent(),f,request); assert.equal(result.value.proposal.action,action); assert.equal(result.value.proposal.resourcesReleased,undefined); assert.equal(result.resourcesReleased,true); assert.deepEqual(f.events,['load','unload']);
   }
 });
+test('uncertain drawing intent asks one semantic question and returns no executable proposal',async()=>{
+  const request=payload(),f=fixture([tool('ask_art_question',{question:'你希望保留原来的构图，还是重新设计构图？'})]);
+  const result=await invoke(createFlashArtAgent(),f,request);
+  assert.equal(result.value.needsInput,true);assert.equal(result.value.proposal,undefined);assert.match(result.value.reply,/构图/);assert.equal(f.calls.length,1);
+});
 
 test('an invalid learning method is discarded without failing a valid drawing or retrying inference',async()=>{
   const request=payload(),f=fixture([tool('get_art_context',{}),tool('propose_art_direction',{contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'完整方案',learningMethod:'https://private.invalid/source'},'call_2')]);

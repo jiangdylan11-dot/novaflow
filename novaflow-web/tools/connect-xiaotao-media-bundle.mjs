@@ -46,6 +46,12 @@ if(!source.includes('optimizationContext:async()=>')) {
   source=source.slice(0,match)+adapter+source.slice(match);
 }
 const assetAnchor='window.NovaFlowAiSequenceAssetBridge={version:';
+if(!source.includes('referenceSlots:')) {
+  const anchor='references:[un,gn,Sn,nfJimengImage2Ref';
+  if(source.split(anchor).length!==2)throw new Error('Native video reference metadata anchor changed');
+  source=source.replace(anchor,`referenceSlots:(Ve==='image_video'?[{ref:un,key:'first_frame',label:'参考图'}]:Ve==='first_last'?[{ref:gn,key:'first_frame',label:'首帧'},{ref:Sn,key:'last_frame',label:'尾帧'}]:[]).map(({ref,key,label})=>({key,label,kind:'image',occupied:!!ref?.dataUrl,sourceId:window.NovaFlowMediaAgent.referenceStamp(ref)?.id||'',name:ref?.fileName||''})),
+      `+anchor);
+}
 if(!source.includes('listResources:()=>')) {
   if(source.split(assetAnchor).length!==2)throw new Error('AI sequence asset closure changed');
   source=source.replace(assetAnchor,`window.NovaFlowAiSequenceAssetBridge={listResources:()=>(et.current||[]).map(r=>({id:String(r.id),name:String(r.filename||r.file?.name||''),kind:r.sourceKind||'video'})),version:`);

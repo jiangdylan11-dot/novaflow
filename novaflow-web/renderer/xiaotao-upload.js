@@ -137,20 +137,46 @@
     if (/图生图/.test(text)) hits.push('img2img');
     return hits;
   }
+  // Route from the requested deliverable, independently of the currently open page.
+  // Unassigned attachments remain conversation inputs; slot names are never a user decision.
+  function inferTask(message, files = []) {
+    const text = String(message || '').trim();
+    const kinds = Array.from(files || []).map(file => file.kind);
+    const discussion = question(text) || /怎么|如何|为什么|是什么|能不能|可不可以|能否|是否|(?:只|仅).{0,8}(?:分析|看看|提示词|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,8}(?:生成|执行|制作|修改)/.test(text);
+    const imageEdit = /换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(text);
+    const video = /视频|动画|动效|动态|动起来|动一动|跑起来|转起来|循环动|首尾帧|首帧|尾帧|多参|镜头|剪辑|时间轴/.test(text);
+    const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(text);
+    let surface = imageEdit && !/视频|片段/.test(text) ? 'image' : video ? 'video' : audio ? 'audio'
+      : /生图|出图|做图|画图|绘图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(text) || kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(text) ? 'image' : 'chat';
+    if (discussion) surface = 'chat';
+    const loop = surface === 'video' && /循环|无缝|loop/i.test(text);
+    const named = discussion ? [] : namedDestinations(text);
+    let mode = surface === 'image' ? (kinds.includes('image') ? 'img2img' : 'txt2img')
+      : surface === 'video' ? kinds.some(kind => kind !== 'image') || /多参/.test(text) ? 'multi_reference'
+        : /首尾帧|首帧|尾帧/.test(text) || loop && kinds.includes('image') ? 'first_last'
+          : kinds.includes('image') ? 'image_video' : 'text_video' : '';
+    if (imageEdit && kinds.includes('image')) mode = 'img2img';
+    const duration = text.match(/(\d+(?:\.\d+)?)\s*(?:秒|s\b)/i);
+    return {surface, mode, loop, discussion, named, ...(duration ? {seconds:Number(duration[1])} : {})};
+  }
   function planRoutes(message, files) {
     const text = String(message || '').trim();
     const asking = question(text);
-    const named = asking ? [] : namedDestinations(text);
+    const task = inferTask(message, files);
+    const named = asking || task.discussion ? [] : namedDestinations(text);
     const place = [];
     const ask = [];
     const reject = [];
     const list = Array.from(files || []);
     const images = list.filter(file => file?.kind === 'image');
     const imageHits = [...new Set(named.filter(id => ['image_video', 'first_frame', 'last_frame', 'multi_reference', 'img2img', 'first_last_pair', 'first_last_unspecified'].includes(id)))];
-    const imageDecision = imageHits.length !== 1 || imageHits[0] === 'first_last_unspecified' ? 'ask' : imageHits[0] === 'first_last_pair' ? (images.length === 2 ? 'pair' : 'ask') : 'place';
+    const inferred = task.surface === 'image' ? 'img2img' : task.surface === 'video' ? task.mode === 'first_last' ? 'first_frame' : task.mode === 'image_video' ? 'image_video' : task.mode === 'multi_reference' ? 'multi_reference' : '' : '';
+    const decision = imageHits.length === 1 ? imageHits[0] : inferred;
+    const imageDecision = decision === 'first_last_pair' && images.length === 2 ? 'pair' : decision && decision !== 'first_last_unspecified' ? 'place' : 'conversation';
     let pairIndex = 0;
     for (const file of list) {
       if (file?.kind === 'video' || file?.kind === 'audio') {
+        if (task.discussion || task.surface === 'chat') continue;
         const blocked = named.filter(id => id !== 'multi_reference' && id !== 'first_last_pair' && id !== 'first_last_unspecified' && !acceptsKind(destinationById(id), file.kind));
         if (blocked.length && !named.includes('multi_reference')) {
           const label = destinationById(blocked[0])?.label || '该位置';
@@ -159,11 +185,16 @@
         continue;
       }
       if (file?.kind !== 'image') continue;
-      if (imageDecision === 'ask') ask.push(file);
+      if (imageDecision === 'conversation') continue;
       else if (imageDecision === 'pair') place.push(imagePlace(file, pairIndex++ === 0 ? 'first_frame' : 'last_frame'));
-      else place.push(imagePlace(file, imageHits[0]));
+      else {
+        place.push(imagePlace(file, decision));
+        if (task.loop && decision === 'first_frame' && images.length === 1) place.push(imagePlace(file, 'last_frame'));
+      }
     }
-    return {place, ask, reject};
+    let drawingIndex=0;
+    return {place:place.map(item=>({...item,targetSurface:task.surface,
+      ...(item.destination.id==='img2img' && !named.length ? {replaceReferences:true,referenceIndex:drawingIndex++} : {})})), ask, reject};
   }
   function carried(file, destination) {
     const blob = file?.file && typeof file.file === 'object' ? file.file : file;
@@ -210,7 +241,9 @@
   }
   function switchMode(doc, mode) {
     const buttons = Array.from(doc?.querySelectorAll?.('[data-novaflow-ai-generation-mode]') || []);
-    return press(buttons.find(button => button.getAttribute('data-novaflow-ai-generation-mode') === mode));
+    const button = buttons.find(button => button.getAttribute('data-novaflow-ai-generation-mode') === mode);
+    if (button?.getAttribute('aria-pressed') === 'true') return true;
+    return press(button);
   }
   function assignFiles(input, files, replace) {
     if (!input) return false;
@@ -235,6 +268,8 @@
   }
   function slotNode(doc, names) {
     for (const name of names) {
+      const input = doc?.querySelector?.(`input[data-novaflow-ai-sequence-upload-zone="${name}"]`);
+      if (input) return input;
       const node = doc?.querySelector?.(`[data-ais-import="${name}"]`);
       if (node) return node;
     }
@@ -263,6 +298,18 @@
   function createUploadHost(target) {
     const scope = target || root;
     const placed = [];
+    const pause = () => new Promise(resolve => (yieldTimer || scope.setTimeout)(resolve, 40));
+    async function ready(read, message) {
+      for (let i=0;i<100;i++) {const value=await read();if(value)return value;await pause();}
+      throw new Error(message);
+    }
+    async function openVideo(mode) {
+      if (scope.NovaFlowAudioStudio?.open) scope.NovaFlowAudioStudio.open('video');
+      else switchPrimary(scope.document, '动画');
+      await ready(() => switchMode(scope.document, mode), '视频模式尚未就绪，素材已保留，请重试');
+      if (scope.NovaFlowAiSequenceGeneration?.capture) await ready(() => scope.NovaFlowAiSequenceGeneration.capture().genType === mode, '视频模式切换未完成，素材已保留');
+      await pause();
+    }
     return {
       placed,
       async place(item) {
@@ -272,8 +319,8 @@
         if (!acceptsKind(destination, item.kind)) throw new Error(`${item.name} 不能放到${destination.label}`);
         const uploadedName = await stageWorkerUpload(scope, file, destination);
         const doc = scope.document;
-        switchPrimary(doc, destination.module);
         if (destination.id === 'img2img') {
+          switchPrimary(doc, destination.module);
           const runtime = scope.__NovaFlowArtGenerate;
           if (typeof runtime?.setReference !== 'function') throw new Error('图生图参考位置不可用');
           const already = runtime.state?.mode === 'img2img';
@@ -288,8 +335,9 @@
           }
           const refs = runtime.references?.() || [];
           const limit = Math.max(1, Number(runtime.referenceLimit?.()) || destination.limit);
+          if(item.replaceReferences && item.referenceIndex===0)for(let i=0;i<refs.length;i++)if(refs[i])runtime.setReference(i,null);
           const index = refs.findIndex(ref => !ref?.dataUrl);
-          const slot = index >= 0 ? index : refs.length;
+          const slot = item.replaceReferences ? item.referenceIndex : index >= 0 ? index : refs.length;
           if (slot >= limit) throw new Error('图生图参考图已满');
           const preview = lightReferenceUrl(scope, file, uploadedName);
           // dataUrl is only the display preview. Submit reads file (or the worker
@@ -299,11 +347,19 @@
           if (already) {
             if (typeof runtime.refreshReferences === 'function') runtime.refreshReferences();
           } else runtime.render?.({forceBottom:true});
+          // Qwen fills W/H from reference 1 asynchronously in the native image
+          // onload handler. Consent/fingerprinting must observe that final state.
+          if(runtime.state?.referenceSizeFillPending)await ready(()=>!runtime.state.referenceSizeFillPending,'参考图尺寸仍未读取完成，素材已保留');
+        } else if (item.targetSurface === 'audio' && scope.NovaFlowAudioStudio?.importFile) {
+          scope.NovaFlowAudioStudio.open('audio');
+          await scope.NovaFlowAudioStudio.importFile(file);
         } else if (destination.id === 'multi_reference') {
-          switchMode(doc, destination.mode);
+          await openVideo(destination.mode);
           const limit = MULTI_LIMITS[item.kind] || 1;
-          if (placed.filter(entry => entry.id === destination.id && entry.kind === item.kind).length >= limit) throw new Error(`${item.kind === 'video' ? '参考视频' : item.kind === 'audio' ? '参考音频' : '参考图'}已满`);
           const media = scope.NovaFlowH3Media;
+          const boardId=scope.NovaFlowAiSequenceGeneration?.capture?.().boardId;
+          const current=media?.store?.get?.(boardId);
+          if (current?.filter(entry=>entry.kind===item.kind).length >= limit) throw new Error(`${item.kind === 'video' ? '参考视频' : item.kind === 'audio' ? '参考音频' : '参考图'}已满`);
           if (typeof media?.importFiles === 'function') {
             const imported = await media.importFiles(item.kind, [file], {representation:'object-url'});
             if (imported?.errors?.length) throw new Error(imported.errors.map(entry => entry.message).filter(Boolean).join('；') || `${item.name} 导入失败`);
@@ -315,15 +371,18 @@
             assignFiles(node.querySelector?.('input') || node, [file], false);
           }
         } else {
-          switchMode(doc, destination.mode);
-          if (placed.filter(entry => entry.id === destination.id).length >= 1) throw new Error(`${destination.label}已满`);
-          const node = slotNode(doc, destination.slots);
-          if (!node) throw new Error(`${destination.label}的参考位置还没准备好`);
-          if (node.getAttribute?.('data-novaflow-resource-occupied') === '1') throw new Error(`${destination.label}已有文件，请先清除`);
+          await openVideo(destination.mode);
+          const node = await ready(() => slotNode(doc, destination.slots), `${destination.label}尚未就绪，素材已保留，请重试`);
           assignFiles(node.querySelector?.('input') || node, [file], true);
           node.setAttribute?.('data-novaflow-resource-occupied', '1');
+          if(scope.NovaFlowAiSequenceGeneration?.optimizationContext) await ready(async()=>{
+            const context=await scope.NovaFlowAiSequenceGeneration.optimizationContext();
+            const key=destination.id==='last_frame'?'last_frame':'first_frame';
+            return context.resources.some(resource=>resource.key===key&&resource.occupied);
+          },'参考图片仍未导入完成，未提交生成');
         }
-        addResource(doc, file);
+        // Importing the same file into the general resource list triggers another
+        // React upload/render cycle. Generation references already own the file.
         placed.push({id:destination.id, kind:item.kind, name:item.name, module:destination.module, mode:destination.mode, uploadedName});
         return placed[placed.length - 1];
       }
@@ -343,7 +402,7 @@
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, planRoutes, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

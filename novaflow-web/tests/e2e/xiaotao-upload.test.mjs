@@ -44,7 +44,7 @@ function load() {
     console, TextEncoder, crypto: webcrypto, setTimeout, clearTimeout, setInterval, clearInterval,
     atob: (value) => Buffer.from(value, 'base64').toString('binary'),
     btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
-    File, Blob, Uint8Array,
+    File, Blob, Uint8Array, AbortController,
     URL: { createObjectURL(file) { return 'blob:test/' + (file?.name || 'file'); }, revokeObjectURL() {} },
     localStorage: { getItem: (key) => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) },
     __NovaFlowArtGenerate: runtime,
@@ -90,12 +90,12 @@ await test('validation accepts slot formats and rejects extension, MIME, and siz
   assert.equal(api.inspectUpload({ name: 'no-type.png', type: '', size: 10 }).ok, false);
 });
 
-await test('video and audio route to 多参, images follow intent, unclear intent asks', () => {
+await test('uploads follow the requested deliverable; analysis never asks for a slot', () => {
   const { api } = load();
   const video = { name: 'clip.mp4', kind: 'video' };
   const audio = { name: 'voice.wav', kind: 'audio' };
   const image = { name: 'still.png', kind: 'image' };
-  assert.equal(api.planRoutes('随便说一句', [video, audio]).place.map(item => item.destination.id).join(), 'multi_reference,multi_reference');
+  assert.equal(api.planRoutes('用这些素材制作多参视频', [video, audio]).place.map(item => item.destination.id).join(), 'multi_reference,multi_reference');
   assert.equal(api.planRoutes('放到图生视频', [image]).place[0].destination.id, 'image_video');
   assert.equal(api.planRoutes('这张做首尾帧的首帧', [image]).place[0].destination.id, 'first_frame');
   assert.equal(api.planRoutes('尾帧用这张', [image]).place[0].destination.id, 'last_frame');
@@ -105,13 +105,13 @@ await test('video and audio route to 多参, images follow intent, unclear inten
   assert.equal(api.planRoutes('这张是图生图参考', [image]).place[0].destination.id, 'img2img');
   const unclear = api.planRoutes('帮我看看', [image]);
   assert.equal(unclear.place.length, 0);
-  assert.equal(unclear.ask.length, 1);
+  assert.equal(unclear.ask.length, 0);
   assert.equal(JSON.stringify(api.choiceList().map(item => item.label)), JSON.stringify(['图生视频参考', '首尾帧首帧', '首尾帧尾帧', '多参视频参考', '图生图参考图']));
-  assert.equal(api.planRoutes('图生视频还是图生图？', [image]).ask.length, 1);
+  assert.equal(api.planRoutes('图生视频还是图生图？', [image]).ask.length, 0);
   const rejected = api.planRoutes('放到图生视频', [audio]);
   assert.equal(rejected.place.length, 0);
   assert.match(rejected.reject[0].message, /多参视频/);
-  assert.equal(api.planRoutes('这个视频能放图生视频吗？', [video]).place[0].destination.id, 'multi_reference');
+  assert.equal(api.planRoutes('这个视频能放图生视频吗？', [video]).place.length, 0);
 });
 
 function controllerFor(env, host) {
@@ -137,7 +137,7 @@ await test('staging an upload does not send a message or touch 绘图, and remov
   assert.equal(controller.state.staged.length, 1);
 });
 
-await test('send routes files into the matching slots and the resource list', async () => {
+await test('send prepares native references once without a duplicate resource upload', async () => {
   const env = load();
   const doc = documentFor();
   env.sandbox.document = doc;
@@ -161,11 +161,11 @@ await test('send routes files into the matching slots and the resource list', as
   assert.equal(doc.primary.includes('动画'), true);
   assert.equal(doc.slots.get('首帧').querySelector('input').__novaflowFiles[0].name, 'still.png');
   assert.equal(doc.slots.get('尾帧').querySelector('input').__novaflowFiles[0].name, 'end.png');
-  assert.equal(doc.resource.__novaflowFiles.length, 4);
+  assert.equal(doc.resource.__novaflowFiles.length, 0);
   assert.equal(env.refs.length, 0);
 });
 
-await test('an image follows 图生图 and 图生视频, and an unclear image waits for a chip', async () => {
+await test('an image follows generation intent while an analysis attachment remains in chat', async () => {
   const env = load();
   const doc = documentFor();
   env.sandbox.document = doc;
@@ -186,12 +186,8 @@ await test('an image follows 图生图 and 图生视频, and an unclear image wa
   const placedBefore = host.placed.length;
   assert.equal(await controller.send('这张怎么用'), true);
   assert.equal(host.placed.length, placedBefore);
-  const ask = controller.state.messages.findLast(item => item.choices);
-  assert.match(ask.content, /maybe.png/);
-  assert.equal(ask.choices.length, 5);
-  assert.equal(await controller.chooseUploadDestination('multi_reference', ask.pendingId), true);
-  assert.equal(host.placed.at(-1).id, 'multi_reference');
-  assert.equal(env.imports.at(-1).names[0], 'maybe.png');
+  assert.equal(controller.state.messages.some(item=>item.choices),false);
+  assert.equal(env.imports.length,0);
 });
 
 async function flushFrames(frames, pending) {
@@ -484,7 +480,7 @@ await test('the web page opens a file input, stages until send, then uses the wo
   assert.equal(uploads[0].size, magic('png').byteLength);
   assert.equal(uploads[1].size, magic('mp4').byteLength);
   assert.equal(JSON.stringify(host.placed.map(item => item.id)), JSON.stringify(['multi_reference', 'multi_reference']));
-  assert.equal(doc.resource.__novaflowFiles.map(item => item.name).join(), 'web.png,clip.mp4');
+  assert.equal(doc.resource.__novaflowFiles.length, 0);
   assert.equal(JSON.stringify(chats[0].uploads), JSON.stringify([{ kind: 'image', name: 'web.png' }, { kind: 'video', name: 'clip.mp4' }]));
   assert.equal(chats[0].provider, 'api');
 
@@ -496,11 +492,9 @@ await test('the web page opens a file input, stages until send, then uses the wo
 
   await controller.stageUploads([new File([magic('png')], 'maybe.png', { type: 'image/png' })]);
   assert.equal(await controller.send('这张怎么用'), true);
-  const ask = controller.state.messages.findLast(item => item.choices);
-  assert.equal(ask.choices.length, 5);
-  assert.equal(await controller.chooseUploadDestination('image_video', ask.pendingId), true);
-  assert.equal(uploads.at(-1).name, 'maybe.png');
-  assert.equal(host.placed.at(-1).id, 'image_video');
+  assert.equal(controller.state.messages.some(item=>item.choices),false);
+  assert.equal(chats.at(-1).images.some(image=>image.name==='maybe.png'),true);
+  assert.notEqual(uploads.at(-1).name,'maybe.png');
 });
 
 function magic(kind) {
@@ -523,10 +517,11 @@ await test('the worker rejects a file the client extension check would allow, an
   assert.equal(controller.setProvider('api'), true);
   const fake = new File([magic('gif')], 'fake.png', { type: 'image/png' });
   await controller.stageUploads([fake]);
-  assert.equal(await controller.send('放到图生图'), true);
+  assert.equal(await controller.send('放到图生图'), false);
+  assert.equal(controller.state.staged.length, 1);
   assert.equal(uploads.length, 0);
   assert.equal(host.placed.length, 0);
-  assert.match(controller.state.messages.map(item => item.content).join('\n'), /fake.png 的文件内容与 PNG 不符/);
+  assert.match(controller.state.error, /fake.png 的文件内容与 PNG 不符/);
   const shared = inspectWorkerUpload({ name: 'fake.png', mimeType: 'image/png', bytes: magic('gif'), slot: 'img2img' });
   assert.equal(shared.ok, false);
   assert.equal(shared.message, env.api.inspectWorkerUpload({ name: 'fake.png', mimeType: 'image/png', bytes: magic('gif'), slot: 'img2img' }).message);
@@ -629,5 +624,48 @@ await test('the worker gateway rejects a slot upload whose bytes do not match', 
   }
 });
 
+await test('natural background and loop requests choose their own references without slot questions',()=>{
+ const {api}=load(),image={name:'1.png',kind:'image'};
+ const background=api.planRoutes('换一个背景',[image]);assert.equal(background.ask.length,0);assert.equal(background.place[0].destination.id,'img2img');
+ const loop=api.planRoutes('做一个2秒的循环动画',[image]);assert.equal(loop.ask.length,0);assert.deepEqual(Array.from(loop.place,p=>p.destination.id),['first_frame','last_frame']);assert.equal(loop.place[0].file,loop.place[1].file);
+ assert.equal(api.inferTask('做一个2秒的循环动画',[image]).seconds,2);
+ assert.equal(api.inferTask('换一个背景',[image]).surface,'image');
+ assert.equal(api.inferTask('让它动起来',[image]).surface,'video');
+ assert.equal(api.planRoutes('帮我看看这张图',[image]).place.length,0);
+});
+await test('reference placement waits for React and decoded image readiness without blocking timers',async()=>{
+ const env=load(),doc=documentFor();env.sandbox.document=doc;
+ let opened=0,mode='text_video',occupied=false,beats=0;
+ const query=doc.querySelector.bind(doc);let mounted=false;
+ doc.querySelector=selector=>selector.includes('首帧')&&!mounted?null:query(selector);
+ const input=doc.slots.get('首帧').querySelector('input');input.onchange=()=>setTimeout(()=>{occupied=true;},35);
+ const buttons=doc.querySelectorAll('[data-novaflow-ai-generation-mode]');for(const b of buttons)b.click=()=>setTimeout(()=>{mode=b.getAttribute('data-novaflow-ai-generation-mode');mounted=true;},25);
+ env.sandbox.NovaFlowAudioStudio={open(sub){assert.equal(sub,'video');opened++;}};
+ env.sandbox.NovaFlowAiSequenceGeneration={capture:()=>({genType:mode}),optimizationContext:async()=>({resources:[{key:'first_frame',occupied}]})};
+ const clock=setInterval(()=>beats++,5);try{await env.api.createUploadHost(env.sandbox).place({destination:env.api.destinationById('first_frame'),file:file('1.png','image/png'),kind:'image',name:'1.png',mimeType:'image/png'});}finally{clearInterval(clock);}
+ assert.equal(opened,1);assert.equal(occupied,true);assert.ok(beats>=5);assert.equal(doc.resource.__novaflowFiles.length,0);
+});
+await test('drawing preparation waits for native reference-size autofill before snapshotting',async()=>{
+  const env=load();env.sandbox.document=documentFor();let ready=false;
+  const setReference=env.runtime.setReference.bind(env.runtime);
+  env.runtime.setReference=(slot,ref)=>{setReference(slot,ref);env.runtime.state.referenceSizeFillPending='blob:pending';};
+  env.runtime.render=()=>setTimeout(()=>{env.runtime.state.width=480;env.runtime.state.height=864;env.runtime.state.referenceSizeFillPending='';ready=true;},45);
+  await env.api.createUploadHost(env.sandbox).place({destination:env.api.destinationById('img2img'),file:file('1.png','image/png'),kind:'image',name:'1.png',mimeType:'image/png'});
+  assert.equal(ready,true);assert.equal(env.runtime.state.width,480);assert.equal(env.runtime.state.height,864);
+});
+await test('global loop routing prepares both references before asking the media model',async()=>{
+  const env=load(),placed=[],requests=[];
+  env.sandbox.NovaFlowMediaAgent={capture:()=>({artContext:{surface:'media'},images:[]}),discussionOnly:()=>false,execute:async()=>({results:[{action:'generate_video',resources:[{id:'new',name:'generated.mp4'}]}]})};
+  const controller=env.agent.createController({bridge:{},uploadHost:{async place(item){await new Promise(r=>setTimeout(r,5));placed.push(item.destination.id);}},api:()=>({artAgentChat:async request=>{requests.push(request);assert.deepEqual(placed,['first_frame','last_frame']);return {ok:true,data:{reply:'将生成循环动画。',resourcesReleased:true,generationReady:true,analysisBackend:'strata',mediaPlan:{operations:[]}}};}})});
+  await controller.stageUploads([file('1.png','image/png')]);assert.equal(await controller.send('做一个2秒的循环动画'),true);
+  assert.equal(requests[0].mode,'media');assert.equal(controller.state.messages.some(m=>m.choices),false);assert.equal(controller.state.mediaReceipt.results[0].resources[0].id,'new');
+});
+await test('a semantic clarification pauses execution and its answer continues the original video task',async()=>{
+  const env=load(),requests=[];let executions=0;
+  env.sandbox.NovaFlowMediaAgent={capture:()=>({artContext:{surface:'media'},images:[]}),discussionOnly:()=>false,execute:async()=>{executions++;return {results:[{action:'generate_video',resources:[{id:'new-video',name:'new.mp4'}]}]};}};
+  const controller=env.agent.createController({bridge:{},api:()=>({artAgentChat:async request=>{requests.push(request);return {ok:true,data:requests.length===1?{reply:'你希望小球怎样运动？',needsInput:true}:{reply:'将制作两秒循环。',resourcesReleased:true,generationReady:true,analysisBackend:'strata',mediaPlan:{operations:[]}}};}})});
+  assert.equal(await controller.send('做一个2秒的循环动画'),true);assert.equal(executions,0);assert.equal(controller.state.status,'等待补充需求');
+  assert.equal(await controller.send('让小球原地转一圈'),true);assert.equal(executions,1);assert.equal(requests[1].mode,'media');assert.match(requests[1].message,/2秒/);assert.match(requests[1].message,/原地转一圈/);
+});
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

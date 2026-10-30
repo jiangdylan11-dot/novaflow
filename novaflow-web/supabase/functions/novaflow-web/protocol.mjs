@@ -191,7 +191,7 @@ export const MATTING_TASK_TYPE = 'video_matting';
 // one uploaded JSON file and the reply comes back as one output file.
 export const PROMPT_ASSISTANT_TASK_TYPE = 'prompt_assistant';
 export const PROMPT_ASSISTANT_MODEL_ID = 'prompt-assistant';
-export const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style']);
+export const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style', 'art-agent-chat']);
 export const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
 export const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
 

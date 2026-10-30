@@ -964,7 +964,7 @@ test('new conversation clears the entire conversation context while keeping draw
   assert.deepEqual(plain(controller.state.toolTrace),[]);assert.equal(controller.state.error,'');assert.equal(controller.state.applied,false);assert.equal(controller.state.provider,'api');assert.deepEqual(plain(e.state),drawing);assert.deepEqual(plain(e.refs),references);
 });
 
-test('mounted new-dialog button clears its draft and navigation closes only on a changed section, preserving chat and active requests',async()=>{
+test('mounted new-dialog button clears its draft and global navigation keeps the panel open, preserving chat and active requests',async()=>{
   const e=env({cfg:3}),events={},scheduled=[],intervals=[],nodes=[],attrs=node=>node.attributes;
   const matches=(node,selector)=>selector.split(',').some(part=>[...part.matchAll(/\[([^=\]]+)(?:="([^"]*)")?\]/g)].every(([,key,value])=>attrs(node).has(key)&&(value===undefined||attrs(node).get(key)===value)));
   class Node {
@@ -987,9 +987,9 @@ test('mounted new-dialog button clears its draft and navigation closes only on a
   e.api.mount();const panel=e.api.panel,controller=panel.controller,button=nodes.find(node=>node.tagName==='BUTTON'&&node.textContent==='新对话'),input=nodes.find(node=>node.getAttribute('aria-label')==='给智能助手的消息'),aside=nodes.find(node=>node.id==='nf-xiaotao-art-panel'),log=nodes.find(node=>node.getAttribute('role')==='log');
   assert(button);assert.equal(button.type,'button');await controller.send('旧消息');input.value='未发送的旧草稿';const before=plain(e.state);button.click();assert.equal(controller.state.messages.length,0);assert.equal(controller.state.history.length,0);assert.equal(controller.state.conversationId,'');assert.equal(log.textContent.includes('旧消息'),false);assert.equal(input.value,'');assert.equal(doc.activeElement,input);assert.deepEqual(plain(e.state),before);
   panel.open();const flush=()=>{for(const timer of scheduled.splice(0)){if(timer.delay===0)timer.fn();}};art.click();flush();assert.equal(aside.hidden,false);const random=doc.createElement('button');doc.body.append(random);random.click();flush();assert.equal(aside.hidden,false);
-  ui.click();flush();assert.equal(aside.hidden,true);panel.open();animation.click();flush();assert.equal(aside.hidden,true);assert.equal(doc.getElementById('nf-xiaotao-art-root').hidden,false);
+  ui.click();flush();assert.equal(aside.hidden,false);panel.open();animation.click();flush();assert.equal(aside.hidden,false);assert.equal(doc.getElementById('nf-xiaotao-art-root').hidden,false);
   panel.open();e.state.seed++;for(const timer of intervals)if(timer.delay===500)timer.fn();assert.equal(aside.hidden,false);
-  e.setSurface('editing');for(const timer of intervals)if(timer.delay===500)timer.fn();assert.equal(aside.hidden,true);
-  controller.setProvider('api');waiting=true;const pending=controller.send('正在等待的消息');await entered.promise;panel.open();const count=controller.state.messages.length;assert.equal(button.disabled,true);button.click();assert.equal(controller.state.messages.length,count);art.click();flush();assert.equal(aside.hidden,true);assert.equal(controller.state.pending,true);assert.equal(stops,0);assert.equal(controller.state.messages.length,count);
+  e.setSurface('editing');for(const timer of intervals)if(timer.delay===500)timer.fn();assert.equal(aside.hidden,false);
+  controller.setProvider('api');waiting=true;const pending=controller.send('正在等待的消息');await entered.promise;panel.open();const count=controller.state.messages.length;assert.equal(button.disabled,true);button.click();assert.equal(controller.state.messages.length,count);art.click();flush();assert.equal(aside.hidden,false);assert.equal(controller.state.pending,true);assert.equal(stops,0);assert.equal(controller.state.messages.length,count);
   gate.resolve({ok:true,data:{reply:'等待结束',history:[]}});await pending;assert.equal(button.disabled,false);button.click();assert.equal(controller.state.provider,'api');assert.equal(controller.state.messages.length,0);
 });

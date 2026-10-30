@@ -17,6 +17,14 @@ test('reference video/image/audio previews cannot become generated task outputs'
   assert.deepEqual(outputs.map(f=>f.filename),['generated.mp4','preview.png']);
   assert.equal(outputs[0].nodeId,'14');
 });
+test('the literal user loop-animation request is actionable on both client and planner',async()=>{
+  const ctx=vm.createContext({console});vm.runInContext(source,ctx);
+  assert.equal(ctx.NovaFlowMediaAgent.discussionOnly('做一个2秒的循环动画'),false);
+  assert.equal(ctx.NovaFlowMediaAgent.discussionOnly('只讨论一个2秒的循环动画方案，不要生成'),true);
+  const p=request();p.message='做一个2秒的循环动画';let input;const model=flash(p,[{action:'generate_video',target:'video',seconds:2,prompt:'A seamless loop.'}]),infer=model.inferConversation;
+  model.inferConversation=async value=>{input=value;return infer(value);};
+  const result=await createFlashArtAgent().run({payload:p,flash:model});assert.equal(input.toolChoice,'required');assert.equal(result.mediaPlan.operations[0].seconds,2);
+});
 function request() {
   const artContext={surface:'media',sub:'audio',audio:{selected:'clip-1',tracks:[]}};
   return {requestId:randomUUID(),mode:'media',provider:'local',message:'把选中的音频音量设成 50%',history:[],artContext,images:[],

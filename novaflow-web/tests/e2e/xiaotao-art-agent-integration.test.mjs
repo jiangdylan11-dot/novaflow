@@ -73,7 +73,7 @@ test('Agent stop only cancels its matching current request',async()=>{
   assert.equal(events.at(-1),'unload');assert.equal(assistant.busy,false);
 });
 
-test('browser Agent API stays local and cannot silently dispatch to cloud compute',async()=>{
+test('browser Agent API uses paired local transport or checks the selected compute pool',async()=>{
   const source=await readFile(new URL('../../renderer/novaflow-web-runtime.js',import.meta.url),'utf8');
   const requests=[],storage=new Map(),pair='a'.repeat(64);
   const make=local=>createDomSandbox({Response,Request,Blob,FormData,AbortSignal,Event,
@@ -89,7 +89,7 @@ test('browser Agent API stays local and cannot silently dispatch to cloud comput
   assert.equal(requests.at(-1).url,'http://127.0.0.1:4784/local/prompt-assistant/art-agent-stop');
   const shared=make(false);runInContext(source,createContext(shared));const before=requests.length;
   assert.equal((await shared.electronAPI.artAgentChat({message:'test'})).ok,false);
-  assert.equal((await shared.electronAPI.artAgentStop({})).ok,false);assert.equal(requests.length,before);
+  assert.equal((await shared.electronAPI.artAgentStop({})).ok,false);assert.equal(requests.length,before+1);assert.equal(requests.at(-1).url,'https://control.test/api/web/capabilities');
 });
 
 test('formal UI whole-source subject/background pair enters frozen v1 once instead of legacy analysis',async()=>{

@@ -54,7 +54,7 @@ test('drawing inherits the entire formal director body and records a distinct na
   assert.equal(FLASH_ART_AGENT_STYLE_VERSION,'agent-style-director-v1');
   assert.equal(FLASH_ART_AGENT_SYSTEM_SHA256,createHash('sha256').update(FLASH_ART_AGENT_SYSTEM).digest('hex'));
   assert.notEqual(FLASH_ART_AGENT_SYSTEM_SHA256,FLASH_ART_SYSTEM_SHA256);
-  for(const tool of FLASH_ART_AGENT_TOOLS.filter(t=>t.function.name!=='get_art_context')) {
+  for(const tool of FLASH_ART_AGENT_TOOLS.filter(t=>!['get_art_context','ask_art_question'].includes(t.function.name))) {
     assert.ok(tool.function.parameters.required.includes('sourceContent'));
     assert.ok(tool.function.parameters.required.includes('renderingClass'));
     assert.deepEqual(tool.function.parameters.properties.renderingClass.enum,['anime','animated-3d','painterly','other']);
@@ -69,7 +69,7 @@ test('real execution confirmation is validated separately without altering the s
   const request=payload(); request.executionApproval=approvalFor(request);
   const f=fixture(tool('generate_art_image',argsFor(request))),data=(await invoke(createFlashArtAgent(),f,request)).value;
   const observed=JSON.parse(f.calls[0].messages.at(-1).content[0].text);
-  assert.deepEqual(f.calls[0].tools,FLASH_ART_AGENT_TOOLS.filter(t=>t.function.name==='generate_art_image'));
+  assert.deepEqual(f.calls[0].tools,FLASH_ART_AGENT_TOOLS.filter(t=>['generate_art_image','ask_art_question'].includes(t.function.name)));
   assert.equal(f.calls[0].messages[0].content,FLASH_ART_AGENT_SYSTEM,'Tool narrowing must not rewrite the formal director or Agent wrapper');
   assert.equal(data.proposal.action,'generate');assert.equal(data.proposal.prompt,rawPrompt);
   assert.deepEqual(observed.applicationExecutionApproval,{action:'generate',imageCount:1});
@@ -90,7 +90,7 @@ test('confirmed drawing rejects unavailable tool responses instead of silently p
     const request=payload();request.executionApproval=approvalFor(request);
     const f=fixture(tool(name,name==='get_art_context'?{}:argsFor(request)));
     await assert.rejects(invoke(createFlashArtAgent(),f,request),code('strata-invalid-response'));
-    assert.deepEqual(f.calls[0].tools.map(t=>t.function.name),['generate_art_image']);
+    assert.deepEqual(f.calls[0].tools.map(t=>t.function.name),['ask_art_question','generate_art_image']);
     assert.equal(f.calls.length,1);assert.deepEqual(f.events,['load','unload']);assert.equal(f.session.getStatus().generationReady,false);
   }
 });

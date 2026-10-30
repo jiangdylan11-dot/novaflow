@@ -2,6 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStrataPromptAssistant } from '../../worker/src/strata-prompt-assistant.mjs';
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
+test('pooled 小桃 owns its current worker slot and releases Flash before returning',async()=>{
+  let released=false;
+  const assistant=createStrataPromptAssistant({config:{expectedModel:{ids:['pool-flash']}},lifecycle:{load:async()=>{},unload:async()=>({released:true})},worker:{getState:()=>({currentTaskId:'own'})},comfyUrls:[],
+    sessionFactory:()=>({withSession:async callback=>{const value=await callback({identity:{id:'pool-flash'},inferConversation:async()=>({model:'pool-flash',requestId:'actual-pool-inference',finishReason:'stop',message:{role:'assistant',content:'已连接算力节点。'}})});released=true;return {value,identity:{id:'pool-flash'},timing:{},resourcesReleased:true};}}),legacyApi:{stop:async()=>{}}});
+  const result=await assistant.runForTask('own','artAgentChat',{requestId:'pooled-chat-request',mode:'chat',message:'你好',history:[]});
+  assert.equal(result.ok,true);assert.equal(result.data.reply,'已连接算力节点。');assert.equal(released,true);assert.equal(result.resourcesReleased,true);
+});
 
 test('two coordinators cannot release each other: busy failure and unused stop preserve active owner',async()=>{
   let activeToken=null;const loads=[],unloads=[],entered=deferred(),gate=deferred();

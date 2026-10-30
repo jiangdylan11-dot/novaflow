@@ -112,7 +112,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     analysisBackend:'strata',drawingBackend:'strata',otherBackend:'strata',supportsOriginalImages:true,supportsStructuredPromptIR:true,
     supportedSurfaces:['art','animation','video','ui-design','audio','aifx'],modelType:'swift15_qwen38_flash_next_iq2_xs',
     artDirectionProtocol:{version:'art-direction-v1',systemSHA256:FLASH_ART_SYSTEM_SHA256},
-    artAgent:{version:'xiaotao-art-agent-v3',localOnly:true,maxModelRounds:3,modes:['chat','drawing','creation','media'],tools:[...FLASH_ART_AGENT_TOOLS,...FLASH_MEDIA_AGENT_TOOLS].map(tool=>tool.function.name),supportsFeedbackImages:true,
+    artAgent:{version:'xiaotao-art-agent-v4',localOnly:false,maxModelRounds:3,modes:['chat','drawing','creation','media'],tools:[...FLASH_ART_AGENT_TOOLS,...FLASH_MEDIA_AGENT_TOOLS].map(tool=>tool.function.name),supportsFeedbackImages:true,
       styleProtocol:{version:FLASH_ART_AGENT_STYLE_VERSION,parentSystemSHA256:FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,systemSHA256:FLASH_ART_AGENT_SYSTEM_SHA256}},
     chatSession,modelLoaded:chatSession.modelLoaded,operation:operation?{...operation}:null,
     modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping || operation?.phase==='releasing' || chatSession.state==='releasing'?'释放中':operation?.phase==='loading'?'加载中':operation?.phase==='analyzing'?'分析中':lease?'推理中':chatSession.state==='warm'?'聊天模型已加载，待机中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
@@ -331,6 +331,9 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     // Pure CPU UI tools require no model or GPU lease.
     uiDesignCpu:payload=>legacyApi?.uiDesignCpu(payload) || Promise.resolve({ok:false,error:'缺少 UI CPU 编译器'}),
     runForTask(taskId,method,payload,context={}) {
+      // A pooled chat owns this worker task and must release its model before
+      // completing. Do not retain a local warm chat or read local account memory.
+      if(method==='artAgentChat')return run(method,payload,{...context,taskId:String(taskId || '')});
       if(!['optimizePrompt','reverseImagePrompt','describeArtStyle','uiDesignCpu','rewriteAudioPrompt'].includes(method))return Promise.resolve({ok:false,error:'未知本地 AI 操作',errorCode:'invalid-request'});
       if(method==='uiDesignCpu')return api.uiDesignCpu(payload);
       return execute(method,payload,{...context,taskId:String(taskId || '')});

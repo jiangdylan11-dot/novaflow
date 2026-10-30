@@ -52,7 +52,7 @@ export async function planFlashMedia({payload, flash, signal}) {
   const toolTrace=[], promptIds=[];
   const explicit=!(/[?？]|(?:能不能|可不可以|能否|是否|怎么|如何|为什么)|吗[。！!]?\s*$|(?:不要|不用|别|先不|暂不).{0,10}(?:生成|执行|剪辑|修改|导出|处理)|(?:只|仅).{0,6}(?:提示词|方案|建议|聊聊|讨论|解释)/.test(payload.message)
     || /(?:给我|提供|输出|写).{0,10}(?:提示词|方案|建议)/.test(payload.message) && !/并生成|直接生成|执行|写入|填入/.test(payload.message))
-    && /(?:请|帮我|给我|把|将|生成|制作|开始|执行|裁切|剪辑|分割|剪掉|截取|移动|变速|调|设置|导入|导出|复制|删除|移除|淡入|淡出|处理)|\b(?:generate|create|trim|split|move|set|export|import|delete|duplicate|fade|adjust)\b/i.test(payload.message);
+    && /(?:请|帮我|给我|把|将|做|让|换|改|生成|制作|开始|执行|裁切|剪辑|分割|剪掉|截取|移动|变速|调|设置|导入|导出|复制|删除|移除|淡入|淡出|处理)|\b(?:generate|create|trim|split|move|set|export|import|delete|duplicate|fade|adjust)\b/i.test(payload.message);
   for(let round=1;round<=2;round++) {
     if(signal?.aborted)throw new Error('音视分析已取消');
     const response=await flash.inferConversation({messages,...(explicit ? {tools:FLASH_MEDIA_AGENT_TOOLS.filter(t=>t.function.name!=='get_media_context'),toolChoice:'required'} : {}),maxTokens:3072,temperature:.2,reasoningEffort:'none',reasoningBudgetTokens:0,stage:'media-agent'});

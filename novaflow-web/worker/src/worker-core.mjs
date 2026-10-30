@@ -936,7 +936,8 @@ export function createWorker(options) {
   const PROMPT_ASSISTANT_METHODS = {
     'optimize-prompt': 'optimizePrompt',
     'reverse-image-prompt': 'reverseImagePrompt',
-    'describe-art-style': 'describeArtStyle'
+    'describe-art-style': 'describeArtStyle',
+    'art-agent-chat': 'artAgentChat'
   };
   async function runPromptAssistantTask(task) {
     const startedAt = Date.now();
