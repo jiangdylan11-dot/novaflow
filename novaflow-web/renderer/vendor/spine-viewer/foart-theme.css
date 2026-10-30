@@ -1,4 +1,4 @@
-/* Match the existing Foart Tools workspace, including its 220px parameter rail. */
+/* Match the PNG/JPG parameter rail; the host supplies its responsive width. */
 :root {
   color-scheme: dark;
   --app-bg: #202020;
@@ -25,7 +25,7 @@ body { min-width: 320px; font-size: 12px; overflow: hidden; }
 .app {
   height: 100vh;
   min-height: 0;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: var(--nf-tools-params-width, 218px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 10px;
   overflow: hidden;
@@ -35,8 +35,8 @@ body { min-width: 320px; font-size: 12px; overflow: hidden; }
   height: 100vh;
   min-height: 0;
   gap: 16px;
-  padding: 16px 14px;
-  border: 0;
+  padding: 16px 13px;
+  border: 1px solid transparent;
   border-radius: 14px;
   scrollbar-width: thin;
   scrollbar-color: #3a3a3a transparent;

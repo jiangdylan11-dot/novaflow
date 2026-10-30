@@ -34297,6 +34297,7 @@
         selector: '[data-novaflow-tools-left-panel]',
         style: () => {
           const width = toolsParamsWidth();
+          setStylePropertyIfChanged(document.documentElement, "--nf-tools-params-width", `${width}px`);
           return {
             width: `${width}px`, "min-width": `${width}px`, "max-width": `${width}px`, flex: `0 0 ${width}px`,
             height: "auto", "align-self": "stretch", padding: "16px 13px", margin: "0",

@@ -46,6 +46,9 @@
     }
     const rect = workspace.getBoundingClientRect()
     Object.assign(root.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
+    const panelWidth = document.querySelector('[data-novaflow-tools-left-panel]')?.getBoundingClientRect().width
+    const viewerDocument = frame?.contentDocument?.documentElement
+    if (panelWidth > 0 && viewerDocument) viewerDocument.style.setProperty('--nf-tools-params-width', `${panelWidth}px`)
     root.style.visibility = frameReady ? 'visible' : 'hidden'
   }
 

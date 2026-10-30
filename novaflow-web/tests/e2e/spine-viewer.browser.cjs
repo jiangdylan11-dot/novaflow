@@ -36,21 +36,30 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await page.getByRole('button', { name: '工具', exact: true }).click();
     const entry = page.locator('[data-novaflow-spine-viewer-entry="1"]');
     await entry.waitFor();
-    for (const [label, selector] of [
-      ['PNG 去黑', '.nf-prb-upload'], ['MP4 压缩', '.nf-mp4-upload'],
-      ['视频格式转换', '.nf-vfc-upload'], ['SPINE 图集转换', '.nf-saw-upload'],
-    ]) {
-      await page.getByRole('button', { name: label, exact: true }).click();
-      const upload = page.locator(selector);
-      await upload.waitFor({ state: 'visible' });
-      assert.deepEqual(await upload.evaluate((node) => {
-        const style = getComputedStyle(node);
-        return [style.borderTopStyle, style.borderTopWidth, style.borderTopColor];
-      }), ['dashed', '1px', 'rgb(75, 75, 75)'], `${label} must retain its upload border`);
-      await upload.hover();
-      assert.equal(await upload.evaluate((node) => getComputedStyle(node).borderTopStyle), 'dashed');
-      assert.equal(await upload.evaluate((node) => window.FoartButtonTheme.isButton(node)), false);
-      await page.mouse.move(700, 20);
+    for (const [viewportWidth, panelWidth] of [[1000, 174], [1280, 194], [1440, 218]]) {
+      await page.setViewportSize({ width: viewportWidth, height: 1000 });
+      for (const [label, panelSelector, uploadSelector] of [
+        ['PNG 压缩', '[data-novaflow-tools-left-panel]', '[data-novaflow-tools-upload-zone]'],
+        ['JPG 压缩', '[data-novaflow-tools-left-panel]', '[data-novaflow-tools-upload-zone]'],
+        ['PNG 去黑', '.nf-prb-side', '.nf-prb-upload'],
+        ['MP4 压缩', '.nf-mp4-side', '.nf-mp4-upload'],
+        ['视频格式转换', '.nf-vfc-side', '.nf-vfc-upload'],
+        ['SPINE 图集转换', '.nf-saw-side', '.nf-saw-upload'],
+      ]) {
+        await page.getByRole('button', { name: label, exact: true }).click();
+        const upload = page.locator(uploadSelector);
+        await upload.waitFor({ state: 'visible' });
+        await page.waitForFunction(({ selector, width }) => document.querySelector(selector)?.getBoundingClientRect().width === width, { selector: panelSelector, width: panelWidth });
+        assert.equal(await upload.evaluate((node) => node.getBoundingClientRect().width), panelWidth - 28, `${label} upload must match PNG/JPG content width`);
+        assert.deepEqual(await upload.evaluate((node) => {
+          const style = getComputedStyle(node);
+          return [style.borderTopStyle, style.borderTopWidth, style.borderTopColor];
+        }), ['dashed', '1px', 'rgb(75, 75, 75)'], `${label} must retain its upload border`);
+        await upload.hover();
+        assert.equal(await upload.evaluate((node) => getComputedStyle(node).borderTopStyle), 'dashed');
+        assert.equal(await upload.evaluate((node) => window.FoartButtonTheme.isButton(node)), false);
+        await page.mouse.move(700, 20);
+      }
     }
     await page.getByRole('button', { name: 'PNG 压缩', exact: true }).click();
     let releaseViewerStyle, sawViewerStyle;
@@ -69,6 +78,12 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await page.locator('#novaflow-spine-viewer-root[data-viewer-ready="1"] iframe').waitFor({ state: 'visible' });
     assert.equal(await page.locator('[data-novaflow-tools-workspace]').evaluate((node) => getComputedStyle(node).visibility), 'hidden');
     await page.unroute('**/vendor/spine-viewer/foart-theme.css*');
+    for (const [viewportWidth, panelWidth] of [[1000, 174], [1280, 194], [1440, 218]]) {
+      await page.setViewportSize({ width: viewportWidth, height: 1000 });
+      await frame.waitForFunction((width) => document.querySelector('.sidebar').getBoundingClientRect().width === width, panelWidth);
+      assert.equal(await frame.locator('#dropZone').evaluate((node) => node.getBoundingClientRect().width), panelWidth - 28);
+    }
+
     assert.equal(await frame.locator('#blendModeSelect').count(), 0);
     assert.equal(await frame.locator('#projectSelect').count(), 0);
     assert.equal(await frame.locator('#removeAnimationButton').count(), 0);
@@ -265,9 +280,10 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
       return centers.every((center, index) => Math.abs(center.x - centers[index % columns].x) < .05 && Math.abs(center.y - centers[Math.floor(index / columns) * columns].y) < .05);
     }), 'different sized animations must share their column and row centers');
     assert.deepEqual(await layerOrder(), originalOrder);
-    const backgroundChooserEvent = page.waitForEvent('filechooser');
-    await frame.getByRole('button', { name: '上传背景', exact: true }).click();
-    const backgroundChooser = await backgroundChooserEvent;
+    const [backgroundChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      frame.getByRole('button', { name: '上传背景', exact: true }).click({ timeout: 10000 }),
+    ]);
     const background = fixtureFiles.find((file) => file.name.endsWith('.png'));
     await backgroundChooser.setFiles({ name: background.name, mimeType: 'image/png', buffer: Buffer.from(background.bytes) });
     await frame.waitForFunction(() => !elements.backgroundImage.hidden && !elements.clearBackgroundButton.disabled);

@@ -1482,7 +1482,7 @@ html body #novaflow-png-remove-black-root {
   background: transparent !important;
   padding: 0 !important;
   gap: 10px !important;
-  grid-template-columns: 218px minmax(0, 1fr) !important;
+  grid-template-columns: var(--nf-tools-params-width, 218px) minmax(0, 1fr) !important;
 }
 html body #novaflow-png-remove-black-root .nf-prb-side {
   background: #161616 !important;
@@ -1650,7 +1650,7 @@ html body #novaflow-video-format-convert-root {
   background: transparent !important;
   padding: 0 !important;
   gap: 10px !important;
-  grid-template-columns: 218px minmax(0, 1fr) !important;
+  grid-template-columns: var(--nf-tools-params-width, 218px) minmax(0, 1fr) !important;
 }
 html body #novaflow-video-format-convert-root .nf-vfc-side {
   background: #161616 !important;
@@ -1818,7 +1818,7 @@ html body #novaflow-spine-atlas-webp-root {
   background: transparent !important;
   padding: 0 !important;
   gap: 10px !important;
-  grid-template-columns: 218px minmax(0, 1fr) !important;
+  grid-template-columns: var(--nf-tools-params-width, 218px) minmax(0, 1fr) !important;
 }
 html body #novaflow-spine-atlas-webp-root .nf-saw-side {
   background: #161616 !important;
@@ -1989,7 +1989,7 @@ html body #novaflow-mp4-compress-root {
   background: transparent !important;
   padding: 0 !important;
   gap: 10px !important;
-  grid-template-columns: 218px minmax(0, 1fr) !important;
+  grid-template-columns: var(--nf-tools-params-width, 218px) minmax(0, 1fr) !important;
 }
 html body #novaflow-mp4-compress-root .nf-mp4-side {
   background: #161616 !important;
