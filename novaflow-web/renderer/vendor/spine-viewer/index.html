@@ -6,7 +6,7 @@
     <title>Spine 工程查看器</title>
     <link id="spine-runtime-style" rel="stylesheet" href="" />
     <link id="app-style" rel="stylesheet" href="styles.css?v=20260915-blend-backdrop" />
-    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-3" />
+    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-4" />
   </head>
   <body>
     <div class="app">
@@ -26,7 +26,6 @@
               <option value="">画布为空</option>
             </select>
           </label>
-          <button id="removeAnimationButton" class="soft-button danger-button" type="button" disabled>移除当前</button>
           <div id="detectedVersion" class="hint">未检测到版本</div>
           <div id="statusText" class="status">等待文件</div>
         </section>
@@ -71,7 +70,6 @@
           <div class="canvas-toolbar" role="toolbar" aria-label="画布显示">
             <button id="actualSizeButton" class="actual-size-button" type="button" disabled title="恢复 100% 原始尺寸">100%</button>
             <button id="autoFitButton" type="button" disabled title="完整显示画布中的工程和背景">自动适配</button>
-            <button id="premultiplyToggle" type="button" aria-pressed="true" disabled title="切换当前动画的预乘 Alpha">预乘 Alpha</button>
           </div>
           <div class="canvas-actions" role="toolbar" aria-label="画布操作">
             <button id="resetTransformButton" type="button" disabled title="重置位置" aria-label="重置位置">
@@ -82,6 +80,9 @@
             </button>
             <button id="clearBackgroundButton" type="button" disabled title="清除背景" aria-label="清除背景">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M21 15V5a2 2 0 0 0-2-2H9M3 9v10a2 2 0 0 0 2 2h14M5 21l5-5m4-4 2-2 5 5"/></svg>
+            </button>
+            <button id="premultiplyToggle" type="button" aria-pressed="true" disabled title="预乘 Alpha" aria-label="预乘 Alpha">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="2"/><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M9 9h6v6H9z" fill="currentColor" fill-opacity=".35"/></svg>
             </button>
             <input id="backgroundPicker" class="visually-hidden" type="file" accept="image/*" />
             <output id="backgroundHint" class="visually-hidden">未设置背景</output>
@@ -101,6 +102,6 @@
 
     <script src="vendor/novaflow-version-convert.js?v=3.7-roundtrip-1"></script>
     <script src="vendor/novaflow-skel-import.js?v=3.7-roundtrip-1"></script>
-    <script src="app.js?v=20261030-viewer-interactions-2"></script>
+    <script src="app.js?v=20261030-viewer-interactions-3"></script>
   </body>
 </html>

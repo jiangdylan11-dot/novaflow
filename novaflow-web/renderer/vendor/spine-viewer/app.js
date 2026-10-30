@@ -40,7 +40,6 @@ const elements = {
   filePicker: document.getElementById("filePicker"),
   projectSelect: document.getElementById("projectSelect"),
   resetTransformButton: document.getElementById("resetTransformButton"),
-  removeAnimationButton: document.getElementById("removeAnimationButton"),
   detectedVersion: document.getElementById("detectedVersion"),
   layerList: document.getElementById("layerList"),
   pickBackgroundButton: document.getElementById("pickBackgroundButton"),
@@ -450,6 +449,30 @@ function resetSceneTransform(item = getActiveSceneItem()) {
   applySceneItemTransform(item);
 }
 
+function resetSceneLayout() {
+  if (state.sceneItems.length <= 1) { resetSceneTransform(); return; }
+  const mount = elements.playerMount.getBoundingClientRect();
+  const items = state.sceneItems.slice().sort((a, b) => a.order - b.order);
+  const columns = Math.min(items.length, Math.ceil(Math.sqrt(items.length * mount.width / Math.max(1, mount.height))));
+  const rows = Math.ceil(items.length / columns);
+  const padding = 32, gap = 24;
+  const cellWidth = (mount.width - padding * 2 - gap * (columns - 1)) / columns;
+  const cellHeight = (mount.height - padding * 2 - gap * (rows - 1)) / rows;
+  if (cellWidth <= 0 || cellHeight <= 0) return;
+  const sizes = items.map((item) => captureBaseSceneSize(captureBasePreviewViewport(false, item), false, item));
+  const width = Math.max(1, ...sizes.map((size) => size?.width || 1));
+  const height = Math.max(1, ...sizes.map((size) => size?.height || 1));
+  // One shared zoom keeps the relative sizes of different projects intact.
+  setPreviewZoom(Math.min(1, cellWidth / width, cellHeight / height));
+  items.forEach((item, index) => {
+    const shift = sceneAnchorShift(item);
+    item.x = -mount.width / 2 + padding + (index % columns) * (cellWidth + gap) + cellWidth / 2 - shift.x;
+    item.y = -mount.height / 2 + padding + Math.floor(index / columns) * (cellHeight + gap) + cellHeight / 2 - shift.y;
+    item.positionTouched = true;
+    applySceneItemTransform(item);
+  });
+}
+
 function handlePreviewWheel(event) {
   const sceneElement = event.target.closest && event.target.closest(".spine-scene");
   const item = sceneElement ? getSceneItemById(sceneElement.dataset.sceneId) : getActiveSceneItem();
@@ -749,7 +772,6 @@ function fillProjectSelect() {
     elements.projectSelect.appendChild(option);
     elements.projectSelect.disabled = true;
     elements.resetTransformButton.disabled = true;
-    elements.removeAnimationButton.disabled = true;
     return;
   }
 
@@ -764,7 +786,7 @@ function fillProjectSelect() {
     });
   elements.projectSelect.disabled = false;
   elements.resetTransformButton.disabled = false;
-  elements.removeAnimationButton.disabled = false;
+  elements.resetTransformButton.title = state.sceneItems.length > 1 ? '自动排列全部动画' : '重置位置';
   elements.projectSelect.value = state.activeSceneId || state.sceneItems[0].id;
 }
 
@@ -813,7 +835,14 @@ function renderLayerList() {
     moveDown.setAttribute("aria-label", "下移");
     moveDown.disabled = index === layers.length - 1;
 
-    row.append(name, moveUp, moveDown);
+    const remove = document.createElement("button");
+    remove.className = "layer-delete-button";
+    remove.type = "button";
+    remove.dataset.action = "remove";
+    remove.textContent = "×";
+    remove.title = `删除 ${item.project.label}`;
+    remove.setAttribute("aria-label", remove.title);
+    row.append(name, moveUp, moveDown, remove);
     row.draggable = true;
     row.title = "拖动调整层级；+ 上移，- 下移";
     elements.layerList.appendChild(row);
@@ -2263,11 +2292,7 @@ function bindEvents() {
   });
   elements.filePicker.addEventListener("change", () => enqueueFiles(elements.filePicker.files));
   elements.projectSelect.addEventListener("change", loadSelectedProject);
-  elements.resetTransformButton.addEventListener("click", () => resetSceneTransform());
-  elements.removeAnimationButton.addEventListener("click", () => {
-    const item = getActiveSceneItem();
-    if (item) removeSceneItem(item.id);
-  });
+  elements.resetTransformButton.addEventListener("click", resetSceneLayout);
   elements.pickBackgroundButton.addEventListener("click", () => elements.backgroundPicker.click());
   elements.backgroundPicker.addEventListener("change", () => {
     setBackgroundFile(elements.backgroundPicker.files[0]);
@@ -2298,6 +2323,8 @@ function bindEvents() {
     if (button.dataset.action === "select") {
       selectSceneItem(sceneId);
       focusActiveLayer();
+    } else if (button.dataset.action === "remove") {
+      removeSceneItem(sceneId);
     } else {
       moveSceneLayer(sceneId, button.dataset.action);
     }

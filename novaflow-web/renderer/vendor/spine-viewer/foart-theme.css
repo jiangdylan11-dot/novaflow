@@ -72,10 +72,12 @@ select {
     #1b1b1b;
 }
 .layer-list { max-height: 156px; gap: 4px; }
-.layer-item { position: relative; gap: 4px; }
+.layer-item { position: relative; grid-template-columns: minmax(0, 1fr) repeat(3, 22px); gap: 3px; }
 .layer-name, .layer-order-button { min-height: 28px; font-size: 11px; }
 .layer-name { padding: 0 6px; cursor: grab; }
-.layer-order-button { width: 24px; padding: 0; font-size: 16px; }
+.layer-order-button, .layer-delete-button { width: 22px; min-height: 28px; padding: 0; font-size: 16px; }
+.layer-delete-button { color: #929292; }
+.layer-delete-button:hover:not(:disabled) { background: #302020; color: #df7777; }
 .layer-item.is-layer-dragging { opacity: .45; }
 .layer-item.drop-before::before, .layer-item.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: #1ea672; pointer-events: none; }
 .layer-item.drop-before::before { top: -2px; }
@@ -130,10 +132,11 @@ input[type='checkbox'] { width: 13px; height: 13px; }
 .canvas-toolbar { position: absolute; z-index: 6; top: 12px; right: 12px; display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid #303030; border-radius: 8px; background: #171717; }
 .canvas-toolbar button, .canvas-toolbar .actual-size-button { position: static; min-height: 28px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: #bdbdbd; font-size: 12px; font-weight: 400; box-shadow: none; }
 .canvas-toolbar button:hover:not(:disabled) { background: #272727; color: #eaeaea; }
-.canvas-toolbar button[aria-pressed='true'] { background: #1c4136; color: #6ee7ce; }
 .canvas-actions { position: absolute; z-index: 6; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #303030; border-radius: 8px; background: #171717; }
 .canvas-actions button { display: inline-flex; align-items: center; justify-content: center; width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 6px; border: 0; border-radius: 5px; background: transparent; color: #bdbdbd; }
 .canvas-actions button:hover:not(:disabled) { background: #272727; color: #eaeaea; }
+.canvas-actions button[aria-pressed='true'] { background: #1c4136; color: #6ee7ce; }
+.canvas-actions button[aria-pressed='true']:hover:not(:disabled) { background: #245442; color: #6ee7ce; }
 .canvas-actions svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .canvas-hint { background: #151515; border: 0; color: #929292; font-size: 11px; }
 .empty-state { color: #777; }
