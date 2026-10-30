@@ -1352,16 +1352,45 @@ function openComputeMachineSettings(worker) {
   const scope = document.createElement("select"); scope.id = "computeMachineSharingScope";
   for (const [value, label] of [["pool", "共享算力池（按账号权限分配）"], ["selected", "仅指定账号"]]) { const option = document.createElement("option"); option.value = value; option.textContent = label; scope.appendChild(option); }
   scope.value = worker.sharing_scope; field("分享范围", scope);
-  const selected = document.createElement("fieldset"); selected.id = "computeMachineAllowedUsers"; selected.style.cssText = "max-height:180px;overflow:auto;border:1px solid #ffffff20;padding:10px";
+  const selected = document.createElement("fieldset"); selected.id = "computeMachineAllowedUsers"; selected.style.cssText = "min-width:0;border:1px solid #ffffff20;padding:10px";
   const legend = document.createElement("legend"); legend.textContent = "可使用此机器的账号"; selected.appendChild(legend);
+  const search = document.createElement("input"); search.type = "search"; search.id = "computeMachineUserSearch"; search.placeholder = "搜索用户名"; search.style.cssText = "width:100%;box-sizing:border-box"; search.setAttribute("aria-label", "搜索可使用此机器的用户名"); selected.appendChild(search);
+  const selectionBar = document.createElement("div"); selectionBar.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 5px";
+  const selectAllLabel = document.createElement("label"); selectAllLabel.style.cssText = "display:flex;align-items:center;gap:8px";
+  const selectAll = document.createElement("input"); selectAll.type = "checkbox"; selectAll.id = "computeMachineUsersSelectAll"; selectAll.style.width = "auto";
+  const selectAllText = document.createElement("span"); selectAllLabel.append(selectAll, selectAllText);
+  const selectionCount = document.createElement("span"); selectionCount.className = "hint"; selectionCount.id = "computeMachineUsersCount"; selectionCount.setAttribute("role", "status");
+  selectionBar.append(selectAllLabel, selectionCount); selected.appendChild(selectionBar);
+  const accountList = document.createElement("div"); accountList.style.cssText = "max-height:160px;overflow:auto"; selected.appendChild(accountList);
+  const noMatches = document.createElement("p"); noMatches.className = "hint"; noMatches.textContent = "没有匹配的账号"; selected.appendChild(noMatches);
   const selectedIds = new Set(worker.allowed_user_ids || []);
   const accountRows = [...users];
   for (const id of selectedIds) if (!accountRows.some((user) => user.id === id)) accountRows.push({ id, display_name: "现有授权 · " + id });
-  for (const user of accountRows) {
+  const accountInputs = accountRows.map((user) => {
     const label = document.createElement("label"); label.style.cssText = "display:flex;gap:8px;align-items:center;padding:5px";
     const input = document.createElement("input"); input.type = "checkbox"; input.value = user.id; input.checked = selectedIds.has(user.id); input.style.width = "auto";
-    const text = document.createElement("span"); text.textContent = userAccountLabel(user) || user.display_name || user.id; label.append(input, text); selected.appendChild(label);
-  }
+    const text = document.createElement("span"); text.textContent = userAccountLabel(user) || user.display_name || user.id; label.append(input, text); accountList.appendChild(label);
+    const searchText = [text.textContent, user.account, user.username, user.display_name, user.email].filter(Boolean).join(" ").toLocaleLowerCase();
+    input.addEventListener("change", () => { if (input.checked) selectedIds.add(user.id); else selectedIds.delete(user.id); refreshAccounts(); });
+    return { label, input, searchText };
+  });
+  const refreshAccounts = () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    const visible = accountInputs.filter(({ label, searchText }) => { const matches = !query || searchText.includes(query); label.hidden = !matches; label.style.display = matches ? "flex" : "none"; return matches; });
+    const checkedCount = visible.filter(({ input }) => input.checked).length;
+    selectAllText.textContent = query ? "全选搜索结果" : "全选";
+    selectAll.checked = visible.length > 0 && checkedCount === visible.length;
+    selectAll.indeterminate = checkedCount > 0 && checkedCount < visible.length;
+    selectAll.disabled = visible.length === 0;
+    selectionCount.textContent = "已选 " + selectedIds.size + " / " + accountInputs.length + " 人" + (query ? " · 匹配 " + visible.length + " 人" : "");
+    noMatches.hidden = visible.length > 0;
+  };
+  search.addEventListener("input", refreshAccounts);
+  selectAll.addEventListener("change", () => {
+    for (const { label, input } of accountInputs) if (!label.hidden) { input.checked = selectAll.checked; if (input.checked) selectedIds.add(input.value); else selectedIds.delete(input.value); }
+    refreshAccounts();
+  });
+  refreshAccounts();
   body.appendChild(selected);
   const summary = document.createElement("p"); summary.className = "hint"; summary.id = "computeMachinePolicySummary"; body.appendChild(summary);
   const sync = () => {
@@ -1383,7 +1412,7 @@ function openComputeMachineSettings(worker) {
   document.addEventListener("keydown", onKey, true);
   panel.addEventListener("submit", async (event) => {
     event.preventDefault(); if (saving) return;
-    const ids = [...selected.querySelectorAll("input:checked")].map((input) => input.value);
+    const ids = [...selectedIds];
     if (!workerName.value.trim() || workerName.value.trim().length > 80) { status.textContent = "请输入 1–80 个字符的机器名称"; workerName.focus(); return; }
     if (!owner.value) { status.textContent = "请选择设备归属账号"; owner.focus(); return; }
     if (sharing.checked && scope.value === "selected" && !ids.length) { status.textContent = "请至少选择一个可使用算力的账号"; return; }

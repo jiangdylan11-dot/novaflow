@@ -1,7 +1,7 @@
 {
   "name": "novaflow-license-manager",
   "productName": "Foart 后台管理",
-  "version": "3.0.41",
+  "version": "3.0.42",
   "private": true,
   "description": "Foart Web administration application",
   "main": "admin-main.js",
