@@ -48,6 +48,8 @@ const elements = {
   backgroundPicker: document.getElementById("backgroundPicker"),
   backgroundHint: document.getElementById("backgroundHint"),
   animationSelect: document.getElementById("animationSelect"),
+  nextAnimationButton: document.getElementById("nextAnimationButton"),
+  carouselAnimationToggle: document.getElementById("carouselAnimationToggle"),
   skinSelect: document.getElementById("skinSelect"),
   speedRange: document.getElementById("speedRange"),
   speedValue: document.getElementById("speedValue"),
@@ -65,7 +67,6 @@ const elements = {
   emptyState: document.getElementById("emptyState"),
   actualSizeButton: document.getElementById("actualSizeButton"),
   autoFitButton: document.getElementById("autoFitButton"),
-  canvasHint: document.getElementById("canvasHint"),
 };
 
 const state = {
@@ -77,6 +78,8 @@ const state = {
   activeProjectIndex: -1,
   sceneItems: [],
   activeSceneId: "",
+  selectedSceneIds: new Set(),
+  selectionAnchorId: "",
   nextSceneId: 1,
   nextZIndex: 1,
   dismissedProjectKeys: new Set(),
@@ -92,6 +95,9 @@ const state = {
   progressFrame: 0,
   progressDragging: false,
   previewZoom: 1,
+  carouselEnabled: false,
+  canvasPanX: 0,
+  canvasPanY: 0,
   importQueue: Promise.resolve(),
   backgroundObjectUrl: "",
   backgroundLoadToken: 0,
@@ -193,6 +199,7 @@ function fillNameSelect(select, names, placeholder) {
 function setControlAvailability(enabled) {
   [
     elements.animationSelect,
+    elements.nextAnimationButton,
     elements.skinSelect,
     elements.speedRange,
     elements.mixRange,
@@ -301,6 +308,7 @@ function sceneAnchorShift(item) {
 
 function invalidateBaseSceneSize(item) {
   if (!item) return;
+  item.visibleBounds = null;
   item.baseSceneWidth = 0;
   item.baseSceneHeight = 0;
   item.baseRootOffsetX = 0;
@@ -345,10 +353,19 @@ function applyBackgroundPreviewZoom() {
   if (!state.backgroundNaturalWidth || !state.backgroundNaturalHeight || elements.backgroundImage.hidden) return;
   elements.backgroundImage.style.width = `${Math.round(state.backgroundNaturalWidth * state.previewZoom)}px`;
   elements.backgroundImage.style.height = `${Math.round(state.backgroundNaturalHeight * state.previewZoom)}px`;
+  elements.backgroundImage.style.marginLeft = `${state.canvasPanX}px`;
+  elements.backgroundImage.style.marginTop = `${state.canvasPanY}px`;
+}
+
+function syncCanvasGrid() {
+  elements.playerMount.style.backgroundSize = `${32 * state.previewZoom}px ${32 * state.previewZoom}px`;
+  elements.playerMount.style.backgroundPosition = `calc(50% + ${state.canvasPanX}px) calc(50% + ${state.canvasPanY}px)`;
 }
 
 function applyPreviewZoom(item = getActiveSceneItem()) {
   if (!item) return;
+  const previousBounds = item.visibleBounds;
+  const previousWidth = item.element?.offsetWidth, previousHeight = item.element?.offsetHeight;
   const baseViewport = captureBasePreviewViewport(false, item);
   const sceneSize = captureBaseSceneSize(baseViewport, false, item);
   if (sceneSize && item.element) {
@@ -368,10 +385,17 @@ function applyPreviewZoom(item = getActiveSceneItem()) {
   item.player.previousViewport = null;
   if (typeof item.player.drawFrame === "function") item.player.drawFrame(false);
   applySceneItemTransform(item);
+  if (state.selectedSceneIds.has(item.id)) {
+    if (previousBounds && previousWidth && previousHeight) {
+      const sx = item.element.offsetWidth / previousWidth, sy = item.element.offsetHeight / previousHeight;
+      showSceneOutline(item, { left: previousBounds.left * sx, top: previousBounds.top * sy, width: previousBounds.width * sx, height: previousBounds.height * sy });
+    } else updateSceneOutline(item);
+  }
 }
 
 function applyAllPreviewZoom() {
   elements.actualSizeButton.textContent = `${Math.round(state.previewZoom * 100)}%`;
+  syncCanvasGrid();
   elements.playerMount.dataset.previewZoom = state.previewZoom.toFixed(3);
   elements.playerMount.dataset.zoomMode = "global-layout";
   applyBackgroundPreviewZoom();
@@ -379,8 +403,14 @@ function applyAllPreviewZoom() {
   updateProjectHint();
 }
 
-function setPreviewZoom(nextZoom) {
-  state.previewZoom = clamp(nextZoom, MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM);
+function setPreviewZoom(nextZoom, { scaleLayout = true } = {}) {
+  const zoom = clamp(nextZoom, MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM);
+  if (scaleLayout) {
+    const factor = zoom / state.previewZoom;
+    state.sceneItems.forEach((item) => { item.x *= factor; item.y *= factor; });
+    state.canvasPanX *= factor; state.canvasPanY *= factor;
+  }
+  state.previewZoom = zoom;
   applyAllPreviewZoom();
 }
 
@@ -390,25 +420,30 @@ function resetPreviewZoomToActualSize() {
 
 function fitPreviewToCanvas() {
   const mount = elements.playerMount.getBoundingClientRect();
-  const rects = state.sceneItems.map((item) => item.element.getBoundingClientRect());
+  const rects = state.sceneItems.map((item) => {
+    const r = item.element.getBoundingClientRect(), b = getFixedArtworkBounds(item);
+    return { left: r.left + b.left, top: r.top + b.top, right: r.left + b.left + b.width, bottom: r.top + b.top + b.height };
+  });
   const hasBackground = !elements.backgroundImage.hidden;
   if (hasBackground) rects.push(elements.backgroundImage.getBoundingClientRect());
   if (!rects.length || mount.width <= 48 || mount.height <= 80) return;
   const left = Math.min(...rects.map((rect) => rect.left)), right = Math.max(...rects.map((rect) => rect.right));
   const top = Math.min(...rects.map((rect) => rect.top)), bottom = Math.max(...rects.map((rect) => rect.bottom));
   // A background remains centered. Without one, center the complete scene group.
-  const cx = hasBackground ? mount.left + mount.width / 2 : (left + right) / 2;
-  const cy = hasBackground ? mount.top + mount.height / 2 : (top + bottom) / 2;
+  const cx = hasBackground ? mount.left + mount.width / 2 + state.canvasPanX : (left + right) / 2;
+  const cy = hasBackground ? mount.top + mount.height / 2 + state.canvasPanY : (top + bottom) / 2;
   const width = Math.max(1, 2 * Math.max(cx - left, right - cx));
   const height = Math.max(1, 2 * Math.max(cy - top, bottom - cy));
   const nextZoom = clamp(state.previewZoom * Math.min((mount.width - 48) / width, (mount.height - 80) / height), MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM);
   const factor = nextZoom / state.previewZoom;
+  state.canvasPanX = (state.canvasPanX - (cx - mount.left - mount.width / 2)) * factor;
+  state.canvasPanY = (state.canvasPanY - (cy - mount.top - mount.height / 2)) * factor;
   state.sceneItems.forEach((item) => {
     item.x = (item.x - (cx - mount.left - mount.width / 2)) * factor;
     item.y = (item.y - (cy - mount.top - mount.height / 2)) * factor;
     item.positionTouched = true;
   });
-  setPreviewZoom(nextZoom);
+  setPreviewZoom(nextZoom, { scaleLayout: false });
 }
 
 function applySceneItemTransform(item) {
@@ -425,20 +460,23 @@ function clampScenePosition(item, x, y) {
   const width = item.element.offsetWidth;
   const height = item.element.offsetHeight;
   if (!mountRect.width || !mountRect.height || !width || !height) return { x, y };
-  const rootOffsetX = width / 2;
-  const rootOffsetY = height / 2;
   const shift = sceneAnchorShift(item);
+  const bounds = item.visibleBounds || { left: 0, top: 0, width, height };
+  const left = shift.x - width / 2 + bounds.left;
+  const top = shift.y - height / 2 + bounds.top;
+  const visibleX = Math.min(MIN_SCENE_VISIBLE_PX, bounds.width);
+  const visibleY = Math.min(MIN_SCENE_VISIBLE_PX, bounds.height);
   return {
     x: clamp(
-      x + shift.x,
-      -mountRect.width / 2 + MIN_SCENE_VISIBLE_PX + rootOffsetX - width,
-      mountRect.width / 2 - MIN_SCENE_VISIBLE_PX + rootOffsetX,
-    ) - shift.x,
+      x,
+      -mountRect.width / 2 + visibleX - left - bounds.width,
+      mountRect.width / 2 - visibleX - left,
+    ),
     y: clamp(
-      y + shift.y,
-      -mountRect.height / 2 + MIN_SCENE_VISIBLE_PX + rootOffsetY - height,
-      mountRect.height / 2 - MIN_SCENE_VISIBLE_PX + rootOffsetY,
-    ) - shift.y,
+      y,
+      -mountRect.height / 2 + visibleY - top - bounds.height,
+      mountRect.height / 2 - visibleY - top,
+    ),
   };
 }
 
@@ -451,34 +489,39 @@ function resetSceneTransform(item = getActiveSceneItem()) {
 }
 
 function resetSceneLayout() {
-  if (state.sceneItems.length <= 1) { resetSceneTransform(); return; }
+  if (state.sceneItems.length <= 1) { resetSceneTransform(getActiveSceneItem() || state.sceneItems[0]); return; }
   const mount = elements.playerMount.getBoundingClientRect();
-  const items = state.sceneItems.slice().sort((a, b) => a.order - b.order);
-  const columns = Math.min(items.length, Math.ceil(Math.sqrt(items.length * mount.width / Math.max(1, mount.height))));
-  const rows = Math.ceil(items.length / columns);
-  const padding = 32, gap = 24;
-  const cellWidth = (mount.width - padding * 2 - gap * (columns - 1)) / columns;
-  const cellHeight = (mount.height - padding * 2 - gap * (rows - 1)) / rows;
-  if (cellWidth <= 0 || cellHeight <= 0) return;
-  const sizes = items.map((item) => captureBaseSceneSize(captureBasePreviewViewport(false, item), false, item));
-  const width = Math.max(1, ...sizes.map((size) => size?.width || 1));
-  const height = Math.max(1, ...sizes.map((size) => size?.height || 1));
-  // One shared zoom keeps the relative sizes of different projects intact.
-  setPreviewZoom(Math.min(1, cellWidth / width, cellHeight / height));
-  items.forEach((item, index) => {
-    const shift = sceneAnchorShift(item);
-    item.x = -mount.width / 2 + padding + (index % columns) * (cellWidth + gap) + cellWidth / 2 - shift.x;
-    item.y = -mount.height / 2 + padding + Math.floor(index / columns) * (cellHeight + gap) + cellHeight / 2 - shift.y;
-    item.positionTouched = true;
-    applySceneItemTransform(item);
+  const oldZoom = state.previewZoom, gap = 24;
+  const entries = state.sceneItems.slice().sort((a, b) => a.order - b.order).map((item) => {
+    const bounds = getFixedArtworkBounds(item);
+    return { item, bounds, width: Math.max(16, bounds.width / oldZoom), height: Math.max(16, bounds.height / oldZoom) };
   });
+  const area = entries.reduce((sum, entry) => sum + (entry.width + gap) * (entry.height + gap), 0);
+  const targetWidth = Math.max(...entries.map((entry) => entry.width), Math.sqrt(area * mount.width / Math.max(1, mount.height)));
+  let x = 0, y = 0, rowHeight = 0, totalWidth = 0;
+  for (const entry of entries) {
+    if (x && x + entry.width > targetWidth) { y += rowHeight + gap; x = 0; rowHeight = 0; }
+    entry.x = x; entry.y = y;
+    x += entry.width + gap; rowHeight = Math.max(rowHeight, entry.height);
+    totalWidth = Math.max(totalWidth, x - gap);
+  }
+  const totalHeight = y + rowHeight;
+  const zoom = clamp(Math.min(1, (mount.width - 64) / Math.max(1, totalWidth), (mount.height - 80) / Math.max(1, totalHeight)), MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM);
+  state.canvasPanX = state.canvasPanY = 0;
+  setPreviewZoom(zoom, { scaleLayout: false });
+  for (const entry of entries) {
+    const item = entry.item, ratio = zoom / oldZoom, shift = sceneAnchorShift(item);
+    const bounds = Object.fromEntries(Object.entries(entry.bounds).map(([key, value]) => [key, value * ratio]));
+    item.x = (entry.x - totalWidth / 2) * zoom - shift.x + item.element.offsetWidth / 2 - bounds.left;
+    item.y = (entry.y - totalHeight / 2) * zoom - shift.y + item.element.offsetHeight / 2 - bounds.top;
+    item.positionTouched = true;
+    applySceneItemTransform(item); showSceneOutline(item, bounds);
+  }
 }
 
 function handlePreviewWheel(event) {
-  const sceneElement = event.target.closest && event.target.closest(".spine-scene");
-  const item = sceneElement ? getSceneItemById(sceneElement.dataset.sceneId) : getActiveSceneItem();
+  if (event.target.closest?.('button,input,[role="toolbar"]')) return;
   if (!state.sceneItems.length && !state.backgroundObjectUrl) return;
-  if (item && item.id !== state.activeSceneId) selectSceneItem(item.id);
   event.preventDefault();
   const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
   setPreviewZoom(state.previewZoom * factor);
@@ -598,8 +641,9 @@ function startProgressLoop() {
   stopProgressLoop();
   if (!viewerIsActive()) return;
   const tick = () => {
+    updateAnimationCarousels();
     updateProgressControls();
-    state.progressFrame = state.loaded ? requestAnimationFrame(tick) : 0;
+    state.progressFrame = state.loaded || (state.carouselEnabled && state.sceneItems.length > 0) ? requestAnimationFrame(tick) : 0;
   };
   tick();
 }
@@ -770,6 +814,7 @@ function syncResetControl() {
 }
 
 function renderLayerList() {
+  updateNextAnimationButton();
   elements.layerList.innerHTML = "";
   const layers = getLayerItemsTopFirst();
   const selectedIndex = layers.findIndex((item) => item.id === state.activeSceneId);
@@ -786,7 +831,7 @@ function renderLayerList() {
   layers.forEach((item) => {
     const row = document.createElement("div");
     row.className = "layer-item";
-    row.classList.toggle("is-active", item.id === state.activeSceneId);
+    row.classList.toggle("is-active", state.selectedSceneIds.has(item.id));
     row.dataset.sceneId = item.id;
 
     const name = document.createElement("button");
@@ -794,6 +839,7 @@ function renderLayerList() {
     name.type = "button";
     name.dataset.action = "select";
     name.textContent = item.project.label;
+    name.setAttribute('aria-pressed', String(state.selectedSceneIds.has(item.id)));
 
     const remove = document.createElement("button");
     remove.className = "layer-delete-button";
@@ -822,13 +868,14 @@ function moveSceneLayer(sceneId, direction) {
   target.zIndex = itemZ;
   item.element.style.zIndex = String(item.zIndex);
   target.element.style.zIndex = String(target.zIndex);
-  selectSceneItem(sceneId);
+  selectSceneItem(sceneId, { preserveSelection: true });
   focusActiveLayer();
 }
 
 function focusActiveLayer() {
-  elements.layerList.querySelector('.layer-item.is-active .layer-name')?.focus({ preventScroll: true });
-  elements.layerList.querySelector('.layer-item.is-active')?.scrollIntoView({ block: 'nearest' });
+  const row = elements.layerList.querySelector(`[data-scene-id="${state.activeSceneId}"]`);
+  row?.querySelector('.layer-name')?.focus({ preventScroll: true });
+  row?.scrollIntoView({ block: 'nearest' });
 }
 
 let layerDragId = "";
@@ -853,15 +900,21 @@ function handleLayerDrop(event) {
       layer.element.style.zIndex = String(layer.zIndex);
     });
     state.nextZIndex = reordered.length + 1;
-    selectSceneItem(item.id);
+    selectSceneItem(item.id, { preserveSelection: true });
     focusActiveLayer();
   }
   clearLayerDrag();
 }
 
 function handleLayerShortcut(event) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && viewerIsActive() && !event.target.closest?.('input,select,textarea,[contenteditable],[aria-haspopup="listbox"],[role="listbox"]')) {
+    event.preventDefault();
+    state.sceneItems.forEach((item) => state.selectedSceneIds.add(item.id));
+    if (state.sceneItems.length) selectSceneItem(state.activeSceneId || state.sceneItems[0].id, { preserveSelection: true });
+    return;
+  }
   if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || !viewerIsActive()) return;
-  if (event.target instanceof Element && event.target.closest('input,select,textarea,[contenteditable]:not([contenteditable="false"])')) return;
+  if (event.target instanceof Element && event.target.closest('input,select,textarea,[contenteditable]:not([contenteditable="false"]),[aria-haspopup="listbox"],[role="listbox"]')) return;
   const direction = ['+', '='].includes(event.key) || event.code === 'NumpadAdd' ? 'up'
     : event.key === '-' || event.code === 'NumpadSubtract' ? 'down' : '';
   if (!direction || !getActiveSceneItem()) return;
@@ -874,7 +927,7 @@ function updateProjectHint(item = getActiveSceneItem()) {
     elements.detectedVersion.textContent = "画布中没有动画";
     return;
   }
-  const countLabel = `画布共 ${state.sceneItems.length} 个动画`;
+  const countLabel = `共 ${state.sceneItems.length} 个动画`;
   const size = captureBaseSceneSize(captureBasePreviewViewport(false, item), false, item);
   const sizeLabel = size ? ` · 1x ${size.width} × ${size.height}px` : "";
   const autoMode = getAutoSceneCompositeMode(item);
@@ -1397,7 +1450,6 @@ function updateEmptyState() {
   elements.emptyState.hidden = hasPreviewContent;
   elements.actualSizeButton.disabled = !hasPreviewContent;
   elements.autoFitButton.disabled = !hasPreviewContent;
-  elements.canvasHint.hidden = !hasPreviewContent;
   syncSceneCompositeModes();
   renderLayerList();
   if (!hasScenes) {
@@ -1406,6 +1458,7 @@ function updateEmptyState() {
     state.activeSceneId = "";
     stopProgressLoop();
     resetPlaybackDisplay();
+    updateNextAnimationButton();
     setControlAvailability(false);
   }
 }
@@ -1419,14 +1472,16 @@ function removeSceneItem(sceneId, dismiss = true) {
   item.disposed = true;
   disposeRuntimePlayer(item.player);
   item.element.remove();
+  state.selectedSceneIds.delete(sceneId);
   state.sceneItems = state.sceneItems.filter((candidate) => candidate.id !== sceneId);
   syncLegacyRuntimeResizeHandler();
   if (dismiss) state.dismissedProjectKeys.add(item.project.key);
 
   if (state.activeSceneId === sceneId) {
-    const next = state.sceneItems.slice().sort((a, b) => b.zIndex - a.zIndex)[0] || null;
+    const layers = getLayerItemsTopFirst();
+    const next = layers.find((candidate) => state.selectedSceneIds.has(candidate.id)) || layers[0] || null;
     state.activeSceneId = "";
-    if (next) selectSceneItem(next.id);
+    if (next) selectSceneItem(next.id, { preserveSelection: true });
   }
   syncResetControl();
   updateEmptyState();
@@ -1442,6 +1497,8 @@ function disposePlayer() {
     item.element.remove();
   });
   state.sceneItems = [];
+  state.selectedSceneIds.clear();
+  state.selectionAnchorId = "";
   syncLegacyRuntimeResizeHandler();
   state.activeSceneId = "";
   state.player = null;
@@ -1762,6 +1819,48 @@ function applyAnimation(item = getActiveSceneItem(), animationName = elements.an
   }
 }
 
+function updateNextAnimationButton() {
+  const selected = state.sceneItems.filter((item) => state.selectedSceneIds.has(item.id) && item.animationNames.length > 1);
+  const enabled = selected.length > 0;
+  elements.nextAnimationButton.disabled = !enabled;
+  elements.carouselAnimationToggle.disabled = !state.sceneItems.some((item) => item.animationNames.length > 1);
+  elements.carouselAnimationToggle.setAttribute('aria-checked', String(state.carouselEnabled));
+}
+
+function advanceSceneAnimation(item) {
+  const index = item.animationNames.indexOf(item.animationName);
+  const paused = item.player.paused;
+  applyAnimation(item, item.animationNames[(index + 1) % item.animationNames.length]);
+  if (paused) { item.player.pause(); item.paused = true; }
+  item.carouselPending = false;
+}
+
+function nextSelectedAnimation() {
+  for (const item of state.sceneItems) {
+    if (!state.selectedSceneIds.has(item.id) || item.animationNames.length < 2) continue;
+    advanceSceneAnimation(item);
+  }
+  syncControlsFromSceneItem(getActiveSceneItem());
+}
+
+function toggleGlobalCarousel() {
+  state.carouselEnabled = !state.carouselEnabled;
+  state.sceneItems.forEach((item) => { item.carouselPending = false; });
+  updateNextAnimationButton(); startProgressLoop();
+}
+
+function updateAnimationCarousels() {
+  let changed = false;
+  for (const item of state.sceneItems) {
+    if (!state.carouselEnabled || item.player.paused || item.animationNames.length < 2) continue;
+    if (item.carouselPending) {
+      advanceSceneAnimation(item);
+      changed = changed || item.id === state.activeSceneId;
+    }
+  }
+  if (changed) syncControlsFromSceneItem(getActiveSceneItem());
+}
+
 function applyLoop(item = getActiveSceneItem()) {
   if (!item || !item.player) return;
   item.loop = true;
@@ -1856,6 +1955,7 @@ function syncControlsFromSceneItem(item) {
   elements.speedRange.value = String(item.speed);
   elements.mixRange.value = String(item.mix);
   elements.premultiplyToggle.setAttribute('aria-pressed', String(item.premultipliedAlpha));
+  updateNextAnimationButton();
   updatePlaybackButton();
   updateRangeLabels();
   updateProgressControls();
@@ -1921,7 +2021,12 @@ function createSceneElement(item) {
   const label = document.createElement("div");
   label.className = "scene-label";
   label.textContent = item.project.label;
-  element.append(mount, label);
+  const outline = document.createElement('div');
+  outline.className = 'scene-outline';
+  outline.hidden = true;
+  outline.appendChild(label);
+  element.append(mount, outline);
+  item.outline = outline;
   elements.sceneLayer.appendChild(element);
   item.element = element;
   item.mount = mount;
@@ -2023,6 +2128,10 @@ async function tryLoadProjectWithRuntime(project, resources, order) {
         return;
       }
       initializeSceneItem(item);
+      player.animationState.addListener({ complete(entry) {
+        const current = player.animationState.getCurrent?.(0) || player.animationState.tracks?.[0];
+        if (entry === current && state.carouselEnabled && !player.paused && !item.measuringBounds && !(state.progressDragging && item.id === state.activeSceneId)) item.carouselPending = true;
+      } });
       finish(resolve, item);
     };
     config.error = (player, message) => {
@@ -2039,9 +2148,11 @@ async function tryLoadProjectWithRuntime(project, resources, order) {
   });
 }
 
-function selectSceneItem(sceneId) {
+function selectSceneItem(sceneId, { preserveSelection = false } = {}) {
   const item = getSceneItemById(sceneId);
   if (!item) return;
+  if (!preserveSelection) state.selectedSceneIds.clear();
+  state.selectedSceneIds.add(sceneId);
   state.activeSceneId = item.id;
   state.player = item.player;
   state.loaded = Boolean(item.player);
@@ -2052,6 +2163,8 @@ function selectSceneItem(sceneId) {
 
   state.sceneItems.forEach((candidate) => {
     candidate.element.classList.toggle("is-active", candidate.id === item.id);
+    candidate.element.classList.toggle('is-selected', state.selectedSceneIds.has(candidate.id));
+    if (state.selectedSceneIds.has(candidate.id)) updateSceneOutline(candidate);
   });
   elements.playerMount.dataset.previewZoom = state.previewZoom.toFixed(3);
   renderLayerList();
@@ -2097,7 +2210,7 @@ async function loadProjectsIntoScene(projects) {
 
   syncResetControl();
   updateEmptyState();
-  if (getActiveSceneItem()) selectSceneItem(state.activeSceneId);
+  if (getActiveSceneItem()) selectSceneItem(state.activeSceneId, { preserveSelection: true });
   if (errors.length) {
     setStatus(`${loadedCount ? `已新增 ${loadedCount} 个动画；` : ""}${errors.join("；")}`, true);
   } else {
@@ -2177,26 +2290,145 @@ function clearBackground() {
   updateEmptyState();
 }
 
-function sceneItemFromTarget(target) {
-  const element = target && target.closest && target.closest(".spine-scene");
-  return element ? getSceneItemById(element.dataset.sceneId) : null;
+function pixelHasArtwork(gl, rgba, offset = 0) {
+  const color = Math.max(rgba[offset], rgba[offset + 1], rgba[offset + 2]);
+  return color > 1 || (!gl.__opaqueFxCanvas && rgba[offset + 3] > 1);
+}
+
+function getFixedArtworkBounds(item) {
+  const v = captureBasePreviewViewport(false, item);
+  const key = `${item.animationName}|${item.skinName}|${JSON.stringify(v)}`;
+  item.artworkBoundsCache ||= new Map();
+  let normalized = item.artworkBoundsCache.get(key);
+  if (!normalized) {
+    const player = item.player, element = item.element;
+    const savedWidth = element.style.width, savedHeight = element.style.height;
+    const paused = player.paused;
+    const entry = player.animationState.getCurrent?.(0) || player.animationState.tracks?.[0];
+    const fields = ['trackTime', 'trackLast', 'nextTrackLast', 'animationLast', 'nextAnimationLast'];
+    const saved = Object.fromEntries(fields.map((name) => [name, entry?.[name]]));
+    let minX = 1, minY = 1, maxX = 0, maxY = 0;
+    item.measuringBounds = true; player.paused = true;
+    try {
+      const size = captureBaseSceneSize(v, false, item) || { width: 64, height: 64 };
+      const factor = 256 / Math.max(1, size.width, size.height) / (window.devicePixelRatio || 1);
+      element.style.width = `${Math.max(4, Math.round(size.width * factor))}px`;
+      element.style.height = `${Math.max(4, Math.round(size.height * factor))}px`;
+      const duration = getTrackTiming(entry)?.duration || 0;
+      // A fixed envelope across the animation remains selectable during fades.
+      for (let sample = 0; sample <= (duration ? 16 : 0); sample++) {
+        if (entry && duration) entry.trackTime = duration * Math.min(.9999, sample / 16);
+        player.skeleton.setToSetupPose();
+        player.animationState.apply(player.skeleton);
+        updateWorldTransformForPlayer(player);
+        drawSceneFrame(item);
+        const gl = player.context.gl, width = gl.drawingBufferWidth, height = gl.drawingBufferHeight;
+        if (!width || !height || width * height > 1024 * 1024 || gl.isContextLost()) continue;
+        const pixels = new Uint8Array(width * height * 4);
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        const canvas = player.canvas.getBoundingClientRect(), r = element.getBoundingClientRect();
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+          if (!pixelHasArtwork(gl, pixels, (y * width + x) * 4)) continue;
+          minX = Math.min(minX, (canvas.left - r.left + x / width * canvas.width) / r.width);
+          maxX = Math.max(maxX, (canvas.left - r.left + (x + 1) / width * canvas.width) / r.width);
+          minY = Math.min(minY, (canvas.top - r.top + (height - y - 1) / height * canvas.height) / r.height);
+          maxY = Math.max(maxY, (canvas.top - r.top + (height - y) / height * canvas.height) / r.height);
+        }
+      }
+    } finally {
+      if (entry) for (const name of fields) if (saved[name] !== undefined) entry[name] = saved[name];
+      element.style.width = savedWidth; element.style.height = savedHeight;
+      player.skeleton.setToSetupPose(); player.animationState.apply(player.skeleton);
+      updateWorldTransformForPlayer(player); drawSceneFrame(item);
+      player.paused = paused; item.measuringBounds = false;
+    }
+    if (maxX <= minX || maxY <= minY) {
+      const width = Math.max(1, (v?.width || 1) + (v?.padLeft || 0) + (v?.padRight || 0));
+      const height = Math.max(1, (v?.height || 1) + (v?.padTop || 0) + (v?.padBottom || 0));
+      minX = (v?.padLeft || 0) / width; maxX = minX + (v?.width || 1) / width;
+      minY = (v?.padTop || 0) / height; maxY = minY + (v?.height || 1) / height;
+    }
+    normalized = { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
+    item.artworkBoundsCache.set(key, normalized);
+  }
+  return { left: normalized.left * item.element.offsetWidth, top: normalized.top * item.element.offsetHeight, width: normalized.width * item.element.offsetWidth, height: normalized.height * item.element.offsetHeight };
+}
+
+function hitTestScene(clientX, clientY) {
+  for (const item of getLayerItemsTopFirst()) {
+    if (item.disposed || !item.player?.canvas) continue;
+    const r = item.element.getBoundingClientRect(), b = getFixedArtworkBounds(item);
+    if (clientX >= r.left + b.left - 4 && clientX <= r.left + b.left + b.width + 4 && clientY >= r.top + b.top - 4 && clientY <= r.top + b.top + b.height + 4) return item;
+  }
+  return null;
+}
+
+function updateSceneOutline(item) {
+  if (!item.player?.canvas || !item.outline || item.disposed) return;
+  showSceneOutline(item, getFixedArtworkBounds(item));
+}
+
+function showSceneOutline(item, bounds) {
+  item.visibleBounds = bounds;
+  item.outline.hidden = false;
+  Object.assign(item.outline.style, { left: `${bounds.left - 3}px`, top: `${bounds.top - 3}px`, width: `${bounds.width + 6}px`, height: `${bounds.height + 6}px` });
+}
+
+function clearSceneSelection() {
+  state.selectedSceneIds.clear();
+  state.activeSceneId = '';
+  state.player = null;
+  state.loaded = false;
+  state.sceneItems.forEach((item) => item.element.classList.remove('is-active', 'is-selected'));
+  renderLayerList();
+  syncControlsFromSceneItem(null);
+  updateProjectHint();
+  if ((state.carouselEnabled && state.sceneItems.length > 0)) startProgressLoop();
+  else stopProgressLoop();
+}
+
+function selectFromList(sceneId, event) {
+  const ids = getLayerItemsTopFirst().map((item) => item.id);
+  const additive = event.ctrlKey || event.metaKey;
+  if (event.shiftKey && ids.includes(state.selectionAnchorId)) {
+    if (!additive) state.selectedSceneIds.clear();
+    const from = ids.indexOf(state.selectionAnchorId), to = ids.indexOf(sceneId);
+    ids.slice(Math.min(from, to), Math.max(from, to) + 1).forEach((id) => state.selectedSceneIds.add(id));
+  } else {
+    if (!additive) state.selectedSceneIds.clear();
+    if (additive && state.selectedSceneIds.has(sceneId)) state.selectedSceneIds.delete(sceneId);
+    else state.selectedSceneIds.add(sceneId);
+    state.selectionAnchorId = sceneId;
+  }
+  const activeId = state.selectedSceneIds.has(sceneId) ? sceneId : ids.find((id) => state.selectedSceneIds.has(id));
+  if (activeId) selectSceneItem(activeId, { preserveSelection: true });
+  else clearSceneSelection();
 }
 
 function beginSceneDrag(event) {
-  if (event.button !== 0 || state.dragState) return;
-  const item = sceneItemFromTarget(event.target);
-  if (!item) return;
-  selectSceneItem(item.id);
-  const pointerTarget = item.element;
+  if (state.dragState) return;
+  if (event.target.closest?.('button,input,[role="toolbar"]')) return;
+  if (event.button === 2) {
+    state.dragState = { mode: 'pan', pointerId: event.pointerId, startClientX: event.clientX, startClientY: event.clientY, panX: state.canvasPanX, panY: state.canvasPanY, items: state.sceneItems.map((item) => ({ id: item.id, x: item.x, y: item.y })) };
+    elements.playerMount.setPointerCapture(event.pointerId);
+    elements.playerMount.classList.add('is-panning');
+    event.preventDefault(); return;
+  }
+  if (event.button !== 0) return;
+  const item = hitTestScene(event.clientX, event.clientY);
+  if (!item) { if (!event.ctrlKey && !event.metaKey && !event.shiftKey) clearSceneSelection(); return; }
+  if (event.ctrlKey || event.metaKey || event.shiftKey) { selectFromList(item.id, event); event.preventDefault(); return; }
+  selectSceneItem(item.id, { preserveSelection: state.selectedSceneIds.has(item.id) });
+  const pointerTarget = elements.playerMount;
   pointerTarget.setPointerCapture(event.pointerId);
-  pointerTarget.classList.add("is-dragging");
+  const items = state.sceneItems.filter((candidate) => state.selectedSceneIds.has(candidate.id));
+  items.forEach((candidate) => candidate.element.classList.add('is-dragging'));
   state.dragState = {
     itemId: item.id,
     pointerId: event.pointerId,
     startClientX: event.clientX,
     startClientY: event.clientY,
-    startX: item.x,
-    startY: item.y,
+    items: items.map((candidate) => ({ id: candidate.id, x: candidate.x, y: candidate.y })),
   };
   event.preventDefault();
 }
@@ -2204,35 +2436,45 @@ function beginSceneDrag(event) {
 function moveSceneDrag(event) {
   const drag = state.dragState;
   if (!drag || drag.pointerId !== event.pointerId) return;
-  const item = getSceneItemById(drag.itemId);
-  if (!item) return;
-  const next = clampScenePosition(
-    item,
-    drag.startX + event.clientX - drag.startClientX,
-    drag.startY + event.clientY - drag.startClientY,
-  );
-  item.x = next.x;
-  item.y = next.y;
-  item.positionTouched = true;
-  applySceneItemTransform(item);
+  let dx = event.clientX - drag.startClientX, dy = event.clientY - drag.startClientY;
+  const items = drag.items.map((start) => ({ start, item: getSceneItemById(start.id) })).filter(({ item }) => item);
+  if (drag.mode === 'pan') {
+    state.canvasPanX = drag.panX + dx; state.canvasPanY = drag.panY + dy;
+    for (const { start, item } of items) { item.x = start.x + dx; item.y = start.y + dy; item.positionTouched = true; applySceneItemTransform(item); }
+    applyBackgroundPreviewZoom(); syncCanvasGrid();
+    event.preventDefault(); return;
+  }
+  let minX = -Infinity, maxX = Infinity, minY = -Infinity, maxY = Infinity;
+  for (const { start, item } of items) {
+    const min = clampScenePosition(item, -1e9, -1e9), max = clampScenePosition(item, 1e9, 1e9);
+    minX = Math.max(minX, min.x - start.x); maxX = Math.min(maxX, max.x - start.x);
+    minY = Math.max(minY, min.y - start.y); maxY = Math.min(maxY, max.y - start.y);
+  }
+  if (minX <= maxX) dx = clamp(dx, minX, maxX);
+  if (minY <= maxY) dy = clamp(dy, minY, maxY);
+  for (const { start, item } of items) {
+    item.x = start.x + dx; item.y = start.y + dy;
+    item.positionTouched = true;
+    applySceneItemTransform(item);
+  }
   event.preventDefault();
 }
 
 function endSceneDrag(event) {
   const drag = state.dragState;
   if (!drag || (event.pointerId !== undefined && drag.pointerId !== event.pointerId)) return;
-  const item = getSceneItemById(drag.itemId);
-  if (item) {
-    item.element.classList.remove("is-dragging");
-    if (item.element.hasPointerCapture && item.element.hasPointerCapture(drag.pointerId)) {
-      item.element.releasePointerCapture(drag.pointerId);
-    }
-  }
   state.dragState = null;
+  elements.playerMount.classList.remove('is-panning');
+  for (const start of drag.items) {
+    const item = getSceneItemById(start.id);
+    if (item) { item.element.classList.remove('is-dragging'); updateSceneOutline(item); }
+  }
+  if (elements.playerMount.hasPointerCapture(drag.pointerId)) elements.playerMount.releasePointerCapture(drag.pointerId);
 }
 
 function handleSceneDoubleClick(event) {
-  const item = sceneItemFromTarget(event.target) || getActiveSceneItem();
+  if (event.target.closest?.('button,input,[role="toolbar"]')) return;
+  const item = hitTestScene(event.clientX, event.clientY);
   if (!item) return;
   selectSceneItem(item.id);
   resetSceneTransform(item);
@@ -2253,6 +2495,8 @@ function bindEvents() {
   });
   elements.clearBackgroundButton.addEventListener("click", clearBackground);
   elements.animationSelect.addEventListener("change", () => applyAnimation());
+  elements.nextAnimationButton.addEventListener('click', nextSelectedAnimation);
+  elements.carouselAnimationToggle.addEventListener('click', toggleGlobalCarousel);
   elements.skinSelect.addEventListener("change", () => applySkin());
   elements.speedRange.addEventListener("input", () => {
     updateRangeLabels();
@@ -2276,7 +2520,7 @@ function bindEvents() {
     if (!button || !row) return;
     const sceneId = row.dataset.sceneId;
     if (button.dataset.action === "select") {
-      selectSceneItem(sceneId);
+      selectFromList(sceneId, event);
       focusActiveLayer();
     } else if (button.dataset.action === "remove") {
       removeSceneItem(sceneId);
@@ -2323,12 +2567,13 @@ function bindEvents() {
   elements.timeInput.addEventListener('blur', updateProgressControls);
   elements.timeInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') elements.timeInput.blur(); });
   elements.playerMount.addEventListener("wheel", handlePreviewWheel, { passive: false });
-  elements.sceneLayer.addEventListener("pointerdown", beginSceneDrag);
-  elements.sceneLayer.addEventListener("pointermove", moveSceneDrag);
-  elements.sceneLayer.addEventListener("pointerup", endSceneDrag);
-  elements.sceneLayer.addEventListener("pointercancel", endSceneDrag);
-  elements.sceneLayer.addEventListener("lostpointercapture", endSceneDrag);
-  elements.sceneLayer.addEventListener("dblclick", handleSceneDoubleClick);
+  elements.playerMount.addEventListener("pointerdown", beginSceneDrag);
+  elements.playerMount.addEventListener("pointermove", moveSceneDrag);
+  elements.playerMount.addEventListener("pointerup", endSceneDrag);
+  elements.playerMount.addEventListener("pointercancel", endSceneDrag);
+  elements.playerMount.addEventListener("lostpointercapture", endSceneDrag);
+  elements.playerMount.addEventListener("dblclick", handleSceneDoubleClick);
+  elements.playerMount.addEventListener('contextmenu', (event) => { if (!event.target.closest?.('button,input,[role="toolbar"]')) event.preventDefault(); });
   window.addEventListener("blur", () => endSceneDrag({}));
   window.addEventListener("resize", () => {
     state.sceneItems.forEach((item) => {
@@ -2447,7 +2692,7 @@ function syncViewerPlayback() {
   }
   if (visible) {
     syncControlsFromSceneItem(getActiveSceneItem());
-    if (state.loaded) startProgressLoop();
+    if (state.loaded || (state.carouselEnabled && state.sceneItems.length > 0)) startProgressLoop();
   } else stopProgressLoop();
 }
 window.NovaFlowSpineViewer = {

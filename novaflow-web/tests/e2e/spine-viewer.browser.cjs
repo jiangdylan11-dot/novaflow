@@ -43,20 +43,26 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     assert.equal(await frame.locator('#projectSelect').count(), 0);
     assert.equal(await frame.locator('#removeAnimationButton').count(), 0);
     assert.deepEqual(await frame.locator('.canvas-toolbar button').evaluateAll((buttons) => buttons.map((button) => button.id)), ['actualSizeButton', 'autoFitButton']);
-    assert.deepEqual(await frame.locator('.canvas-actions button').evaluateAll((buttons) => buttons.map((button) => button.id)), ['resetTransformButton', 'pickBackgroundButton', 'clearBackgroundButton', 'premultiplyToggle']);
+    assert.deepEqual(await frame.locator('.canvas-actions button').evaluateAll((buttons) => buttons.map((button) => button.id)), ['resetTransformButton', 'pickBackgroundButton', 'clearBackgroundButton', 'premultiplyToggle', 'carouselAnimationToggle']);
+    assert.equal(await frame.locator('#canvasHint').count(), 0);
     const fixtureFiles = await frame.evaluate(async () => {
       const canvas = document.createElement('canvas'); canvas.width = canvas.height = 32;
-      const context = canvas.getContext('2d'); context.fillStyle = '#ff8040'; context.fillRect(0, 0, 32, 32);
+      const context = canvas.getContext('2d'); context.fillStyle = '#ff8040'; context.fillRect(12, 12, 8, 8);
       const image = await new Promise((resolve) => canvas.toBlob(resolve));
       const files = [];
       for (const version of ['3.7', '3.8', '4.0', '4.1', '4.2']) {
         const name = `fixture-${version}`;
         const attachments = { picture: { picture: { width: 32, height: 32 } } };
+        const duration = version === '3.7' ? .4 : version === '3.8' ? 1.2 : 1.0;
         const skeleton = {
           skeleton: { spine: `${version}.00`, width: 32, height: 32 },
           bones: [{ name: 'root' }], slots: [{ name: 'picture', bone: 'root', attachment: 'picture' }],
           skins: version === '3.7' ? { default: attachments } : [{ name: 'default', attachments }],
-          animations: { idle: { bones: { root: { rotate: [{ angle: 0 }, { time: 1, angle: 30 }] } } } },
+          animations: {
+            idle: { bones: { root: { rotate: [{ angle: 0 }, { time: duration, angle: 30 }] } } },
+            turn: { bones: { root: { rotate: [{ angle: 0 }, { time: 2, angle: -30 }] } } },
+            flash: { bones: { root: { rotate: [{ angle: 0 }, { time: 2, angle: 15 }] } } },
+          },
         };
         const atlas = `${name}.png\nsize: 32,32\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\npicture\n  rotate: false\n  xy: 0, 0\n  size: 32, 32\n  orig: 32, 32\n  offset: 0, 0\n  index: -1\n`;
         files.push(new File([JSON.stringify(skeleton)], `${name}.json`), new File([atlas], `${name}.atlas`), new File([image], `${name}.png`, { type: 'image/png' }));
@@ -73,6 +79,111 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     const imported = await frame.evaluate(() => ({ count: state.sceneItems.length, versions: state.sceneItems.map((item) => item.runtimeVersion), status: elements.statusText.textContent }));
     assert.equal(imported.count, 5, JSON.stringify(imported));
     assert.deepEqual(imported.versions, ['3.7', '3.8', '4.0', '4.1', '4.2']);
+    const savedScenes = await frame.evaluate(() => state.sceneItems.map((item) => ({ id: item.id, x: item.x, y: item.y, z: item.zIndex })));
+    const projectRow = (id) => frame.locator(`.layer-item[data-scene-id="${id}"] .layer-name`);
+    const [firstProject, secondProject] = savedScenes;
+    await frame.evaluate(() => state.sceneItems.forEach((item) => { item.player.pause(); item.paused = true; }));
+    await projectRow(firstProject.id).click();
+    await projectRow(secondProject.id).click({ modifiers: ['Control'] });
+    assert.equal(await frame.evaluate(() => state.selectedSceneIds.size), 2);
+    await frame.locator('#nextAnimationButton').click();
+    assert.deepEqual(await frame.evaluate(() => state.sceneItems.map((item) => item.animationName)), ['turn', 'turn', 'idle', 'idle', 'idle']);
+    assert(await frame.evaluate(() => state.sceneItems.every((item) => item.player.paused)));
+    await frame.locator('#nextAnimationButton').click();
+    await frame.locator('#nextAnimationButton').click();
+    assert(await frame.evaluate(() => state.sceneItems.every((item) => item.animationName === 'idle')));
+    await frame.locator('#carouselAnimationToggle').click();
+    assert.equal(await frame.locator('#carouselAnimationToggle').getAttribute('aria-checked'), 'true');
+    assert(await frame.evaluate(() => state.sceneItems.every((item) => item.animationName === 'idle')));
+    await frame.evaluate(() => state.sceneItems.forEach((item) => {
+      applyAnimation(item, 'idle'); item.carouselPending = false;
+      item.player.play(); item.paused = false;
+    }));
+    await frame.waitForFunction(() => state.sceneItems[0].animationName === 'turn', null, { timeout: 5000 });
+    assert.equal(await frame.evaluate(() => state.sceneItems[1].animationName), 'idle');
+    await frame.locator('#nextAnimationButton').click();
+    assert.deepEqual(await frame.evaluate(() => state.sceneItems.slice(0, 2).map((item) => item.animationName)), ['flash', 'turn']);
+    assert.equal(await frame.locator('#carouselAnimationToggle').getAttribute('aria-checked'), 'true');
+    await frame.waitForFunction(() => state.sceneItems.slice(2).every((item) => item.animationName === 'turn'), null, { timeout: 5000 });
+    await frame.evaluate(() => state.sceneItems.forEach((item) => { item.player.pause(); item.paused = true; }));
+    await frame.locator('#carouselAnimationToggle').click();
+    assert.equal(await frame.locator('#carouselAnimationToggle').getAttribute('aria-checked'), 'false');
+    await frame.evaluate(() => { for (const item of state.sceneItems) { applyAnimation(item, 'idle'); item.player.pause(); item.paused = true; } syncControlsFromSceneItem(getActiveSceneItem()); });
+    const visibleCenter = (id) => frame.evaluate((sceneId) => {
+      const item = getSceneItemById(sceneId); updateSceneOutline(item);
+      const r = item.element.getBoundingClientRect(), b = item.visibleBounds;
+      return { x: r.left + b.left + b.width / 2, y: r.top + b.top + b.height / 2 };
+    }, id);
+    const frameOffset = await page.locator('#novaflow-spine-viewer-root iframe').boundingBox();
+    const canvasClick = async (point) => page.mouse.click(frameOffset.x + point.x, frameOffset.y + point.y);
+    const dragPoint = await visibleCenter(firstProject.id);
+    const beforeGroupDrag = await frame.evaluate(() => state.sceneItems.map((item) => ({ x: item.x, y: item.y })));
+    await page.mouse.move(frameOffset.x + dragPoint.x, frameOffset.y + dragPoint.y);
+    await page.mouse.down();
+    await page.mouse.move(frameOffset.x + dragPoint.x + 24, frameOffset.y + dragPoint.y + 18, { steps: 3 });
+    await page.mouse.up();
+    const afterGroupDrag = await frame.evaluate(() => state.sceneItems.map((item) => ({ x: item.x, y: item.y })));
+    for (let index = 0; index < 5; index++) {
+      assert(Math.abs(afterGroupDrag[index].x - beforeGroupDrag[index].x - (index < 2 ? 24 : 0)) < 1);
+      assert(Math.abs(afterGroupDrag[index].y - beforeGroupDrag[index].y - (index < 2 ? 18 : 0)) < 1);
+    }
+    assert(await frame.evaluate(() => state.sceneItems.filter((item) => state.selectedSceneIds.has(item.id)).every((item) => item.visibleBounds.width < item.element.offsetWidth / 2)));
+    await frame.evaluate(([aId, bId]) => {
+      const a = getSceneItemById(aId), b = getSceneItemById(bId);
+      a.x = -24; a.y = 0; b.x = 24; b.y = 0;
+      b.zIndex = state.nextZIndex++; b.element.style.zIndex = String(b.zIndex);
+      applySceneItemTransform(a); applySceneItemTransform(b);
+      selectSceneItem(b.id);
+    }, [firstProject.id, secondProject.id]);
+    const lowerPoint = await visibleCenter(firstProject.id);
+    assert(await frame.evaluate(({ id, point }) => { const r = getSceneItemById(id).element.getBoundingClientRect(); return point.x > r.left && point.x < r.right && point.y > r.top && point.y < r.bottom; }, { id: secondProject.id, point: lowerPoint }));
+    await canvasClick(lowerPoint);
+    assert.equal(await frame.evaluate(() => state.activeSceneId), firstProject.id, 'transparent upper padding must allow selecting the lower animation');
+    await frame.evaluate(([aId, bId]) => {
+      const a = getSceneItemById(aId), b = getSceneItemById(bId);
+      a.x = b.x = 0; a.y = b.y = 0; applySceneItemTransform(a); applySceneItemTransform(b);
+    }, [firstProject.id, secondProject.id]);
+    await canvasClick(await visibleCenter(secondProject.id));
+    assert.equal(await frame.evaluate(() => state.activeSceneId), secondProject.id, 'overlapping visible pixels must select the top layer');
+    const transparentPoint = await visibleCenter(secondProject.id);
+    await frame.evaluate((id) => { const item = getSceneItemById(id); item.player.skeleton.color.a = 0; drawSceneFrame(item); }, secondProject.id);
+    await canvasClick(transparentPoint);
+    assert.equal(await frame.evaluate(() => state.activeSceneId), secondProject.id, 'a transparent frame must keep the fixed selectable envelope');
+    assert(await frame.evaluate((id) => getFixedArtworkBounds(getSceneItemById(id)).width < 18, secondProject.id));
+    await frame.evaluate((id) => { const item = getSceneItemById(id); item.player.skeleton.color.a = 1; drawSceneFrame(item); }, secondProject.id);
+    await projectRow(firstProject.id).click();
+    await page.keyboard.press('Control+a');
+    assert.equal(await frame.evaluate(() => state.selectedSceneIds.size), 5);
+    const rowsTopFirst = await frame.evaluate(() => getLayerItemsTopFirst().map((item) => item.id));
+    await projectRow(rowsTopFirst[0]).click();
+    await projectRow(rowsTopFirst[2]).click({ modifiers: ['Shift'] });
+    assert.equal(await frame.evaluate(() => state.selectedSceneIds.size), 3);
+    await frame.evaluate((saved) => {
+      for (const entry of saved) {
+        const item = getSceneItemById(entry.id); item.x = entry.x; item.y = entry.y; item.zIndex = entry.z;
+        item.element.style.zIndex = String(entry.z); applySceneItemTransform(item); item.player.play(); item.paused = false;
+      }
+      selectSceneItem(saved[0].id);
+    }, savedScenes);
+    const beforeGlobalZoom = await frame.evaluate(() => ({ zoom: state.previewZoom, selected: [...state.selectedSceneIds], items: state.sceneItems.map((item) => ({ x: item.x, y: item.y, width: item.element.offsetWidth })) }));
+    const zoomArea = await frame.locator('#playerMount').boundingBox();
+    await page.mouse.move(zoomArea.x + zoomArea.width / 2, zoomArea.y + zoomArea.height / 2);
+    await page.mouse.wheel(0, -120);
+    await frame.waitForFunction((zoom) => state.previewZoom > zoom, beforeGlobalZoom.zoom);
+    const afterGlobalZoom = await frame.evaluate(() => ({ zoom: state.previewZoom, selected: [...state.selectedSceneIds], items: state.sceneItems.map((item) => ({ x: item.x, y: item.y, width: item.element.offsetWidth })) }));
+    const zoomFactor = afterGlobalZoom.zoom / beforeGlobalZoom.zoom;
+    for (let i = 0; i < beforeGlobalZoom.items.length; i++) {
+      assert(Math.abs(afterGlobalZoom.items[i].x - beforeGlobalZoom.items[i].x * zoomFactor) < .01);
+      assert(Math.abs(afterGlobalZoom.items[i].y - beforeGlobalZoom.items[i].y * zoomFactor) < .01);
+      assert(Math.abs(afterGlobalZoom.items[i].width - beforeGlobalZoom.items[i].width * zoomFactor) < 2);
+    }
+    assert.deepEqual(afterGlobalZoom.selected, beforeGlobalZoom.selected);
+    await frame.locator('#actualSizeButton').click();
+    await frame.getByRole('button', { name: '动画', exact: true }).click();
+    await frame.getByRole('option', { name: 'turn', exact: true }).click();
+    assert.equal(await frame.evaluate(() => getActiveSceneItem().animationName), 'turn');
+    await frame.getByRole('button', { name: '动画', exact: true }).click();
+    await frame.getByRole('option', { name: 'idle', exact: true }).click();
     assert.equal(await frame.locator('#pickFilesButton,#pickFolderButton,#folderPicker,#loopToggle,input[type=checkbox]').count(), 0);
     assert(await frame.evaluate(() => state.sceneItems.every((item) => item.loop && item.player.animationState.getCurrent(0).loop)));
     const layerOrder = () => frame.evaluate(() => getLayerItemsTopFirst().map((item) => item.id));
@@ -82,6 +193,7 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await activeRow().locator('.layer-name').click();
     await page.keyboard.press('+');
     assert.equal((await layerOrder()).indexOf(activeId), 3);
+    assert.equal(await activeRow().locator('.layer-name').evaluate((node) => getComputedStyle(node).outlineStyle), 'none');
     await page.keyboard.press('-');
     assert.deepEqual(await layerOrder(), originalOrder);
     await page.keyboard.press('NumpadAdd');
@@ -108,9 +220,10 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     assert.equal(await frame.evaluate(() => state.previewZoom), 1);
     await frame.evaluate(() => { for (const item of state.sceneItems) { item.x = 120; item.y = 60; item.positionTouched = true; applySceneItemTransform(item); } });
     await frame.getByRole('button', { name: '重置位置', exact: true }).click();
+    assert.equal(await frame.evaluate(() => state.previewZoom), 1, 'transparent padding must not force tiny zoom during arrangement');
     assert(await frame.evaluate(() => {
       const mount = elements.playerMount.getBoundingClientRect();
-      const rects = state.sceneItems.map((item) => item.element.getBoundingClientRect());
+      const rects = state.sceneItems.map((item) => { const r = item.element.getBoundingClientRect(), b = getFixedArtworkBounds(item); return { left: r.left + b.left, top: r.top + b.top, right: r.left + b.left + b.width, bottom: r.top + b.top + b.height }; });
       return rects.every((r, i) => r.left >= mount.left && r.right <= mount.right && r.top >= mount.top && r.bottom <= mount.bottom && rects.every((other, j) => i === j || r.right <= other.left || r.left >= other.right || r.bottom <= other.top || r.top >= other.bottom));
     }), 'reset must arrange previously moved, overlapping projects inside the canvas');
     assert.deepEqual(await layerOrder(), originalOrder);
@@ -120,6 +233,17 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     const background = fixtureFiles.find((file) => file.name.endsWith('.png'));
     await backgroundChooser.setFiles({ name: background.name, mimeType: 'image/png', buffer: Buffer.from(background.bytes) });
     await frame.waitForFunction(() => !elements.backgroundImage.hidden && !elements.clearBackgroundButton.disabled);
+    const beforePan = await frame.evaluate(() => ({ selected: [...state.selectedSceneIds], items: state.sceneItems.map((item) => ({ x: item.x, y: item.y })) }));
+    const panArea = await frame.locator('#playerMount').boundingBox();
+    const panFrom = { x: panArea.x + panArea.width / 2, y: panArea.y + panArea.height / 2 };
+    await page.mouse.move(panFrom.x, panFrom.y); await page.mouse.down({ button: 'right' });
+    await page.mouse.move(panFrom.x + 22, panFrom.y - 12, { steps: 3 }); await page.mouse.up({ button: 'right' });
+    const afterPan = await frame.evaluate(() => ({ selected: [...state.selectedSceneIds], x: state.canvasPanX, y: state.canvasPanY, backgroundX: elements.backgroundImage.style.marginLeft, items: state.sceneItems.map((item) => ({ x: item.x, y: item.y })) }));
+    assert.deepEqual(afterPan.selected, beforePan.selected);
+    assert.equal(afterPan.backgroundX, `${afterPan.x}px`);
+    for (let i = 0; i < beforePan.items.length; i++) { assert(Math.abs(afterPan.items[i].x - beforePan.items[i].x - 22) < .1); assert(Math.abs(afterPan.items[i].y - beforePan.items[i].y + 12) < .1); }
+    await page.mouse.move(panFrom.x, panFrom.y); await page.mouse.down({ button: 'right' });
+    await page.mouse.move(panFrom.x - 22, panFrom.y + 12, { steps: 3 }); await page.mouse.up({ button: 'right' });
     await frame.getByRole('button', { name: '清除背景', exact: true }).click();
     assert(await frame.evaluate(() => elements.backgroundImage.hidden && elements.clearBackgroundButton.disabled));
     const actionsPosition = await frame.evaluate(() => {
@@ -133,7 +257,7 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await frame.locator('#autoFitButton').click();
     assert(await frame.evaluate(() => {
       const mount = elements.playerMount.getBoundingClientRect();
-      return state.sceneItems.every((item) => { const r = item.element.getBoundingClientRect(); return r.left >= mount.left && r.right <= mount.right && r.top >= mount.top && r.bottom <= mount.bottom; });
+      return state.sceneItems.every((item) => { const r = item.element.getBoundingClientRect(), b = getFixedArtworkBounds(item); return r.left + b.left >= mount.left && r.left + b.left + b.width <= mount.right && r.top + b.top >= mount.top && r.top + b.top + b.height <= mount.bottom; });
     }));
     await frame.locator('#actualSizeButton').click();
     // An external file drop reaches the canvas importer without changing existing layers.
@@ -158,7 +282,7 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await page.mouse.down();
     assert(await frame.evaluate(() => getActiveSceneItem().player.paused));
     await page.mouse.move(timeline.x + timeline.width * .75, timeline.y + timeline.height / 2);
-    assert(await frame.evaluate(() => Math.abs(getTrackTiming(getCurrentTrackEntry()).elapsed - .75) < .1));
+    assert(await frame.evaluate(() => { const t = getTrackTiming(getCurrentTrackEntry()); return Math.abs(t.elapsed / t.duration - .75) < .1; }));
     await page.mouse.up();
     assert(await frame.evaluate(() => !getActiveSceneItem().player.paused));
     await frame.locator('#playPauseButton').click();
@@ -264,9 +388,18 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
       const files = (await fs.readdir(fixtureDir)).filter((name) => /\.(json|skel|atlas|png)$/i.test(name)).map((name) => path.join(fixtureDir, name));
       await frame.locator('#filePicker').setInputFiles(files);
       await frame.waitForFunction(() => !elements.statusText.classList.contains('error') && /^已新增/.test(elements.statusText.textContent) && state.sceneItems.length > 5);
+      assert(await frame.evaluate(() => state.sceneItems.filter((item) => !item.project.label.startsWith('fixture-')).every((item) => {
+        const b = getFixedArtworkBounds(item); return [b.left,b.top,b.width,b.height].every(Number.isFinite) && b.width > 0 && b.height > 0;
+      })));
       await page.screenshot({ path: path.join(output, 'real-projects.png') });
       console.log(await frame.locator('#statusText').textContent());
     }
+    await frame.evaluate(() => clearSceneSelection());
+    assert(await frame.locator('#carouselAnimationToggle').isEnabled());
+    await frame.locator('#carouselAnimationToggle').click();
+    assert.equal(await frame.locator('#carouselAnimationToggle').getAttribute('aria-checked'), 'true');
+    await frame.locator('#carouselAnimationToggle').click();
+    await frame.locator('.layer-item').first().locator('.layer-name').click();
     const remainingIds = await frame.evaluate(() => state.sceneItems.filter((item) => item.id !== state.activeSceneId).map((item) => item.id));
     for (const id of remainingIds) await frame.locator(`.layer-item[data-scene-id="${id}"] [data-action="remove"]`).click();
     await frame.evaluate(() => { const item = getActiveSceneItem(); item.x = 120; item.y = 60; applySceneItemTransform(item); });

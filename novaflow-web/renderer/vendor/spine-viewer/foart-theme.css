@@ -78,8 +78,10 @@ select {
 .layer-item { position: relative; grid-template-columns: minmax(0, 1fr) 24px; gap: 6px; height: 36px; min-height: 36px; padding: 4px 6px 4px 8px; border-radius: 8px; background: #1d1d1d; }
 .layer-name { width: 100%; min-height: 28px; padding: 0; font-size: 12px; background: transparent; cursor: grab; }
 .layer-name:hover:not(:disabled) { background: transparent; }
-.layer-delete-button { width: 24px; min-height: 24px; height: 24px; padding: 0; border-radius: 5px; background: #272727; font-size: 15px; color: #929292; }
-.layer-delete-button:hover:not(:disabled) { background: #302020; color: #df7777; }
+.layer-name:focus-visible { outline: none; box-shadow: none; }
+.layer-delete-button { width: 24px; min-height: 24px; height: 24px; padding: 0; border-radius: 5px; background: transparent; font-size: 15px; color: #929292; cursor: pointer; }
+.layer-delete-button:hover:not(:disabled) { background: transparent; color: #fff; filter: brightness(1.08); }
+.layer-delete-button:active:not(:disabled) { background: transparent; opacity: .7; }
 .layer-item.is-layer-dragging { opacity: .45; }
 .layer-item.drop-before::before, .layer-item.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: #1ea672; pointer-events: none; }
 .layer-item.drop-before::before { top: -2px; }
@@ -144,6 +146,23 @@ input[type='checkbox'] { width: 13px; height: 13px; }
 /* Confine arbitrary project z-index values below the canvas controls. */
 .scene-layer { z-index: 1; isolation: isolate; background: inherit; }
 .empty-state { z-index: 2; pointer-events: none; }
+.spine-scene { pointer-events: none; }
+.spine-scene.is-dragging { border-color: transparent; box-shadow: none; }
+.scene-outline { position: absolute; display: none; pointer-events: none; border: 1px solid #53d6c7; border-radius: 4px; box-shadow: 0 0 0 1px rgba(30,166,114,.18); }
+.spine-scene.is-selected > .scene-outline:not([hidden]) { display: block; }
+.scene-outline .scene-label { top: -28px; left: 0; width: max-content; max-width: 200px; }
+.player-mount { touch-action: none; }
+.canvas-actions button[aria-checked='true'] { background: #1c4136; color: #6ee7ce; }
+.canvas-actions button[aria-checked='true']:hover:not(:disabled) { background: #245442; color: #6ee7ce; }
+.player-mount.is-panning { cursor: grabbing; }
+select[hidden] { display: none; }
+.viewer-select-button { width: 100%; min-height: 30px; padding: 0 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #363636; border-radius: 7px; background: #1b1b1b; color: #eaeaea; text-align: left; }
+.viewer-select-button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.viewer-select-button svg { flex: 0 0 14px; width: 14px; height: 14px; fill: none; stroke: #bdbdbd; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.viewer-select-panel { position: fixed; z-index: 100000; max-height: 260px; padding: 0; overflow: auto; border: 1px solid rgba(255,255,255,.18); border-radius: 0; background: #1b1b1b; box-shadow: 0 18px 48px rgba(0,0,0,.55); color: rgba(255,255,255,.88); }
+.viewer-select-panel button { display: block; width: 100%; height: 26px; min-height: 26px; padding: 0 10px; border: 0; border-radius: 0; background: transparent; color: inherit; font-size: 12px; line-height: 26px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.viewer-select-panel button:hover, .viewer-select-panel button:focus-visible { background: rgba(255,255,255,.08); outline: none; }
+.viewer-select-panel button[aria-selected='true'] { background: #1ea672; color: #fff; }
 .canvas-hint { background: #151515; border: 0; color: #929292; font-size: 11px; }
 .empty-state { color: #777; }
 .empty-state strong { color: #bdbdbd; font-size: 14px; font-weight: 400; }

@@ -6,7 +6,7 @@
     <title>Spine 工程查看器</title>
     <link id="spine-runtime-style" rel="stylesheet" href="" />
     <link id="app-style" rel="stylesheet" href="styles.css?v=20260915-blend-backdrop" />
-    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-5" />
+    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-6" />
   </head>
   <body>
     <div class="app">
@@ -25,7 +25,7 @@
         </section>
 
         <section class="panel stack">
-          <div class="section-heading" title="拖动排序；+ 上移，- 下移">动画工程</div>
+          <div class="section-heading" title="Ctrl/⌘ 多选 · Shift 连选 · 拖动排序；+ 上移，- 下移">动画工程</div>
           <div class="layer-order-toolbar" role="toolbar" aria-label="工程层级">
             <button id="moveLayerDown" class="layer-order-button" type="button" title="下移（-）" aria-label="下移" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
@@ -44,6 +44,7 @@
             <span>动画</span>
             <select id="animationSelect" disabled></select>
           </label>
+          <button id="nextAnimationButton" class="soft-button" type="button" disabled title="选中的工程切换到各自的下一个动画">切换动画</button>
           <label>
             <span>皮肤</span>
             <select id="skinSelect" disabled></select>
@@ -87,10 +88,12 @@
             <button id="premultiplyToggle" type="button" aria-pressed="true" disabled title="预乘 Alpha" aria-label="预乘 Alpha">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="2"/><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M9 9h6v6H9z" fill="currentColor" fill-opacity=".35"/></svg>
             </button>
+            <button id="carouselAnimationToggle" type="button" role="switch" aria-checked="false" disabled title="全局轮播动画：各工程播完当前动画后独立切换下一项" aria-label="轮播动画">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m17 2 4 4-4 4M3 11V8a2 2 0 0 1 2-2h16M7 22l-4-4 4-4m14-1v3a2 2 0 0 1-2 2H3"/></svg>
+            </button>
             <input id="backgroundPicker" class="visually-hidden" type="file" accept="image/*" />
             <output id="backgroundHint" class="visually-hidden">未设置背景</output>
           </div>
-          <div id="canvasHint" class="canvas-hint" hidden>拖动当前动画 · 滚轮全局缩放 · 双击重置位置</div>
         </div>
         <div class="stage-controls" aria-label="预览播放控制">
           <button id="playPauseButton" class="transport-button" type="button" title="播放" aria-label="播放" disabled></button>
@@ -105,6 +108,7 @@
 
     <script src="vendor/novaflow-version-convert.js?v=3.7-roundtrip-1"></script>
     <script src="vendor/novaflow-skel-import.js?v=3.7-roundtrip-1"></script>
-    <script src="app.js?v=20261030-viewer-interactions-5"></script>
+    <script src="foart-select.js?v=20261030-select-1"></script>
+    <script src="app.js?v=20261030-viewer-interactions-6"></script>
   </body>
 </html>
