@@ -2475,8 +2475,8 @@ async function init() {
 }
 
 const FEATURE_PRICE_FIELDS = [
-  ["xiaotao_vision", "小桃在线理解"],
-  ["online_chat_turn", "在线对话"],
+  ["xiaotao_vision", "小桃在线理解（备用固定价）"],
+  ["online_chat_turn", "在线对话（备用固定价）"],
   ["prompt_optimize", "提示词优化"],
   ["image_reverse", "图像反推"],
   ["lean_research", "UI 目录分析"],
