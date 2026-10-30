@@ -928,27 +928,46 @@ let dashboardActivityTab = "ledger";
 let dashboardSnapshot = null;
 let rhRefreshLockedUntil = 0;
 let profitEstimateSettings = null;
+let profitEstimateLoadError = false;
+
+function profitReferenceUsd(settings) {
+  const positive = (value) => {
+    if (value == null || typeof value === "boolean" || typeof value === "object" || String(value).trim() === "") return null;
+    const amount = Number(value);
+    return Number.isFinite(amount) && amount > 0 ? amount : null;
+  };
+  const usd = positive(settings?.credit_price_usd);
+  if (usd != null) return usd;
+  const cny = positive(settings?.credit_price_cny), exchange = positive(settings?.usd_cny);
+  return cny != null && exchange != null ? cny / exchange : null;
+}
 
 // Only a reference calculation: no payment, gifted-credit, historical-price,
 // tax or operating-expense attribution is available in the ledger.
 function estimatedLedgerMargin(row, settings = profitEstimateSettings) {
-  const numeric = (value) => value == null || value === "" || typeof value === "boolean" ? NaN : Number(value);
-  const price = numeric(settings?.credit_price_cny), exchange = numeric(settings?.usd_cny);
+  const numeric = (value) => value == null || typeof value === "boolean" || typeof value === "object" || String(value).trim() === "" ? NaN : Number(value);
+  const price = profitReferenceUsd(settings);
   const credits = numeric(row?.settled_credits), costUsd = numeric(row?.rh_cost_usd);
   const feature = String(row?.feature || "").toLowerCase();
   const currency = String(row?.rh_cost_currency || "USD").toUpperCase();
   if (row?.status !== "settled" || !feature || feature === "admin_adjust" || feature === "quota_migration" || feature === "local" || /^local[_-]/.test(feature)
-      || !(Number.isFinite(price) && price > 0 && Number.isFinite(exchange) && exchange > 0)
+      || !(Number.isFinite(price) && price > 0)
       || !(Number.isFinite(credits) && credits > 0 && Number.isFinite(costUsd) && costUsd >= 0) || currency !== "USD") return null;
-  const income = credits * price, cost = costUsd * exchange, margin = income - cost;
+  const income = credits * price, cost = costUsd, margin = income - cost;
   return [income, cost, margin].every(Number.isFinite) ? { income, cost, margin } : null;
 }
 
-function estimatedCnyCell(value) {
-  const cell = textCell(value == null ? "—" : `¥${value.toFixed(4)}`);
+function estimatedUsdCell(value) {
+  const cell = textCell(value == null ? "—" : `$${value.toFixed(4)}`);
   cell.classList.add("num");
-  cell.title = "按当前参考售价与汇率估算；赠分、历史价格、手续费及其他费用未计入，RH 成本可能是估算。";
+  cell.title = "按当前参考售价估算；赠分、历史价格、手续费及其他费用未计入，RH 成本可能是估算。";
   return cell;
+}
+
+function formatLedgerCostUsd(value) {
+  if (value == null || typeof value === "boolean" || typeof value === "object" || String(value).trim() === "") return "—";
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount.toFixed(4) : "—";
 }
 
 function formatUsdAmount(value) {
@@ -1100,13 +1119,30 @@ function renderDashboardRecentActivity() {
   const recentMargin = document.createElement("div");
   recentMargin.className = "cardHint";
   const total = estimates.reduce((sum, item) => sum + item.margin, 0);
-  const amount = estimates.length && Number.isFinite(total) ? `¥${total.toFixed(4)}` : "—";
+  const amount = estimates.length && Number.isFinite(total) ? `$${total.toFixed(4)}` : "—";
   recentMargin.textContent = `最近流水预估毛利：${amount}（可计算 ${estimates.length} / 显示 ${rows.length} 条）`;
-  recentMargin.title = "仅统计下方显示的流水，按当前参考售价和汇率估算；赠分、历史售价、手续费及其他费用未计入，不是净利润。";
+  recentMargin.title = "仅统计下方显示的流水，按当前参考售价估算；赠分、历史售价、手续费及其他费用未计入，不是净利润。";
   container.appendChild(recentMargin);
+  if (!profitReferenceUsd(profitEstimateSettings)) {
+    const hint = document.createElement("div");
+    hint.className = "cardHint";
+    hint.textContent = profitEstimateLoadError ? "毛利参数读取失败，请刷新数据。" : "未设置积分参考售价，无法估算收入和毛利。";
+    if (!profitEstimateLoadError) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn";
+      button.textContent = "设置积分售价";
+      button.addEventListener("click", () => {
+        showModule("ai-services");
+        requestAnimationFrame(() => $("profitCreditPriceUsd")?.scrollIntoView({block: "center"}));
+      });
+      hint.appendChild(button);
+    }
+    container.appendChild(hint);
+  }
   const table = document.createElement("table");
   table.className = "dataTable activityTable";
-  table.innerHTML = "<thead><tr><th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class=\"num\">积分</th><th class=\"num\">估算 RH 成本</th><th class=\"num\">参考收入（元）</th><th class=\"num\">预估毛利（元）</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class=\"num\">积分</th><th class=\"num\">估算 RH 成本（美元）</th><th class=\"num\">参考收入（美元）</th><th class=\"num\">预估毛利（美元）</th></tr></thead>";
   const body = document.createElement("tbody");
   rows.forEach((row) => {
     const stamp = activityStamp(row.created_at);
@@ -1122,13 +1158,13 @@ function renderDashboardRecentActivity() {
     credit.className = "num";
     credit.appendChild(ledgerCreditNode(row));
     tr.appendChild(credit);
-    const cost = textCell(row.rh_cost_usd == null || row.rh_cost_usd === "" ? "-" : formatUsdAmount(row.rh_cost_usd) || "-");
+    const cost = textCell(formatLedgerCostUsd(row.rh_cost_usd));
     cost.classList.add("num");
     if (row.rh_cost_usd != null && row.rh_cost_usd !== "") cost.title = `${row.rh_cost_usd} USD（可能为估算）`;
     tr.appendChild(cost);
     const estimate = estimatedLedgerMargin(row);
-    tr.appendChild(estimatedCnyCell(estimate?.income));
-    tr.appendChild(estimatedCnyCell(estimate?.margin));
+    tr.appendChild(estimatedUsdCell(estimate?.income));
+    tr.appendChild(estimatedUsdCell(estimate?.margin));
     body.appendChild(tr);
   });
   table.appendChild(body);
@@ -3158,13 +3194,17 @@ async function loadProfitEstimateSettings() {
     const response = await window.adminAPI.getProfitEstimateSettings();
     if (!response?.ok) throw new Error(response?.error || "读取失败");
     profitEstimateSettings = response.result || null;
+    profitEstimateLoadError = false;
+    setIfIdle("profitCreditPriceUsd", profitEstimateSettings?.credit_price_usd);
     setIfIdle("profitCreditPriceCny", profitEstimateSettings?.credit_price_cny);
     setIfIdle("profitUsdCny", profitEstimateSettings?.usd_cny);
-    setText("profitEstimateStatus", profitEstimateSettings?.credit_price_cny && profitEstimateSettings?.usd_cny ? "已读取" : "未设置");
+    setText("profitEstimateStatus", profitReferenceUsd(profitEstimateSettings) != null ? "已读取" : "未设置");
     renderDashboardRecentActivity();
     return true;
   } catch (error) {
     profitEstimateSettings = null;
+    profitEstimateLoadError = true;
+    setIfIdle("profitCreditPriceUsd", null);
     setIfIdle("profitCreditPriceCny", null);
     setIfIdle("profitUsdCny", null);
     setText("profitEstimateStatus", String(error?.message || "读取失败"));
@@ -3177,11 +3217,13 @@ async function saveProfitEstimateSettings() {
   try {
     if (typeof window.adminAPI?.saveProfitEstimateSettings !== "function") throw new Error("后台暂不支持毛利估算设置");
     const response = await window.adminAPI.saveProfitEstimateSettings({
+      credit_price_usd: $("profitCreditPriceUsd")?.value ?? "",
       credit_price_cny: $("profitCreditPriceCny")?.value ?? "",
       usd_cny: $("profitUsdCny")?.value ?? ""
     });
     if (!response?.ok) throw new Error(response?.error || "保存失败");
     profitEstimateSettings = response.result || null;
+    profitEstimateLoadError = false;
     setText("profitEstimateStatus", "已保存");
     renderDashboardRecentActivity();
     if ($("creditLedgerDialog") && !$("creditLedgerDialog").hidden) void queryLedger(false);
@@ -3426,12 +3468,12 @@ async function queryLedger(download) {
           tr.appendChild(credit);
           const cost = document.createElement("td");
           cost.className = "num";
-          cost.textContent = row.rh_cost_usd == null || row.rh_cost_usd === "" ? "" : (formatUsdAmount(row.rh_cost_usd) || "");
+          cost.textContent = formatLedgerCostUsd(row.rh_cost_usd);
           if (row.rh_cost_usd != null && row.rh_cost_usd !== "") cost.title = `${row.rh_cost_usd} USD（可能为估算）`;
           tr.appendChild(cost);
           const estimate = estimatedLedgerMargin(row);
-          tr.appendChild(estimatedCnyCell(estimate?.income));
-          tr.appendChild(estimatedCnyCell(estimate?.margin));
+          tr.appendChild(estimatedUsdCell(estimate?.income));
+          tr.appendChild(estimatedUsdCell(estimate?.margin));
           body.appendChild(tr);
         }
       }

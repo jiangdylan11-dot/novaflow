@@ -41,15 +41,19 @@ const plain = x => JSON.parse(JSON.stringify(x));
 
 test("profit assumptions use an independent key and preserve billing and future settings", async () => {
   const f = fixture();
-  assert.deepEqual(plain(await f.api.getProfitEstimateSettings()), { credit_price_cny: null, usd_cny: null });
+  assert.deepEqual(plain(await f.api.getProfitEstimateSettings()), { credit_price_usd: null, credit_price_cny: null, usd_cny: null });
   f.settings.set("feature_credit_profit_estimate", { future_field: "preserved" });
   assert.deepEqual(plain(await f.api.saveProfitEstimateSettings({ credit_price_cny: "0.02857142857", usd_cny: "6.7" })),
-    { credit_price_cny: 0.02857142857, usd_cny: 6.7 });
+    { credit_price_usd: null, credit_price_cny: 0.02857142857, usd_cny: 6.7 });
   assert.equal(f.writes[0].key, "feature_credit_profit_estimate");
   assert.equal(f.settings.get("feature_credit_profit_estimate").future_field, "preserved");
   assert.deepEqual(f.settings.get("feature_credit_config"), { prices: { online_chat_turn: 4 }, token_billing: { markup: 2 } });
-  assert.deepEqual(plain(await f.api.getProfitEstimateSettings()), { credit_price_cny: 0.02857142857, usd_cny: 6.7 });
-  assert.deepEqual(plain(await f.api.saveProfitEstimateSettings({ credit_price_cny: "", usd_cny: null })), { credit_price_cny: null, usd_cny: null });
+  assert.deepEqual(plain(await f.api.getProfitEstimateSettings()), { credit_price_usd: null, credit_price_cny: 0.02857142857, usd_cny: 6.7 });
+  assert.deepEqual(plain(await f.api.saveProfitEstimateSettings({ credit_price_cny: "", usd_cny: null })), { credit_price_usd: null, credit_price_cny: null, usd_cny: null });
+  await f.api.saveProfitEstimateSettings({ credit_price_usd: "0.0042643923", credit_price_cny: "", usd_cny: "" });
+  assert.equal((await f.api.getProfitEstimateSettings()).credit_price_usd, 0.0042643923);
+  await f.api.saveProfitEstimateSettings({ credit_price_cny: "0.03", usd_cny: "6.7" });
+  assert.equal((await f.api.getProfitEstimateSettings()).credit_price_usd, 0.0042643923, "older clients must preserve USD assumptions");
 });
 
 test("invalid or incomplete assumptions never write", async () => {
@@ -57,7 +61,8 @@ test("invalid or incomplete assumptions never write", async () => {
   for (const input of [
     {}, { credit_price_cny: 1 }, { credit_price_cny: -1, usd_cny: 6.7 },
     { credit_price_cny: true, usd_cny: 6.7 }, { credit_price_cny: 1, usd_cny: "nope" },
-    { credit_price_cny: 1, usd_cny: 1000001 }, { credit_price_cny: 1, usd_cny: 0 }
+    { credit_price_cny: 1, usd_cny: 1000001 }, { credit_price_cny: 1, usd_cny: 0 },
+    { credit_price_usd: -1, credit_price_cny: "", usd_cny: "" }
   ]) await assert.rejects(f.api.saveProfitEstimateSettings(input));
   assert.equal(f.writes.length, 0);
 });

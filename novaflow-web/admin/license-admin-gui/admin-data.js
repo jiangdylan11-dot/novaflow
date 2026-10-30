@@ -3502,6 +3502,7 @@ function profitEstimateAmount(value, label, strict = false) {
 function normalizeProfitEstimateSettings(value, strict = false) {
   const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
+    credit_price_usd: profitEstimateAmount(input.credit_price_usd, "每积分美元参考售价", strict),
     credit_price_cny: profitEstimateAmount(input.credit_price_cny, "每积分参考售价", strict),
     usd_cny: profitEstimateAmount(input.usd_cny, "美元兑人民币参考汇率", strict)
   };
@@ -3520,6 +3521,9 @@ async function saveProfitEstimateSettings(payload) {
   const { client, error } = getAdminClient();
   if (!client) throw new Error(error ? `后台连接失败：${String(error.message || error)}` : "后台尚未连接，无法保存毛利估算参数");
   const existing = await readSettingValue(client, PROFIT_ESTIMATE_SETTING);
+  // Older admin versions submit only CNY and the exchange rate. Their saves
+  // must not erase the newer, independent USD reference price.
+  if (!Object.hasOwn(payload, "credit_price_usd")) delete next.credit_price_usd;
   const saved = await upsertAdminSystemSetting({ key: PROFIT_ESTIMATE_SETTING, value: { ...existing, ...next } });
   if (!saved?.ok || saved.status !== "connected") throw new Error(saved?.error || "保存毛利估算参数失败");
   if (!saved.record || !saved.record.value || typeof saved.record.value !== "object") throw new Error("服务器未确认毛利估算参数，保存结果未知");
