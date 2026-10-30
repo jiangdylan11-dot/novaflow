@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 // Security boundaries (spec 8, 9, 10, 11; acceptance items 24-27).
 //
 // Each case here is an attack that must fail, exercised against the real
@@ -37,6 +38,7 @@ const reg = await call(BASE, 'POST', '/api/worker/register', {
     hardware: { gpu_name: 'RTX 5090', vram_mb: 32768, ram_mb: 65536, endpoint_url: 'http://127.0.0.1:0' }
   }
 });
+await approveComputeWorker(ctx.db,workerId);
 const workerToken = reg.body.workerToken;
 const grantKey = reg.body.grantKey;
 

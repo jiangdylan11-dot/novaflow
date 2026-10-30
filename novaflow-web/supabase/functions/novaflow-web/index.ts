@@ -148,6 +148,13 @@ const supabaseStore = {
     return unwrapRpc(data);
   },
 
+  async enrollPendingWorker({workerId,workerName,secretHash,hardware,peerHash}: any) {
+    const {data,error}=await admin().rpc('novaflow_web_enroll_pending_worker', {
+      p_worker_id:workerId,p_worker_name:workerName,p_secret_hash:secretHash,p_hardware:hardware||{},p_peer_hash:peerHash
+    });
+    if(error)throw error;return unwrapRpc(data);
+  },
+
   async getWorkerById(workerId: string) {
     if (!UUID_RE.test(String(workerId || ''))) return null;
     const { data, error } = await admin()
@@ -183,28 +190,18 @@ const supabaseStore = {
     return Number(data || 0);
   },
 
-  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null, allowPremium = true) {
-    const since = new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString();
-    let query = admin()
-      .from('worker_models')
-      .select('worker_id, gpu_workers!inner(id,status,tier,vram_mb,last_heartbeat)')
-      .eq('model_id', modelId)
-      .eq('status', 'ready')
-      .in('gpu_workers.status', ['idle', 'busy'])
-      .gte('gpu_workers.vram_mb', minVramMb)
-      .gt('gpu_workers.last_heartbeat', since);
-    if (workerId) query = query.eq('worker_id', workerId);
-    // A 中级账户 counts 普通 nodes alone.
-    if (allowPremium === false) query = query.neq('gpu_workers.tier', 'premium');
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data || []).length;
+  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null, allowPremium = true, userId: string | null = null, allowShared = true) {
+    const {data,error}=await admin().rpc('novaflow_web_count_capable_workers', {
+      p_model_id:modelId,p_min_vram:minVramMb,p_timeout:heartbeatTimeoutSeconds,p_worker_id:workerId,
+      p_allow_premium:allowPremium,p_user_id:userId,p_allow_shared:allowShared
+    });
+    if(error)throw error;return Number(data||0);
   },
 
   async listPoolWorkers() {
     const { data, error } = await admin()
       .from('gpu_workers')
-      .select('id,worker_name,status,tier,gpu_name,vram_mb,last_heartbeat')
+      .select('id,owner_id,worker_name,status,tier,gpu_name,vram_mb,last_heartbeat,enabled,owner_enabled,sharing_enabled,sharing_scope,allowed_user_ids')
       .order('worker_name');
     if (error) throw error;
     return data || [];
@@ -221,14 +218,12 @@ const supabaseStore = {
     return data;
   },
 
-  async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number) {
-    const { data, error } = await admin().from('worker_models')
-      .select('detail, gpu_workers!inner(status,vram_mb,last_heartbeat)')
-      .eq('model_id', modelId).eq('status', 'ready')
-      .in('gpu_workers.status', ['idle', 'busy']).gte('gpu_workers.vram_mb', minVramMb)
-      .gt('gpu_workers.last_heartbeat', new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString());
-    if (error) throw error;
-    return data || [];
+  async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, userId: string | null = null, allowPremium = true, allowShared = true) {
+    const {data,error}=await admin().rpc('novaflow_web_capable_model_details', {
+      p_model_id:modelId,p_min_vram:minVramMb,p_timeout:heartbeatTimeoutSeconds,p_user_id:userId,
+      p_allow_premium:allowPremium,p_allow_shared:allowShared
+    });
+    if(error)throw error;return data||[];
   },
 
   async createTask({ userId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }: any) {
@@ -458,7 +453,7 @@ function routePath(pathname: string): string {
   return out || '/';
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
   const url = new URL(req.url);
@@ -493,6 +488,9 @@ Deno.serve(async (req: Request) => {
 
   const result = await plane.handle({
     method: req.method,
+    // Peer comes from the server, never a caller-controlled forwarding header.
+    // Hosted gateways can share this quota until their trusted client-IP contract is verified.
+    clientAddress: "hostname" in info.remoteAddr ? info.remoteAddr.hostname : "edge-gateway",
     path,
     headers,
     query: Object.fromEntries(url.searchParams.entries()),

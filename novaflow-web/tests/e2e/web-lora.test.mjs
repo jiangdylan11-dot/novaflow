@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createContext, runInContext } from 'node:vm';
@@ -22,6 +23,7 @@ try {
   const login=await request('/dev/login','POST',{email:'lora@novaflow.local',balance:0});
   const token=login.body.session.token;
   const worker=await request('/api/worker/register','POST',{worker_id:crypto.randomUUID(),worker_name:'lora-fixture',worker_secret:generateWorkerSecret(),hardware:{vram_mb:32000}},token);
+  await approveComputeWorker(ctx.db,worker.body.worker.id);
   const wt=worker.body.workerToken;
   await request('/api/worker/models','POST',{models:['qwen-image-2511','minimax-h3'].map(model_id=>({model_id,status:'ready',detail:{lora_catalog:catalog,private_path:'C:/private'}}))},wt);
   equal((await request('/api/web/loras/qwen')).status,401);

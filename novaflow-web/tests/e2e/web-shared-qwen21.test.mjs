@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 // The website (shared pool) draws and designs UI on Qwen-Image-2.1 exactly when a node that can build
 // it is online: the node reports the model, the control plane queues 2.1 runs for that model and says
 // so in its capabilities, the 2.1 LoRA list comes from those nodes, and the page asks the pool. While
@@ -47,6 +48,7 @@ try {
   async function node(name, models) {
     const reg = await request('/api/worker/register', 'POST', { worker_id: crypto.randomUUID(), worker_name: name,
       worker_secret: generateWorkerSecret(), hardware: { vram_mb: 16376 } }, token);
+    await approveComputeWorker(ctx.db,reg.body.worker.id);
     await request('/api/worker/models', 'POST', { models }, reg.body.workerToken);
     return reg.body.workerToken;
   }

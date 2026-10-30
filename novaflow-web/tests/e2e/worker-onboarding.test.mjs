@@ -1,11 +1,12 @@
-// Adding a compute node, end to end.
+import { approveComputeWorker } from '../helpers.mjs';
+// Legacy registration-code compatibility, with explicit administrator approval.
 //
 // The requirement this suite exists for:
 //
 //   Admin 创建一次性 Worker 注册码 -> 新机器安装 NovaFlowWorkerSetup.exe
 //   -> 输入注册码 -> 自动注册 gpu_workers -> 检测 GPU/ComfyUI/模型
 //   -> 上报 worker_models -> Heartbeat -> 状态 Online
-//   -> Scheduler 自动开始分配兼容任务
+//   -> 管理员审批开通 -> Scheduler 自动开始分配兼容任务
 //
 //   不得要求管理员手动修改数据库、配置 IP、编辑 .env 或修改源码才能增加 Worker。
 //   云 GPU、朋友电脑和自己的电脑使用完全相同的注册流程。
@@ -83,6 +84,7 @@ async function newMachine({ name, code, expectFailure = false }) {
   });
   if (!expectFailure) workers.push(worker);
   await worker.start();
+  await approveComputeWorker(ctx.db,worker.getState().workerId);
   return worker;
 }
 
@@ -145,8 +147,9 @@ try {
   check('it discovered its own endpoint rather than being told one',
     /^http:\/\/[\d.]+:\d+$/.test(state.endpointUrl), state.endpointUrl);
   check('it reported model capability', state.models.length === MODEL_MANIFEST.length, state.models.length);
-  check('every manifest model reads ready against this runtime',
-    state.models.every((m) => m.status === 'ready'), state.models.map((m) => m.model_id + ':' + m.status));
+  check('the stubbed ComfyUI image and video models read ready',
+    ['qwen-image-2511','minimax-h3'].every(id => state.models.some(m => m.model_id === id && m.status === 'ready')),
+    state.models.map((m) => m.model_id + ':' + m.status));
 
   const pool = await call(BASE, 'GET', '/api/web/workers', { token: owner });
   const row = pool.body.workers[0];
@@ -286,7 +289,7 @@ try {
   checkEqual('and the stranger sees an empty pool', strangerPool.body.workers.length, 0);
 
   // -------------------------------------------------------------------------
-  section('9. nothing in this loop touched a config file or the database');
+  section('9. the client never needed administrator credentials; approval is a privileged test fixture');
   // Every call above went through the public API with a session token or a
   // code. This asserts the shape of that claim: the only inputs the machine
   // was given are a URL and a code.

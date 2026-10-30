@@ -27,10 +27,11 @@
   const CONTACT_ADMIN = '普通账户只能使用本机算力。需要使用其他算力节点，请联系管理员开通中级或高级账户。';
   const PREMIUM_LOCKED = '中级账户只能使用普通算力节点。需要使用高级算力节点，请联系管理员升级为高级账户。';
   const STATUS_TEXT = { idle: '空闲', busy: '忙碌', offline: '离线', local: '本机', auto: '自动' };
-  const TIER_TEXT = { standard: '普通节点', premium: '高级节点' };
+  const TIER_TEXT = { standard: '普通节点', premium: '高级节点', own: '本人设备' };
   // The pool is shown in two groups. A 中级账户 may pick from the first only;
   // a 高级账户 from both. The order is the order of the tiers.
   const TIER_GROUPS = [
+    { tier: 'own', title: '我的算力', hint: '后台为本人开通的设备' },
     { tier: 'standard', title: '普通算力节点', hint: '中级及以上账户可用' },
     { tier: 'premium', title: '高级算力节点', hint: '仅高级账户可用' }
   ];
@@ -119,6 +120,7 @@
     const allowed = !!(reply && reply.compute && reply.compute.shared);
     const premium = allowed && !!(reply.compute.premium);
     const nodes = (reply && Array.isArray(reply.nodes)) ? reply.nodes : [];
+    const hasOwn = nodes.some((node) => node.is_owner && node.can_use !== false);
     const rows = [];
     if (localAssistant) {
       rows.push({ id: null, name: '本机', hint: '启动Foart 的这台电脑', status: 'local', locked: false, selected: !current });
@@ -126,9 +128,9 @@
       rows.push({
         id: null,
         name: '自动分配',
-        hint: premium ? '任意空闲的算力节点' : '任意空闲的普通算力节点',
+        hint: !allowed && hasOwn ? '自动使用本人可用的算力' : premium ? '任意空闲的算力节点' : '任意空闲的普通算力节点',
         status: 'auto',
-        locked: !allowed,
+        locked: !allowed && !hasOwn,
         selected: !current
       });
     }
@@ -138,10 +140,10 @@
       rows.push({
         id: String(n.id),
         name: String(n.name || '未命名节点'),
-        hint: [n.gpu_name, vramText(n.vram_mb)].filter(Boolean).join(' · ') || '算力节点',
-        tier,
+        hint: [n.is_owner ? '本人设备' : '', n.gpu_name, vramText(n.vram_mb)].filter(Boolean).join(' · ') || '算力节点',
+        tier: n.is_owner ? 'own' : tier,
         status,
-        locked: !allowed || (tier === 'premium' && !premium),
+        locked: n.can_use === false || (!n.is_owner && (!allowed || (tier === 'premium' && !premium))),
         selected: !!(current && String(current.id) === String(n.id))
       });
     }
@@ -277,7 +279,9 @@
       list.appendChild(head);
       for (const row of group.rows) list.appendChild(rowNode(row, pick));
     }
-    if (!allowed) {
+    if (!allowed && rows.some((row) => row.id && !row.locked)) {
+      note.textContent = '可以使用后台为你开通的本人设备。对外分享由管理员单独设置。';
+    } else if (!allowed) {
       note.classList.add('nf-node-warn');
       note.textContent = CONTACT_ADMIN;
     } else if (rows.length <= 1) {
