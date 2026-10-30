@@ -10,3 +10,14 @@
 - 本次没有在线图片理解、在线生图或在线视频生成验收，不能把文字对话连通结果扩展为这些功能均已验证。
 
 本机证据：`work/xiaotao-online-20261030/sync-proof.json`、`provider-host-proof.json`、`address-fix-proof.json`、`online-chat-visible.txt`、`online-chat-success.png` 及测试/部署日志。原聊天标签的对话档案保留，测试在独立标签档案中完成。
+
+## 发布核对
+
+- 源码修复提交 `27ffa648` 已推送，统一应用版本 `2.0.176`，后台版本 `3.0.38`。
+- 从上述提交的干净 Git archive 构建，未包含工作区其他按钮样式修改。启动助手与后台安装包均已生成，没有自动安装或替换用户当前运行程序。
+- 后台包内 `admin-data.js`、`renderer.js`、`index.html` 与发布源码哈希一致；启动助手五个核心模块、五个网页运行文件与发布源码/网站包一致。启动助手包未包含账号文件、环境文件或私钥。后台真实 renderer/preload 的隔离 fixture 测试通过；该项不计为真实供应商调用。
+- 本次针对性测试 22 项通过，在线计费专项通过；入口检查 4 项通过，runtime 同步和一致性检查通过。
+- 正式站点、www 域名及 workers.dev 的 `release.json`、入口均为 `2.0.176`；backend、companion、web 控制面 health 均为该版本。bundle 已部署。线上公开 runtime 的 SHA256 与打包文件一致；三个受保护脚本未登录访问均为 403。
+- 发布后再次读取服务器：配置修订号仍为 2，Key 与本机最新保存值一致，LLM 地址为 `.ai/v1`，模型为 `xai/grok-4.7`。未要求用户再次输入或重置 Key。
+- 安装包：`work/release-2.0.176/FoartSetup-2.0.176.exe`（171751971 字节，SHA256 `3fdc4ad4cad890363ec9937eaf9912ebb58ebfa5e7576882a22b863c7d139b42`）；`work/release-2.0.176/FoartAdminSetup-3.0.38.exe`（82029050 字节，SHA256 `25c4e52f7f669eb8ac97b9f543e84237ceba48403c7ed6e7730ea36de91d05ae`）。
+- 发布证据位于 `work/release-2.0.176/package-proof.json`、`online-proof.json` 和构建/部署日志。实际在线创作建议与上下文追问截图仍见前述 `online-chat-success.png`。
