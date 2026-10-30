@@ -130,9 +130,15 @@
   .tab.active { border-bottom-color:transparent; }
   [hidden] { display:none!important; }
   #error:empty { display:none; }
-  #policy { margin-top:8px; }
-  #progress { margin-top:12px; }
-  #progressText { color:var(--muted);font-size:11px; }
+  .status-notes { margin-top:8px; }
+  .runtime-message { height:36px; display:grid; align-items:center; min-width:0; }
+  .runtime-message > * { grid-area:1 / 1; min-width:0; }
+  #policy { margin:0; }
+  #progress { margin:0; gap:4px; }
+  #progressText { color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  #error { max-height:36px;overflow-y:auto;padding:4px 8px;font-size:11px;overflow-wrap:anywhere; }
+  .footer-note { margin-top:4px;padding-top:6px; }
+  .hardware-name .v { display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
   #freeMemory { margin-left:auto;height:28px;padding:0 12px;font-size:12px;font-weight:500; }
   #websiteLink { color:#979797; }
   #policyLink { color:#dfc46f; }
@@ -147,7 +153,6 @@
 <div class="titlebar" aria-label="Foart 标题栏"><img src="assets/foart-logo-dark.svg" alt="Foart" draggable="false"><span class="ver" id="version"></span></div>
 <main>
 <div class="tabs" role="tablist" aria-label="算力助手"><button class="tab active" role="tab" aria-selected="true" data-tab="status">状态</button><button class="tab" role="tab" aria-selected="false" data-tab="logs">日志</button></div>
-<div id="error" class="err-box" role="alert"></div>
 <section id="tab-status" role="tabpanel">
 <div class="card">
 <div class="status-head"><div class="status-line"><span class="dot" id="statusDot"></span><span id="status">未启动</span><span class="badge" id="activityBadge">待启动</span></div><span class="badge" id="sharing">分享未开通</span></div>
@@ -156,9 +161,13 @@
 <div class="connection"><span class="k">生成服务</span><span id="comfy">—</span><button id="freeMemory" disabled>释放显存</button></div>
 </div>
 <div id="launcher-actions"><div class="launch-column"><button class="primary wide" id="website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span>启动Foart</span></button></div></div>
+<div class="status-notes"><div class="runtime-message">
+<div id="error" class="err-box" role="alert"></div>
 <div id="policy" class="hint" aria-live="polite">算力节点自动连接，使用权限由后台开通。</div>
 <div id="progress" class="launch-progress" hidden><progress max="100" value="0" aria-label="节点连接进度"></progress><span id="progressText"></span></div>
+</div>
 <div class="footer-note">节点自动连接 · 关闭窗口后在托盘继续运行</div>
+</div>
 </section>
 <section id="tab-logs" role="tabpanel" hidden><div class="card"><div id="logs" role="log" aria-label="运行日志"></div><button id="openLogs">打开日志文件夹</button></div></section>
 </main><script src="compute-ui.js"></script></body></html>

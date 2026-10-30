@@ -58,6 +58,25 @@ app.whenReady().then(async () => {
   assert.match(await run(`document.querySelector('#status').textContent`), /节点已连接/);
   assert.match(await run(`document.querySelector('#policy').textContent`), /本人使用：已开通/);
   if (process.env.NOVAFLOW_TEST_SCREENSHOT_DIR) fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, 'compute-assistant-ready.png'), (await win.webContents.capturePage()).toPNG());
+  const statusLayout = () => run(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    const main=document.querySelector('main'), footer=document.querySelector('.footer-note').getBoundingClientRect(), action=document.querySelector('#website').getBoundingClientRect();
+    resolve({overflow:main.scrollHeight>main.clientHeight, footerVisible:footer.bottom<=main.getBoundingClientRect().bottom-parseFloat(getComputedStyle(main).paddingBottom)+1, buttonVisible:action.bottom<=innerHeight});
+  })))`);
+  for (const [name, patch] of [
+    ['starting', { operation: { percent:65, message:'正在检测硬件并注册算力节点' } }],
+    ['long-progress', { operation: { percent:70, message:'正在检查运行环境、准备模型节点并同步平台配置。'.repeat(8) } }],
+    ['environment', { runtimeStarting:true }],
+    ['error', { lastError:'连接失败：请检查网络连接，稍后会自动重试。'.repeat(12) }],
+    ['starting-error', { operation: {percent:65,message:'重连中'}, lastError:'连接失败，正在重试' }],
+    ['long-gpu', { gpu: { name:'NVIDIA GeForce RTX 5090 Laptop GPU · External Graphics Adapter · Development Device', vramMb:24576 }, operation: {percent:65,message:'正在检测硬件并注册算力节点'} }]
+  ]) {
+    win.webContents.send('compute:state', {...state, ...patch});
+    await new Promise(resolve=>setTimeout(resolve,50));
+    assert.deepEqual(await statusLayout(), {overflow:false,footerVisible:true,buttonVisible:true}, name+' must fit the fixed window');
+    if (patch.operation && !patch.lastError) assert.equal(await run(`document.querySelector('#policy').hidden`), true);
+    if (patch.lastError) assert.equal(await run(`document.querySelector('#progress').hidden`), true);
+    if (process.env.NOVAFLOW_TEST_SCREENSHOT_DIR && ['starting','error'].includes(name)) fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, 'compute-assistant-'+name+'.png'), (await win.webContents.capturePage()).toPNG());
+  }
   win.webContents.send('compute:state', { ...state, connected: false });
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.match(await run(`document.querySelector('#status').textContent`), /连接中断/);

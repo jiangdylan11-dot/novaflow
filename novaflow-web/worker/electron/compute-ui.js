@@ -21,6 +21,7 @@
     $('activityBadge').textContent = value.operation ? '启动中' : value.pendingApproval ? '待审批' : value.runtimeStarting ? '准备中' : value.currentTaskId ? '工作中' : value.environmentError ? '待环境' : online ? '空闲' : '连接中';
     $('activityBadge').dataset.active = String(online);
     $('gpu').textContent = value.gpu?.name || '—';
+    $('gpu').title = value.gpu?.name || '';
     $('vram').textContent = value.gpu?.vramMb ? (value.gpu.vramMb / 1024).toFixed(1).replace(/\.0$/, '') + ' GB' : '—';
     $('task').textContent = value.currentTaskId ? '执行中' : '空闲';
     $('stats').textContent = (value.stats?.completed || 0) + ' / ' + (value.stats?.failed || 0);
@@ -33,8 +34,9 @@
     $('policy').textContent = value.pendingApproval ? '设备已自动登记，等待管理员命名、分配账号和开通权限。' : !policy ? '算力节点自动连接，使用权限由后台开通。' : policy.enabled === false ? '后台已停用此节点，停止接收新任务' :
       '本人使用：' + (policy.owner_enabled ? '已开通' : '未开通') + '　对外分享：' + (policy.sharing_enabled ? policy.sharing_scope === 'selected' ? '指定用户' : '共享算力池' : '未开通');
     $('error').textContent = value.lastError || '';
-    $('progress').hidden = !value.operation;
-    if (value.operation) { $('progress').querySelector('progress').value = value.operation.percent || 0; $('progressText').textContent = value.operation.message || ''; }
+    $('policy').hidden = !!value.lastError || !!value.operation;
+    $('progress').hidden = !value.operation || !!value.lastError;
+    if (value.operation) { $('progress').querySelector('progress').value = value.operation.percent || 0; $('progressText').textContent = value.operation.message || ''; $('progressText').title = value.operation.message || ''; }
   }
   async function openWebsite() {
     try { const result = await api.website(); if (result?.ok === false) throw new Error(result.error); }
