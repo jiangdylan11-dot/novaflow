@@ -7804,6 +7804,7 @@
     if (s.kind === 'skin' && selectedSkins().length > 1) return { title: `皮肤 · 已选 ${selectedSkins().length} 个`, body: multiSkinBody }
     if (s.kind === 'skin') return { title: '皮肤', body: skinBody }
     if (s.kind === 'anim') return { title: '动画', body: animBody }
+    if (s.kind === 'section' && s.name === 'images') return { title: '图片', body: imagesBody }
     if (s.kind === 'audio' || (s.kind === 'section' && s.name === 'audio')) return { title: '音频', body: audioBody }
     if (s.kind === 'event') return { title: '事件', body: eventBody }
     if (s.kind === 'section') return { title: { skins: '皮肤', events: '事件', anims: '动画' }[s.name] || '属性', body: sectionBody }
@@ -8205,6 +8206,7 @@
         imgTree.nodes.set(path, l)
         imgTree.pending.delete(path)
         renderTree()
+        if (!path && isSel('section', 'images')) renderProps()
       })
     }
     return null
@@ -8263,7 +8265,8 @@
     const count = root ? root.files.length + (root.dirs.length ? ` + ${root.dirs.length} 夹` : '') : '…'
     const folder = state.imageFolder ? state.imageFolder.name : ''
     const swapOffer = projects[activeProject] && projects[activeProject].pendingSwapFolder
-    rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: (folder ? `图片文件夹：${folder}${state.imageFolder.live ? '（文件夹里加图、删图会实时显示）' : '（已载入）'}\n` : `记录的图片目录：${state.imagePath || '.'}（未连接，缺图显示 MISSING）\n`) + (swapOffer ? `同级目录「${swapOffer.name}」里有缺少的替换图，可改接。\n` : '') + '把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
+    rows.push(h('div', { class: 'row node', style: pad(1), 'data-key': 'images', 'data-selected': isSel('section', 'images') ? '1' : null,
+      onclick: () => { toggle(); select({ kind: 'section', name: 'images' }) }, title: (folder ? `图片文件夹：${folder}${state.imageFolder.live ? '（文件夹里加图、删图会实时显示）' : '（已载入）'}\n` : `记录的图片目录：${state.imagePath || '.'}（未连接，缺图显示 MISSING）\n`) + (swapOffer ? `同级目录「${swapOffer.name}」里有缺少的替换图，可改接。\n` : '') + '把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
       caret(!closed, toggle), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
       h('span', { class: 'end' },
         // Spine's images path, no import (user 2026-10-15: 这里不需要有什么导入按钮): pictures are what the folder holds
@@ -8301,6 +8304,23 @@
       if (!l.dirs.length && !l.files.length) rows.push(h('div', { class: 'row', style: pad(depth) }, caret(null), h('span', { class: 'label dim' }, '（空）')))
     }
     walk('', 2)
+  }
+
+  function imagesBody() {
+    const folder = state.imageFolder, root = imagesListing('')
+    const out = [
+      field('图片目录', h('span', {}, state.imagePath || state.json.skeleton?.images || '.')),
+      field('本地文件夹', h('span', {}, folder?.name || state.pendingFolder?.name || '未指定')),
+      field('连接状态', h('span', {}, folder ? (folder.live ? '已连接（自动刷新）' : '已载入') : state.pendingFolder ? '需要恢复授权' : '未连接')),
+      field('当前目录', h('span', {}, root ? `${root.files.length} 张图片 · ${root.dirs.length} 个子文件夹` : '读取中…')),
+      h('div', { class: 'btns' },
+        !folder && state.pendingFolder ? btn('接上文件夹', restorePendingFolder) : null,
+        btn(folder ? '更换文件夹…' : '指定文件夹…', chooseImageFolder)),
+    ]
+    const swapOffer = projects[activeProject]?.pendingSwapFolder
+    if (swapOffer) out.push(h('div', { class: 'btns' }, btn('改接目录', acceptSwapReconnect)))
+    out.push(h('div', { class: 'hint' }, '把图片拖到骨骼、插槽或画板上使用；指定本地文件夹后，可在工程树中浏览其内容。'))
+    return out
   }
 
   /**
@@ -11131,7 +11151,7 @@
   function renderAudioNode(rows, pad) {
     const names = AudioAssets.names(state.json, state.audio), closed = state.sections.has('audio')
     const toggle = () => { closed ? state.sections.delete('audio') : state.sections.add('audio'); renderTree() }
-    rows.push(h('div', { class: 'row node', style: pad(1), 'data-key': 'audio', onclick: () => { toggle(); select({ kind: 'section', name: 'audio' }) } },
+    rows.push(h('div', { class: 'row node', style: pad(1), 'data-key': 'audio', 'data-selected': isSel('section', 'audio') ? '1' : null, onclick: () => { toggle(); select({ kind: 'section', name: 'audio' }) } },
       caret(!closed, toggle), h('span', { class: 'ico', html: ICON.audio }), h('span', { class: 'label' }, '音频'),
       h('span', { class: 'end' }, h('button', { class: 'ld-btn tiny', title: '指定音频文件夹', onclick: e => { e.stopPropagation(); chooseAudioDirectory() } }, state.audioFolder ? '换文件夹…' : '指定文件夹…'), h('span', { class: 'cnt' }, String(names.length)))))
     if (closed) return
