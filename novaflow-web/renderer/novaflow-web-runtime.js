@@ -214,7 +214,7 @@
   }
 
   async function localControl(method, path, body, timeoutMs = 30000) {
-    if (!CONFIG.localAssistant) throw new Error('请在本地助手点击“启动Foart”，连接本机工作台');
+    if (!CONFIG.localAssistant) throw new Error('请从 Foart 官网进入工作区，并连接 Foart 算力助手');
     const res = await fetch(CONFIG.localOrigin + path, { method,
       headers: { 'content-type': 'application/json', 'x-novaflow-local': localKey },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
@@ -348,7 +348,7 @@
           const panel = root.document.createElement('div');
           panel.setAttribute('role', 'status');
           panel.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:#151515;color:#eee;font:16px system-ui;padding:32px;text-align:center';
-          panel.textContent = 'Foart 已关闭。可关闭此标签页，需要使用时请在本地助手点击“启动Foart”。';
+          panel.textContent = '旧本地工作台入口已停止维护，请在 foart.net 使用官网并连接 Foart 算力助手。';
           root.document.body.appendChild(panel);
           root.close?.();
           return;
@@ -609,7 +609,7 @@
       {action:'identify',accountId:active.user.id,accountToken:active.token},10000).catch(()=>{});
   }, 500);
   async function artLearningCommand(payload) {
-    if (computeMode !== 'local') return {ok:false,error:'请先连接本地助手后记录当前任务反馈'};
+    if (computeMode !== 'local') return {ok:false,error:'当前官网尚未接入这项任务反馈接口'};
     try {
       const result = await localControl('POST', '/local/prompt-assistant/art-learning', {...payload,accountId:currentSession()?.user?.id || '',accountToken:currentSession()?.token || ''}, 10000);
       if (payload?.action === 'feedback' && result?.ok) void flushArtCandidates();
@@ -1458,7 +1458,7 @@
       // Reuse the supported task action, without adding a control-plane permission.
       const scope={surface:'ui-design',uiPlanner:'grok-vision-cpu-v1'};
       const hello=await localPromptAssistant('reverse-image-prompt',{...scope,action:'capabilities',images:[{dataUrl:''}]});
-      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新本地助手后使用完整在线分析；本次未调用云模型或本地推理'};
+      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新 Foart 算力助手后使用完整在线分析；本次未调用云模型或本地推理'};
       if(payload?.action==='capabilities')return hello;
       return localPromptAssistant('reverse-image-prompt',{...payload,...scope});
     },

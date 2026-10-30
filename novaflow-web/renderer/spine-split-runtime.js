@@ -5470,7 +5470,7 @@
   function buildQwenImageOutpaintWorkflow(info, imageName, prefix, delta, options = {}) {
     const required = ['LoadImage', 'ImagePadForOutpaint', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'ImageCrop', 'SaveImage']
     const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行无限扩图。请在本地助手里重新启动 Foart 后再试')
+    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行无限扩图。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试')
     const side = (value) => Math.max(0, Math.round(Number(value) || 0))
     const pad = { left: side(delta && delta.left), top: side(delta && delta.top), right: side(delta && delta.right), bottom: side(delta && delta.bottom) }
     const output = options.safeSize || null
@@ -5939,7 +5939,7 @@
   function buildImageAngleAdjustWorkflow(info, imageName, options = {}) {
     const required = ['LoadImage', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行角度调整。请在本地助手里重新启动 Foart 后再试')
+    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行角度调整。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试')
     const horizontalAngle = normalizeImageAngleHorizontal(options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options.zoom)
@@ -7235,7 +7235,7 @@
 
   function missingSeedVr2NodeMessage(missing) {
     const list = Array.isArray(missing) && missing.length ? missing.join(', ') : 'SeedVR2'
-    return '算力节点缺少高清放大组件，请在本地助手里重新启动 Foart 后再试'
+    return '算力节点缺少高清放大组件，请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试'
   }
 
   function missingSeedVr2ModelMessage(modelName) {
@@ -7897,7 +7897,7 @@
     // A node that cannot build the 2.1 graph is an error, never a silent run on another model.
     const requiredNodes = ['LoadImage', 'NovaFlowGGUFBF16Loader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = requiredNodes.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${featureName}。请在本地助手里重新启动 Foart 后再试`)
+    if (!runtime) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${featureName}。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试`)
     return { engine: 'qwen-2.1', unetName: runtime.unetName, clipName: runtime.clipName, vaeName: runtime.vaeName, loraName: '' }
   }
 
@@ -8976,7 +8976,7 @@
   function buildFluxCompletionWorkflow(info, imageName, maskName, prefix, options = {}) {
     const required = ['LoadImage', 'ImageToMask', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'CLIPTextEncode', 'ConditioningZeroOut', 'FluxGuidance', 'InpaintModelConditioning', 'DifferentialDiffusion', 'KSampler', 'VAEDecode', 'SaveImage']
     const missing = required.filter((name) => !info || !info[name])
-    if (missing.length) throw new Error('当前算力节点缺少补图所需的组件。请在本地助手里重新启动 Foart 后再试')
+    if (missing.length) throw new Error('当前算力节点缺少补图所需的组件。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试')
     const unetName = requireComfyChoice(info.UNETLoader, 'unet_name', 'fill-dev-OneReward-fp8.safetensors', 'Flux Fill UNET')
     const vaeName = requireComfyChoice(info.VAELoader, 'vae_name', 'ae.safetensors', 'Flux VAE')
     const clipName1 = requireComfyChoiceFrom(info.DualCLIPLoader, 'clip_name1', 'clip_l.safetensors', 'Flux CLIP-L')
@@ -9019,7 +9019,7 @@
     // 局部编辑 and 智能补图 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
     // every node carries it.
     const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
-    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补图'}。请在本地助手里重新启动 Foart 后再试`)
+    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补图'}。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试`)
     if (wantsQwen21) {
       // 局部编辑 draws a new seed per run (a rerun gives another result); 智能补图 keeps INPAINT_COMPLETION_SEED.
       const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed)))
@@ -11949,7 +11949,7 @@
     debug.status = 'timeout'
     debug.durationMs = Date.now() - start
     state.lastProcessingDebug = debug
-    throw new Error('拆图执行超过 30 分钟，请重启本地助手后重试')
+    throw new Error('拆图执行超过 30 分钟，请重启 Foart 算力助手后重试')
   }
 
   // The See-through split graph. The desktop page builds it against the local runtime; the Web build
@@ -22750,7 +22750,7 @@
     // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
     // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
     resolved = objectTransferUsableRuntime(resolved) || resolveQwen21EditRuntime(info, '特效提取')
-    if (!info || !info.GetImageSize || !info.EmptyImage) throw new Error('当前算力节点缺少 GetImageSize / EmptyImage 节点，无法执行特效提取。请在本地助手里重新启动 Foart 后再试')
+    if (!info || !info.GetImageSize || !info.EmptyImage) throw new Error('当前算力节点缺少 GetImageSize / EmptyImage 节点，无法执行特效提取。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试')
     // image_1 is a pure black canvas the size of the plate (so the sampled latent is the plate's grid and
     // the result lands back on the crop), image_2 the plate itself, each at its own size (resolution 0;
     // the plate is 32-aligned, so it is never resampled). The sampler runs on the encoder's latent at

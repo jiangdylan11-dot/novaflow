@@ -142,7 +142,7 @@
   }
   // Encode RGBA bytes directly: canvas PNG export would round premultiplied RGB.
   async function encodePng(rgba, width, height, premultiplyAlpha = false) {
-    if (typeof CompressionStream !== 'function') throw new Error('当前环境不支持 PNG 图集编码，请更新浏览器或启动助手');
+    if (typeof CompressionStream !== 'function') throw new Error('当前浏览器不支持 PNG 图集编码，请更新浏览器后重试');
     const rows = new Uint8Array((width * 4 + 1) * height);
     for (let y = 0; y < height; y++) {
       const target = y * (width * 4 + 1) + 1;

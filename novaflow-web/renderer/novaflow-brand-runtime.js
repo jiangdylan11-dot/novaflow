@@ -84948,7 +84948,7 @@
     }
     if (owned.cancelPromise) return owned.cancelPromise;
     const cancel = window.electronAPI?.promptAssistantCancelRequest;
-    if (typeof cancel !== "function") return { ok: false, error: "当前启动助手不支持中止这次提示词分析，请更新启动助手" };
+    if (typeof cancel !== "function") return { ok: false, error: "当前算力助手不支持中止这次提示词分析，请更新 Foart 算力助手" };
     owned.cancelPromise = (async () => {
       try {
         const result = await cancel.call(window.electronAPI, { requestId: owned.requestId });
@@ -86010,7 +86010,7 @@
     const required = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha", ...(nativeEdit ? ["VAEEncode", "SetLatentNoiseMask", "SolidMask", "MaskComposite", ...(nativeEdit.neutralizeConditioning ? ["EmptyImage", "ImageCompositeMasked"] : [])] : [])];
     const missing = required.filter((type) => !info[type]);
     if (!runtime || missing.length) {
-      throw new Error("当前算力节点缺少所需的模型或节点，无法按多参考图生成 UI。请在本地助手里重新启动 Foart 后再试");
+      throw new Error("当前算力节点缺少所需的模型或节点，无法按多参考图生成 UI。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试");
     }
     const names = (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean);
     if (names.length > QWEN21_UI_MAX_REFERENCES) {
@@ -86233,7 +86233,7 @@
     // Asked for 2.1 on a node that cannot build it: an error, never a 2511 graph that keeps three of
     // the references and other steps than the panel showed.
     if ((drawQwen21 || uiQwen21) && !qwen21Build) {
-      throw new Error("当前算力节点无法生成（缺少模型或节点），请在本地助手里重新启动 Foart 后再试");
+      throw new Error("当前算力节点无法生成（缺少模型或节点），请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试");
     }
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;

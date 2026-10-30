@@ -601,7 +601,7 @@
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
     state.learningTask = null; state.learningWarning = '';
     async function learningCommand(command) {
-      if (typeof api()?.artLearning !== 'function') throw new Error('请更新本地助手后使用任务反馈');
+      if (typeof api()?.artLearning !== 'function') throw new Error('请更新 Foart 算力助手后使用任务反馈');
       const response = await api().artLearning(command);
       if (!response?.ok) throw new Error(response?.error || '任务反馈操作失败');
       return response.data;
@@ -871,7 +871,7 @@
         if(!directPlan)startStatusPolling(operation,activeRequest);
         const response=await responsePromise;stopStatusPolling();
         if(operation!==serial || stopped)return false;
-        if(!response?.ok) {if(['unknown-conversation','flash-agent-unknown-conversation'].includes(response?.errorCode))state.conversationId='';fail(response?.error || '音视分析未完成，请检查本地助手');}
+        if(!response?.ok) {if(['unknown-conversation','flash-agent-unknown-conversation'].includes(response?.errorCode))state.conversationId='';fail(response?.error || '音视分析未完成，请检查 Foart 算力助手');}
         const data=response.data;
         if(typeof data?.reply!=='string')fail('音视分析回复不完整');
         state.conversationId=data.conversationId || state.conversationId;
@@ -1113,7 +1113,7 @@
         if (!snapshot) snapshot = await bridge.captureChat({includeResult});
         if (execution && mode === 'chat') fail('还缺少可执行的绘图上下文，请先打开绘图页面');
         activeSnapshot = snapshot; activeMode = mode; state.mode = mode; state.pending = true;
-        state.status = includeResult ? '正在查看实际成图…' : state.provider === 'api' ? '小桃正在连接在线智能…' : '正在连接本地助手…';
+        state.status = includeResult ? '正在查看实际成图…' : state.provider === 'api' ? '小桃正在连接在线智能…' : '正在连接 Foart 算力助手…';
         lastRequestMessage = message; activeStartedAt = Date.now();
         if (recordMessage) {if (!(await ensureStaged())) return false; pushUser(message);}
         notify();
@@ -1136,7 +1136,7 @@
           images.push({dataUrl, role:image.role, source:image.source, name:image.name, ...imageDimensions(image)});
         }
         const payload = {requestId:activeRequest, provider:state.provider, mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:state.conversationId || undefined, message:requestMessage, history:copy(state.history), artContext:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:lastUploads.map(({kind, name}) => ({kind, name}))} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {})};
-        if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新页面或启动本地助手');
+        if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新官网页面并检查 Foart 算力助手状态');
         const responsePromise = api().artAgentChat(payload); startStatusPolling(operation, activeRequest);
         const response = await responsePromise;
         if (operation !== serial || stopped) return false;

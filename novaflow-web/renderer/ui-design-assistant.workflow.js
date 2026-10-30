@@ -398,13 +398,13 @@
 
   async function runGrokComplete(options,references,checkActive) {
     const api=options.electronAPI||root.electronAPI||{},cpu=api.promptAssistantUiDesignCpu;
-    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整在线看图分析需要更新本地助手并登录 Foart；本次未调用付费分析');
+    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整在线看图分析需要更新 Foart 算力助手并登录官网；本次未调用付费分析');
     const request=[stripTargetStyleContract(options.prompt),options.requirements||''].filter(Boolean).join('\n');
     const callCpu=async payload=>{const r=await cpu({surface:'ui-design',...payload});if(r?.ok===false||!r?.data)throw new Error(r?.error||'UI CPU 组件未返回有效结果');return r.data;};
     const reverse=localApi(options,references);
-    if(typeof reverse!=='function')throw new Error('在线目录设计需要本地助手先识别布局；未切换分析来源');
+    if(typeof reverse!=='function')throw new Error('在线目录设计需要算力助手先识别布局；未切换分析来源');
     const capability=await cpu({surface:'ui-design',action:'capabilities'});
-    if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('请更新 2.0.81 本地助手后使用完整在线目录设计；本次未调用付费分析');
+    if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('请更新 Foart 算力助手后使用完整在线目录设计；本次未调用付费分析');
     const sourceResult=await reverse({uiPlanner:'native-catalog-v3',surface:'ui-design',targetEngine:'qwen-2.1',uiDesignIntent:'redesign',uiPreserveLayout:true,uiAnalysisStage:'source-only',currentPrompt:request,images:references.map(r=>({dataUrl:r.dataUrl,role:r.role}))});
     checkActive();const source=sourceResult?.data||sourceResult;
     if(sourceResult?.ok===false||!source?.bundle||source.uiCatalog?.recognitionMethod!=='native-source-catalog-v3')throw new Error(sourceResult?.error||'在线分析的前置布局识别未完成；未提交云端分析或生图');
@@ -455,10 +455,10 @@
       if (engine!=='grok' && typeof call !== 'function') throw new Error('本地模型未就绪')
       if(engine==='local'){
         const api=options.electronAPI||root.electronAPI||{};
-        if(typeof api.promptAssistantUiDesignCpu!=='function')throw new Error('请更新本地助手后使用完整UI设计，本次未调用其他分析模型');
+        if(typeof api.promptAssistantUiDesignCpu!=='function')throw new Error('请更新 Foart 算力助手后使用完整UI设计，本次未调用其他分析模型');
         const capability=await api.promptAssistantUiDesignCpu({surface:'ui-design',action:'capabilities'});
         checkActive();
-        if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('当前算力节点需要更新 2.0.81 本地助手后才能运行完整UI设计，本次未提交分析或生图');
+        if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('当前算力节点需要更新 Foart 算力助手后才能运行完整UI设计，本次未提交分析或生图');
       }
       const request = [stripTargetStyleContract(options.prompt), options.requirements || ''].filter(Boolean).join('\n')
       const result = engine==='grok' ? await withTimeout(()=>runGrokComplete(options,references,checkActive),options.timeoutMs||900000,engine) : await withTimeout(() => call({ uiPlanner:'native-catalog-v3', surface:'ui-design', targetEngine:'qwen-2.1',
@@ -468,7 +468,7 @@
       if (typeof options.getRevision === 'function' && options.getRevision() !== revision) throw new Error('设计要求已变化，本次结果未覆盖当前内容')
       const data = result?.data || result
       if (result?.ok === false || !data?.prompt || data?.uiCatalog?.schema !== 'nf.ui.structure-catalog.v1') throw new Error(result?.error || '结构编译未返回有效结果，本次未提交生成')
-      if (data.uiCatalog.recognitionMethod !== (engine==='grok'?'native-grok-catalog-v3':'native-source-catalog-v3')) throw new Error('算力节点的 UI 分析组件需要更新，请安装最新本地助手后重试；本次未提交生图')
+      if (data.uiCatalog.recognitionMethod !== (engine==='grok'?'native-grok-catalog-v3':'native-source-catalog-v3')) throw new Error('算力节点的 UI 分析组件需要更新，请安装最新版 Foart 算力助手后重试；本次未提交生图')
       return Object.freeze({ ...data, provider, engine, targetStyle:'auto', purpose:'ui-design-reference', referenceCount:references.length,
         references, structure, scene, hasNegativePrompt:false, negativePrompt:'', quota: chargeQuota(result) })
     }
