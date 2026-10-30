@@ -244,8 +244,26 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     for (let i = 0; i < beforePan.items.length; i++) { assert(Math.abs(afterPan.items[i].x - beforePan.items[i].x - 22) < .1); assert(Math.abs(afterPan.items[i].y - beforePan.items[i].y + 12) < .1); }
     await page.mouse.move(panFrom.x, panFrom.y); await page.mouse.down({ button: 'right' });
     await page.mouse.move(panFrom.x - 22, panFrom.y + 12, { steps: 3 }); await page.mouse.up({ button: 'right' });
+    const assertStableFit = async () => {
+      await frame.evaluate(() => {
+        setPreviewZoom(.83);
+        state.canvasPanX = 17.35; state.canvasPanY = -19.75;
+        state.sceneItems.forEach((item, index) => { item.x = (index - 2) * 143.15 * state.previewZoom + state.canvasPanX; item.y = ((index % 2) * 71.3 - 35.65) * state.previewZoom + state.canvasPanY; applySceneItemTransform(item); });
+        applyBackgroundPreviewZoom(); syncCanvasGrid();
+      });
+      const fitState = () => frame.evaluate(() => [state.previewZoom, state.canvasPanX, state.canvasPanY, ...state.sceneItems.flatMap((item) => [item.x, item.y])]);
+      await frame.locator('#autoFitButton').click();
+      const firstFit = await fitState();
+      for (let click = 0; click < 10; click++) {
+        await frame.locator('#autoFitButton').click();
+        const repeatedFit = await fitState();
+        assert(repeatedFit.every((value, index) => Math.abs(value - firstFit[index]) < 1e-7), 'repeated Auto Fit must preserve the first fitted zoom and positions');
+      }
+    };
+    await assertStableFit();
     await frame.getByRole('button', { name: '清除背景', exact: true }).click();
     assert(await frame.evaluate(() => elements.backgroundImage.hidden && elements.clearBackgroundButton.disabled));
+    await assertStableFit();
     const actionsPosition = await frame.evaluate(() => {
       const actions = document.querySelector('.canvas-actions').getBoundingClientRect();
       const canvas = elements.playerMount.getBoundingClientRect();

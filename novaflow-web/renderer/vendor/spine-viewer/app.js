@@ -420,27 +420,35 @@ function resetPreviewZoomToActualSize() {
 
 function fitPreviewToCanvas() {
   const mount = elements.playerMount.getBoundingClientRect();
-  const rects = state.sceneItems.map((item) => {
-    const r = item.element.getBoundingClientRect(), b = getFixedArtworkBounds(item);
-    return { left: r.left + b.left, top: r.top + b.top, right: r.left + b.left + b.width, bottom: r.top + b.top + b.height };
+  const zoom = state.previewZoom;
+  // Fit in original scene units. Rounded CSS pixels must never feed the next fit.
+  const items = state.sceneItems.map((item) => {
+    const bounds = getFixedArtworkBounds(item);
+    const size = captureBaseSceneSize(captureBasePreviewViewport(false, item), false, item);
+    const width = size?.width || item.element.offsetWidth / zoom;
+    const height = size?.height || item.element.offsetHeight / zoom;
+    const x = (item.x - state.canvasPanX) / zoom, y = (item.y - state.canvasPanY) / zoom;
+    const shift = sceneAnchorShift(item);
+    const left = x + shift.x / zoom + (bounds.left / item.element.offsetWidth - .5) * width;
+    const top = y + shift.y / zoom + (bounds.top / item.element.offsetHeight - .5) * height;
+    return { item, x, y, left, top, right: left + bounds.width / item.element.offsetWidth * width, bottom: top + bounds.height / item.element.offsetHeight * height };
   });
+  const rects = [...items];
   const hasBackground = !elements.backgroundImage.hidden;
-  if (hasBackground) rects.push(elements.backgroundImage.getBoundingClientRect());
+  if (hasBackground) rects.push({ left: -state.backgroundNaturalWidth / 2, top: -state.backgroundNaturalHeight / 2, right: state.backgroundNaturalWidth / 2, bottom: state.backgroundNaturalHeight / 2 });
   if (!rects.length || mount.width <= 48 || mount.height <= 80) return;
   const left = Math.min(...rects.map((rect) => rect.left)), right = Math.max(...rects.map((rect) => rect.right));
   const top = Math.min(...rects.map((rect) => rect.top)), bottom = Math.max(...rects.map((rect) => rect.bottom));
-  // A background remains centered. Without one, center the complete scene group.
-  const cx = hasBackground ? mount.left + mount.width / 2 + state.canvasPanX : (left + right) / 2;
-  const cy = hasBackground ? mount.top + mount.height / 2 + state.canvasPanY : (top + bottom) / 2;
+  const cx = hasBackground ? 0 : (left + right) / 2;
+  const cy = hasBackground ? 0 : (top + bottom) / 2;
   const width = Math.max(1, 2 * Math.max(cx - left, right - cx));
   const height = Math.max(1, 2 * Math.max(cy - top, bottom - cy));
-  const nextZoom = clamp(state.previewZoom * Math.min((mount.width - 48) / width, (mount.height - 80) / height), MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM);
-  const factor = nextZoom / state.previewZoom;
-  state.canvasPanX = (state.canvasPanX - (cx - mount.left - mount.width / 2)) * factor;
-  state.canvasPanY = (state.canvasPanY - (cy - mount.top - mount.height / 2)) * factor;
-  state.sceneItems.forEach((item) => {
-    item.x = (item.x - (cx - mount.left - mount.width / 2)) * factor;
-    item.y = (item.y - (cy - mount.top - mount.height / 2)) * factor;
+  const nextZoom = clamp(Math.min((mount.width - 48) / width, (mount.height - 80) / height), MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM);
+  state.canvasPanX = -cx * nextZoom;
+  state.canvasPanY = -cy * nextZoom;
+  items.forEach(({ item, x, y }) => {
+    item.x = x * nextZoom + state.canvasPanX;
+    item.y = y * nextZoom + state.canvasPanY;
     item.positionTouched = true;
   });
   setPreviewZoom(nextZoom, { scaleLayout: false });
