@@ -158,6 +158,7 @@
     skin: '<svg viewBox="0 0 16 16"><path d="M5 2 2 4.5 3.5 7 5 6v8h6V6l1.5 1L14 4.5 11 2c-.5 1.2-1.6 2-3 2S5.5 3.2 5 2z" fill="currentColor"/></svg>',
     anim: '<svg viewBox="0 0 16 16"><path d="M5 3v10l8-5z" fill="currentColor"/></svg>',
     event: '<svg viewBox="0 0 16 16"><path d="M3 2.5h10a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H7.5l-3 2.5V11H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 4.6v3.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="9.3" r=".85" fill="currentColor"/></svg>',
+    eventAudio: '<svg viewBox="0 0 16 16"><path d="M3 2.5h10a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H7.5l-3 2.5V11H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.5 6.2v1.6M7 4.7v4.6M9.5 5.5v3M12 6.2v1.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
     order: '<svg viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h10" stroke="currentColor" stroke-width="1.5"/></svg>',
     project: '<svg viewBox="0 0 16 16"><path d="M2 4.5h4.5l1.5 1.5h6v7.5H2z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
     cons: '<svg viewBox="0 0 16 16"><circle cx="4" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="4" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 10.5l5-5" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 1.5"/></svg>',
@@ -7462,11 +7463,13 @@
       wireAudioEventDrop(rows[rows.length - 1])
       if (eventsOpen) {
         for (const n of evNames) {
+          const audioPath = String(j.events[n]?.audio || '').trim()
           const eventRow = h('div', {
             class: 'row', style: pad(2), 'data-selected': isSel('event', n) ? '1' : null, 'data-multi': !isSel('event', n) && state.dopeExtra && state.dopeExtra.events.includes(n) ? '1' : null, 'data-key': 'event:' + n,
+            title: audioPath ? `音频事件：${audioPath}` : '普通事件',
             onclick: () => select({ kind: 'event', name: n }),
           }, animOn() ? h('span', { class: 'lkey' }, keyBtn([['events', n]], () => keyEventNow(n), `在第 ${state.frame} 帧放事件 ${n}`)) : null,
-          caret(null), h('span', { class: 'ico', html: ICON.event, style: `color:${KEY_COLOR.event}` }), h('span', { class: 'label' }, n))
+          caret(null), h('span', { class: 'ico', html: audioPath ? ICON.eventAudio : ICON.event, style: `color:${KEY_COLOR.event}` }), h('span', { class: 'label' }, n))
           wireAudioEventDrop(eventRow, n); rows.push(eventRow)
         }
       }
