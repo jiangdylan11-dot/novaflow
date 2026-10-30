@@ -8,22 +8,41 @@ const output = path.resolve(process.env.NF_PNG_OUTPUT || path.join(root, '.artif
 fs.mkdirSync(output, { recursive: true });
 app.disableHardwareAcceleration(); app.setPath('userData', path.join(output, 'profile'));
 const bundle = fs.readFileSync(path.join(renderer, 'assets/index-BbIa-2NM.js'), 'utf8');
-let component, toggle;
-function walk(node) {
+let component, toggle, reactName, jsxName, toggleName;
+const declarations = new Map();
+function walk(node, visit) {
   if (!node || typeof node !== 'object') return;
-  if (node.type === 'FunctionDeclaration') {
-    const source = bundle.slice(node.start, node.end);
-    if (node.id?.name === 'Qi' && source.includes('compressSpineAtlasSafe')) component = node;
-    if (node.id?.name === 'nt' && source.includes('options:') && source.includes('aria-pressed')) toggle = source;
-  }
+  visit(node);
   for (const value of Object.values(node)) {
-    if (Array.isArray(value)) value.forEach(walk);
-    else if (value && typeof value === 'object') walk(value);
+    if (Array.isArray(value)) value.forEach(child => walk(child, visit));
+    else if (value && typeof value === 'object') walk(value, visit);
   }
 }
-walk(acorn.parse(bundle, { ecmaVersion: 'latest', sourceType: 'module' }));
-assert(component && toggle);
-const start = bundle.indexOf('var Oi='); assert(start > 0 && start < component.start);
+const ast = acorn.parse(bundle, { ecmaVersion: 'latest', sourceType: 'module' });
+walk(ast, node => {
+  if (node.type !== 'FunctionDeclaration') return;
+  declarations.set(node.id?.name, node);
+  if (bundle.slice(node.start, node.end).includes('compressSpineAtlasSafe')) component = node;
+});
+assert(component);
+// Release minification renames helpers and inlines plans; locate the real
+// component and Alpha control by their API/properties rather than local names.
+walk(component, node => {
+  if (node.type === 'MemberExpression' && node.object.type === 'Identifier') {
+    if (node.property.name === 'useState') reactName = node.object.name;
+    if (node.property.name === 'jsx') jsxName = node.object.name;
+  }
+  if (node.type === 'CallExpression' && node.arguments[0]?.type === 'Identifier' && node.arguments[1]?.type === 'ObjectExpression') {
+    const options = node.arguments[1].properties.find(property => property.key?.name === 'options');
+    if (options && /(?:`pma`|"pma")/.test(bundle.slice(options.start, options.end))) toggleName = node.arguments[0].name;
+  }
+});
+assert(reactName && jsxName && toggleName);
+const toggleNode = declarations.get(toggleName); assert(toggleNode);
+toggle = bundle.slice(toggleNode.start, toggleNode.end);
+const helpers = ast.body.filter(node => node.type === 'VariableDeclaration' && node.end <= component.start).at(-1);
+assert(helpers);
+const start = helpers.start;
 const toolSource = bundle.slice(start, component.end);
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 let server, win;
@@ -47,8 +66,8 @@ app.whenReady().then(async () => {
 <script src="/renderer/novaflow-web-capabilities.js"></script>
 <script>
 const React=require(${JSON.stringify(path.join(root, 'node_modules/react'))}),DOM=require(${JSON.stringify(path.join(root, 'node_modules/react-dom/client'))}),X=require(${JSON.stringify(path.join(root, 'node_modules/react/jsx-runtime'))});
-const toggle=new Function('_','X',${JSON.stringify(toggle + ';return nt;')})(React,X);
-const Tool=new Function('_','X','nt',${JSON.stringify(toolSource + ';return Qi;')})(React,X,toggle);
+const toggle=new Function(${JSON.stringify(reactName)},${JSON.stringify(jsxName)},${JSON.stringify(toggle + ';return ' + toggleName + ';')})(React,X);
+const Tool=new Function(${JSON.stringify(reactName)},${JSON.stringify(jsxName)},${JSON.stringify(toggleName)},${JSON.stringify(toolSource + ';return ' + component.id.name + ';')})(React,X,toggle);
 window.calls=[];for(const key of ['compressPngStrong','compressSpineAtlasSafe']){const original=electronAPI[key];electronAPI[key]=async payload=>{const result=await original(payload);calls.push({key,payload:{...payload,dataUrl:undefined},result});return result;};}
 DOM.createRoot(document.getElementById('fixture')).render(React.createElement(Tool,{toolMode:'png_compress',showToolSelector:false}));
 </script>`;
