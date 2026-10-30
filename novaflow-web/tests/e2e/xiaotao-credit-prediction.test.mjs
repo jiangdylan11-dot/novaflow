@@ -10,24 +10,23 @@ function prices() {
   return scope.NovaFlowFeatureCreditPrices;
 }
 const question = '把附图放到图生图参考图；只用一句中文描述图片主色，不要生成或修改图片。';
-const input = {text:question,history:'',files:[{kind:'image',width:96,height:96}]};
+const input = {text:question,history:'',files:[{kind:'image',width:96,height:96}],model:'xai/grok-4.7'};
 const config = {credits_per_usd:211,token_billing:{markup:2},xiaotao_online:xiaotaoOnlinePolicy()};
-const sample = {model:'metered-model',eligible:true,pricingSource:'token_usage',usdCost:0.02,inputTokens:1500,outputTokens:500,totalTokens:2000,creditsPerUsd:211,markup:2,policy:xiaotaoOnlinePolicy()};
+const sample = {model:'metered-model',eligible:true,pricingSource:'token_usage',usdCost:0.02,inputTokens:1500,outputTokens:500,totalTokens:2000,creditsPerUsd:211,markup:1.5,policy:xiaotaoOnlinePolicy()};
 
 test('a brief image question forecasts less than the full-output reservation without changing it',()=>{
   const p=prices(), hold=p.estimateXiaotaoOnline(input), forecast=p.predictXiaotaoOnline(input);
-  assert.equal(hold.credits,21,'existing reservation contract stays 21');
   assert.equal(hold.credits,estimateXiaotaoOnlineCredits(input).credits);
-  assert.equal(forecast.reservedCredits,21);
+  assert.equal(forecast.reservedCredits,hold.credits);
   assert.ok(forecast.credits<hold.credits);
   assert.ok(forecast.low<=forecast.credits && forecast.credits<=forecast.high);
   assert.equal(forecast.confidence,'initial');
   assert.equal(forecast.sampleCount,0);
-  assert.equal(p.estimateXiaotaoOnline(input).credits,21);
+  assert.equal(p.estimateXiaotaoOnline(input).credits,hold.credits);
   assert.equal(p.predictXiaotaoOnline({text:''}).credits,0);
   const withPage=p.predictXiaotaoOnline({...input,contextText:'页面中的长提示词'.repeat(300)});
   assert.ok(withPage.credits>forecast.credits,'actual page text contributes to the forecast');
-  assert.equal(withPage.reservedCredits,21,'forecast context must not silently change the reservation contract');
+  assert.equal(withPage.reservedCredits,hold.credits,'forecast context must not silently change the reservation contract');
 });
 
 test('task intent affects the forecast, with a broad range until measured usage exists',()=>{
@@ -50,7 +49,7 @@ test('recorded server USD learns hidden reasoning cost and improves a held-out n
   const unseen={...input,text:question+' 请回答。'};
   const before=p.predictXiaotaoOnline({...unseen,model:sample.model,config});
   const after=p.predictXiaotaoOnline({...unseen,...learned});
-  const observed=creditsFromUsd(0.0202);
+  const observed=Math.ceil(0.0202*211*1.5);
   assert.equal(after.confidence,'calibrated');
   assert.equal(after.sampleCount,6);
   assert.ok(Math.abs(after.credits-observed)<Math.abs(before.credits-observed));
@@ -65,7 +64,7 @@ test('different models, prices, task types and image size classes do not borrow 
   assert.equal(p.predictXiaotaoOnline({...input,...learned}).sampleCount,1);
   for (const changes of [
     {model:'different-model'},
-    {config:{...config,token_billing:{markup:3}}},
+    {config:{...config,xiaotao_online:{...config.xiaotao_online,markup:3}}},
     {text:'请详细分析这张图'},
     {files:[{kind:'image',width:2048,height:2048}]},
     {files:[{kind:'image'}]},

@@ -130,6 +130,8 @@ function registerLicenseAdminIpc() {
   registerAdminDataList("admin:provider:runninghub:check", () => adminData.getAdminRunningHubProviderStatus({ checkAccount: true }));
   registerAdminDataList("admin:data:feature_credits:get", adminData.getFeatureCreditAdmin);
   registerAdminDataWrite("admin:data:feature_credits:save", adminData.saveFeatureCreditAdmin);
+  registerAdminDataList("admin:data:profit_estimate:get", adminData.getProfitEstimateSettings);
+  registerAdminDataWrite("admin:data:profit_estimate:save", adminData.saveProfitEstimateSettings);
   registerAdminDataWrite("admin:data:credit_ledger:query", adminData.queryCreditLedger);
   registerAdminDataWrite("admin:data:quota_migration:run", adminData.migrateGrokQuotaToCredits);
 

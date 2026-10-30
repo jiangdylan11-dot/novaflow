@@ -190,6 +190,7 @@
     chars_per_token: 2,
     output_tokens: 2048,
     usd_per_million_tokens: 10,
+    markup: 1.5,
     file_tokens: { image: 2500, video: 0, audio: 0 }
   };
 
@@ -215,10 +216,40 @@
     return file ? 'image' : '';
   }
 
+  function isGrok47(model) {
+    return /^(?:xai\/)?grok-4\.7$/i.test(String(model || '').trim());
+  }
+
+  function grok47Usd(inputTokens, outputTokens, online) {
+    var rates = online.grok_4_7_rates && typeof online.grok_4_7_rates === 'object' && !Array.isArray(online.grok_4_7_rates) ? online.grok_4_7_rates : {};
+    function rate(key, fallback) {
+      var value = rates[key];
+      if (value == null || value === '' || typeof value === 'boolean') return fallback;
+      var number = Number(value);
+      return isFinite(number) && number >= 0 && number <= 1000 ? number : fallback;
+    }
+    var thresholdValue = Number(rates.high_input_threshold);
+    var threshold = Number.isSafeInteger(thresholdValue) && thresholdValue > 0 ? thresholdValue : 200000;
+    var high = inputTokens >= threshold;
+    return (inputTokens * (high ? rate('high_input', 3.4) : rate('input', 1.7))
+      + outputTokens * (high ? rate('high_output', 10.2) : rate('output', 5.1))) / 1000000;
+  }
+
+  function xiaotaoBillingConfig(override) {
+    var effective = override || config || {};
+    var online = effective.xiaotao_online || effective.token_billing?.xiaotao_online || {};
+    var raw = online.markup;
+    var markup = raw == null || raw === '' || typeof raw === 'boolean' ? NaN : Number(raw);
+    var billing = billingConfig(effective);
+    billing.markup = isFinite(markup) && markup > 0 && markup <= 1000 ? markup : XIAOTAO_ONLINE.markup;
+    return billing;
+  }
+
   function estimateXiaotaoOnline(input) {
     var spec = input || {};
     var effective = spec.config || config;
-    var stored = effective && effective.xiaotao_online && typeof effective.xiaotao_online === 'object' ? effective.xiaotao_online : {};
+    var configuredOnline = effective && (effective.xiaotao_online || effective.token_billing?.xiaotao_online);
+    var stored = configuredOnline && typeof configuredOnline === 'object' ? configuredOnline : {};
     var files = stored.file_tokens && typeof stored.file_tokens === 'object' ? stored.file_tokens : {};
     var cap = Math.round(Number(stored.message_cap_credits));
     var charsPer = Math.round(Number(stored.chars_per_token));
@@ -235,7 +266,7 @@
         audio: isFinite(Math.round(Number(files.audio))) && Math.round(Number(files.audio)) >= 0 ? Math.round(Number(files.audio)) : XIAOTAO_ONLINE.file_tokens.audio
       }
     };
-    var billing = billingConfig(effective);
+    var billing = xiaotaoBillingConfig(effective);
     var counts = { image: 0, video: 0, audio: 0 };
     var fileTokens = 0;
     var list = Array.isArray(spec.files) ? spec.files : [];
@@ -254,8 +285,9 @@
     var chars = userChars + systemText.length;
     var outputBudget = spec.outputTokens == null ? policy.output_tokens : Math.round(Number(spec.outputTokens));
     if (!isFinite(outputBudget) || outputBudget < 0) outputBudget = policy.output_tokens;
-    var tokens = Math.ceil(chars / policy.chars_per_token) + outputBudget + fileTokens;
-    var usd = tokens / 1000000 * policy.usd_per_million_tokens;
+    var inputTokens = Math.ceil(chars / policy.chars_per_token) + fileTokens;
+    var tokens = inputTokens + outputBudget;
+    var usd = isGrok47(spec.model) ? grok47Usd(inputTokens, outputBudget, stored) : tokens / 1000000 * policy.usd_per_million_tokens;
     var raw = Math.ceil(usd * billing.perUsd * billing.markup - 1e-9);
     if (usd > 0) raw = Math.max(1, raw);
     return {
@@ -269,8 +301,8 @@
   // The reservation above protects the balance. A prediction is a separate,
   // uncertain forecast and never changes the reservation or the provider limit.
   function predictXiaotaoOnline(input) {
-    var spec = input || {}, held = estimateXiaotaoOnline(spec);
-    var effective = spec.config || config || {}, online = effective.xiaotao_online || {}, billing = billingConfig(effective);
+    var spec = input || {}, held = estimateXiaotaoOnline(Object.assign({}, spec, {model:spec.model || 'xai/grok-4.7'}));
+    var effective = spec.config || config || {}, online = effective.xiaotao_online || effective.token_billing?.xiaotao_online || {}, billing = xiaotaoBillingConfig(effective);
     var outputLimit = spec.outputTokens == null ? Number(online.output_tokens == null ? XIAOTAO_ONLINE.output_tokens : online.output_tokens) : Number(spec.outputTokens);
     if (!isFinite(outputLimit) || outputLimit < 0) outputLimit = XIAOTAO_ONLINE.output_tokens;
     var text = String(spec.text || '');
@@ -288,14 +320,22 @@
       if (!(w > 0 && h > 0 && isFinite(w * h))) return 'unknown';
       return (w * h <= 512 * 512 ? 'small' : w * h <= 1536 * 1536 ? 'medium' : 'large') + (Math.max(w, h) / Math.min(w, h) > 2 ? '-wide' : '');
     }).sort();
-    var policyKey = JSON.stringify([1, effective.xiaotao_online || XIAOTAO_ONLINE, billing.perUsd, billing.markup]);
+    // Version the calibration group whenever the cost basis changes, so old
+    // observations priced at the flat $10/M rate cannot train this forecast.
+    var policyKey = JSON.stringify([3, online && Object.keys(online).length ? online : XIAOTAO_ONLINE, billing.perUsd, billing.markup]);
     var group = JSON.stringify([String(spec.model || ''), policyKey, intent, shapes, held.counts.video, held.counts.audio]);
     var observations = (Array.isArray(spec.samples) ? spec.samples : []).filter(function (sample) {
       return sample && sample.group === group && Number(sample.baseTokens) > 0 && isFinite(Number(sample.baseTokens)) && Number(sample.usdCost) > 0
         && isFinite(Number(sample.usdCost)) && Number(sample.totalTokens) > 0 && isFinite(Number(sample.totalTokens));
     }).slice(-24);
-    var priorUsd = baseTokens / 1000000 * (isFinite(Number(online.usd_per_million_tokens)) ? Number(online.usd_per_million_tokens) : XIAOTAO_ONLINE.usd_per_million_tokens);
-    var expectedUsd = priorUsd, lowUsd = priorUsd * 0.6, highUsd = Math.max(priorUsd * 1.4, held.tokens / Math.max(1, baseTokens) * priorUsd);
+    // Before the first server response the configured model is unknown; Grok
+    // 4.7 is the default. For other known models retain their configured prior.
+    // No cache hit is assumed, because it cannot be predicted before the call.
+    var grok47 = !spec.model || isGrok47(spec.model);
+    var priorUsd = grok47
+      ? grok47Usd(inputTokens, output, online)
+      : baseTokens / 1000000 * (isFinite(Number(online.usd_per_million_tokens)) ? Number(online.usd_per_million_tokens) : XIAOTAO_ONLINE.usd_per_million_tokens);
+    var expectedUsd = priorUsd, lowUsd = priorUsd * 0.6, highUsd = Math.max(priorUsd * 1.4, held.credits / (billing.perUsd * billing.markup));
     if (observations.length) {
       // Compare only nearby workloads. The observed USD includes hidden reasoning
       // and provider pricing, unlike visible answer length or rounded credits.
@@ -319,8 +359,11 @@
   function recordXiaotaoOnlineSample(input, sample, previous) {
     if (!sample || typeof sample.model !== 'string' || !sample.model || !(Number(sample.creditsPerUsd) > 0)
       || !isFinite(Number(sample.creditsPerUsd)) || !(Number(sample.markup) > 0) || !isFinite(Number(sample.markup)) || !sample.policy) return previous || null;
-    var effective = {credits_per_usd:Number(sample.creditsPerUsd), token_billing:{markup:Number(sample.markup)}, xiaotao_online:sample.policy};
-    if (sample.eligible !== true || !(Number(sample.usdCost) > 0) || !isFinite(Number(sample.usdCost))
+    var effective = {credits_per_usd:Number(sample.creditsPerUsd), xiaotao_online:Object.assign({}, sample.policy, {markup:Number(sample.markup)})};
+    // Older companion versions labelled their flat $10/M estimate token_usage.
+    // Never teach the Grok forecast from that stale pricing source.
+    var staleGrokRate = /^(?:xai\/)?grok-4\.7$/i.test(sample.model.trim()) && sample.pricingSource === 'token_usage';
+    if (sample.eligible !== true || staleGrokRate || !(Number(sample.usdCost) > 0) || !isFinite(Number(sample.usdCost))
       || !(Number(sample.totalTokens) > 0) || !isFinite(Number(sample.totalTokens))) {
       // A capped/failed observation cannot train cost, but a changed effective
       // model or pricing policy must still invalidate the old confidence.

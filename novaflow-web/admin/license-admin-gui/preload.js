@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld("adminAPI", {
   checkAdminRunningHubProviderStatus: () => ipcRenderer.invoke("admin:provider:runninghub:check"),
   getFeatureCreditAdmin: () => ipcRenderer.invoke("admin:data:feature_credits:get"),
   saveFeatureCreditAdmin: (payload) => ipcRenderer.invoke("admin:data:feature_credits:save", payload),
+  getProfitEstimateSettings: () => ipcRenderer.invoke("admin:data:profit_estimate:get"),
+  saveProfitEstimateSettings: (payload) => ipcRenderer.invoke("admin:data:profit_estimate:save", payload),
   queryCreditLedger: (payload) => ipcRenderer.invoke("admin:data:credit_ledger:query", payload),
   migrateGrokQuotaToCredits: (payload) => ipcRenderer.invoke("admin:data:quota_migration:run", payload),
   createAdminUser: (payload) => ipcRenderer.invoke("admin:data:users:create", payload),

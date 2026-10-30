@@ -67,7 +67,7 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
   const imageCountForBill=Math.max(imageCount,uploads.filter(file=>xiaotaoFileKind(file)==='image').length);
   const captions=uploads.filter(file=>['video','audio'].includes(xiaotaoFileKind(file))).map(file=>`参考${xiaotaoFileKind(file)==='video'?'视频':'音频'}：${String(file.name||'未命名').slice(0,180)}`);
   const files=Array.from({length:imageCountForBill},()=>({kind:'image'}));
-  const estimate=estimateXiaotaoOnlineCredits({text:payload.message+(captions.length?'\n'+captions.join('\n'):''),history:historyText,system:systemText,files,outputTokens:MAX_OUTPUT_TOKENS,config:provider.creditConfig,promptLanguage:payload.promptLanguage});
+  const estimate=estimateXiaotaoOnlineCredits({text:payload.message+(captions.length?'\n'+captions.join('\n'):''),history:historyText,system:systemText,files,outputTokens:MAX_OUTPUT_TOKENS,config:provider.creditConfig,model:provider.model,promptLanguage:payload.promptLanguage});
   const feature=imageCountForBill?'xiaotao-vision':'xiaotao-text';
   let calibration=null,decisionCredits=null;
   try{
@@ -79,9 +79,9 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
     if(result.status!=='completed'||!Array.isArray(result.output)||result.output.some(m=>m.type==='function_call'))throw Object.assign(new CompanionError(502,textOnly?'小桃AI未返回完整文字回复，本次未自动重试':'在线图片分析未返回完整回答，本次未自动重试'),{chargedAmount:0});
     const reply=result.output.flatMap(m=>m.type==='message'&&m.role==='assistant'?(m.content||[]).filter(p=>p.type==='output_text'&&typeof p.text==='string').map(p=>p.text):[]).join('\n').trim();
     if(!reply)throw Object.assign(new CompanionError(502,textOnly?'小桃AI未返回完整文字回复，本次未自动重试':'在线图片分析未返回文字'),{chargedAmount:0});
-    const decision=settleXiaotaoOnlineCredits({usage:result.usage,reservedCredits:estimate.credits,config:provider.creditConfig});
+    const decision=settleXiaotaoOnlineCredits({usage:result.usage,model:result.model||provider.model,reservedCredits:estimate.credits,config:provider.creditConfig});
     calibration=billingSampleFor(result.model||provider.model,result.usage,decision,provider.creditConfig);decisionCredits=decision.credits;
-    return {amount:1,reply,model:result.model||provider.model,imageCount,settledCredits:decision.credits,rhCostUsd:decision.usdCost,pricingSource:decision.pricingSource,metadata:{model:result.model,imageCount,usage:result.usage,billing_mode:'token',estimated_credits:estimate.credits,settled_credits:decision.credits}};
+    return {amount:1,reply,model:result.model||provider.model,imageCount,settledCredits:decision.credits,rhCostUsd:decision.usdCost,pricingSource:decision.pricingSource,metadata:{model:result.model||provider.model,provider_request_id:String(result.id||'').slice(0,200),imageCount,usage:result.usage,token_rate_estimate:decision.tokenRateEstimate,billing_warning:decision.warning||null,billing_mode:'token',estimated_credits:estimate.credits,settled_credits:decision.credits}};
    }});
    const actual=sampleTokenCount(charged.quota?.settled_credits);
    const billingSample=calibration?{...calibration.sample,eligible:calibration.usable&&actual!=null&&Number(charged.quota?.settled_credits)===actual&&actual===decisionCredits
