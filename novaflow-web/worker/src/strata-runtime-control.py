@@ -300,6 +300,32 @@ class Owner:
         with self.lock:
             parent = self.parent()
             ledger = {(item["pid"], item["createTime"]): item for item in self.receipt.get("children", [])}
+            def transient_helper(item):
+                return (canonical(item["exe"]) not in self.settings.heavy
+                        and Path(item["exe"]).name.lower() in {"nvidia-smi.exe", "conhost.exe"})
+
+            def retire_helper(key, reason):
+                item = ledger.pop(key)
+                self.receipt["retiredHelpers"] = [*self.receipt.get("retiredHelpers", [])[-31:],
+                                                 {**item, "reason": reason, "retiredAt": time.time()}]
+                diagnostic(self.settings, event="expired-helper-identity-retired", pid=item["pid"])
+
+            # Windows can recycle a short-lived GPU probe/console PID for the
+            # actual engine. Prove the OLD helper instance ended, never signal
+            # its replacement by that stale identity. New descendants must still
+            # be observed below the independently verified HTTP parent below.
+            for key, item in list(ledger.items()):
+                if not transient_helper(item):
+                    continue
+                try:
+                    born = psutil.Process(item["pid"]).create_time()
+                except psutil.NoSuchProcess:
+                    retire_helper(key, "exited")
+                    continue
+                except (psutil.AccessDenied, OSError):
+                    continue  # No exit proof: retain the original strict checks.
+                if math.isfinite(born) and abs(born - item["createTime"]) > 0.001:
+                    retire_helper(key, "pid-reused")
             if parent is not None:
                 try:
                     children = parent.children(recursive=True)
@@ -318,8 +344,11 @@ class Owner:
                             continue
                         raise ControlError("child-ownership-unconfirmed", "Cannot identify a newly observed child; it will not be signaled") from error
                     previous = [entry for entry in ledger.values() if entry["pid"] == item["pid"]]
-                    if any(abs(entry["createTime"] - item["createTime"]) > 0.001 or entry["exe"] != item["exe"] for entry in previous):
-                        raise ControlError("ownership-mismatch", "A recorded child PID was reused; that process will not be signaled")
+                    for entry in previous:
+                        if abs(entry["createTime"] - item["createTime"]) > 0.001 and transient_helper(entry):
+                            retire_helper((entry["pid"], entry["createTime"]), "pid-reused")
+                        elif abs(entry["createTime"] - item["createTime"]) > 0.001 or entry["exe"] != item["exe"]:
+                            raise ControlError("ownership-mismatch", "A recorded child PID was reused; that process will not be signaled")
                     item["observedParentPid"] = parent.pid
                     ledger[(item["pid"], item["createTime"])] = item
             self.receipt["children"] = list(ledger.values())

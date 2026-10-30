@@ -52,6 +52,13 @@ class FakeImage {
   get src() { return this._src; }
   async decode() { if (String(this._src).includes('broken')) throw new Error('参考图解码失败'); }
 }
+class FakeVideo extends FakeNode {
+  constructor() { super();this.videoWidth=1536;this.videoHeight=1024;this.duration=4;this._time=0; }
+  get currentTime() {return this._time;}
+  set currentTime(value) {this._time=value;setTimeout(()=>this.dispatch('seeked'),0);}
+  load() {if(this.src)setTimeout(()=>this.dispatch('loadeddata'),0);}
+  removeAttribute(name) {if(name==='src')this.src='';}
+}
 
 function page({ respond } = {}) {
   const byId = new Map([['novaflow-smart-ai-style', {}]]);
@@ -95,7 +102,7 @@ function page({ respond } = {}) {
     document: {
       readyState: 'complete', addEventListener() {}, querySelectorAll: () => [], querySelector: () => null,
       getElementById: (id) => byId.get(id) ?? null,
-      createElement: (tag) => tag === 'canvas' ? canvas() : new DialogRoot(),
+      createElement: (tag) => tag === 'canvas' ? canvas() : tag==='video' ? new FakeVideo() : new DialogRoot(),
       documentElement: new HTMLElement(), head: { appendChild() {} },
       body: { appendChild(node) { if (node.id) byId.set(node.id, node); }, getAttribute: () => '' },
     },
@@ -108,7 +115,7 @@ function page({ respond } = {}) {
   });
   context.window = context;
   context.globalThis = context;
-  for (const file of ['h3-prompt-format.js', 'ai-sequence-minimax-h3-prompt.workflow.js', 'ai-sequence-minimax-h3-reverse.workflow.js', 'smart-ai-art-auto-intent.workflow.js', 'resource-mention.tool.js']) {
+  for (const file of ['h3-prompt-format.js', 'ai-sequence-minimax-h3.resource.js','ai-sequence-minimax-h3-prompt.workflow.js', 'ai-sequence-minimax-h3-reverse.workflow.js', 'smart-ai-art-auto-intent.workflow.js', 'resource-mention.tool.js']) {
     vm.runInContext(read(file), context, { filename: file });
   }
   const overlay = read('novaflow-smart-ai.js');
@@ -637,7 +644,8 @@ test('Xiaotao video reuses H3 protocol validation and emits directly executable 
   assert.equal(p.calls.local[0].h3ReferenceFrames.length,0);assert.match(result.prompt,/integrated_multimodal_description/);
   assert.equal(p.calls.local.length,2);assert.match(p.calls.local[1].requirements,/H3 compile: translate-only/);
   assert.notEqual(p.calls.local[0].requestId,p.calls.local[1].requestId);
-  assert.match(p.calls.local[0].requirements,/不要音乐/);assert.match(p.calls.local[0].requirements,/完整留在画框中/);
+  assert.doesNotMatch(p.calls.local[0].requirements,/未要求配乐：|固定镜头内停止的动作编排/);
+  assert.equal(result.optimization.protocol,'T2VA');assert.equal(result.optimization.fields.length,3);
   assert.match(result.prompt,/rolls to the right/);assert.equal(result.optimization.framework,'minimax-h3');
   assert.match(result.displayPrompt,/红色球/);assert.notEqual(result.displayPrompt,result.prompt);
 });
@@ -649,8 +657,38 @@ test('H3 cannot use the manual as-written fallback when its separate English com
   assert.equal(calls,2);
 });
 
-test('video execution defaults do not override an explicit exit from frame or requested soundtrack',async()=>{
+test('video mode inheritance does not inject Xiaotao defaults or route retired models to generic animation rules',async()=>{
   const p=page({respond:()=>({ok:false,error:'fixture stops after observing request'})});
   await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',prompt:'固定镜头，红球滚出画面后停住',requirements:'红球滚出画面后停住，保留钢琴配乐',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}}));
   assert.doesNotMatch(p.calls.local[0].requirements,/未要求配乐：|固定镜头内停止的动作编排/);
+  const retired=page();await assert.rejects(retired.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',prompt:'红球移动',videoContext:{modelId:'cloud',mode:'text_video',resources:[]}}),/未使用通用规则替代/);
+  assert.equal(retired.calls.local.length,0);
+});
+
+test('Xiaotao image and first-last video modes inherit independent exact endpoint bindings',async()=>{
+  for(const mode of ['image_video','first_last']) {
+    const p=page();const resources=[{key:'first_frame',kind:'image',sourceId:'opening',previewUrl:'data:image/png;base64,QQ==',occupied:true},
+      ...(mode==='first_last'?[{key:'last_frame',kind:'image',sourceId:'ending',previewUrl:'data:image/png;base64,Qg==',occupied:true}]:[])];
+    await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',prompt:'红球从左向右滚动',requirements:'保留参考帧，连续镜头',videoContext:{modelId:'minimax_h3_local',mode,durationSeconds:4,resources}}));
+    const request=p.calls.local[0];assert.equal(request.h3Mode,mode);assert.equal(request.h3ReferenceFrames.length,resources.length);
+    assert.match(request.requirements,/I2VA|FL2VA/);assert.doesNotMatch(request.requirements,/subject_definitions|未要求配乐：/);
+  }
+});
+
+test('Xiaotao multi-reference keeps pictures, nine sampled video frames and audio bindings in the original six-field protocol',async()=>{
+  const resultText='subject_definitions:\n<Subject 1> is the red ball in <Picture 1>.\n<Video 1> is the motion reference.\n<Audio 1> is the audio reference.\n\nsummary:\n[reference generation + audio reuse] <Subject 1> rolls using the motion of <Video 1> and the sound of <Audio 1>.\n\nretention_analysis:\n<Subject 1>: fully_preserved - Keep the red spherical shape.\n<Video 1>: weak_reference - Copy only the direction of motion.\n<Audio 1>: fully_copy - Reuse the source sound.\n\ndetailed_description:\nThe target video is in a realistic style. [Shot 1] <Subject 1> rolls to the right using the motion of <Video 1>. The camera holds a static shot. <Audio 1> plays with the action.\n\noverall_soundscape:\nSoft rolling friction.\n\nnon_diegetic_music:\nN/A';
+  const resources=[{key:'multi_ref_image_1',kind:'image',sourceId:'picture-real',occupied:true,previewUrl:'data:image/png;base64,Qw=='},
+    {key:'multi_ref_video_1',kind:'video',sourceId:'video-real',occupied:true,previewUrl:'https://refs.test/motion.mp4'},
+    {key:'multi_ref_audio_1',kind:'audio',sourceId:'audio-real',occupied:true,previewUrl:'https://refs.test/tone.wav'}];
+  const p=page({respond:()=>({ok:true,...releasedForAgent,prompt:resultText})});
+  const options={surface:'animation',prompt:'按参考生成红球滚动',requirements:'@参考图 1 提供外观，@参考视频 1 提供动作，@参考音频 1 复用音频。',videoContext:{modelId:'minimax_h3_local',mode:'multi_reference',durationSeconds:4,resources}};
+  const result=await p.context.__NovaFlowSmartAI.optimizeForAgent(options);
+  const request=p.calls.local[0];assert.equal(request.h3Mode,'multi_reference');assert.equal(request.h3ReferenceFrames.length,10);
+  assert.equal(request.h3ReferenceFrames.filter(f=>f.label==='<Video 1>').length,9);assert.match(request.requirements,/subject_definitions/);
+  assert.match(request.requirements,/<Picture 1> 提供外观，<Video 1> 提供动作，<Audio 1> 复用音频/);
+  assert.doesNotMatch(request.requirements,/未要求配乐：|固定镜头内停止的动作编排/);
+  assert.equal(result.optimization.protocol,'Ref2VA');assert.equal(result.optimization.fields.length,6);
+  assert.deepEqual(Array.from(result.optimization.references,r=>r.sourceId),['picture-real','video-real','audio-real']);
+  const missing=page({respond:()=>({ok:true,...releasedForAgent,prompt:resultText.replaceAll('<Audio 1>','<Audio 2>')})});
+  await assert.rejects(missing.context.__NovaFlowSmartAI.optimizeForAgent(options),/遗漏|保留规则|定义|素材/);
 });

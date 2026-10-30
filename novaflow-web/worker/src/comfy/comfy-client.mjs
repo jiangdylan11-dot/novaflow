@@ -276,7 +276,9 @@ export function collectOutputs(historyEntry) {
     const node = nodes[nodeId] || {};
     for (const key of ['images', 'gifs', 'videos', 'audio']) {
       for (const item of node[key] || []) {
-        if (!item?.filename) continue;
+        // LoadVideo and other reference loaders can expose their INPUT files
+        // as UI previews in history. They are not newly generated task outputs.
+        if (!item?.filename || String(item.type || '').toLowerCase() === 'input') continue;
         outputs.push({
           filename: String(item.filename),
           subfolder: String(item.subfolder || ''),

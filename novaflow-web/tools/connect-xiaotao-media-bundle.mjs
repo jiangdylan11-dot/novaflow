@@ -12,7 +12,8 @@ if(!source.includes(marker)) {
       width:yt,height:xt,frames:Ct,fps:Dt,steps:Tt,
       h3:ze==='minimax_h3_local'?{profile:nfH3Profile,seconds:nfH3DurationInput,fps:nfH3Fps,steps:nfH3Steps,width:nfH3Width,height:nfH3Height,ratio:nfH3AspectRatio,megapixels:nfH3Megapixels,custom:nfH3Custom}:null,
       cloud:ze==='cloud'?nfAiSeqPickLiveCloudParams():null,
-      h3References:(window.NovaFlowH3Media?.store?.get(Jr)||[]).map(ref=>window.NovaFlowMediaAgent?.referenceStamp(ref)||null),
+      promptProtocol:ze==='minimax_h3_local'?window.NovaFlowMediaAgent.h3PromptProtocol(Ve):null,
+      h3References:Ve==='multi_reference'?window.NovaFlowMediaAgent.h3ReferenceContext(window.NovaFlowH3Media?.store?.get(Jr)||[]):[],
       references:[un,gn,Sn,nfJimengImage2Ref,nfJimengImage3Ref,nfJimengImage4Ref,nfJimengVideoRef,nfJimengAudioRef].map(ref=>window.NovaFlowMediaAgent?.referenceStamp(ref)||null)}),
     optimizationContext:async()=>({modelId:ze,mode:Ve,durationSeconds:ze==='minimax_h3_local'?Number(nfH3DurationInput):Number(vt('duration'))||Number(Ct)/Number(Dt),
       resources:Ve==='multi_reference'?await window.NovaFlowH3Media.snapshot(Jr):(Ve==='image_video'?[un]:Ve==='first_last'?[gn,Sn]:[]).map((ref,i)=>({key:i?'last_frame':'first_frame',kind:'image',label:i?'尾帧':'首帧',occupied:!!ref?.dataUrl,available:true,sourceId:window.NovaFlowMediaAgent.referenceStamp(ref)?.id||'',fileName:ref?.fileName||'',previewUrl:ref?.dataUrl||''}))}),
@@ -33,6 +34,9 @@ source=source.replace('nfRunAiSeqGenerate=async()=>','nfRunAiSeqGenerate=async(n
   .replace("if(ze==='minimax_h3_local')nfSetH3DurationInput(String(op.seconds));", "if(ze==='minimax_h3_local'){window.NovaFlowAiSequenceMiniMaxH3Workflow.normalizeDuration({seconds:op.seconds,fps:nfH3Fps});nfSetH3DurationInput(String(op.seconds));}");
 if(!source.includes("if(nfMediaSignal?.aborted)"))source=source.replace('Lr(),Er(nfH3SubmitSnapshot||void 0)',"if(nfMediaSignal?.aborted)throw Error('音视操作已停止');Lr(),Er(nfH3SubmitSnapshot||void 0)");
 if(!source.includes('h3References:'))source=source.replace('references:[un,gn,Sn,nfJimengImage2Ref',"h3References:(window.NovaFlowH3Media?.store?.get(Jr)||[]).map(ref=>window.NovaFlowMediaAgent?.referenceStamp(ref)||null),references:[un,gn,Sn,nfJimengImage2Ref");
+source=source.replace('h3References:(window.NovaFlowH3Media?.store?.get(Jr)||[]).map(ref=>window.NovaFlowMediaAgent?.referenceStamp(ref)||null),',
+  "promptProtocol:ze==='minimax_h3_local'?window.NovaFlowMediaAgent.h3PromptProtocol(Ve):null,\n      h3References:Ve==='multi_reference'?window.NovaFlowMediaAgent.h3ReferenceContext(window.NovaFlowH3Media?.store?.get(Jr)||[]):[],");
+if(!source.includes("promptProtocol:ze==='minimax_h3_local'?window.NovaFlowMediaAgent.h3PromptProtocol(Ve):null"))throw new Error('Mode-specific media prompt protocol anchor changed');
 if(!source.includes('optimizationContext:async()=>')) {
   const match=source.indexOf("    status:()=>({state:an?.state||'idle'");
   if(match<0)throw new Error('media generation status anchor changed');

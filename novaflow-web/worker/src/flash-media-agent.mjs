@@ -45,7 +45,9 @@ export function validateMediaOperations(operations) {
 }
 
 export async function planFlashMedia({payload, flash, signal}) {
-  const messages=[{role:'system',content:FLASH_MEDIA_AGENT_SYSTEM},...payload.history,
+  const generation=payload.artContext?.generation;
+  const modeRules=generation?.mode==='minimax_h3_local' ? `\nCurrent H3 mode is ${generation.genType}; follow currentMedia.generation.promptProtocol and the actual uploaded reference bindings. Never change this mode or treat a multi-reference input as a first/last frame. In multi_reference, preserve the user's exact image/video/audio labels in the requested prompt; h3References supplies the actual modelToken, sourceId, kind and Chinese label. Pictures may supply subject appearance/style, video may supply motion/editing/continuation, audio may supply reuse/reference: their roles come from the user's request and the original optimizer, never infer all uploads have the same role. Do not invent media labels or infer unheard audio contents from filenames. Keep an explicit audio reuse/reference request; do not replace it with generic music or silence. Final mode-specific optimization and compilation run in the original application workflow.` : '';
+  const messages=[{role:'system',content:FLASH_MEDIA_AGENT_SYSTEM+modeRules},...payload.history,
     {role:'user',content:JSON.stringify({userMessage:payload.message,contextFingerprint:payload.contextFingerprint,currentMedia:payload.artContext})}];
   const toolTrace=[], promptIds=[];
   const explicit=!(/[?？]|(?:能不能|可不可以|能否|是否|怎么|如何|为什么)|吗[。！!]?\s*$|(?:不要|不用|别|先不|暂不).{0,10}(?:生成|执行|剪辑|修改|导出|处理)|(?:只|仅).{0,6}(?:提示词|方案|建议|聊聊|讨论|解释)/.test(payload.message)

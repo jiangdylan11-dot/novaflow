@@ -10,6 +10,19 @@
     if(!stamp || stamp.url!==url || stamp.blob!==ref.blob){stamp={url,blob:ref.blob,id:++referenceSerial};references.set(ref,stamp);}
     return {id:String(stamp.id),name:String(ref.fileName || ref.name || ''),kind:ref.kind || '',width:ref.w || ref.width || 0,height:ref.h || ref.height || 0};
   }
+  function h3ReferenceContext(items=[]) {
+    const media=root.NovaFlowH3Media;
+    if(!media?.resources)return [];
+    return media.resources(items).map((resource,i)=>({...referenceStamp(items[i]),sourceId:resource.sourceId,
+      key:resource.key,label:resource.label,modelToken:resource.modelToken,seconds:resource.durationSec || 0}));
+  }
+  function h3PromptProtocol(mode) {
+    const workflow=root.NovaFlowAiSequenceMiniMaxH3PromptWorkflow;
+    const definition=workflow?.getModeDefinition?.(mode);
+    return definition ? {mode:definition.value,name:definition.protocolName,fields:definition.fieldOrder,
+      slots:definition.slots.map(slot=>({key:slot.key,label:slot.label,kind:slot.kind,modelToken:slot.fixedModelToken})),
+      ...(definition.value==='multi_reference'?{relations:workflow.REFERENCE_RELATIONS}: {})} : null;
+  }
   const allClips=editor => editor?.state?.tracks?.flatMap(t=>t.clips || []) || [];
   function timeline(editor) {
     return {selected:editor?.selectedClip?.()?.id || '',canvas:editor?.state?.canvas?clone(editor.state.canvas):null,tracks:(editor?.state?.tracks || []).map(t=>({id:t.id,kind:t.kind,gain:t.gain ?? 1,mute:!!t.mute,solo:!!t.solo,visible:t.visible!==false,
@@ -160,5 +173,5 @@
     }
     return {ok:true,results};
   }
-  root.NovaFlowMediaAgent={capture,wantsMedia,discussionOnly,execute,referenceStamp,timeline,edit};
+  root.NovaFlowMediaAgent={capture,wantsMedia,discussionOnly,execute,referenceStamp,h3ReferenceContext,h3PromptProtocol,timeline,edit};
 })(typeof window!=='undefined'?window:globalThis);

@@ -134,7 +134,7 @@
   const MEDIA_REFERENCE_EXPRESSION = /<(Picture|Video|Audio) ([1-9][0-9]*)>/g
   // Five-section prompts written before the official layout (history, old engines).
   const LEGACY_EXPRESSION = /^\s*(?:【任务定位】|\{\s*"task"\s*:)/
-  const UI_REFERENCE_ALIAS_EXPRESSION = /@(?:\u9996\u5e27|\u5c3e\u5e27|\u7ed3\u675f\u5e27|\u53c2\u8003\u56fe(?:[1-9])?|\u56fe\u7247[1-9]|\u89c6\u9891\u53c2\u8003[1-3]?|\u89c6\u9891[1-3]|\u58f0\u97f3\u53c2\u8003[1-3]?|\u97f3\u9891\u53c2\u8003[1-3]?|\u97f3\u9891[1-3])(?:\s*\((?:image|video|audio)\))?/iu
+  const UI_REFERENCE_ALIAS_EXPRESSION = /@(?:\u9996\u5e27|\u5c3e\u5e27|\u7ed3\u675f\u5e27|\u53c2\u8003\u56fe(?:\s*[1-9])?|\u53c2\u8003\u89c6\u9891\s*[1-3]|\u53c2\u8003\u97f3\u9891\s*[1-3]|\u56fe\u7247[1-9]|\u89c6\u9891\u53c2\u8003[1-3]?|\u89c6\u9891[1-3]|\u58f0\u97f3\u53c2\u8003[1-3]?|\u97f3\u9891\u53c2\u8003[1-3]?|\u97f3\u9891[1-3])(?:\s*\((?:image|video|audio)\))?/iu
   const EXPLICIT_MINOR_EXPRESSION = /(?:\u672a\u6210\u5e74\u4eba?|\u672a\u6ee1\s*(?:18|\u5341\u516b)\s*\u5c81?|(?:18|\u5341\u516b)\s*\u5c81?\s*(?:\u4ee5\u4e0b|\u4ee5\u5185)|(?<![0-9])(?:1[0-7]|[0-9])\s*\u5c81(?![0-9])|\u513f\u7ae5|\u5b69\u7ae5|\u5c0f\u5b69|\u5e7c\u5973|\u5e7c\u7ae5|\u5e7c\u513f|\u5a74\u5e7c\u513f?|\u5a74\u513f|\u841d\u8389|\u6b63\u592a)|(?<![a-z0-9_])(?:underage|minors?|child(?:ren)?(?![-\s]?like\b)|juveniles?|loli|shota|under[-\s]*18|(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*\/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])/iu
 
   function stringValue(value) {
@@ -362,7 +362,7 @@
         slotKey: descriptor.key,
         displayLabel: descriptor.label,
         displayToken: descriptor.aliases[0],
-        aliases: descriptor.aliases,
+        aliases: referenceAliases(descriptor),
         kind: descriptor.kind,
         modelToken: modelTokenFor(descriptor, compactIndex[descriptor.kind]),
         identity: resource.identity,
@@ -407,10 +407,17 @@
       slotKey: slot.key,
       displayLabel: slot.label,
       displayToken: slot.aliases[0],
-      aliases: slot.aliases.slice(),
+      aliases: referenceAliases(slot),
       kind: slot.kind,
       fixedModelToken: slot.fixedModelToken,
     })))
+  }
+
+  // The resource UI owns the current labels (参考视频 1 / 参考音频 1).
+  // Accept its aliases beside the legacy display names without changing IDs.
+  function referenceAliases(slot) {
+    const owned=globalThis.NovaFlowAiSequenceMiniMaxH3Resource?.multiReferenceSlots?.find(entry=>entry.key===slot.key)
+    return Array.from(new Set([...slot.aliases,...(owned?.aliases || []),...(owned?['@'+owned.label]:[])]))
   }
 
   function assertCatalog(catalog) {

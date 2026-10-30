@@ -309,6 +309,38 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(failure.exception.code, "ownership-mismatch")
         self.assertFalse(any(item.signals for item in self.processes.values()))
 
+    def test_exited_gpu_probe_pid_can_be_reobserved_as_new_owned_engine_instance(self):
+        helper = FakeProcess(13, str(self.root / "nvidia-smi.exe"), ["gpu-probe"])
+        self.parent.descendants.append(helper)
+        self.processes[13] = helper
+        owner = self.owner()
+        helper.alive = False
+        engine = FakeProcess(13, self.server["exe"], [self.server["exe"]], born=helper.born + 10)
+        self.processes[13] = engine
+        self.parent.descendants.append(engine)
+        owner.capture()
+        current = next(item for item in owner.receipt["children"] if item["pid"] == 13)
+        self.assertEqual(current["createTime"], engine.born)
+        self.assertEqual(current["exe"], CONTROL.canonical(engine.path))
+        self.assertEqual(owner.receipt["retiredHelpers"][-1]["createTime"], helper.born)
+        self.patch(CONTROL, "http", lambda *args: {"status": "unloaded"})
+        self.assertTrue(CONTROL.unload(self.settings, 1)["released"])
+        self.assertEqual(engine.signals, ["terminate"])
+        self.assertFalse(helper.signals)
+
+    def test_reused_console_pid_outside_owned_tree_is_never_adopted_or_signaled(self):
+        helper = FakeProcess(13, str(self.root / "conhost.exe"), ["console"])
+        self.parent.descendants.append(helper)
+        self.processes[13] = helper
+        self.owner()
+        helper.alive = False
+        foreign = FakeProcess(13, str(self.root / "unrelated.exe"), ["unrelated"], born=helper.born + 10)
+        self.processes[13] = foreign
+        self.patch(CONTROL, "http", lambda *args: {"status": "unloaded"})
+        self.assertTrue(CONTROL.unload(self.settings, 1)["released"])
+        self.assertTrue(foreign.alive)
+        self.assertFalse(foreign.signals)
+
     def test_signal_identity_denied_defers_without_signaling(self):
         identity = CONTROL.process_identity(self.vision, include_cmdline=False)
         self.patch(self.vision, "exe", mock.Mock(side_effect=CONTROL.psutil.AccessDenied(self.vision.pid)))

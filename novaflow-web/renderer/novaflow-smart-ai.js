@@ -5188,21 +5188,14 @@
         const workflow = getMiniMaxH3PromptWorkflow();
         current = {...options.videoContext,prompt:source,requirements:user};
         prepared = workflow.prepareRequest(current);
+        const modelUser=workflow.toModelReferences(user,prepared.protocol.references);
         const h3ReferenceFrames = await captureH3ReferenceFrames(current,prepared);
-        const intent=source+"\n"+user;
-        const executionRequirements=[
-          !/配乐|音乐|bgm|music|钢琴|piano|音轨|soundtrack/i.test(user) ? "未要求配乐：不要音乐，不要配乐，背景音乐填写 N/A。只保留与用户动作相符的环境声音。" : "",
-          /固定镜头|固定摄像|静止镜头|static (?:shot|camera)|fixed camera/i.test(intent) && /停住|停止|停下|stop/i.test(intent)
-            && !/出画|画外|离开画面|滚出|特写|局部|close.?up|out of (?:the )?frame/i.test(user)
-            ? `固定镜头内停止的动作编排：根据画幅和主体尺寸留足运动余量，主体完整留在画框中，只在画面内短距离移动，不出画、不裁掉主体，不跟拍或变焦；在总时长结束前完成减速，${Number(current.durationSeconds)>=3 ? "最后一秒" : "末段"}保持完全静止。用户明确的画面要求优先。` : ""
-        ].filter(Boolean).join("\n");
         request = {surface:"animation",purpose:MINIMAX_H3_PROMPT_PURPOSE,prompt:prepared.prompt,negativePrompt:"",supportsNegativePrompt:false,
-          requirements:[prepared.requirements,user ? "用户本次要求（最高优先级）："+user : "",executionRequirements].filter(Boolean).join("\n\n"),
+          requirements:[prepared.requirements,modelUser ? "用户本次要求（最高优先级）："+modelUser : ""].filter(Boolean).join("\n\n"),
           h3Mode:current.mode,durationSeconds:current.durationSeconds,visualSchema:MINIMAX_H3_VISUAL_SCHEMA,
           contentPolicy:prepared.context.contentPolicy,h3ReferenceFrames};
       } else {
-        request = {surface:"animation",purpose:"optimize",prompt:source,currentPrompt:source,supportsNegativePrompt:false,negativePrompt:"",
-          requirements:user};
+        throw new Error("当前视频模型没有已接入的原有优化规则，未使用通用规则替代，请选择当前支持的视频模型");
       }
       check();options.onRequest?.(requestId);options.onProgress?.(h3 ? "正在使用原有视频框架优化动作、镜头和声音…" : art ? "正在使用原有生图框架优化画面与约束…" : "正在使用原有视频提示词优化框架…");
       const response = await api.promptAssistantOptimizePrompt({...request,requestId});
@@ -5248,7 +5241,9 @@
         // existing translate-only compiler and cache the pair for native submit.
         const compiled=await getMiniMaxH3PromptWorkflow().compileForGeneration({...current,prompt:displayPrompt},async compileRequest=>{
           check();requestId=window.crypto.randomUUID();options.onRequest?.(requestId);options.onProgress?.("正在将中文视频提示词编译为模型英文…");
-          const translated=await api.promptAssistantOptimizePrompt({...compileRequest,requestId});check();
+          const translateOnly=/^H3 compile: translate-only$/m.test(String(compileRequest.requirements || ""));
+          const h3ReferenceFrames=translateOnly ? [] : await captureH3ReferenceFrames(current);check();
+          const translated=await api.promptAssistantOptimizePrompt({...compileRequest,h3ReferenceFrames,requestId});check();
           const releasedTranslation={...translated,...translated?.data};
           if(!translated || translated.ok===false)throw new Error(translated?.error || "视频执行提示词翻译失败");
           if(releasedTranslation.analysisBackend!=="strata" || releasedTranslation.resourcesReleased!==true || releasedTranslation.generationReady!==true
@@ -5261,7 +5256,9 @@
       check();
       return {prompt,negativePrompt,displayPrompt,resourcesReleased:true,generationReady:true,analysisBackend:"strata",modelIdentity:handoff.modelIdentity,
         optimization:{schema:"nf.agent.prompt-optimization.v1",requestId,modelIdentity:handoff.modelIdentity,framework:art ? (structured ? "ordinary-art-structured" : "ordinary-art-semantic-fusion") : h3 ? "minimax-h3" : "animation",engine:options.engine || options.videoContext?.modelId || "",modelPromptPolicy,sourcePrompt:source,userRequirements:user,prompt,negativePrompt,displayPrompt,
-          ...(h3?{mode:current.mode,durationSeconds:current.durationSeconds,referenceFrames:request.h3ReferenceFrames.length}:{}),timing:handoff.timing || null}};
+          ...(h3?{mode:current.mode,protocol:prepared.protocol.protocolName,fields:prepared.protocol.fieldOrder,
+            references:prepared.protocol.references.references.map(ref=>({kind:ref.kind,slot:ref.slotKey,modelToken:ref.modelToken,sourceId:ref.sourceId || ""})),
+            durationSeconds:current.durationSeconds,referenceFrames:request.h3ReferenceFrames.length}:{}),timing:handoff.timing || null}};
     } finally {signal?.removeEventListener("abort",cancel);}
   }
 

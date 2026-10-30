@@ -6,8 +6,17 @@ import {createHash,randomUUID,webcrypto} from 'node:crypto';
 import {createFlashArtAgent,canonicalArtAgentJSON,prepareFlashArtAgentPayload} from '../../worker/src/flash-art-agent.mjs';
 import {validateMediaOperations} from '../../worker/src/flash-media-agent.mjs';
 import {createStrataPromptAssistant} from '../../worker/src/strata-prompt-assistant.mjs';
+import {collectOutputs} from '../../worker/src/comfy/comfy-client.mjs';
 const source=await readFile(new URL('../../renderer/xiaotao-media-agent.js',import.meta.url),'utf8');
 const agentSource=await readFile(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
+
+test('reference video/image/audio previews cannot become generated task outputs',()=>{
+  const outputs=collectOutputs({outputs:{14:{images:[{filename:'generated.mp4',subfolder:'video',type:'output'}]},
+    20:{images:[{filename:'source.png',type:'input'}]},21:{images:[{filename:'source.mp4',type:'input'}]},
+    25:{audio:[{filename:'source.wav',type:'input'}]},30:{images:[{filename:'preview.png',type:'temp'}]}}});
+  assert.deepEqual(outputs.map(f=>f.filename),['generated.mp4','preview.png']);
+  assert.equal(outputs[0].nodeId,'14');
+});
 function request() {
   const artContext={surface:'media',sub:'audio',audio:{selected:'clip-1',tracks:[]}};
   return {requestId:randomUUID(),mode:'media',provider:'local',message:'把选中的音频音量设成 50%',history:[],artContext,images:[],
@@ -23,6 +32,43 @@ test('media preflight binds timeline to snapshot; native plan is pending, not a 
   assert.equal(result.toolTrace[0].result.executionPending,true);
   assert.throws(()=>prepareFlashArtAgentPayload({...p,artContext:{...p.artContext,sub:'video'}}),/变化/);
   await assert.rejects(agent.run({payload:p,flash:flash(p)}),/请求/);
+});
+
+test('multi-reference planning exposes original protocol and independent stable labels without leaking media bytes',async()=>{
+  const ctx=vm.createContext({console});
+  for(const file of ['h3-prompt-format.js','ai-sequence-minimax-h3-prompt.workflow.js','ai-sequence-h3-media.js'])vm.runInContext(await readFile(new URL('../../renderer/'+file,import.meta.url),'utf8'),ctx);
+  vm.runInContext(source,ctx);
+  const items=[{sourceId:'image-source',kind:'image',fileName:'ball.png',dataUrl:'data:image/png;base64,QQ=='},
+    {sourceId:'video-source',kind:'video',fileName:'motion.mp4',dataUrl:'data:video/mp4;base64,Qg=='},
+    {sourceId:'audio-source',kind:'audio',fileName:'tone.wav',durationSec:4,dataUrl:'data:audio/wav;base64,Qw=='}];
+  const media=ctx.NovaFlowMediaAgent,refs=media.h3ReferenceContext(items);
+  assert.equal(JSON.stringify(refs),JSON.stringify(media.h3ReferenceContext(items)));
+  assert.deepEqual(Array.from(refs,r=>r.modelToken),['<Picture 1>','<Video 1>','<Audio 1>']);
+  assert.equal(refs[2].seconds,4);assert.doesNotMatch(JSON.stringify(refs),/data:/);
+  assert.equal(media.h3PromptProtocol('multi_reference').fields.length,6);assert.equal(media.h3PromptProtocol('first_last').fields.length,3);
+  const p=request();p.artContext.generation=JSON.parse(JSON.stringify({mode:'minimax_h3_local',genType:'multi_reference',promptProtocol:media.h3PromptProtocol('multi_reference'),h3References:refs}));
+  p.message='请用参考图1的外观、参考视频1的动作并复用参考音频1生成视频';
+  p.contextFingerprint=createHash('sha256').update(canonicalArtAgentJSON({schema:'nf.flash.art-agent.snapshot.v1',artContext:p.artContext,images:[]})).digest('hex');
+  const model=flash(p,[{action:'generate_video',target:'video',prompt:'Use <Picture 1>, <Video 1> and <Audio 1>.'}]),infer=model.inferConversation;let input;
+  model.inferConversation=async value=>{input=value;return infer(value);};
+  await createFlashArtAgent().run({payload:p,flash:model});
+  assert.match(input.messages[0].content,/audio reuse\/reference/);assert.match(input.messages.at(-1).content,/audio-source/);
+});
+
+test('multi-reference audio reuse and audio reference preserve the original distinct generation routes',async()=>{
+  const ctx=vm.createContext({console});for(const file of ['ai-sequence-minimax-h3.resource.js','ai-sequence-minimax-h3.workflow.js'])vm.runInContext(await readFile(new URL('../../renderer/'+file,import.meta.url),'utf8'),ctx);
+  const bindings=[{key:'multi_ref_image_1',kind:'image',sourceId:'picture',modelToken:'<Picture 1>',fileName:'picture.png'},
+    {key:'multi_ref_video_1',kind:'video',sourceId:'motion',modelToken:'<Video 1>',fileName:'motion.mp4'},
+    {key:'multi_ref_audio_1',kind:'audio',sourceId:'sound',modelToken:'<Audio 1>',fileName:'sound.wav'}];
+  const base={profile:'beta5_int8',mode:'r2v',width:480,height:864,durationSeconds:4,fps:24,steps:4,seed:12,
+    resourceBindings:bindings,referenceImages:['picture.png'],referenceVideos:['motion.mp4'],referenceAudios:['sound.wav']};
+  for(const [relation,retention,copy]of [['audio reuse','fully_copy',true],['audio reference','reference',false]]){
+    const graph=ctx.NovaFlowAiSequenceMiniMaxH3Workflow.buildWorkflow({...base,prompt:`subject_definitions:\n<Subject 1> is a ball from <Picture 1>.\n<Audio 1> is a sound reference.\nsummary:\n[reference generation + ${relation}] Use <Subject 1>, <Video 1> and <Audio 1>.\nretention_analysis:\n<Audio 1>: ${retention} - Source sound.\ndetailed_description:\nA realistic style. [Shot 1] <Subject 1> rolls following <Video 1>.\noverall_soundscape:\n<Audio 1>\nnon_diegetic_music:\nN/A`});
+    const nodes=Object.values(graph);assert.equal(nodes.filter(n=>n.class_type==='TrimAudioDuration').length,copy?1:0);
+    assert.equal(nodes.filter(n=>n.class_type==='VAEDecodeAudio').length,copy?0:1);
+    const condition=nodes.find(n=>n.class_type==='MiniMaxH3ReferenceToVideo');assert.equal(condition._meta.h3_bindings.length,3);
+    assert.equal(nodes.filter(n=>['LoadImage','LoadVideo','LoadAudio'].includes(n.class_type)).length,3);
+  }
 });
 test('explicit media commands require a real tool while missing material may ask a question',async()=>{
   const p=request(),agent=createFlashArtAgent();
