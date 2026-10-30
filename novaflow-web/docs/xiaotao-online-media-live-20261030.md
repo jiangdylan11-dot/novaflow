@@ -26,3 +26,13 @@
 本轮按要求完成真实界面的四项尝试与调用链核对，没有以本地生成代替在线生成，也未改动运行源码、重发安装包或声称在线执行已接入。要满足在线制作，需要补齐在线受限规划到现有生成/编辑工具的执行链、原有模型专用提示词优化、实际输出绑定与执行回执，然后重新做 GPU/云生成及连续修改验收。
 
 本机原始证据：`work/xiaotao-online-media-20261030/image-visible.txt`、`image-attempt.png`、`video-initial-visible.txt`、`video-request-ui.json`、`video-revision-visible.txt`、`video-revision-ui.json`、`video-blocked.png`。截图展示了真实在线模式和失败提示，未含 Key。
+
+## 验收范围更正（用户澄清后）
+
+用户明确：视频版块本来没有云端生视频服务；只有生图版块提供 GPT Image 2.5。上述“在线视频生成未通过”应理解为“在线小桃请求未调用现有视频工具”，不能解读为产品应当有独立的云视频模型，也不能据此判断现有本地视频生成不可用。
+
+重新查看正式站点的美工→生图，模型方式确有 Qwen（本地）和 GPT Image 2.5。选择 GPT Image 2.5、使用本地智能请求“请用当前选中的 GPT Image 2.5 生成一张方形图片：红色玩具机器人站在纯绿色背景中央，正面全身，卡通3D风格”，实际被小桃提示“参数未确认，未开始分析或生成 / 请先选择本地 Qwen 2.1 绘图并关闭 NSFW”。这次没有提交模型请求或生成消费；测试结束已恢复 Qwen 选择。
+
+该证据定位的是小桃执行桥接限制，并不是 GPT Image 2.5 供应商调用失败。`captureCreation`、`readSampling` 目前仍按本地 Qwen 限定；在线小桃与生成 provider 也是两个独立维度。正确验收应分别覆盖“小桃→现有 GPT Image 2.5 生图/改图”与“小桃→现有本地视频各模式→连续修改”，不要新增产品没有的云视频路径。
+
+新增界面证据：`work/xiaotao-online-media-20261030/gpt-selected-xiaotao-blocked.txt`、`gpt-selected-xiaotao-blocked.png`。本轮仍未修改运行代码；现有 GPT 生图服务、本地视频生成及其连续修改效果不能由本次被拦截的测试判断。
