@@ -86,7 +86,7 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     assert.deepEqual(await layerOrder(), originalOrder);
     await page.keyboard.press('NumpadAdd');
     assert.equal((await layerOrder()).indexOf(activeId), 3);
-    await activeRow().getByRole('button', { name: '下移', exact: true }).click();
+    await frame.getByRole('button', { name: '下移', exact: true }).click();
     assert.deepEqual(await layerOrder(), originalOrder);
     await activeRow().locator('.layer-name').dragTo(frame.locator('.layer-item').first(), { targetPosition: { x: 30, y: 2 } });
     assert.equal((await layerOrder())[0], activeId);
@@ -208,6 +208,57 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await fs.mkdir(output, { recursive: true });
     await page.screenshot({ path: path.join(output, 'integrated.png') });
     await frame.locator('.sidebar').screenshot({ path: path.join(output, 'tools-panel.png') });
+    await frame.evaluate(async () => {
+      const files = [];
+      for (let index = 1; index <= 6; index++) {
+        const name = `scroll-${index}`;
+        for (const source of viewerTestFiles.filter((file) => file.name.startsWith('fixture-4.2'))) {
+          let data = /\.(json|atlas)$/.test(source.name) ? (await source.text()).replaceAll('fixture-4.2', name) : source;
+          if (source.name.endsWith('.json') && index <= 2) {
+            const skeleton = JSON.parse(data); skeleton.slots[0].blend = index === 1 ? 'additive' : 'screen'; data = JSON.stringify(skeleton);
+          }
+          files.push(new File([data], source.name.replace('fixture-4.2', name), { type: source.type }));
+        }
+      }
+      await enqueueFiles(files);
+    });
+    assert.equal(await frame.locator('.layer-item').count(), 11);
+    assert.equal(await frame.locator('.layer-item .layer-order-button').count(), 0);
+    assert.equal(await frame.locator('#layerList').getAttribute('aria-label'), '动画工程');
+    assert(await frame.evaluate(() => {
+      elements.layerList.scrollTop = 0;
+      const list = elements.layerList.getBoundingClientRect();
+      const rows = [...elements.layerList.querySelectorAll('.layer-item')].map((row) => row.getBoundingClientRect());
+      return rows[9].bottom <= list.bottom + 1 && rows[10].bottom > list.bottom && elements.layerList.scrollHeight > elements.layerList.clientHeight;
+    }), 'ten project rows fit; the eleventh requires scrolling');
+    // Reproduce the reported obstruction: a high-ranked scene covers the toolbar.
+    assert(await frame.evaluate(() => {
+      const item = state.sceneItems.at(-1), mount = elements.playerMount.getBoundingClientRect();
+      const actions = document.querySelector('.canvas-actions').getBoundingClientRect();
+      const shift = sceneAnchorShift(item);
+      item.x = actions.x + actions.width / 2 - mount.x - mount.width / 2 - shift.x;
+      item.y = actions.y + actions.height / 2 - mount.y - mount.height / 2 - shift.y;
+      item.element.style.zIndex = '9999';
+      applySceneItemTransform(item);
+      return [...document.querySelectorAll('.canvas-actions button:not(:disabled)')].every((button) => {
+        const r = button.getBoundingClientRect();
+        return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('button') === button;
+      });
+    }), 'high project layers must not intercept canvas action clicks');
+    const currentBeforeOverlayClick = await frame.evaluate(() => state.activeSceneId);
+    const alphaBeforeOverlayClick = await frame.locator('#premultiplyToggle').getAttribute('aria-pressed');
+    await frame.locator('#premultiplyToggle').click();
+    assert.notEqual(await frame.locator('#premultiplyToggle').getAttribute('aria-pressed'), alphaBeforeOverlayClick);
+    assert.equal(await frame.evaluate(() => state.activeSceneId), currentBeforeOverlayClick);
+    await frame.locator('#premultiplyToggle').click();
+    await frame.getByRole('button', { name: '重置位置', exact: true }).click();
+    await frame.locator('.layer-item').last().locator('.layer-name').click();
+    assert(await frame.evaluate(() => elements.layerList.scrollTop > 0));
+    await frame.locator('.layer-item').first().locator('.layer-name').click();
+    await page.screenshot({ path: path.join(output, 'eleven-projects.png') });
+    const overflowIds = await frame.evaluate(() => state.sceneItems.filter((item) => item.project.label.startsWith('scroll-')).map((item) => item.id));
+    for (const id of overflowIds) await frame.locator(`.layer-item[data-scene-id="${id}"] [data-action="remove"]`).click();
+    assert.equal(await frame.locator('.layer-item').count(), 5);
     if (process.env.NF_VIEWER_FIXTURES) {
       const fixtureDir = path.resolve(process.env.NF_VIEWER_FIXTURES);
       const files = (await fs.readdir(fixtureDir)).filter((name) => /\.(json|skel|atlas|png)$/i.test(name)).map((name) => path.join(fixtureDir, name));

@@ -41,6 +41,8 @@ const elements = {
   resetTransformButton: document.getElementById("resetTransformButton"),
   detectedVersion: document.getElementById("detectedVersion"),
   layerList: document.getElementById("layerList"),
+  moveLayerUp: document.getElementById("moveLayerUp"),
+  moveLayerDown: document.getElementById("moveLayerDown"),
   pickBackgroundButton: document.getElementById("pickBackgroundButton"),
   clearBackgroundButton: document.getElementById("clearBackgroundButton"),
   backgroundPicker: document.getElementById("backgroundPicker"),
@@ -770,6 +772,9 @@ function syncResetControl() {
 function renderLayerList() {
   elements.layerList.innerHTML = "";
   const layers = getLayerItemsTopFirst();
+  const selectedIndex = layers.findIndex((item) => item.id === state.activeSceneId);
+  elements.moveLayerUp.disabled = selectedIndex <= 0;
+  elements.moveLayerDown.disabled = selectedIndex < 0 || selectedIndex === layers.length - 1;
   if (!layers.length) {
     const empty = document.createElement("div");
     empty.className = "layer-empty";
@@ -778,7 +783,7 @@ function renderLayerList() {
     return;
   }
 
-  layers.forEach((item, index) => {
+  layers.forEach((item) => {
     const row = document.createElement("div");
     row.className = "layer-item";
     row.classList.toggle("is-active", item.id === state.activeSceneId);
@@ -790,24 +795,6 @@ function renderLayerList() {
     name.dataset.action = "select";
     name.textContent = item.project.label;
 
-    const moveUp = document.createElement("button");
-    moveUp.className = "layer-order-button";
-    moveUp.type = "button";
-    moveUp.dataset.action = "up";
-    moveUp.textContent = "↑";
-    moveUp.title = "上移（+）";
-    moveUp.setAttribute("aria-label", "上移");
-    moveUp.disabled = index === 0;
-
-    const moveDown = document.createElement("button");
-    moveDown.className = "layer-order-button";
-    moveDown.type = "button";
-    moveDown.dataset.action = "down";
-    moveDown.textContent = "↓";
-    moveDown.title = "下移（-）";
-    moveDown.setAttribute("aria-label", "下移");
-    moveDown.disabled = index === layers.length - 1;
-
     const remove = document.createElement("button");
     remove.className = "layer-delete-button";
     remove.type = "button";
@@ -815,7 +802,7 @@ function renderLayerList() {
     remove.textContent = "×";
     remove.title = `删除 ${item.project.label}`;
     remove.setAttribute("aria-label", remove.title);
-    row.append(name, moveUp, moveDown, remove);
+    row.append(name, remove);
     row.draggable = true;
     row.title = "拖动调整层级；+ 上移，- 下移";
     elements.layerList.appendChild(row);
@@ -2281,6 +2268,8 @@ function bindEvents() {
   elements.playPauseButton.addEventListener("click", togglePlayback);
   elements.actualSizeButton.addEventListener("click", () => resetPreviewZoomToActualSize());
   elements.autoFitButton.addEventListener("click", fitPreviewToCanvas);
+  elements.moveLayerUp.addEventListener('click', () => moveSceneLayer(state.activeSceneId, 'up'));
+  elements.moveLayerDown.addEventListener('click', () => moveSceneLayer(state.activeSceneId, 'down'));
   elements.layerList.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("button[data-action]");
     const row = button && button.closest(".layer-item");
@@ -2291,8 +2280,6 @@ function bindEvents() {
       focusActiveLayer();
     } else if (button.dataset.action === "remove") {
       removeSceneItem(sceneId);
-    } else {
-      moveSceneLayer(sceneId, button.dataset.action);
     }
   });
   elements.layerList.addEventListener('dragstart', (event) => {

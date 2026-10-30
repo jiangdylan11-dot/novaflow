@@ -71,18 +71,21 @@ select {
     linear-gradient(135deg, #929292 50%, transparent 50%) calc(100% - 9px) 12px / 4px 4px no-repeat,
     #1b1b1b;
 }
-.layer-list { max-height: 156px; gap: 4px; }
-.layer-item { position: relative; grid-template-columns: minmax(0, 1fr) repeat(3, 22px); gap: 3px; }
-.layer-name, .layer-order-button { min-height: 28px; font-size: 11px; }
-.layer-name { padding: 0 6px; cursor: grab; }
-.layer-order-button, .layer-delete-button { width: 22px; min-height: 28px; padding: 0; font-size: 16px; }
-.layer-delete-button { color: #929292; }
+.layer-order-toolbar { display: flex; justify-content: flex-end; gap: 6px; }
+.layer-order-button { display: inline-flex; align-items: center; justify-content: center; width: 26px; min-height: 26px; height: 26px; padding: 5px; border-radius: 6px; background: #272727; color: #bdbdbd; }
+.layer-order-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.layer-list { max-height: 414px; gap: 6px; }
+.layer-item { position: relative; grid-template-columns: minmax(0, 1fr) 24px; gap: 6px; height: 36px; min-height: 36px; padding: 4px 6px 4px 8px; border-radius: 8px; background: #1d1d1d; }
+.layer-name { width: 100%; min-height: 28px; padding: 0; font-size: 12px; background: transparent; cursor: grab; }
+.layer-name:hover:not(:disabled) { background: transparent; }
+.layer-delete-button { width: 24px; min-height: 24px; height: 24px; padding: 0; border-radius: 5px; background: #272727; font-size: 15px; color: #929292; }
 .layer-delete-button:hover:not(:disabled) { background: #302020; color: #df7777; }
 .layer-item.is-layer-dragging { opacity: .45; }
 .layer-item.drop-before::before, .layer-item.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: #1ea672; pointer-events: none; }
 .layer-item.drop-before::before { top: -2px; }
 .layer-item.drop-after::after { bottom: -2px; }
-.layer-item.is-active .layer-name { border-color: transparent; background: #1b4035; color: #6ee7ce; }
+.layer-item.is-active { background: #1b4035; }
+.layer-item.is-active .layer-name { border-color: transparent; background: transparent; color: #6ee7ce; }
 .layer-empty { line-height: 30px; font-size: 11px; }
 .hint, .status, .range-row output { min-height: 0; font-size: 11px; line-height: 1.6; font-weight: 400; }
 .range-row { gap: 4px 8px; }
@@ -138,6 +141,9 @@ input[type='checkbox'] { width: 13px; height: 13px; }
 .canvas-actions button[aria-pressed='true'] { background: #1c4136; color: #6ee7ce; }
 .canvas-actions button[aria-pressed='true']:hover:not(:disabled) { background: #245442; color: #6ee7ce; }
 .canvas-actions svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+/* Confine arbitrary project z-index values below the canvas controls. */
+.scene-layer { z-index: 1; isolation: isolate; background: inherit; }
+.empty-state { z-index: 2; pointer-events: none; }
 .canvas-hint { background: #151515; border: 0; color: #929292; font-size: 11px; }
 .empty-state { color: #777; }
 .empty-state strong { color: #bdbdbd; font-size: 14px; font-weight: 400; }

@@ -6,7 +6,7 @@
     <title>Spine 工程查看器</title>
     <link id="spine-runtime-style" rel="stylesheet" href="" />
     <link id="app-style" rel="stylesheet" href="styles.css?v=20260915-blend-backdrop" />
-    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-4" />
+    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-5" />
   </head>
   <body>
     <div class="app">
@@ -25,8 +25,16 @@
         </section>
 
         <section class="panel stack">
-          <div class="section-heading" title="拖动排序；+ 上移，- 下移">动画层级</div>
-          <div id="layerList" class="layer-list" aria-label="动画层级">
+          <div class="section-heading" title="拖动排序；+ 上移，- 下移">动画工程</div>
+          <div class="layer-order-toolbar" role="toolbar" aria-label="工程层级">
+            <button id="moveLayerDown" class="layer-order-button" type="button" title="下移（-）" aria-label="下移" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
+            </button>
+            <button id="moveLayerUp" class="layer-order-button" type="button" title="上移（+）" aria-label="上移" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>
+            </button>
+          </div>
+          <div id="layerList" class="layer-list" aria-label="动画工程">
             <div class="layer-empty">暂无动画</div>
           </div>
         </section>
@@ -55,8 +63,9 @@
 
       <main class="stage">
         <div id="playerMount" class="player-mount">
-          <img id="backgroundImage" class="stage-background" alt="" draggable="false" hidden />
-          <div id="sceneLayer" class="scene-layer"></div>
+          <div id="sceneLayer" class="scene-layer">
+            <img id="backgroundImage" class="stage-background" alt="" draggable="false" hidden />
+          </div>
           <div id="emptyState" class="empty-state">
             <strong>加载 Spine 导出工程</strong>
             <span>可分批添加多个工程，并上传一张画布背景</span>
@@ -96,6 +105,6 @@
 
     <script src="vendor/novaflow-version-convert.js?v=3.7-roundtrip-1"></script>
     <script src="vendor/novaflow-skel-import.js?v=3.7-roundtrip-1"></script>
-    <script src="app.js?v=20261030-viewer-interactions-4"></script>
+    <script src="app.js?v=20261030-viewer-interactions-5"></script>
   </body>
 </html>
