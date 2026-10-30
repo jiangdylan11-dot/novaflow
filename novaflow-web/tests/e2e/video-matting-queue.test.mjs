@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { startLocalControlPlane } from '../../control-local/src/server.mjs';
@@ -19,6 +20,7 @@ try {
   const node = await request('/api/worker/register', { worker_id: randomUUID(), worker_name: 'matting-only',
     worker_secret: generateWorkerSecret(), hardware: { gpu_name: 'test', vram_mb: 8192, ram_mb: 16384,
       worker_version: 'test', endpoint_url: 'http://127.0.0.1:9876', transport: 'direct' } }, token);
+  await approveComputeWorker(control.db,node.worker.id);
   await request('/api/worker/models', { models: [{ model_id: 'birefnet-matting', model_version: '2.0.0', status: 'ready' }] }, node.workerToken);
   await request('/api/worker/heartbeat', { status: 'idle' }, node.workerToken);
   const created = await request('/api/web/tasks', { task_type: 'video_matting', parameters: {

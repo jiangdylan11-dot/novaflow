@@ -149,9 +149,9 @@
                       <span class="quickTitle">用户积分</span>
                       <span class="quickHint">积分余额与充值</span>
                     </button>
-                    <button class="quickLink" type="button" data-module-link="compute" data-drawer-after="computeMintDrawer">
-                      <span class="quickTitle">接入算力节点</span>
-                      <span class="quickHint">生成一次性注册码</span>
+                    <button class="quickLink" type="button" data-module-link="compute">
+                      <span class="quickTitle">审批算力机器</span>
+                      <span class="quickHint">分配本人账号与使用权限</span>
                     </button>
                   </div>
                 </section>
@@ -413,11 +413,10 @@
             <div class="pageHead">
               <div>
                 <h1 class="pageTitle">算力节点</h1>
-                <div class="pageHint">Foart Web 的 GPU 池。发一个一次性注册码，对方装上 Worker 填进去就自动上线。</div>
+                <div class="pageHint">新机器启动助手后自动出现在这里。分配本人账号，再分别开通本人使用或对外分享。</div>
               </div>
               <div class="pageTools">
                 <span id="computeDataBadge" class="pill skeletonPill"></span>
-                <button class="btn primary" type="button" data-drawer-open="computeMintDrawer">+ 接入新机器</button>
               </div>
             </div>
 
@@ -460,33 +459,6 @@
               </div>
             </section>
 
-            <div class="twoCol">
-              <section class="panel tableCard">
-                <div class="tableToolbar">
-                  <div class="cardTitle">已发出的注册码</div>
-                  <span id="computeCodesStatus" class="countPill"></span>
-                  <div class="spacer"></div>
-                  <button id="computePurgeCodes" class="btn secondary small" type="button" title="删除已失效、已吊销或已用完的注册码记录" disabled>清理失效注册码</button>
-                </div>
-                <div class="tableViewport medium">
-                  <table class="dataTable codeTable">
-                    <thead>
-                      <tr>
-                        <th>备注</th>
-                        <th>等级</th>
-                        <th class="num">已用 / 上限</th>
-                        <th>有效期</th>
-                        <th class="actionsCol">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody id="computeCodesTableBody">
-                      <tr><td colspan="5"><div class="skeletonLine"></div></td></tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div class="tableFootnote">明文不落库，只能看到备注、等级、用量和有效期。吊销后的注册码会留在列表里，可再删除。</div>
-              </section>
-
               <section class="panel tableCard">
                 <div class="tableToolbar">
                   <div class="cardTitle">用户使用记录</div>
@@ -519,7 +491,6 @@
                 </div>
                 <div class="tableFootnote">谁、什么时候、用了哪台机器。不保存提示词正文和生成产物。清理只删除已结束的任务，排队和进行中的不受影响。</div>
               </section>
-            </div>
           </section>
 
           <!-- ============================ 专业经验 ============================ -->
@@ -633,75 +604,6 @@
               <div class="drawerFooterActions">
                 <button class="btn secondary" type="button" data-drawer-close>取消</button>
                 <button id="createAdminUser" class="btn primary" type="button" disabled>创建账号</button>
-              </div>
-            </div>
-          </aside>
-        </div>
-
-        <!-- ============================ 抽屉：接入一台新机器 ============================ -->
-        <div id="computeMintDrawer" class="drawerOverlay" hidden>
-          <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="computeMintDrawerTitle">
-            <div class="drawerHeader">
-              <div>
-                <div id="computeMintDrawerTitle" class="drawerTitle">接入一台新机器</div>
-                <div class="drawerHint">对方那台机器还需要一个能跑的 ComfyUI 和模型，安装包本身不含这些。</div>
-              </div>
-              <button class="iconButton" type="button" data-drawer-close aria-label="关闭">×</button>
-            </div>
-            <div class="drawerBody">
-              <div class="formGrid">
-                <div class="row full">
-                  <div class="label">归属用户</div>
-                  <div class="field">
-                    <select id="computeCodeOwner">
-                      <option value="">请选择用户</option>
-                    </select>
-                    <div class="hint">这台机器算谁的算力，任务和统计都挂在这个账号下。</div>
-                  </div>
-                </div>
-                <div class="row full">
-                  <div class="label">备注</div>
-                  <div class="field">
-                    <input id="computeCodeLabel" type="text" placeholder="例如：老王的 4090" spellcheck="false" />
-                  </div>
-                </div>
-                <div class="row full">
-                  <div class="label">节点等级</div>
-                  <div class="field">
-                    <select id="computeCodeTier">
-                      <option value="standard">普通节点（中级及以上账户可用）</option>
-                      <option value="premium">高级节点（仅高级账户可用）</option>
-                    </select>
-                    <div class="hint">用这个注册码接入的机器都按这个等级入池；接入后可在节点表里改。</div>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="label">可接入机器数</div>
-                  <div class="field">
-                    <input id="computeCodeUses" type="number" min="1" max="50" value="1" />
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="label">有效天数</div>
-                  <div class="field">
-                    <input id="computeCodeDays" type="number" min="1" max="90" value="7" />
-                  </div>
-                </div>
-                <div class="row full">
-                  <div class="hint">每台机器占用一个名额。要接一批机器就把名额调大。</div>
-                </div>
-              </div>
-              <div id="computeCodeResult" class="codeResult" style="display:none">
-                <div class="label">注册码</div>
-                <input id="computeCodeValue" class="codeValue" type="text" readonly spellcheck="false" />
-                <div class="hint">只显示这一次。数据库里只存哈希，关掉就找不回来了。</div>
-              </div>
-            </div>
-            <div class="drawerFooter">
-              <div id="computeMintStatus" class="hint">-</div>
-              <div class="drawerFooterActions">
-                <button class="btn secondary" type="button" data-drawer-close>关闭</button>
-                <button id="computeMintCode" class="btn primary" type="button">生成注册码</button>
               </div>
             </div>
           </aside>

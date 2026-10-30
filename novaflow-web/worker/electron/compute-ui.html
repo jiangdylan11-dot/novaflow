@@ -82,7 +82,7 @@
   button.sharing { background: #E8BD51; color: #27210e; font-weight: 600; box-shadow: none; }
   button.sharing:hover:not(:disabled) { background: #F0C962; }
   button.primary:disabled, button.sharing:disabled { opacity: .65; cursor: wait; }
-  #launcher-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 16px; }
+  #launcher-actions { display: grid; grid-template-columns: 1fr; gap: 22px; margin-top: 16px; }
   .launch-column { min-width: 0; position: relative; }
   .launch-column + .launch-column::before { content: ''; position: absolute; left: -12px; height: 100%; border-left: 1px solid #ffffff10; }
   .launch-column > button { width: 100%; height: 46px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; border-radius: 8px; }
@@ -142,7 +142,7 @@
 </style></head><body>
 <div class="titlebar" aria-label="Foart 标题栏"><img src="assets/foart-logo-dark.svg" alt="Foart" draggable="false"><span class="ver" id="version"></span></div>
 <main>
-<div class="tabs" role="tablist" aria-label="算力助手"><button class="tab active" role="tab" aria-selected="true" data-tab="status">状态</button><button class="tab" role="tab" aria-selected="false" data-tab="settings">设置</button><button class="tab" role="tab" aria-selected="false" data-tab="logs">日志</button></div>
+<div class="tabs" role="tablist" aria-label="算力助手"><button class="tab active" role="tab" aria-selected="true" data-tab="status">状态</button><button class="tab" role="tab" aria-selected="false" data-tab="logs">日志</button></div>
 <div id="error" class="err-box" role="alert"></div>
 <section id="tab-status" role="tabpanel">
 <div class="card">
@@ -151,15 +151,10 @@
 <div class="metrics"><div class="metric"><span class="k">当前任务</span><span class="v" id="task">空闲</span></div><div class="metric"><span class="k">节点队列</span><span class="v" id="queue">由官网调度</span></div><div class="metric"><span class="k">已完成 / 失败</span><span class="v" id="stats">0 / 0</span></div></div>
 <div class="connection"><span class="k">生成服务</span><span id="comfy">—</span><button id="freeMemory" disabled>释放显存</button></div>
 </div>
-<div id="launcher-actions"><div class="launch-column"><button class="primary wide" id="website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span>启动Foart</span></button><a class="website" id="websiteLink" href="https://foart.net/">快捷打开官网界面 ↗</a></div>
-<div class="launch-column"><button class="sharing wide" id="connection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5" cy="12" r="3"/><circle cx="19" cy="5" r="3"/><circle cx="19" cy="19" r="3"/><path d="m8 10 8-4M8 14l8 4"/></svg><span id="connectionLabel">连接算力节点</span></button><a class="website" id="policyLink" href="#">查看算力权限 ↗</a></div></div>
+<div id="launcher-actions"><div class="launch-column"><button class="primary wide" id="website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 2v10M6 5a9 9 0 1 0 12 0"/></svg><span>启动Foart</span></button></div></div>
+<div id="policy" class="hint" aria-live="polite">算力节点自动连接，使用权限由后台开通。</div>
 <div id="progress" class="launch-progress" hidden><progress max="100" value="0" aria-label="节点连接进度"></progress><span id="progressText"></span></div>
-<div class="footer-note">Foart 统一使用官网 · 关闭窗口后在托盘继续运行</div>
+<div class="footer-note">节点自动连接 · 关闭窗口后在托盘继续运行</div>
 </section>
-<section id="tab-settings" role="tabpanel" hidden><div class="card settings-card">
-<div><label for="registrationCode">节点接入码（仅首次接入使用）</label><input id="registrationCode" placeholder="NFW-XXXXXX-XXXXXX" autocomplete="off"><div class="registration-info"><div id="registrationStatus">首次接入后自动保存节点身份</div><div id="policy" class="hint">本人使用和对外分享权限由后台设置。</div></div></div>
-<div><label for="workerName">节点名称</label><input id="workerName" maxlength="80" autocomplete="off"></div>
-<div><label for="modelsRoot">模型目录</label><div class="folder"><input id="modelsRoot" placeholder="自动读取已安装环境"><button id="folder">选择</button></div></div>
-<button class="primary" id="save">保存并连接</button></div></section>
 <section id="tab-logs" role="tabpanel" hidden><div class="card"><div id="logs" role="log" aria-label="运行日志"></div><button id="openLogs">打开日志文件夹</button></div></section>
 </main><script src="compute-ui.js"></script></body></html>

@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 // Full pipeline E2E, against the REAL local ComfyUI.
 //
 // browser -> control plane -> scheduler -> worker -> ComfyUI -> result file
@@ -70,6 +71,7 @@ try {
     logger: () => {}
   });
   await worker.start();
+  await approveComputeWorker(ctx.db,worker.getState().workerId);
   const ws = worker.getState();
   check('worker registered with an id', Boolean(ws.workerId), ws.workerId);
   check('GPU detected via nvidia-smi', ws.gpu?.detected === true, ws.gpu);

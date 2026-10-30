@@ -1,5 +1,5 @@
 // Public compute appliance. The Foart editor is served only by foart.net.
-const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -15,18 +15,10 @@ let win, tray, assistant, assistantFactory, operation = null, lastError = '', pa
 let queue = Promise.resolve();
 const lines = [];
 const serial = fn => { const next = queue.then(fn); queue = next.catch(() => {}); return next; };
-const defaults = () => ({ workerName: 'foart-' + require('node:os').hostname(), modelsRoot: '', registrationCode: '' });
+const defaults = () => ({ workerName: ('foart-' + require('node:os').hostname()).slice(0, 80), modelsRoot: '' });
 function readConfig() {
   try { return { ...defaults(), ...JSON.parse(fs.readFileSync(configFile, 'utf8')) }; }
   catch { return defaults(); }
-}
-function saveConfig(patch) {
-  const config = readConfig();
-  for (const name of ['workerName', 'modelsRoot', 'registrationCode']) {
-    if (typeof patch?.[name] === 'string') config[name] = patch[name].trim();
-  }
-  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
-  return config;
 }
 function state() {
   const value = assistant?.getState() || {};
@@ -43,22 +35,17 @@ const resource = name => app.isPackaged ? path.join(process.resourcesPath, name)
 async function connect() {
   if (assistant?.getState().sharing) return { ok: true, state: state() };
   const config = readConfig();
-  if (!config.registrationCode && !fs.existsSync(path.join(dataDir, 'identity.json'))) {
-    lastError = '首次接入请填写管理员提供的接入码'; emit();
-    return { ok: false, error: lastError, state: state() };
-  }
   operation = { message: '正在连接', percent: 0 }; lastError = ''; paused = false; emit();
   try {
     if (!assistant) {
       if (!assistantFactory) ({ createComputeAssistant: assistantFactory } = await import(pathToFileURL(path.join(__dirname, '../src/compute-assistant.mjs')).href));
-      assistant = await assistantFactory({ ...config, controlUrl: CONTROL, dataDir,
+      assistant = await assistantFactory({ modelsRoot: config.modelsRoot || '', workerName: defaults().workerName, controlUrl: CONTROL, dataDir,
         configPath: path.join(dataDir, 'identity.json'), workflowDir: path.join(__dirname, '../workflows'),
         rendererDir: resource('compute-renderer'), gatewayPort: 8791,
         logger: log, onProgress(percent, message) { operation = { percent, message }; emit(); } });
       assistant.onChange(emit);
     }
     await assistant.start();
-    saveConfig({ registrationCode: '' });
     return { ok: true, state: state() };
   } catch (error) {
     lastError = String(error.message || error); log('连接失败', { error: lastError });
@@ -94,12 +81,6 @@ function handle(name, fn) {
   });
 }
 handle('state', state);
-handle('config', () => { const { workerName, modelsRoot } = readConfig(); return { workerName, modelsRoot }; });
-handle('save', patch => serial(async () => {
-  await stop(); saveConfig(patch); return connect();
-}));
-handle('connect', () => serial(connect));
-handle('pause', () => serial(stop));
 handle('website', () => shell.openExternal(WEBSITE));
 handle('logs', () => shell.openPath(dataDir));
 handle('getLogs', () => lines.slice());
@@ -110,10 +91,6 @@ handle('freeMemory', async () => {
   if (!result.released) throw new Error('生成服务未运行，无需释放');
   log('已释放显存');
   return { ok: true };
-});
-handle('models', async () => {
-  const result = await dialog.showOpenDialog(win, { title: '选择 models 目录', properties: ['openDirectory'] });
-  return result.canceled ? '' : result.filePaths[0];
 });
 if (!app.requestSingleInstanceLock()) app.quit();
 else {

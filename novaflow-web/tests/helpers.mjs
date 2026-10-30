@@ -85,3 +85,10 @@ export async function waitFor(predicate, { timeoutMs = 15000, intervalMs = 120, 
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 }
+
+/** Simulate a privileged administrator approving a machine in the throwaway test DB.
+ * This helper is never shipped and exposes no production approval endpoint. */
+export async function approveComputeWorker(db,workerId,{sharing=true}={}) {
+  await db.query('update public.gpu_workers set enabled=true,owner_enabled=true,sharing_enabled=$2 where id=$1',
+    [workerId,sharing]);
+}

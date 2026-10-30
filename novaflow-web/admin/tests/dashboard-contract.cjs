@@ -39,6 +39,9 @@ assert(!indexHtml.includes('data-module-link="licenses"'), "licensing shortcuts 
 assert(!indexHtml.includes('id="dashboardLicensesCount"'), "dashboard must stop counting licenses");
 assert(indexHtml.includes('id="dashboardWorkersCount"'), "dashboard should show compute machines");
 assert(indexHtml.includes('id="backendConnectionDrawer"'), "backend connection settings must remain reachable");
+for (const id of ["computeMintDrawer", "computeCodesTableBody", "computeMintCode"]) assert(!indexHtml.includes(`id="${id}"`), "registration-code UI must be retired: " + id);
+assert(!renderer.includes('loadAdminDataset("getAdminWorkerCodes")'), "node page must not load retired registration codes");
+assert(renderer.includes('workerPendingApproval'), "new unassigned nodes must be clearly pending approval");
 assert(indexHtml.includes('id="onlineSupabaseUrl"') && indexHtml.includes('id="onlineSecretKey"'), "backend connection fields must remain available");
 for (const operation of ["queryOnlineLicense", "getDefaultPaths", "getStatus", "readPrivateKey", "readPublicKey", "issueLicense", "verifyLicense"]) {
   assert(!renderer.includes(`window.adminAPI.${operation}(`), `online admin must never call legacy ${operation}`);

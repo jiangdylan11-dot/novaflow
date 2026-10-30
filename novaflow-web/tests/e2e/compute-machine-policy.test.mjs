@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
@@ -17,7 +18,8 @@ test('machine policy controls private use, selected sharing, scheduling and revo
       worker_id:id,worker_name:'private-machine',worker_secret:secret,profile:'compute-only',hardware:{vram_mb:32768}
     }});
     assert.equal(reg.status,200,JSON.stringify(reg.body));
-    assert.equal(reg.body.worker.policy.owner_enabled,true);
+    assert.equal(reg.body.worker.policy.owner_enabled,false);
+    await approveComputeWorker(ctx.db,id,{sharing:false});
     assert.equal(reg.body.worker.policy.sharing_enabled,false);
     const workerToken=reg.body.workerToken;
     await call(ctx.url,'POST','/api/worker/models',{token:workerToken,body:{models:[{model_id:'qwen-image-2511',status:'ready'}]}});

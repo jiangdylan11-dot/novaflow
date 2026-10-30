@@ -77,6 +77,11 @@ export function createPgStore(db) {
       );
     },
 
+    async enrollPendingWorker({workerId,workerName,secretHash,hardware,peerHash}) {
+      return await one('select * from public.novaflow_web_enroll_pending_worker($1,$2,$3,$4::jsonb,$5)',
+        [workerId,workerName,secretHash,JSON.stringify(hardware||{}),peerHash]);
+    },
+
     async getWorkerById(workerId) {
       if (!workerId) return null;
       // A malformed id must read as "no such worker", not as a 500.

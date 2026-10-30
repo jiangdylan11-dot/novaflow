@@ -376,7 +376,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
   // Registration accepts EITHER an owner session token (the owner registering
   // their own machine) OR a one-time registration code (a friend running the
   // installer). Either way the worker never learns a Supabase key.
-  async function handleWorkerRegister(body, headers) {
+  async function handleWorkerRegister(body, headers, clientAddress) {
     const workerName = sanitizeText(body.worker_name || body.workerName, 80).trim();
     if (!workerName) throw bad('worker_name is required');
 
@@ -395,42 +395,47 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
     // secret. Without this, anyone holding a registration code could take over
     // a worker id that belongs to someone else's machine.
     const existing = await store.getWorkerById(workerId);
+    let previousSecretHash = null;
     if (existing) {
       const proof = sanitizeText(body.previous_secret || body.previousSecret, 400) || secret;
       const proofHash = await hashWorkerSecret(workerId, proof);
+      previousSecretHash = proofHash;
       if (proofHash !== existing.worker_secret_hash) {
         throw new HttpError(409, ERROR_CODE.CONFLICT,
           'this worker id is already registered; supply previous_secret to rotate its credential');
       }
     }
 
-    let ownerId = '';
+    let ownerId = null;
     // The code that admits a machine also says which tier it joins as (普通 /
     // 高级节点). An owner registering their own machine gets 普通; the
     // administrator can change either later.
     let tier = '';
     const code = sanitizeText(body.registration_code || body.registrationCode, 200).trim();
+    const pendingEnrollment = !existing && body.profile === 'compute-only' && !code
+      && !bearerToken(headers.authorization || headers.Authorization);
     if (existing) {
-      // An existing worker keeps its owner; a registration code cannot move it.
-      ownerId = String(existing.owner_id);
+      // An existing worker keeps its owner, including an unapproved null owner.
+      ownerId = existing.owner_id ? String(existing.owner_id) : null;
     } else if (code) {
       const codeHash = await sha256Hex('novaflow-web-registration-code:v1:' + code);
       const owner = await store.consumeRegistrationCode(codeHash);
       if (!owner) throw new HttpError(401, ERROR_CODE.UNAUTHORIZED, 'registration code is invalid or used up');
       ownerId = String(owner.owner_id);
       tier = normalizeNodeTier(owner.tier);
-    } else {
+    } else if (!pendingEnrollment) {
       const user = await requireUser(headers);
       ownerId = String(user.id);
     }
 
     const hardware = body.hardware && typeof body.hardware === 'object' ? body.hardware : {};
     const secretHash = await hashWorkerSecret(workerId, secret);
-    const registered = await store.registerWorker({
+    const registered = await (pendingEnrollment ? store.enrollPendingWorker : store.registerWorker)({
       workerId,
       ownerId,
       workerName,
       secretHash,
+      peerHash: pendingEnrollment ? await sha256Hex('novaflow-compute-peer:v1:' + String(clientAddress || 'unavailable')) : null,
       hardware: {
         gpu_name: sanitizeText(hardware.gpu_name, 200),
         vram_mb: clampInt(hardware.vram_mb, 0, 4194304, 0),
@@ -441,7 +446,8 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
         comfy_version: sanitizeText(hardware.comfy_version, 40),
         endpoint_url: sanitizeText(hardware.endpoint_url, 500),
         transport: hardware.transport === 'tunnel' ? 'tunnel' : 'direct',
-        registration_profile: body.profile === 'compute-only' ? 'compute-only' : 'legacy'
+        enrollment_peer_hash: await sha256Hex('novaflow-compute-peer:v1:' + String(clientAddress || 'unavailable')),
+        previous_secret_hash: previousSecretHash
       }
     });
 
@@ -705,7 +711,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
       && (await store.listWorkers(user.id)).some(worker => workerAllowsUser(worker, user));
     if (!canUseSharedCompute(user.plan) && !hasOwnCompute && !(ownTarget && String(ownTarget.owner_id) === String(user.id) && workerAllowsUser(ownTarget, user))) {
       throw new HttpError(403, ERROR_CODE.PLAN_REQUIRED,
-        '此账号没有获准使用的本人算力机器，请先接入助手并联系管理员设置机器归属和本人使用权限。使用其他算力节点需要中级或高级账户。',
+        '此账号没有获准使用的本机算力，请先接入助手并联系管理员设置机器归属和本人使用权限。使用其他算力节点需要中级或高级账户。',
         { plan: String(user.plan || 'trial') });
     }
     // A 中级账户 may use 普通 nodes only; the scheduler reads this flag off the
@@ -1189,7 +1195,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
       if (method === 'GET' && path === '/api/web/loras/h3') return ok(await handleLoraCatalog('h3', query, headers));
       if (method === 'POST' && path === '/api/web/loras/h3/validate') return ok(await handleLoraCatalog('h3', body, headers, body));
 
-      if (method === 'POST' && path === '/api/worker/register') return ok(await handleWorkerRegister(body, headers));
+      if (method === 'POST' && path === '/api/worker/register') return ok(await handleWorkerRegister(body, headers, request.clientAddress));
       if (method === 'POST' && path === '/api/worker/login') return ok(await handleWorkerLogin(body));
       if (method === 'POST' && path === '/api/worker/heartbeat') return ok(await handleHeartbeat(body, headers));
       if (method === 'POST' && path === '/api/worker/models') return ok(await handleWorkerModels(body, headers));
@@ -1232,6 +1238,8 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
         };
       }
       const message = String(error?.message || error);
+      if (/compute enrollment rate limit/.test(message)) return {status:429,body:{ok:false,error:'设备登记过于频繁，请稍后重试',code:'enrollment_rate_limited'}};
+      if (/compute pending enrollment capacity/.test(message)) return {status:503,body:{ok:false,error:'待审批设备已达上限，请联系管理员处理',code:'enrollment_capacity_reached'}};
       if (/illegal transition|is already|not assigned to this worker/i.test(message)) {
         return {
           status: 409,
@@ -1270,6 +1278,7 @@ function resultTtlSeconds(taskType) {
 // The secret hash never leaves the server.
 export function workerPolicy(worker, includeAllowed = true) {
   return {
+    pending_approval: !worker.owner_id,
     enabled: worker.enabled !== false,
     owner_enabled: worker.owner_enabled !== false,
     sharing_enabled: worker.sharing_enabled !== false,
@@ -1290,6 +1299,8 @@ function publicWorker(worker) {
   if (!worker) return null;
   return {
     id: worker.id,
+    owner_id: worker.owner_id || null,
+    pending_approval: !worker.owner_id,
     worker_name: worker.worker_name,
     status: worker.status,
     tier: normalizeNodeTier(worker.tier),

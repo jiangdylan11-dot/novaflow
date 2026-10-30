@@ -1315,6 +1315,10 @@ function workerPolicyAvailable(worker) {
     && ["pool", "selected"].includes(worker.sharing_scope) && Array.isArray(worker.allowed_user_ids);
 }
 
+function workerPendingApproval(worker) {
+  return workerPolicyAvailable(worker) && !worker.owner_id && worker.enabled === false && worker.owner_enabled === false && worker.sharing_enabled === false;
+}
+
 function openComputeMachineSettings(worker) {
   const trigger = document.activeElement;
   const overlay = document.createElement("div"); overlay.className = "modalOverlay";
@@ -1325,7 +1329,9 @@ function openComputeMachineSettings(worker) {
   const close = document.createElement("button"); close.type = "button"; close.className = "iconButton"; close.textContent = "×"; close.setAttribute("aria-label", "关闭");
   header.append(title, close);
   const body = document.createElement("div"); body.className = "modalBody";
-  const hint = document.createElement("p"); hint.className = "hint"; hint.textContent = "本人使用和对外分享独立控制。停用后不再领取新任务，正在执行的任务继续完成。";
+  const hint = document.createElement("p"); hint.className = "hint"; hint.textContent = workerPendingApproval(worker)
+    ? "这台新机器尚未开通。请设置名称、选择本人账号，并勾选启用机器及所需使用权限后保存。"
+    : "本人使用和对外分享独立控制。停用后不再领取新任务，正在执行的任务继续完成。";
   body.appendChild(hint);
   const checkbox = (id, label, checked) => {
     const field = document.createElement("label"); field.className = "modalField computeMachineToggle";
@@ -1334,6 +1340,7 @@ function openComputeMachineSettings(worker) {
   };
   const enabled = checkbox("computeMachineEnabled", "启用这台机器", worker.enabled);
   const field = (label, input) => { const el = document.createElement("label"); el.className = "modalField"; const text = document.createElement("span"); text.textContent = label; el.append(text, input); body.appendChild(el); };
+  const workerName = document.createElement("input"); workerName.id = "computeMachineName"; workerName.type = "text"; workerName.maxLength = 80; workerName.value = worker.worker_name || ""; field("机器名称（由后台管理）", workerName);
   const owner = document.createElement("select"); owner.id = "computeMachineOwner";
   const emptyOwner = document.createElement("option"); emptyOwner.value = ""; emptyOwner.textContent = "未指定本人账号"; owner.appendChild(emptyOwner);
   const users = computeState.users || [];
@@ -1356,8 +1363,12 @@ function openComputeMachineSettings(worker) {
     const text = document.createElement("span"); text.textContent = userAccountLabel(user) || user.display_name || user.id; label.append(input, text); selected.appendChild(label);
   }
   body.appendChild(selected);
-  const sync = () => { scope.disabled = !sharing.checked; selected.hidden = !sharing.checked || scope.value !== "selected"; };
-  scope.addEventListener("change", sync); sharing.addEventListener("change", sync); sync();
+  const summary = document.createElement("p"); summary.className = "hint"; summary.id = "computeMachinePolicySummary"; body.appendChild(summary);
+  const sync = () => {
+    scope.disabled = !sharing.checked; selected.hidden = !sharing.checked || scope.value !== "selected";
+    summary.textContent = !enabled.checked ? "当前设置：机器未启用，不会执行任务。" : !ownerEnabled.checked && !sharing.checked ? "当前设置：本人和对外使用均关闭，不会执行任务。" : "当前设置：" + [ownerEnabled.checked ? "允许本人使用" : "本人使用关闭", sharing.checked ? "允许对外分享" : "对外分享关闭"].join("；");
+  };
+  for (const input of [scope, sharing, enabled, ownerEnabled]) input.addEventListener("change", sync); sync();
   const status = document.createElement("div"); status.className = "modalStatus"; status.id = "computeMachineSaveStatus"; status.setAttribute("role", "status"); body.appendChild(status);
   const actions = document.createElement("div"); actions.className = "modalActions";
   const cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "btn secondary"; cancel.textContent = "取消";
@@ -1373,11 +1384,13 @@ function openComputeMachineSettings(worker) {
   panel.addEventListener("submit", async (event) => {
     event.preventDefault(); if (saving) return;
     const ids = [...selected.querySelectorAll("input:checked")].map((input) => input.value);
+    if (!workerName.value.trim() || workerName.value.trim().length > 80) { status.textContent = "请输入 1–80 个字符的机器名称"; workerName.focus(); return; }
     if (!owner.value) { status.textContent = "请选择设备归属账号"; owner.focus(); return; }
     if (sharing.checked && scope.value === "selected" && !ids.length) { status.textContent = "请至少选择一个可使用算力的账号"; return; }
     saving = true; save.disabled = true; cancel.disabled = true; close.disabled = true; status.textContent = "正在保存…";
     try {
       const response = await window.adminAPI.setAdminGpuWorkerAccessPolicy({ id: worker.id, owner_id: owner.value || null,
+        worker_name: workerName.value.trim(),
         enabled: enabled.checked, owner_enabled: ownerEnabled.checked, sharing_enabled: sharing.checked, sharing_scope: scope.value, allowed_user_ids: ids });
       if (!response?.ok || response.result?.ok !== true) throw Error(response?.result?.error || response?.error || "保存失败");
       saving = false; finish(); toast("算力机器设置已保存"); await loadComputeData();
@@ -1411,10 +1424,11 @@ function renderComputeWorkers(workersResult) {
   setText("computeStatCompleted", `${formatNumber(sumOf("total_completed"))} / ${formatNumber(sumOf("total_failed"))}`);
 
   const rows = workers.map((item) => {
+    const pending = workerPendingApproval(item);
     const tr = document.createElement("tr");
     tr.appendChild(textCell(item.worker_name || item.id));
     const owner = computeState.users?.find((user) => user.id === item.owner_id);
-    tr.appendChild(textCell(owner ? userAccountLabel(owner) || owner.display_name || owner.id : item.owner_id || "未指定"));
+    tr.appendChild(textCell(owner ? userAccountLabel(owner) || owner.display_name || owner.id : item.owner_id || "待分配账号"));
     tr.appendChild(textCell(
       (item.gpu_name || "GPU 未知") + (item.vram_mb ? " · " + Math.round(Number(item.vram_mb) / 1024) + "GB" : "")
     ));
@@ -1464,14 +1478,14 @@ function renderComputeWorkers(workersResult) {
 
     tr.appendChild(nodeCell(statusBadge(COMPUTE_WORKER_STATUS[item.status] || item.status)));
     const policyReady = workerPolicyAvailable(item);
-    const access = !policyReady ? "权限设置需升级" : !item.enabled ? "已停用" : [item.owner_enabled ? "本人可用" : "本人禁用", item.sharing_enabled ? (item.sharing_scope === "selected" ? "指定用户 " + item.allowed_user_ids.length + " 人" : "共享池") : "未分享"].join(" · ");
+    const access = !policyReady ? "权限设置需升级" : pending ? "待审批" : !item.enabled ? "已停用" : [item.owner_enabled ? "本人可用" : "本人禁用", item.sharing_enabled ? (item.sharing_scope === "selected" ? "指定用户 " + item.allowed_user_ids.length + " 人" : "共享池") : "未分享"].join(" · ");
     tr.appendChild(textCell(access));
 
     const action = document.createElement("td");
     if (writable) {
       const actions = document.createElement("div");
       actions.className = "tableActions";
-      const settings = document.createElement("button"); settings.type = "button"; settings.className = "btn secondary"; settings.textContent = "机器设置";
+      const settings = document.createElement("button"); settings.type = "button"; settings.className = "btn secondary"; settings.textContent = pending ? "分配并审批" : "机器设置";
       settings.disabled = !policyReady || !computeState.writable;
       settings.title = policyReady ? "配置本人账号、本人使用与对外分享" : "请先应用算力访问策略数据库迁移";
       settings.addEventListener("click", () => openComputeMachineSettings(item)); actions.appendChild(settings);
@@ -1480,8 +1494,8 @@ function renderComputeWorkers(workersResult) {
       button.type = "button";
       button.className = "btn secondary";
       button.textContent = stopped ? "恢复" : "停用";
-      button.disabled = !policyReady;
-      button.title = policyReady ? "控制接收新任务，不改变节点心跳" : "请先应用算力访问策略数据库迁移";
+      button.disabled = !policyReady || pending;
+      button.title = pending ? "请先分配本人账号，并在机器设置中开通所需权限" : policyReady ? "控制接收新任务，不改变节点心跳" : "请先应用算力访问策略数据库迁移";
       button.addEventListener("click", async () => {
         button.disabled = true;
         try {
@@ -1508,14 +1522,14 @@ function renderComputeWorkers(workersResult) {
       remove.type = "button";
       remove.className = "btn danger";
       remove.textContent = "删除";
-      remove.disabled = live;
-      remove.title = live ? "节点在线时不能删除：请先在助手停止节点，等它离线" : "删除这台节点的记录";
+      remove.disabled = live && !pending;
+      remove.title = pending ? "删除未分配账号、未开通任何权限的待审批机器" : live ? "节点在线时不能删除：请先在助手停止节点，等它离线" : "删除这台节点的记录";
       remove.addEventListener("click", async () => {
         const name = String(item.worker_name || item.id || "");
         const confirmed = await confirmByTyping({
           title: "删除算力节点",
           hint: name,
-          warning: "会删除这台节点的记录和它上报的模型清单；已完成任务的历史保留，只是不再关联到这台机器。要重新接入需要新的注册码。",
+          warning: "会删除这台节点的记录和它上报的模型清单；已完成任务的历史保留，只是不再关联到这台机器。再次接入需要重新登记并由后台审批。",
           label: "输入节点名称确认",
           expected: name,
           confirmText: "确认删除"
@@ -1547,157 +1561,8 @@ function renderComputeWorkers(workersResult) {
     "computeWorkersTableBody",
     rows,
     11,
-    isErrorResult(workersResult) ? computeErrorText(workersResult) : "还没有算力节点，发一个注册码接入一台"
+    isErrorResult(workersResult) ? computeErrorText(workersResult) : "还没有算力机器；对方启动助手后会自动登记，等待后台审批"
   );
-}
-
-function renderComputeCodes(codesResult) {
-  const status = $("computeCodesStatus");
-  const writable = codesResult.source === "supabase" && codesResult.status !== "error";
-  if (status) {
-    status.textContent = isErrorResult(codesResult)
-      ? computeErrorText(codesResult)
-      : (writable ? "" : "Supabase 未配置，不能写入");
-  }
-
-  const rows = (codesResult.records || []).map((item) => {
-    const expired = Date.parse(item.expires_at) <= Date.now();
-    const used = Number(item.used_count || 0);
-    const max = Number(item.max_uses || 1);
-    const spent = expired || used >= max;
-
-    const tr = document.createElement("tr");
-    tr.appendChild(textCell(item.label || "(无备注)"));
-    const tier = normalizeGpuWorkerTier(item.tier);
-    const tierBadge = document.createElement("span");
-    tierBadge.className = "badge " + (tier === "premium" ? "expired" : "");
-    tierBadge.textContent = GPU_WORKER_TIER_TEXT[tier];
-    tr.appendChild(nodeCell(tierBadge));
-    tr.appendChild(textCell(used + " / " + max));
-    tr.appendChild(textCell((expired ? "已失效 · " : "到期 ") + formatDateTime(item.expires_at)));
-
-    const action = document.createElement("td");
-    if (writable) {
-      const button = document.createElement("button");
-      button.type = "button";
-      // A live code is revoked (it stays in the list as spent); a spent one
-      // can be dropped from the list for good.
-      button.className = spent ? "btn danger" : "btn secondary";
-      button.textContent = spent ? "删除" : "吊销";
-      button.addEventListener("click", async () => {
-        if (spent && !confirm(`删除注册码「${item.label || "(无备注)"}」的记录？`)) return;
-        button.disabled = true;
-        try {
-          const res = spent
-            ? await window.adminAPI.deleteAdminWorkerCode({ codeHash: item.code_hash })
-            : await window.adminAPI.revokeAdminWorkerCode({ codeHash: item.code_hash });
-          if (!res?.ok || res.result?.ok === false) {
-            throw new Error(String(res?.error || res?.result?.error || (spent ? "删除失败" : "吊销失败")));
-          }
-          await loadComputeData();
-        } catch (err) {
-          if (status) status.textContent = String(err?.message || err);
-          button.disabled = false;
-        }
-      });
-      action.appendChild(button);
-    } else {
-      action.textContent = "-";
-    }
-    tr.appendChild(action);
-    return tr;
-  });
-
-  const purgeButton = $("computePurgeCodes");
-  if (purgeButton) {
-    const spentCount = (codesResult.records || []).filter((item) =>
-      Date.parse(item.expires_at) <= Date.now() || Number(item.used_count || 0) >= Number(item.max_uses || 1)).length;
-    purgeButton.disabled = !writable || !spentCount;
-    purgeButton.textContent = spentCount ? `清理失效注册码（${spentCount}）` : "清理失效注册码";
-  }
-
-  replaceRows(
-    "computeCodesTableBody",
-    rows,
-    5,
-    isUnconfiguredResult(codesResult) ? UNCONFIGURED_TEXT : isErrorResult(codesResult) ? computeErrorText(codesResult) : "还没有发出过注册码"
-  );
-}
-
-function renderComputeMintControls(usersResult) {
-  const select = $("computeCodeOwner");
-  const button = $("computeMintCode");
-  const status = $("computeMintStatus");
-  if (!select || !button || !status) return;
-
-  const users = usersResult.records || [];
-  const writable = usersResult.source === "supabase" && usersResult.status !== "error";
-  computeState = { users, writable };
-
-  const current = select.value;
-  select.replaceChildren();
-  if (!users.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = writable ? "暂无用户，请先在用户管理里创建" : "Supabase 未配置，不能写入";
-    select.appendChild(option);
-  } else {
-    users.forEach((user) => {
-      const option = document.createElement("option");
-      option.value = String(user.id || "");
-      option.textContent = userAccountLabel(user) || user.display_name || user.id;
-      select.appendChild(option);
-    });
-    if (current && users.some((user) => String(user.id || "") === current)) select.value = current;
-  }
-
-  button.disabled = !writable || !users.length;
-  status.textContent = writable ? (users.length ? "-" : "先创建一个用户") : "Supabase 未配置，不能写入";
-}
-
-async function mintComputeCode() {
-  const button = $("computeMintCode");
-  const status = $("computeMintStatus");
-  const result = $("computeCodeResult");
-  const value = $("computeCodeValue");
-  if (!button || !status) return;
-
-  const ownerId = $("computeCodeOwner")?.value || "";
-  if (!ownerId) {
-    status.textContent = "请选择归属用户";
-    return;
-  }
-
-  button.disabled = true;
-  status.textContent = "生成中…";
-  try {
-    const res = await window.adminAPI.createAdminWorkerCode({
-      ownerId,
-      label: $("computeCodeLabel")?.value || "",
-      tier: normalizeGpuWorkerTier($("computeCodeTier")?.value),
-      maxUses: Number($("computeCodeUses")?.value || 1),
-      validDays: Number($("computeCodeDays")?.value || 7)
-    });
-    if (!res?.ok) throw new Error(String(res.error || "生成失败"));
-    const payload = res.result || {};
-    if (payload.ok === false || !payload.registrationCode) {
-      throw new Error(String(payload.error || "生成失败"));
-    }
-    if (result) result.style.display = "";
-    if (value) {
-      value.value = payload.registrationCode;
-      value.select?.();
-    }
-    // loadComputeData re-renders the owner select and resets this status
-    // line, so the "generated" message has to be written after it.
-    await loadComputeData();
-    status.textContent = "已生成，" + formatDateTime(payload.expiresAt) + " 过期";
-  } catch (err) {
-    const text = String(err?.message || err);
-    status.textContent = computeErrorText({ error: text });
-  } finally {
-    button.disabled = false;
-  }
 }
 
 // Who generated, how much, and on whose machine.
@@ -1767,26 +1632,7 @@ function renderComputeUsage(usageResult, usersResult, workersResult) {
   );
 }
 
-// The two "clean up" buttons on the 算力节点 page: spent registration codes,
-// and finished usage rows older than the chosen number of days.
-async function purgeComputeCodes() {
-  const button = $("computePurgeCodes");
-  const status = $("computeCodesStatus");
-  if (!confirm("删除所有已失效、已吊销或已用完的注册码记录？\n正在生效的注册码不受影响。")) return;
-  if (button) button.disabled = true;
-  try {
-    const res = await window.adminAPI.purgeAdminWorkerCodes();
-    if (!res?.ok || res.result?.ok === false) {
-      throw new Error(String(res?.error || res?.result?.error || "清理失败"));
-    }
-    toast(`已清理 ${formatNumber(res.result?.deleted || 0)} 条注册码记录`);
-    await loadComputeData();
-  } catch (err) {
-    if (status) status.textContent = String(err?.message || err);
-    if (button) button.disabled = false;
-  }
-}
-
+// Only finished task history is cleared by this operation.
 async function purgeComputeUsage() {
   const button = $("computePurgeUsage");
   const status = $("computeUsageStatus");
@@ -1810,12 +1656,10 @@ async function purgeComputeUsage() {
 async function loadComputeData() {
   try {
     const workers = await loadAdminDataset("getAdminGpuWorkers", "computeDataBadge");
-    const codes = await loadAdminDataset("getAdminWorkerCodes");
     const users = await loadAdminDataset("getAdminUsers");
     const usage = await loadAdminDataset("getAdminWebTaskUsage");
-    renderComputeMintControls(users);
+    computeState = { users: users.records || [], writable: users.source === "supabase" && users.status !== "error" };
     renderComputeWorkers(workers);
-    renderComputeCodes(codes);
     renderComputeUsage(usage, users, workers);
   } catch (err) {
     const status = $("computeWorkerStatus");
@@ -2448,8 +2292,6 @@ async function init() {
       void submitMemberAdjust();
     }
   });
-  $("computeMintCode")?.addEventListener("click", () => { void mintComputeCode(); });
-  $("computePurgeCodes")?.addEventListener("click", () => { void purgeComputeCodes(); });
   $("computePurgeUsage")?.addEventListener("click", () => { void purgeComputeUsage(); });
   $("saveRunninghubRuntimeConfig").addEventListener("click", async () => {
     await saveProviderRuntimeConfig("runninghub");

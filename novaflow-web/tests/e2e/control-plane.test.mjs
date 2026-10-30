@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 // Control-plane contract, exercised over real HTTP against real PostgreSQL.
 //
 // Covers acceptance items 3-9, 13, 19-23 and 25-26 from the brief:
@@ -40,6 +41,7 @@ async function registerWorker({ ownerToken, code, name, vram = 32768, models = [
     }
   });
   if (res.status !== 200) throw new Error('register failed: ' + JSON.stringify(res.body));
+  await approveComputeWorker(ctx.db,workerId);
   const workerToken = res.body.workerToken;
   await call(BASE, 'POST', '/api/worker/models', {
     token: workerToken,

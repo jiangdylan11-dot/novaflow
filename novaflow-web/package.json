@@ -1,7 +1,7 @@
 {
   "name": "novaflow-web-workspace",
   "private": true,
-  "version": "2.0.179",
+  "version": "2.0.180",
   "type": "module",
   "description": "NovaFlow Web independent workspace: browser editor, local assistant, administration and GPU workers.",
   "workspaces": [
@@ -27,7 +27,7 @@
     "test:control": "node tests/e2e/control-plane.test.mjs",
     "test:security": "node tests/e2e/security.test.mjs",
     "test:multiworker": "node tests/e2e/multi-worker.test.mjs",
-    "test:compute": "node --test tests/e2e/compute-launcher.test.mjs tests/e2e/compute-assistant.test.mjs tests/e2e/compute-renderer.test.mjs tests/e2e/compute-machine-policy.test.mjs tests/e2e/web-compute-node.test.mjs",
+    "test:compute": "node --test tests/e2e/compute-launcher.test.mjs tests/e2e/compute-assistant.test.mjs tests/e2e/compute-renderer.test.mjs tests/e2e/compute-machine-policy.test.mjs tests/e2e/compute-auto-enrollment.test.mjs tests/e2e/web-compute-node.test.mjs",
     "test:compute-ui": "electron tests/e2e/compute-launcher-ui.cjs",
     "test:e2e": "node tests/e2e/full-pipeline.test.mjs",
     "verify:stable": "npm run verify:independent",

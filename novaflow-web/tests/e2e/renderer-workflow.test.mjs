@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 // Renderer-workflow path, end to end.
 //
 // This is the route the real NovaFlow UI takes on the Web:
@@ -220,6 +221,7 @@ try {
       logger: () => {}
     });
     await worker.start();
+  await approveComputeWorker(ctx.db,worker.getState().workerId);
     check('worker online with the renderer host', Boolean(worker.getState().workerId));
 
     // Use the art provider builder: it runs on the image ComfyUI this machine

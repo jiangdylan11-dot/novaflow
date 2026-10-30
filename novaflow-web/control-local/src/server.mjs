@@ -187,6 +187,7 @@ export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = fa
 
       const result = await ctx.plane.handle({
         method: req.method,
+        clientAddress: req.socket.remoteAddress || 'local-peer',
         path: url.pathname,
         headers: req.headers,
         query,

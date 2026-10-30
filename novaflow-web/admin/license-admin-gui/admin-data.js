@@ -81,7 +81,7 @@ const adminQueries = {
     limit: 500
   },
   gpu_workers: {
-    select: "id,owner_id,worker_name,status,tier,enabled,owner_enabled,sharing_enabled,sharing_scope,allowed_user_ids,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
+    select: "id,owner_id,worker_name,name_managed,status,tier,enabled,owner_enabled,sharing_enabled,sharing_scope,allowed_user_ids,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
     // Until 20260925010000_novaflow_web_node_tiers.sql is applied there is no
     // tier column; the page still has to list the nodes.
     fallbackSelect: "id,owner_id,worker_name,status,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
@@ -1245,7 +1245,7 @@ async function setAdminGpuWorkerStatus(payload) {
 
 function workerPolicyError(error) {
   const message = String(error?.message || error || "");
-  if (/enabled|sharing_scope|allowed_user_ids|schema cache|does not exist|could not find/i.test(message)) {
+  if (/enabled|name_managed|sharing_scope|allowed_user_ids|schema cache|does not exist|could not find/i.test(message)) {
     return new Error("算力机器权限设置尚未迁移，请先应用算力访问策略数据库迁移后重试；本次未保存。");
   }
   return error;
@@ -1257,6 +1257,8 @@ async function setAdminGpuWorkerAccessPolicy(payload) {
   const fail = (error) => adminWriteErrorResult(operation, error, Date.now() - startedAt);
   const id = String(payload?.id || "").trim();
   if (!id) return fail("缺少算力节点 id");
+  const workerName = typeof payload?.worker_name === "string" ? payload.worker_name.trim() : "";
+  if (!workerName || workerName.length > 80) return fail("机器名称须为 1–80 个字符");
   const fields = ["enabled", "owner_enabled", "sharing_enabled"];
   if (fields.some((field) => typeof payload?.[field] !== "boolean")) return fail("启用、本人使用和对外分享必须分别设置");
   const scope = payload?.sharing_scope;
@@ -1273,7 +1275,7 @@ async function setAdminGpuWorkerAccessPolicy(payload) {
   if (!clientState.client) return fail(clientState.error || "Supabase 未配置，不能写入");
   try {
     const { data, error } = await clientState.client.from("gpu_workers").update({
-      owner_id: ownerId || null, enabled: payload.enabled, owner_enabled: payload.owner_enabled,
+      worker_name: workerName, name_managed: true, owner_id: ownerId || null, enabled: payload.enabled, owner_enabled: payload.owner_enabled,
       sharing_enabled: payload.sharing_enabled, sharing_scope: scope,
       allowed_user_ids: users, updated_at: new Date().toISOString()
     }).eq("id", id).select(adminQueries.gpu_workers.select).maybeSingle();
@@ -1358,21 +1360,25 @@ async function deleteAdminGpuWorker(payload) {
   try {
     const { data: worker, error: readError } = await client
       .from("gpu_workers")
-      .select("id,worker_name,status,last_heartbeat")
+      .select("id,worker_name,owner_id,enabled,owner_enabled,sharing_enabled,status,last_heartbeat")
       .eq("id", id)
       .maybeSingle();
     if (readError) throw readError;
     if (!worker) throw new Error("算力节点不存在或已删除");
     const beat = Date.parse(worker.last_heartbeat || "") || 0;
     const live = ["idle", "busy"].includes(String(worker.status || "")) && Date.now() - beat < GPU_WORKER_OFFLINE_AFTER_MS;
-    if (live) throw new Error("节点还在线，请先停用，等它离线后再删除");
+    const pending = !worker.owner_id && worker.enabled === false && worker.owner_enabled === false && worker.sharing_enabled === false;
+    if (live && !pending) throw new Error("节点还在线，请先在助手停止节点，等它离线后再删除");
 
-    const { data, error } = await client
+    let deletion = client
       .from("gpu_workers")
       .delete()
-      .eq("id", id)
-      .select("id,worker_name");
+      .eq("id", id);
+    // Recheck pending state in the write so concurrent approval cannot be deleted.
+    if (pending) deletion = deletion.is("owner_id", null).eq("enabled", false).eq("owner_enabled", false).eq("sharing_enabled", false);
+    const { data, error } = await deletion.select("id,worker_name");
     if (error) throw error;
+    if (!(data || []).length) throw new Error("节点状态已变化或记录已删除，请刷新后重试");
     logAdminData("info", "delete gpu worker", { source: "supabase", status: "connected", id, name: worker.worker_name });
     return adminWriteResult(operation, startedAt, { deleted: (data || []).length, record: worker });
   } catch (err) {

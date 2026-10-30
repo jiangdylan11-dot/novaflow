@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 // Multi-worker scheduling and failure recovery (spec 16, 18, 19).
 //
 // Runs several real worker identities against one control plane and asserts
@@ -41,6 +42,7 @@ async function fakeWorker({ ownerToken, name, vram = 32768, models = ['qwen-imag
     }
   });
   if (reg.status !== 200) throw new Error('register failed: ' + JSON.stringify(reg.body));
+  await approveComputeWorker(ctx.db,workerId);
   const token = reg.body.workerToken;
   await call(BASE, 'POST', '/api/worker/models', {
     token,

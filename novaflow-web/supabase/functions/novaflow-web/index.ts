@@ -148,6 +148,13 @@ const supabaseStore = {
     return unwrapRpc(data);
   },
 
+  async enrollPendingWorker({workerId,workerName,secretHash,hardware,peerHash}: any) {
+    const {data,error}=await admin().rpc('novaflow_web_enroll_pending_worker', {
+      p_worker_id:workerId,p_worker_name:workerName,p_secret_hash:secretHash,p_hardware:hardware||{},p_peer_hash:peerHash
+    });
+    if(error)throw error;return unwrapRpc(data);
+  },
+
   async getWorkerById(workerId: string) {
     if (!UUID_RE.test(String(workerId || ''))) return null;
     const { data, error } = await admin()
@@ -446,7 +453,7 @@ function routePath(pathname: string): string {
   return out || '/';
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
   const url = new URL(req.url);
@@ -481,6 +488,9 @@ Deno.serve(async (req: Request) => {
 
   const result = await plane.handle({
     method: req.method,
+    // Peer comes from the server, never a caller-controlled forwarding header.
+    // Hosted gateways can share this quota until their trusted client-IP contract is verified.
+    clientAddress: "hostname" in info.remoteAddr ? info.remoteAddr.hostname : "edge-gateway",
     path,
     headers,
     query: Object.fromEntries(url.searchParams.entries()),
