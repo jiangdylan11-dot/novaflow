@@ -17,8 +17,9 @@ export const DEFAULT_BALANCE_TTL_SECONDS = 600;
 export const DEFAULT_STALE_BALANCE_POLICY = 'allow';
 export const DEFAULT_CREDITS_PER_USD = 211;
 export const DEFAULT_TOKEN_MARKUP = 2;
+export const DEFAULT_XIAOTAO_ONLINE_MARKUP = 1.5;
 export const DEFAULT_SETTLE_CAP_CREDITS = 40;
-// Hold for one 小桃 online message. The charge is still ceil(USD × 211 × markup),
+// Hold for one 小桃 online message. The charge is ceil(USD × 211 × 小桃 markup),
 // not this table. Text is about one token per two characters, plus the system
 // prompt and the request's max output budget. An image adds its usual token
 // weight. Video and audio are only named in the prompt, so they add none.
@@ -317,11 +318,13 @@ function normalizeXiaotaoOnline(input) {
   const files = stored.file_tokens && typeof stored.file_tokens === 'object' ? stored.file_tokens : {};
   const defaults = DEFAULT_XIAOTAO_ONLINE_ESTIMATE;
   const usd = Number(stored.usd_per_million_tokens);
+  const markup = stored.markup == null || stored.markup === '' || typeof stored.markup === 'boolean' ? NaN : Number(stored.markup);
   return {
     message_cap_credits: clampOnlineInt(stored.message_cap_credits, 1, 1000000, defaults.message_cap_credits),
     chars_per_token: clampOnlineInt(stored.chars_per_token, 1, 100, defaults.chars_per_token),
     output_tokens: clampOnlineInt(stored.output_tokens, 0, 100000, defaults.output_tokens),
     usd_per_million_tokens: Number.isFinite(usd) && usd >= 0 && usd <= 1000 ? usd : defaults.usd_per_million_tokens,
+    markup: Number.isFinite(markup) && markup > 0 && markup <= 1000 ? markup : DEFAULT_XIAOTAO_ONLINE_MARKUP,
     grok_4_7_rates: normalizeGrok47Rates(stored.grok_4_7_rates),
     file_tokens: {
       image: clampOnlineInt(files.image, 0, 1000000, defaults.file_tokens.image),
@@ -372,7 +375,7 @@ export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, 
   const usd = grok47
     ? (inputTokens * (high ? rates.high_input : rates.input) + outputBudget * (high ? rates.high_output : rates.output)) / 1000000
     : tokens / 1000000 * policy.usd_per_million_tokens;
-  const raw = creditsFromUsd(usd, config);
+  const raw = creditsFromXiaotaoUsd(usd, config);
   const credits = active ? Math.max(1, Math.min(policy.message_cap_credits, Math.max(0, raw || 0))) : 0;
   return { tokens, usd, rawCredits: raw, credits, counts, cap: policy.message_cap_credits };
 }
@@ -420,7 +423,7 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config, mod
     usdCost: usd,
     tokenRateEstimate,
     creditsPerUsd: normalized.credits_per_usd,
-    markup: normalized.token_billing.markup,
+    markup: policy.markup,
     settleCap: cap,
     reservedCredits: reserved
   };
@@ -443,7 +446,7 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config, mod
         : 'thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate'
     };
   }
-  const raw = creditsFromUsd(usd, normalized);
+  const raw = creditsFromXiaotaoUsd(usd, normalized);
   const credits = Math.min(raw == null ? 0 : raw, cap);
   const toppedUp = credits > reserved;
   return {
@@ -460,6 +463,12 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config, mod
     usageMissing: false,
     warning: raw != null && raw > cap ? `token charge capped at ${cap}: raw ${raw}, charging ${credits}` : ''
   };
+}
+
+function creditsFromXiaotaoUsd(usd, config) {
+  const normalized = normalizeCreditConfig(config);
+  normalized.token_billing.markup = normalized.xiaotao_online.markup;
+  return creditsFromUsd(usd, normalized);
 }
 
 export function creditsFromUsd(usd, config) {

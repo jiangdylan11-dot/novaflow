@@ -26,7 +26,7 @@ test('companion settles Grok from the provider token split and records the sourc
       usage: { prompt_tokens: 7777, completion_tokens: 489, total_tokens: 8266, prompt_tokens_details: { cached_tokens: 2048 } } }) });
   const result = await companion.reply({ user: { id: 'user' }, payload: { requestId: 'test-pricing-123', mode: 'chat', promptLanguage: 'en', message: '你好', history: [] } });
   assert.equal(settled.pricingSource, 'token_rate_estimate');
-  assert.equal(result.quota.settled_credits, 6);
+  assert.equal(result.quota.settled_credits, 5);
   assert.ok(Math.abs(settled.rhCostUsd - 0.0131036) < 1e-10);
   assert.equal(settled.metadata.provider_request_id, 'chatcmpl-test');
   assert.equal(settled.metadata.token_rate_estimate.cachedTokens, 2048);

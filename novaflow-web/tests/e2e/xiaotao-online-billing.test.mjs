@@ -61,21 +61,21 @@ await test('the estimate includes the system prompt and the 2048-token output bu
   assert.equal(explicit.credits, text.credits);
 });
 
-await test('settlement is ceil(USD × 211 × 2), prefers thirdPartyConsumeMoney, and caps', () => {
+await test('小桃 settles at 1.5 while image billing remains at 2, prefers provider money, and caps', () => {
   assert.equal(creditsFromUsd('0.0100'), Math.ceil(0.01 * 211 * 2));
   const preferred = settleXiaotaoOnlineCredits({
     usage: { thirdPartyConsumeMoney: '0.0100', consumeMoney: '0.2000' },
     reservedCredits: 40
   });
   assert.equal(preferred.moneySource, 'thirdPartyConsumeMoney');
-  assert.equal(preferred.credits, Math.ceil(0.01 * 211 * 2));
+  assert.equal(preferred.credits, Math.ceil(0.01 * 211 * 1.5));
   assert.equal(preferred.reservedCredits - preferred.credits > 0, true);
   const fallback = settleXiaotaoOnlineCredits({
     usage: { thirdPartyConsumeMoney: null, consumeMoney: '0.0200' },
     reservedCredits: 40
   });
   assert.equal(fallback.moneySource, 'consumeMoney');
-  assert.equal(fallback.credits, Math.ceil(0.02 * 211 * 2));
+  assert.equal(fallback.credits, Math.ceil(0.02 * 211 * 1.5));
   const missing = settleXiaotaoOnlineCredits({ usage: { consumeMoney: null, thirdPartyConsumeMoney: null }, reservedCredits: 6 });
   assert.equal(missing.usageMissing, true);
   assert.equal(missing.pricingSource, 'estimate_cap');
@@ -92,7 +92,7 @@ await test('settlement is ceil(USD × 211 × 2), prefers thirdPartyConsumeMoney,
     usage: { thirdPartyConsumeMoney: '0.0200' },
     reservedCredits: 5
   });
-  assert.equal(topped.credits, Math.ceil(0.02 * 211 * 2));
+  assert.equal(topped.credits, Math.ceil(0.02 * 211 * 1.5));
   assert.equal(topped.toppedUp, true);
   assert.equal(topped.shortfall, topped.credits - 5);
   assert.equal(topped.reserveCapped, false);
@@ -127,8 +127,8 @@ await test('companion reserves the estimate, settles the RH amount, and releases
   assert.equal(events[0][0], 'reserve');
   assert.equal(events[0][1], 'xiaotao-vision');
   assert.equal(events[0][2], estimateXiaotaoOnlineCredits({ text: '看一下\n参考视频：clip.mp4', files: [{ kind: 'image' }], system: xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' }), outputTokens: 2048 }).credits);
-  assert.deepEqual(events[1], ['settle', 'xiaotao-vision', Math.ceil(0.01 * 211 * 2), 0.01, 'rh_consume_money']);
-  assert.equal(result.quota.settled_credits, Math.ceil(0.01 * 211 * 2));
+  assert.deepEqual(events[1], ['settle', 'xiaotao-vision', Math.ceil(0.01 * 211 * 1.5), 0.01, 'rh_consume_money']);
+  assert.equal(result.quota.settled_credits, Math.ceil(0.01 * 211 * 1.5));
   assert.equal(result.quota.billing_mode, 'token');
   const videoOnly = [];
   const videoService = createCompanionChat({
@@ -180,7 +180,7 @@ await test('the composer estimate matches the charge-path formula and local mode
 });
 
 function tokensToCredits(tokens) {
-  return creditsFromUsd(tokens / 1e6 * xiaotaoOnlinePolicy().usd_per_million_tokens);
+  return Math.ceil(tokens / 1e6 * xiaotaoOnlinePolicy().usd_per_million_tokens * 211 * 1.5);
 }
 
 await test('null money with token counts settles from tokens, refunds or tops up, and stays under the cap', () => {
@@ -199,10 +199,10 @@ await test('null money with token counts settles from tokens, refunds or tops up
     });
     assert.equal(decision.pricingSource, 'token_usage');
     assert.equal(decision.usageMissing, false);
-    assert.equal(decision.credits, 8);
+    assert.equal(decision.credits, 6);
     assert.equal(decision.credits, tokensToCredits(tokens));
     assert.equal(decision.usdCost, tokens / 1e6 * 10);
-    assert.equal(decision.refund, decision.reservedCredits - 8);
+    assert.equal(decision.refund, decision.reservedCredits - 6);
     assert.equal(decision.toppedUp, false);
     assert.equal(decision.shortfall, 0);
   }
@@ -224,7 +224,7 @@ await test('null money with token counts settles from tokens, refunds or tops up
   });
   assert.equal(pair.pricingSource, 'token_usage');
   assert.equal(pair.credits, tokensToCredits(1850));
-  assert.equal(pair.credits, 8);
+  assert.equal(pair.credits, 6);
 
   const moneyWins = settleXiaotaoOnlineCredits({
     usage: { total_tokens: 1800, thirdPartyConsumeMoney: '0.0100', consumeMoney: null },
@@ -232,7 +232,7 @@ await test('null money with token counts settles from tokens, refunds or tops up
   });
   assert.equal(moneyWins.pricingSource, 'rh_consume_money');
   assert.equal(moneyWins.moneySource, 'thirdPartyConsumeMoney');
-  assert.equal(moneyWins.credits, Math.ceil(0.01 * 211 * 2));
+  assert.equal(moneyWins.credits, Math.ceil(0.01 * 211 * 1.5));
   assert.equal(moneyWins.tokens.total_tokens, 1800);
 
   const capped = settleXiaotaoOnlineCredits({
@@ -283,21 +283,21 @@ await test('a token-priced settle returns the credits the ledger actually charge
   const estimate = estimateXiaotaoOnlineCredits({ text: '你好' }).credits;
   const result = await service.reply({ user: { id: 'user' }, payload: { requestId: 'token-usage-1800', mode: 'chat', promptLanguage: 'en', message: '你好', history: [] } });
   assert.equal(events[0].pricingSource, 'token_usage');
-  assert.equal(events[0].settledCredits, 8);
+  assert.equal(events[0].settledCredits, 6);
   assert.equal(events[0].rhCostUsd, 0.018);
-  assert.equal(result.quota.settled_credits, 8);
+  assert.equal(result.quota.settled_credits, 6);
   assert.equal(result.quota.estimated_credits, estimate);
   assert.equal(result.quota.billing_mode, 'token');
-  assert.ok(estimate > 8);
+  assert.ok(estimate > 6);
 
   const short = await createCompanionChat({
     provider: { baseUrl: 'https://provider.test/v1', model: 'chat-fixture', apiKey: 'fixture-private' },
     charge: createOnlineAiCharge({
       reserve: async () => ({ status: 'reserved', idempotent: false, amount: 1, credits: 21 }),
       settle: async (input) => {
-        assert.equal(input.settledCredits, 8);
+        assert.equal(input.settledCredits, 6);
         assert.equal(input.pricingSource, 'token_usage');
-        return { settled_credits: 3, estimated_credits: 21, balance_after: 0, balance_short: true, uncollected_credits: 5 };
+        return { settled_credits: 3, estimated_credits: 21, balance_after: 0, balance_short: true, uncollected_credits: 3 };
       },
       release: async () => ({ status: 'released' })
     }),
@@ -333,11 +333,11 @@ await test('successful companion billing samples are numeric allowlists without 
   const result=await service.reply({user:{id:'user'},payload:{requestId:'sample-allowlist-1',mode:'chat',promptLanguage:'en',message,history:[]}});
   const expectedReserve=estimateXiaotaoOnlineCredits({text:message,outputTokens:2048,config:creditConfig}).credits;
   assert.equal(events[0][1].estimatedCredits,expectedReserve);
-  assert.equal(events[1][1].settledCredits,8);
+  assert.equal(events[1][1].settledCredits,6);
   assert.equal(result.quota.estimated_credits,expectedReserve);
   assert.deepEqual(Object.keys(result.billingSample).sort(),['model','pricingSource','usdCost','inputTokens','outputTokens','totalTokens','creditsPerUsd','markup','policy','eligible'].sort());
   assert.deepEqual(result.billingSample,{model:'actual-model',pricingSource:'token_usage',usdCost:0.018,inputTokens:1400,outputTokens:400,totalTokens:1800,
-    creditsPerUsd:211,markup:2,policy:{...xiaotaoOnlinePolicy(creditConfig),output_tokens:2048},eligible:true});
+    creditsPerUsd:211,markup:1.5,policy:{...xiaotaoOnlinePolicy(creditConfig),output_tokens:2048},eligible:true});
   assert.equal(result.billingSample.policy.output_tokens,2048);
   const encoded=JSON.stringify(result.billingSample);
   for(const secret of [message,'private-service-credential','never-public','prompt_tokens_details'])assert.equal(encoded.includes(secret),false);
@@ -408,8 +408,8 @@ await test('a text-only online turn keeps the Foart-only role, distinct input ca
   });
   const result = await service.reply({ user: { id: 'user' }, payload: { requestId: 'text-only-1234', mode: 'chat', promptLanguage: 'en', message: '你好', history: [] } });
   assert.deepEqual(events[0], ['reserve', 'xiaotao-text', estimateXiaotaoOnlineCredits({ text: '你好' }).credits]);
-  assert.equal(events[1][2], Math.ceil(0.01 * 211 * 2));
-  assert.equal(result.quota.settled_credits, Math.ceil(0.01 * 211 * 2));
+  assert.equal(events[1][2], Math.ceil(0.01 * 211 * 1.5));
+  assert.equal(result.quota.settled_credits, Math.ceil(0.01 * 211 * 1.5));
 });
 
 function num(value) { return Number(value); }

@@ -190,6 +190,7 @@
     chars_per_token: 2,
     output_tokens: 2048,
     usd_per_million_tokens: 10,
+    markup: 1.5,
     file_tokens: { image: 2500, video: 0, audio: 0 }
   };
 
@@ -234,6 +235,16 @@
       + outputTokens * (high ? rate('high_output', 10.2) : rate('output', 5.1))) / 1000000;
   }
 
+  function xiaotaoBillingConfig(override) {
+    var effective = override || config || {};
+    var online = effective.xiaotao_online || effective.token_billing?.xiaotao_online || {};
+    var raw = online.markup;
+    var markup = raw == null || raw === '' || typeof raw === 'boolean' ? NaN : Number(raw);
+    var billing = billingConfig(effective);
+    billing.markup = isFinite(markup) && markup > 0 && markup <= 1000 ? markup : XIAOTAO_ONLINE.markup;
+    return billing;
+  }
+
   function estimateXiaotaoOnline(input) {
     var spec = input || {};
     var effective = spec.config || config;
@@ -255,7 +266,7 @@
         audio: isFinite(Math.round(Number(files.audio))) && Math.round(Number(files.audio)) >= 0 ? Math.round(Number(files.audio)) : XIAOTAO_ONLINE.file_tokens.audio
       }
     };
-    var billing = billingConfig(effective);
+    var billing = xiaotaoBillingConfig(effective);
     var counts = { image: 0, video: 0, audio: 0 };
     var fileTokens = 0;
     var list = Array.isArray(spec.files) ? spec.files : [];
@@ -291,7 +302,7 @@
   // uncertain forecast and never changes the reservation or the provider limit.
   function predictXiaotaoOnline(input) {
     var spec = input || {}, held = estimateXiaotaoOnline(Object.assign({}, spec, {model:spec.model || 'xai/grok-4.7'}));
-    var effective = spec.config || config || {}, online = effective.xiaotao_online || effective.token_billing?.xiaotao_online || {}, billing = billingConfig(effective);
+    var effective = spec.config || config || {}, online = effective.xiaotao_online || effective.token_billing?.xiaotao_online || {}, billing = xiaotaoBillingConfig(effective);
     var outputLimit = spec.outputTokens == null ? Number(online.output_tokens == null ? XIAOTAO_ONLINE.output_tokens : online.output_tokens) : Number(spec.outputTokens);
     if (!isFinite(outputLimit) || outputLimit < 0) outputLimit = XIAOTAO_ONLINE.output_tokens;
     var text = String(spec.text || '');
@@ -311,7 +322,7 @@
     }).sort();
     // Version the calibration group whenever the cost basis changes, so old
     // observations priced at the flat $10/M rate cannot train this forecast.
-    var policyKey = JSON.stringify([2, online && Object.keys(online).length ? online : XIAOTAO_ONLINE, billing.perUsd, billing.markup]);
+    var policyKey = JSON.stringify([3, online && Object.keys(online).length ? online : XIAOTAO_ONLINE, billing.perUsd, billing.markup]);
     var group = JSON.stringify([String(spec.model || ''), policyKey, intent, shapes, held.counts.video, held.counts.audio]);
     var observations = (Array.isArray(spec.samples) ? spec.samples : []).filter(function (sample) {
       return sample && sample.group === group && Number(sample.baseTokens) > 0 && isFinite(Number(sample.baseTokens)) && Number(sample.usdCost) > 0
@@ -348,7 +359,7 @@
   function recordXiaotaoOnlineSample(input, sample, previous) {
     if (!sample || typeof sample.model !== 'string' || !sample.model || !(Number(sample.creditsPerUsd) > 0)
       || !isFinite(Number(sample.creditsPerUsd)) || !(Number(sample.markup) > 0) || !isFinite(Number(sample.markup)) || !sample.policy) return previous || null;
-    var effective = {credits_per_usd:Number(sample.creditsPerUsd), token_billing:{markup:Number(sample.markup)}, xiaotao_online:sample.policy};
+    var effective = {credits_per_usd:Number(sample.creditsPerUsd), xiaotao_online:Object.assign({}, sample.policy, {markup:Number(sample.markup)})};
     // Older companion versions labelled their flat $10/M estimate token_usage.
     // Never teach the Grok forecast from that stale pricing source.
     var staleGrokRate = /^(?:xai\/)?grok-4\.7$/i.test(sample.model.trim()) && sample.pricingSource === 'token_usage';

@@ -16,16 +16,16 @@ test('Grok reservation estimates input and maximum output at configured separate
   const quote = estimateXiaotaoOnlineCredits({ ...input, model });
   assert.equal(quote.tokens, 4000);
   near(quote.usd, (3000 * 1.7 + 1000 * 5.1) / 1e6);
-  assert.equal(quote.credits, 5);
+  assert.equal(quote.credits, 4);
   const fallback = estimateXiaotaoOnlineCredits(input);
   near(fallback.usd, 4000 * 10 / 1e6);
-  assert.equal(fallback.credits, 17);
+  assert.equal(fallback.credits, 13);
   assert.equal(estimateXiaotaoOnlineCredits({...input, model:'unknown-model'}).credits, fallback.credits);
   const high = estimateXiaotaoOnlineCredits({ ...input, model, config: { xiaotao_online: { grok_4_7_rates: {
     high_input_threshold: 3000, high_input: 4, high_output: 11
   } } } });
   near(high.usd, (3000 * 4 + 1000 * 11) / 1e6);
-  assert.equal(high.credits, 10);
+  assert.equal(high.credits, 8);
   const capped = estimateXiaotaoOnlineCredits({ ...input, model, config:{xiaotao_online:{message_cap_credits:2}} });
   assert.equal(capped.credits, 2);
 });
@@ -34,11 +34,11 @@ test('Grok token estimate uses input, output and cached-input rates independentl
   const decision = settle({ prompt_tokens: 10000, completion_tokens: 1000, total_tokens: 11000,
     prompt_tokens_details: { cached_tokens: 4000 } });
   near(decision.usdCost, (6000 * 1.7 + 4000 * 0.425 + 1000 * 5.1) / 1e6);
-  assert.equal(decision.credits, 8);
+  assert.equal(decision.credits, 6);
   assert.equal(decision.pricingSource, 'token_rate_estimate');
   assert.equal(decision.tokenRateEstimate.cacheKnown, true);
   assert.equal(decision.tokenRateEstimate.cachedTokens, 4000);
-  assert.equal(decision.refund, 42);
+  assert.equal(decision.refund, 44);
 });
 
 test('Grok uses the correct long-input tier and configurable prices', () => {
