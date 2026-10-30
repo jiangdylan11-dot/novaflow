@@ -10,10 +10,8 @@
     <div id="app">
       <aside class="sidebar" aria-label="后台管理模块">
         <div class="brandBlock">
-          <img class="brandMark" src="../build/icon.png?brand=geo-v3" alt="" />
           <div class="brandText">
-            <div class="brandName"><img class="brandLogo" src="../build/foart-logo-dark.svg?brand=geo-v3" alt="Foart" /><span>后台管理</span></div>
-            <div class="brandSub">账号 · 积分 · 算力</div>
+            <div class="brandName"><img class="brandLogo" src="../build/foart-logo-dark.svg" alt="Foart" /><span>后台管理</span></div>
           </div>
         </div>
         <nav class="moduleNav">
@@ -69,7 +67,7 @@
             <div class="pageHead">
               <div>
                 <h1 class="pageTitle">仪表盘</h1>
-                <div class="pageHint">用户、算力机器、已分配积分，以及 RunningHub 国内站余额。</div>
+                <div class="pageHint">用户与机器状态、积分总额，以及 RunningHub 国内站余额。</div>
               </div>
               <div class="pageTools">
                 <span id="dashboardDataBadge" class="pill skeletonPill"></span>
@@ -80,23 +78,24 @@
               <section class="metricCard">
                 <div class="metricLabel">注册用户</div>
                 <div id="dashboardUsersCount" class="metricValue">...</div>
-                <div class="metricMeta">users 表当前记录</div>
+                <div id="dashboardUsersMeta" class="metricMeta">读取启用人数…</div>
               </section>
               <section class="metricCard">
                 <div class="metricLabel">算力机器</div>
                 <div id="dashboardWorkersCount" class="metricValue">-</div>
-                <div class="metricMeta">已接入平台的算力机器</div>
+                <div id="dashboardWorkersMeta" class="metricMeta">读取机器状态…</div>
               </section>
               <section class="metricCard" id="dashboardRhCard">
                 <div class="metricLabel">RunningHub 余额 <span class="pill">国内站</span></div>
                 <div id="dashboardRhDomesticBalance" class="metricValue" title=""><span class="skeletonLine"></span></div>
                 <div id="dashboardRhDomesticMeta" class="metricMeta">读取国内站余额…</div>
+                <div id="dashboardRhConnection" class="metricMeta">读取连接状态…</div>
                 <button id="dashboardRhRefresh" class="btn secondary small rhRefresh" type="button">刷新国内站余额</button>
               </section>
               <section class="metricCard">
                 <div class="metricLabel">用户积分合计</div>
                 <div id="dashboardCreditCost" class="metricValue">...</div>
-                <div class="metricMeta">credits.balance 之和</div>
+                <div class="metricMeta">所有用户当前可用积分</div>
               </section>
             </div>
             <div id="dashboardRhNotice" class="notice" hidden></div>
@@ -121,41 +120,6 @@
                 <div class="tableFootnote">仅最近 20 条 · <button id="dashboardActivityViewAll" class="linkButton" type="button">查看全部</button></div>
               </section>
 
-              <div class="dashboardSupportGrid">
-                <section class="panel">
-                  <div class="panelHeader">
-                    <div>
-                      <div class="cardTitle">系统状态</div>
-                      <div class="cardHint">数据源、Provider 连接和算力机器。</div>
-                    </div>
-                  </div>
-                  <div id="dashboardSystemRows" class="kvList">
-                    <div class="settingRow"><span>数据源</span><strong><span class="skeletonLine short"></span></strong></div>
-                  </div>
-                </section>
-
-                <section class="panel">
-                  <div class="panelHeader">
-                    <div>
-                      <div class="cardTitle">常用操作</div>
-                    </div>
-                  </div>
-                  <div class="quickGrid">
-                    <button class="quickLink" type="button" data-module-link="users" data-drawer-after="userCreateDrawer">
-                      <span class="quickTitle">新建登录账号</span>
-                      <span class="quickHint">手动开户并设置初始积分</span>
-                    </button>
-                    <button class="quickLink" type="button" data-module-link="users">
-                      <span class="quickTitle">用户积分</span>
-                      <span class="quickHint">积分余额与充值</span>
-                    </button>
-                    <button class="quickLink" type="button" data-module-link="compute">
-                      <span class="quickTitle">审批算力机器</span>
-                      <span class="quickHint">分配本人账号与使用权限</span>
-                    </button>
-                  </div>
-                </section>
-              </div>
             </div>
           </section>
 
@@ -168,7 +132,6 @@
               </div>
               <div class="pageTools">
                 <span id="usersDataBadge" class="pill skeletonPill"></span>
-                <button id="openCreditLedger" class="btn secondary" type="button">积分流水</button>
                 <button class="btn primary" type="button" data-drawer-open="userCreateDrawer">+ 新建账号</button>
               </div>
             </div>
@@ -792,24 +755,10 @@
         background: var(--surface);
       }
       .brandBlock { display: flex; gap: 10px; align-items: center; padding: 4px 6px 16px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
-      .brandMark {
-        flex: 0 0 auto;
-        width: 32px;
-        height: 32px;
-        border-radius: 9px;
-        display: grid;
-        place-items: center;
-        background: var(--primary-soft);
-        border: 1px solid var(--primary-line);
-        color: var(--primary);
-        font-size: 12px;
-        font-weight: 800;
-      }
       .brandText { min-width: 0; }
-      .brandLogo { display: block; width: 84px; height: 40px; object-fit: contain; }
+      .brandLogo { display: block; width: 104px; height: 40px; object-fit: contain; }
       .brandName { display: flex; align-items: center; gap: 7px; }
       .brandName { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .brandSub { margin-top: 2px; font-size: 11px; color: var(--caption); white-space: nowrap; }
       .moduleNav { display: grid; gap: 2px; }
       .moduleNavButton {
         position: relative;
@@ -927,7 +876,6 @@
       .metricMeta { margin-top: 8px; font-size: 11px; color: var(--caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
       .dashboardGrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }
-      .dashboardSupportGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
       .dashboardActivityPanel .activityList { display: block; min-height: 180px; max-height: 440px; overflow: auto; }
       .dashboardActivityPanel .activityTable { min-width: 900px; }
       .activityLoading { padding: 20px 0; color: var(--muted); font-size: 13px; }
@@ -1343,11 +1291,11 @@
       }
       @media (max-width: 1180px) {
         :root { --sidebar-w: 60px; --page-x: 20px; }
-        .brandText, .moduleNavButton span, .sidebarFooter { display: none; }
+        .brandName span, .moduleNavButton span, .sidebarFooter { display: none; }
+        .brandLogo { width: 36px; height: 40px; }
         .brandBlock { justify-content: center; padding-left: 0; padding-right: 0; }
         .moduleNavButton { justify-content: center; padding: 0; }
         .statStrip, .metricGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .dashboardSupportGrid { grid-template-columns: 1fr; }
       }
       @media (max-width: 980px) {
         .splitGrid, .twoCol, .providerConfigGrid, .tipGrid { grid-template-columns: 1fr; }

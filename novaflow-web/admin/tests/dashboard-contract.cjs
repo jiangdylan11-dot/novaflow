@@ -38,6 +38,10 @@ assert(!indexHtml.includes('data-module="licenses"'), "licensing must not appear
 assert(!indexHtml.includes('data-module-link="licenses"'), "licensing shortcuts must be removed");
 assert(!indexHtml.includes('id="dashboardLicensesCount"'), "dashboard must stop counting licenses");
 assert(indexHtml.includes('id="dashboardWorkersCount"'), "dashboard should show compute machines");
+assert(!indexHtml.includes('dashboardSupportGrid') && !indexHtml.includes('dashboardSystemRows'), "dashboard must merge status into the top cards");
+assert(!indexHtml.includes('class="quickLink"'), "dashboard must remove redundant shortcut entries");
+assert(!indexHtml.includes('id="openCreditLedger"'), "user header must remove the redundant ledger entry");
+for (const id of ['dashboardUsersMeta', 'dashboardWorkersMeta', 'dashboardRhConnection']) assert(indexHtml.includes(`id="${id}"`), "top metric status must remain available: " + id);
 assert(indexHtml.includes('id="backendConnectionDrawer"'), "backend connection settings must remain reachable");
 for (const id of ["computeMintDrawer", "computeCodesTableBody", "computeMintCode"]) assert(!indexHtml.includes(`id="${id}"`), "registration-code UI must be retired: " + id);
 assert(!renderer.includes('loadAdminDataset("getAdminWorkerCodes")'), "node page must not load retired registration codes");

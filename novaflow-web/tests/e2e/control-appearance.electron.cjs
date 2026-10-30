@@ -32,7 +32,7 @@ async function main(){
  for(const name of new Set([...await fs.readFile(path.join(adminRoot,'license-admin-gui/preload.js'),'utf8').then(s=>s.matchAll(/ipcRenderer\.invoke\("([^"]+)"/g))].map(m=>m[1])))ipcMain.handle(name,()=>name==='admin-default-paths'?{}:{ok:true,config:{},status:{},result:{status:'ok',records:[]}});
  const admin=new BrowserWindow({show:false,width:1440,height:880,webPreferences:{preload:path.join(adminRoot,'license-admin-gui/preload.js'),offscreen:true,backgroundThrottling:false,contextIsolation:true,nodeIntegration:false}});
  await admin.loadFile(path.join(adminRoot,'license-admin-gui/index.html'));
- await wait(admin,`document.querySelector('.brandLogo')?.complete && document.querySelector('.brandLogo').naturalWidth>0 && document.querySelector('.brandMark').naturalWidth>0`);
+ await wait(admin,`document.querySelector('.brandLogo')?.complete && document.querySelector('.brandLogo').naturalWidth>0`);
  const am=await admin.webContents.executeJavaScript(`({title:document.title,text:document.body.innerText,logo:document.querySelector('.brandLogo').getBoundingClientRect().width})`);
  assert.equal(am.title,'Foart 后台管理');assert(!am.text.includes('NovaFlow'));assert(am.logo>0);
  await auditButtons(admin,'admin');await fs.writeFile(path.join(out,'admin-ui.png'),(await admin.webContents.capturePage()).toPNG());admin.destroy();

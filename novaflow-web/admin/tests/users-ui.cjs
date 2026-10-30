@@ -24,6 +24,10 @@ for (const channel of new Set([...fs.readFileSync(path.join(root, "preload.js"),
     if (channel === "admin:data:feature_credits:get") { featureConfigReads++; await featureConfigReady; return result([]); }
     if (channel === "admin:data:users:list") return result(users);
     if (channel === "admin:data:credits:list") return result(credits);
+    if (channel === "admin:data:gpu_workers:list") return result([
+      { id: 'pending', owner_id: null, enabled: false, owner_enabled: false, sharing_enabled: false, sharing_scope: 'pool', allowed_user_ids: [] },
+      { id: 'assigned', owner_id: 'user-one', enabled: true, owner_enabled: true, sharing_enabled: false, sharing_scope: 'pool', allowed_user_ids: [] }
+    ]);
     if (channel === "admin:data:users:update") { updates.push(payload); return { ok: true, result: { status: "ok" } }; }
     if (channel === "admin:data:credits:adjust") {
       adjustments.push(payload);
@@ -57,6 +61,11 @@ app.whenReady().then(async () => {
   await wait(`document.querySelector('#usersTableBody tr td')?.textContent === 'kingyo'`);
   assert.equal(featureConfigReads, 1);
   assert.equal(await run(`$('dashboardUsersCount').textContent`), "2", "dashboard must render while AI pricing is still loading");
+  assert.equal(await run(`$('dashboardUsersMeta').textContent`), "启用 1 / 2 人");
+  assert.equal(await run(`$('dashboardWorkersMeta').textContent`), "待审批 1 台 · 已分配 1 台");
+  assert.equal(await run(`!!document.querySelector('.dashboardSupportGrid, #dashboardSystemRows, #openCreditLedger')`), false);
+  await wait(`document.querySelector('.brandLogo')?.complete && document.querySelector('.brandLogo').naturalWidth > 0`);
+  assert.equal(await run(`document.querySelectorAll('.brandBlock img').length`), 1);
   await run(`document.querySelector('[data-activity-tab="tasks"]').click()`);
   assert.equal(await run(`document.querySelector('[data-activity-tab="tasks"]').classList.contains('active')`), true, "navigation must work before pricing finishes");
   await run(`document.querySelector('[data-activity-tab="ledger"]').click()`);
@@ -65,13 +74,13 @@ app.whenReady().then(async () => {
     const layout = await run(`new Promise(resolve => requestAnimationFrame(() => {
       const metric = document.querySelector('.metricGrid').getBoundingClientRect();
       const activity = document.querySelector('.dashboardActivityPanel').getBoundingClientRect();
-      const support = document.querySelector('.dashboardSupportGrid').getBoundingClientRect();
       const table = document.querySelector('#dashboardRecentActivity table').getBoundingClientRect();
-      resolve({ fullWidth: Math.abs(activity.width - metric.width) < 2, supportBelow: support.top >= activity.bottom,
+      const statusRows = ['dashboardUsersMeta', 'dashboardWorkersMeta', 'dashboardRhConnection'].map(id => $(id).getBoundingClientRect());
+      resolve({ fullWidth: Math.abs(activity.width - metric.width) < 2, statesAboveActivity: statusRows.every(rect => rect.bottom <= activity.top),
         tableWidth: table.width, overflow: document.documentElement.scrollWidth > innerWidth });
     }))`);
     assert.equal(layout.fullWidth, true);
-    assert.equal(layout.supportBelow, true);
+    assert.equal(layout.statesAboveActivity, true);
     assert(layout.tableWidth >= 900);
     assert.equal(layout.overflow, false);
   }
@@ -140,9 +149,10 @@ app.whenReady().then(async () => {
     assert.equal(layout.overflow, false);
     assert.equal(layout.dialog, true);
   }
-  await run(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); $('openCreditLedger').click()`);
+  await run(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); showModule('dashboard'); $('dashboardActivityViewAll').click()`);
   await wait(`$('creditLedgerBody').textContent.includes('all-users')`);
   assert.equal(queries.at(-1).user, "");
+  await run(`showModule('users')`);
   // A slow response for the prior user must never replace the current user's records.
   await run(`openUserLedger({account:'kingyo'}); openUserLedger({account:'weyne'})`);
   await run(`new Promise(resolve => setTimeout(resolve, 200))`);

@@ -863,6 +863,7 @@ function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runningh
 
 function renderRunningHubProviderHealth(status) {
   const connection = !status?.configured ? "未配置 Key" : status?.connected ? "账户连接正常" : status?.checked ? "检测失败" : "已配置，尚未检测";
+  setText("dashboardRhConnection", connection);
   renderSettingRows("runninghubProviderHealthRows", [
     { label: "生成 API 地址", value: status?.baseUrl || "https://www.runninghub.cn" },
     { label: "连接状态", value: connection },
@@ -1181,7 +1182,6 @@ function renderDashboard(data) {
   const users = data.users?.records || [];
   const credits = data.credits?.records || [];
   const totalCredits = credits.reduce((sum, item) => sum + (Number(item.balance || 0) || 0), 0);
-  const sourceLabel = hasErrorResult(results) ? "Supabase Error" : hasSupabaseResult(results) ? "Supabase" : "未配置";
   const usersUnconfigured = isUnconfiguredResult(data.users);
   const creditsUnconfigured = isUnconfiguredResult(data.credits);
   const usersEl = $("dashboardUsersCount");
@@ -1189,18 +1189,14 @@ function renderDashboard(data) {
   const creditEl = $("dashboardCreditCost");
   if (creditEl) creditEl.textContent = creditsUnconfigured ? "—" : formatCreditAmount(totalCredits);
   setDataBadge("dashboardDataBadge", hasErrorResult(results) ? { status: "error" } : hasSupabaseResult(results) ? { source: "supabase" } : { source: "mock" });
-  setText("dashboardWorkersCount", isUnconfiguredResult(data.workers) ? "—" : formatNumber(data.workers?.records?.length || 0));
+  const workers = data.workers?.records || [];
+  const workersUnavailable = isUnconfiguredResult(data.workers) || isErrorResult(data.workers);
+  setText("dashboardWorkersCount", workersUnavailable ? "—" : formatNumber(workers.length));
   renderDashboardRecentActivity();
   const activeUsers = users.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
-  const rh = data.runninghubStatus || {};
-  const connection = !rh.configured ? "未配置 Key" : rh.connected ? "账户连接正常" : rh.checked ? "检测失败" : "已配置，尚未检测";
-  renderSettingRows("dashboardSystemRows", [
-    { label: "数据源", value: sourceLabel },
-    { label: "RunningHub 连接", value: connection },
-    { label: "在线语言模型", value: rh.configured ? `已配置 · ${rh.llmModel || "xai/grok-4.7"}` : "未配置" },
-    { label: "算力机器", value: isUnconfiguredResult(data.workers) ? "—" : formatNumber(data.workers?.records?.length || 0) },
-    { label: "启用用户", value: usersUnconfigured ? "—" : `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
-  ], "暂无状态数据");
+  setText("dashboardUsersMeta", usersUnconfigured || isErrorResult(data.users) ? "启用人数暂不可用" : `启用 ${formatNumber(activeUsers)} / ${formatNumber(users.length)} 人`);
+  const pending = workers.filter(workerPendingApproval).length;
+  setText("dashboardWorkersMeta", workersUnavailable ? "机器状态暂不可用" : `待审批 ${formatNumber(pending)} 台 · 已分配 ${formatNumber(workers.filter((worker) => Boolean(worker.owner_id)).length)} 台`);
 }
 
 let dataDialogTrigger = null;
@@ -2368,7 +2364,6 @@ async function init() {
     else closeOpenDrawers();
   });
 
-  $("openCreditLedger").addEventListener("click", () => openUserLedger());
   document.querySelectorAll("[data-dialog-close]").forEach((button) => {
     button.addEventListener("click", () => closeDataDialog(button.dataset.dialogClose));
   });
