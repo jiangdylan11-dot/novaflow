@@ -39,8 +39,11 @@ const call = (name, payload) => handlers.get('compute:' + name)({ sender: window
 assert.equal(windows[0].file.endsWith('compute-ui.html'), true);
 assert.equal(windows[0].options.webPreferences.sandbox, true);
 assert.equal(windows[0].options.titleBarStyle, 'hidden');
-assert.equal(windows[0].options.width, 680);
-assert.equal(windows[0].options.height, 550);
+assert.equal(windows[0].options.width, 560);
+assert.equal(windows[0].options.height, 480);
+assert.equal(windows[0].options.resizable, false);
+assert.equal(windows[0].options.maximizable, false);
+assert.equal(windows[0].options.fullscreenable, false);
 assert.equal((await call('freeMemory')).ok, false);
 assert.equal((await handlers.get('compute:freeMemory')({ sender: {} })).ok, false);
 assert.equal(instances.length, 0, 'untrusted renderer must not connect');

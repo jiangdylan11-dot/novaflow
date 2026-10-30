@@ -60,7 +60,7 @@ async function stop() {
 async function quit() { quitting = true; await serial(stop).catch(() => {}); app.quit(); }
 function show() {
   if (!win || win.isDestroyed()) {
-    win = new BrowserWindow({ width: 680, height: 550, minWidth: 620, minHeight: 500,
+    win = new BrowserWindow({ width: 560, height: 480, resizable: false, maximizable: false, fullscreenable: false,
       title: 'Foart 算力助手', backgroundColor: '#141414', autoHideMenuBar: true,
       titleBarStyle: 'hidden', titleBarOverlay: { color: '#242424', symbolColor: '#e5e7eb', height: 38 },
       icon: path.join(__dirname, 'assets/foart-brush.ico'),

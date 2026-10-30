@@ -29,11 +29,11 @@
   .titlebar img { width: 90px; height: 32px; object-fit: contain; pointer-events: none; }
   .ver { margin-left: 10px; font-size: 11px; color: #939393; }
 
-  main { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: flex; flex-direction: column; gap: 14px; }
+  main { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 10px; display: flex; flex-direction: column; gap: 10px; }
   ::-webkit-scrollbar { width: 8px; }
   ::-webkit-scrollbar-thumb { background: #303030; border-radius: 4px; }
 
-  .card { background: #1F1F1F; border: 1px solid #2E2E2E; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: none; }
+  .card { background: #1F1F1F; border: 1px solid #2E2E2E; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: none; }
   .row { display: flex; align-items: center; gap: 9px; justify-content: space-between; }
   .k { color: var(--muted); font-size: 12px; }
   .v { font-weight: 500; text-align: right; word-break: break-all; }
@@ -42,21 +42,21 @@
   .dot.busy { background: var(--warn); }
   .dot.err { background: var(--danger); }
 
-  .status-line { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 600; }
-  .status-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 0 14px; }
+  .status-line { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .status-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 0 10px; }
   .badge { border: 1px solid #79797944; border-radius: 20px; padding: 4px 10px; font-size: 11px; font-weight: 500; color: #a7a7a7; white-space: nowrap; }
   #activityBadge[data-active="true"] { background: rgba(30,166,114,.12); border-color: rgba(30,166,114,.5); color: #6FD9B8; }
   #sharing[data-active="true"] { background: #e9bc4610; border-color: #dfb64980; color: #efd078; }
-  .hardware { display: flex; align-items: center; gap: 12px; border-top: 1px solid #ffffff12; padding: 16px 0; }
+  .hardware { display: flex; align-items: center; gap: 10px; border-top: 1px solid #ffffff12; padding: 12px 0; }
   .gpu-icon { width: 32px; height: 32px; flex: none; color: #a8a8a8; }
   .hardware-name { min-width: 0; flex: 1; }
-  .hardware-name .v { display: block; text-align: left; margin-top: 5px; font-weight: 600; font-size: 14px; }
+  .hardware-name .v { display: block; text-align: left; margin-top: 3px; font-weight: 600; font-size: 13px; }
   .memory { text-align: right; flex: none; }
   .memory .v { display: block; font-size: 16px; font-weight: 600; margin-top: 4px; }
-  .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid #ffffff12; border-bottom: 1px solid #ffffff12; padding: 13px 0; }
-  .metric + .metric { padding-left: 20px; border-left: 1px solid #ffffff15; }
-  .metric .v { display: block; text-align: left; font-size: 16px; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .connection { display: flex; align-items: center; gap: 16px; padding-top: 12px; min-width: 0; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid #ffffff12; border-bottom: 1px solid #ffffff12; padding: 10px 0; }
+  .metric + .metric { padding-left: 14px; border-left: 1px solid #ffffff15; }
+  .metric .v { display: block; text-align: left; font-size: 15px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .connection { display: flex; align-items: center; gap: 12px; padding-top: 10px; min-width: 0; }
   #comfy { flex: none; font-size: 12px; color: #d3d3d3; }
   #freeMemoryBtn { margin-left: auto; height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500; }
   #tab-status > .card { gap: 0; }
@@ -82,12 +82,12 @@
   button.sharing { background: #E8BD51; color: #27210e; font-weight: 600; box-shadow: none; }
   button.sharing:hover:not(:disabled) { background: #F0C962; }
   button.primary:disabled, button.sharing:disabled { opacity: .65; cursor: wait; }
-  #launcher-actions { display: grid; grid-template-columns: 1fr; gap: 22px; margin-top: 16px; }
+  #launcher-actions { display: grid; grid-template-columns: 1fr; gap: 22px; margin-top: 12px; }
   .launch-column { min-width: 0; position: relative; }
   .launch-column + .launch-column::before { content: ''; position: absolute; left: -12px; height: 100%; border-left: 1px solid #ffffff10; }
-  .launch-column > button { width: 100%; height: 46px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; border-radius: 8px; }
+  .launch-column > button { width: 100%; height: 42px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; border-radius: 8px; }
   .launch-column svg { width: 23px; height: 23px; flex: none; }
-  .footer-note { margin-top: 14px; border-top: 1px solid #ffffff10; padding-top: 10px; font-size: 11px; color: #979797; }
+  .footer-note { margin-top: 10px; border-top: 1px solid #ffffff10; padding-top: 8px; font-size: 11px; color: #979797; }
   .registration-info { margin-top: 9px; padding: 10px 12px; border: 1px solid #ffffff12; border-radius: 8px; background: #ffffff03; }
   #registrationStatus { color: #d7d7d7; font-size: 12px; font-weight: 600; }
   #registrationInfo[data-status="verified"] #registrationStatus { color: #6FD9B8; }
@@ -115,7 +115,7 @@
     color: #fca5a5; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.5; }
   .hint { color: var(--dim); font-size: 11px; line-height: 1.6; }
   .tabs { display: flex; gap: 12px; border-bottom: 1px solid #ffffff12; flex: none; }
-  .tab { min-width: 78px; height: 44px; background: transparent; border-radius: 0; font-size: 13px; color: #a7a7a7; border-bottom: 2px solid transparent; }
+  .tab { min-width: 68px; height: 38px; background: transparent; border-radius: 0; font-size: 13px; color: #a7a7a7; border-bottom: 2px solid transparent; }
   .tab.active { background: transparent; border-bottom-color: #1EA672; color: #f1f1f1; }
   .tab:hover:not(:disabled) { background: #ffffff05; color: #fff; }
 
@@ -138,7 +138,11 @@
   #policyLink { color:#dfc46f; }
   .folder { display:flex;gap:8px; }
   .folder input { min-width:0;flex:1; }
-  #logs { height:260px; }
+  #tab-status { flex:none; }
+  #tab-logs { flex:1; min-height:0; display:flex; }
+  #tab-logs > .card { flex:1; min-height:0; }
+  #logs { flex:1; min-height:0; height:auto; }
+  #openLogs { flex:none; }
 </style></head><body>
 <div class="titlebar" aria-label="Foart 标题栏"><img src="assets/foart-logo-dark.svg" alt="Foart" draggable="false"><span class="ver" id="version"></span></div>
 <main>
