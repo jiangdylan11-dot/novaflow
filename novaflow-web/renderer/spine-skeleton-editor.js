@@ -7256,7 +7256,7 @@
         onclick: pickable ? () => { state.sections.delete(key); select({ kind: 'section', name: key }) } : toggle,
         ondblclick: onDbl ? (e) => { e.stopPropagation(); onDbl() } : null },
         lkey ? h('span', { class: 'lkey' }, lkey) : null,
-        caret(!closed, toggle), h('span', { class: 'ico', html: ICON[iconKey] }), h('span', { class: 'label' }, label),
+        caret(!closed, toggle), h('span', { class: 'ico', 'data-tree-icon': iconKey, html: ICON[iconKey] }), h('span', { class: 'label' }, label),
         h('span', { class: 'end' }, count != null ? h('span', { class: 'cnt' }, String(count)) : null)))
       return !closed
     }
@@ -7410,7 +7410,7 @@
             class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && ((state.multiCons || []).some((x) => x.kind === kind && x.name === c.name) || (state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name))) ? '1' : null, style: pad(2),
             'data-key': `${kind}:${c.name}`,
             onclick: (e) => select({ kind, name: c.name }, e.ctrlKey || e.metaKey),
-          }, caret(null), h('span', { class: 'ico', html: ICON[kind] }), h('span', { class: 'label' }, c.name),
+          }, caret(null), h('span', { class: 'ico', 'data-tree-icon': kind, html: ICON[kind] }), h('span', { class: 'label' }, c.name),
           h('span', { class: 'meta' }, { ik: 'IK', transform: '变换', path: '路径' }[kind]),
           animOn() ? h('span', { class: 'lkey' }, keyBtn(kind === 'path' ? pathTracks(c.name) : [[kind, c.name]], () => keyConstraintNow(kind, c.name), `给 ${c.name} 打关键帧`)) : null)
           wireDrag(row, { type: 'cons', kind, name: c.name }, { type: 'cons', kind, name: c.name })
@@ -7453,7 +7453,7 @@
             style: pad(2), 'data-key': 'skin:' + s.name, 'data-skin-name': s.name,
             onclick: (e) => { if (!pick) selectSkin(s.name, e) },
           }, visDot(active, () => { setSkin(active ? 'default' : s.name); refresh(); status(active ? '不用皮肤' : `当前皮肤：${s.name}`) }, null, true),
-          caret(null), h('span', { class: 'ico', html: ICON.skin }), h('span', { class: 'label' }, s.name)))
+          caret(null), h('span', { class: 'ico', 'data-tree-icon': 'skin', html: ICON.skin }), h('span', { class: 'label' }, s.name)))
         }
       }
 
@@ -7484,7 +7484,7 @@
             class: 'row', style: pad(2), 'data-selected': isSel('anim', n) ? '1' : null, 'data-key': 'anim:' + n, title: '双击重命名动画',
             onclick: () => { state.anim = n; state.frame = 0; state.temp.clear(); state.mode = 'animate'; state.playing = false; if (state.tool === 'create') state.tool = 'rotate'; select({ kind: 'anim', name: n }) },
           }, visDot(active, () => { state.anim = n; state.frame = 0; setMode('animate') }, null, true),
-          caret(null), h('span', { class: 'ico', html: ICON.anim }), h('span', { class: 'label' }, n)))
+          caret(null), h('span', { class: 'ico', 'data-tree-icon': 'anim', html: ICON.anim }), h('span', { class: 'label' }, n)))
         }
       }
 
@@ -8270,19 +8270,8 @@
     const swapOffer = projects[activeProject] && projects[activeProject].pendingSwapFolder
     rows.push(h('div', { class: 'row node', style: pad(1), 'data-key': 'images', 'data-selected': isSel('section', 'images') ? '1' : null,
       onclick: () => { toggle(); select({ kind: 'section', name: 'images' }) }, title: (folder ? `图片文件夹：${folder}${state.imageFolder.live ? '（文件夹里加图、删图会实时显示）' : '（已载入）'}\n` : `记录的图片目录：${state.imagePath || '.'}（未连接，缺图显示 MISSING）\n`) + (swapOffer ? `同级目录「${swapOffer.name}」里有缺少的替换图，可改接。\n` : '') + '把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
-      caret(!closed, toggle), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
-      h('span', { class: 'end' },
-        // Spine's images path, no import (user 2026-10-15: 这里不需要有什么导入按钮): pictures are what the folder holds
-        swapOffer
-          ? h('button', { class: 'ld-btn tiny', title: `改接到同级图片目录「${swapOffer.name}」（${swapOffer.imagePath}）`,
-            onclick: (e) => { e.stopPropagation(); acceptSwapReconnect() } }, '改接目录')
-          : null,
-        !folder && state.pendingFolder
-          ? h('button', { class: 'ld-btn tiny', title: `接上上次的图片文件夹「${state.pendingFolder.name}」（浏览器要点一下确认）`,
-            onclick: (e) => { e.stopPropagation(); restorePendingFolder() } }, '接上文件夹')
-          : h('button', { class: 'ld-btn tiny', title: folder ? `换一个图片文件夹（现在是「${folder}」）` : '指定工程的图片文件夹：图集会解包进去，之后文件夹里的变化实时显示',
-            onclick: (e) => { e.stopPropagation(); chooseImageFolder() } }, folder ? '换文件夹…' : '指定文件夹…'),
-        h('span', { class: 'cnt' }, String(count)))))
+      caret(!closed, toggle), h('span', { class: 'ico', 'data-tree-icon': 'images', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
+      h('span', { class: 'end' }, h('span', { class: 'cnt' }, String(count)))))
     if ((state.projectImageRefs || []).length) rows.push(h('div', { class: 'row', style: pad(2), 'data-image-directory': state.imagePath || '.', title: '当前工程记录的图片目录；重新定位只影响此工程' },
       h('span', { class: 'meta' }, `目录：${state.imagePath || '.'}${folder ? '' : '（未连接）'}`)))
     if (closed) return
@@ -8294,7 +8283,7 @@
         const open = state.imgOpen.has(d.path)
         const flip = () => { open ? state.imgOpen.delete(d.path) : state.imgOpen.add(d.path); renderTree() }
         rows.push(h('div', { class: 'row', style: pad(depth), onclick: flip, title: d.path },
-          caret(open, flip), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, d.name)))
+          caret(open, flip), h('span', { class: 'ico', 'data-tree-icon': 'images', html: ICON.folder }), h('span', { class: 'label' }, d.name)))
         if (open) walk(d.path, depth + 1)
       }
       for (const f of l.files) {
@@ -11155,13 +11144,13 @@
     const names = AudioAssets.names(state.json, state.audio), closed = state.sections.has('audio')
     const toggle = () => { closed ? state.sections.delete('audio') : state.sections.add('audio'); renderTree() }
     rows.push(h('div', { class: 'row node', style: pad(1), 'data-key': 'audio', 'data-selected': isSel('section', 'audio') ? '1' : null, onclick: () => { toggle(); select({ kind: 'section', name: 'audio' }) } },
-      caret(!closed, toggle), h('span', { class: 'ico', html: ICON.audio }), h('span', { class: 'label' }, '音频'),
-      h('span', { class: 'end' }, h('button', { class: 'ld-btn tiny', title: '指定音频文件夹', onclick: e => { e.stopPropagation(); chooseAudioDirectory() } }, state.audioFolder ? '换文件夹…' : '指定文件夹…'), h('span', { class: 'cnt' }, String(names.length)))))
+      caret(!closed, toggle), h('span', { class: 'ico', 'data-tree-icon': 'audio', html: ICON.audio }), h('span', { class: 'label' }, '音频'),
+      h('span', { class: 'end' }, h('span', { class: 'cnt' }, String(names.length)))))
     if (closed) return
     for (const name of names) rows.push(h('div', { class: 'row', draggable: true, ondragstart: e => { e.dataTransfer.setData('application/x-foart-spine-audio', JSON.stringify({ project: projects[activeProject]?.id, name })); e.dataTransfer.effectAllowed = 'link' }, style: pad(2), 'data-key': 'audio:' + name, 'data-selected': state.sel?.kind === 'audio' && state.sel.name === name ? '1' : null,
       title: AudioAssets.source(state.audio, name) ? '拖到事件分组创建音频事件，拖到已有事件更换音频；双击试听：' + name : '未连接音频文件：' + name,
       onclick: () => select({ kind: 'audio', name }), ondblclick: () => { const data = AudioAssets.source(state.audio, name); if (data) audioPlayer.play(data) } },
-      caret(null), h('span', { class: 'ico', html: ICON.audio }), h('span', { class: 'label' }, name), AudioAssets.source(state.audio, name) ? null : h('span', { class: 'cnt' }, '未连接')))
+      caret(null), h('span', { class: 'ico', 'data-tree-icon': 'audio', html: ICON.audio }), h('span', { class: 'label' }, name), AudioAssets.source(state.audio, name) ? null : h('span', { class: 'cnt' }, '未连接')))
   }
   function audioBody() {
     const name = state.sel.kind === 'audio' ? state.sel.name : '', data = AudioAssets.source(state.audio, name)

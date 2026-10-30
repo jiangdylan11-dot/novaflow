@@ -382,6 +382,17 @@
   .row .caret svg{width:11px;height:11px}
   .row .mk{width:8px;height:8px;flex:0 0 8px;border-radius:2px;margin:0 7px 0 2px}
   .row .ico{width:16px;flex:0 0 16px;height:16px;margin:0 5px 0 0;display:inline-flex;align-items:center;justify-content:center;color:#a8a8a8}
+  /* Type colours belong to the glyph, so row selection/hover keeps them. */
+  #tree .ico[data-tree-icon="bone"]{color:var(--c-normal)}
+  #tree .ico[data-tree-icon="cons"],#tree .ico[data-tree-icon="ik"]{color:#ffb454}
+  #tree .ico[data-tree-icon="transform"]{color:var(--c-cons)}
+  #tree .ico[data-tree-icon="path"]{color:#ff8a1f}
+  #tree .ico[data-tree-icon="order"]{color:#4fb3e8}
+  #tree .ico[data-tree-icon="skin"]{color:#c79bff}
+  #tree .ico[data-tree-icon="event"]{color:#c084fc}
+  #tree .ico[data-tree-icon="anim"]{color:#4fd18b}
+  #tree .ico[data-tree-icon="images"]{color:#f0c36a}
+  #tree .ico[data-tree-icon="audio"]{color:#78cc38}
   .row .ico svg{width:13px;height:13px}
   .row .bico svg{width:15px;height:15px}
   .row .label{overflow:hidden;text-overflow:ellipsis}
