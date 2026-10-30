@@ -37,10 +37,7 @@ const elements = {
   runtimeStyle: document.getElementById("spine-runtime-style"),
   runtimeBadge: document.getElementById("runtimeBadge"),
   dropZone: document.getElementById("dropZone"),
-  pickFilesButton: document.getElementById("pickFilesButton"),
-  pickFolderButton: document.getElementById("pickFolderButton"),
   filePicker: document.getElementById("filePicker"),
-  folderPicker: document.getElementById("folderPicker"),
   projectSelect: document.getElementById("projectSelect"),
   resetTransformButton: document.getElementById("resetTransformButton"),
   removeAnimationButton: document.getElementById("removeAnimationButton"),
@@ -57,16 +54,17 @@ const elements = {
   mixRange: document.getElementById("mixRange"),
   mixValue: document.getElementById("mixValue"),
   premultiplyToggle: document.getElementById("premultiplyToggle"),
-  loopToggle: document.getElementById("loopToggle"),
   playPauseButton: document.getElementById("playPauseButton"),
   progressRange: document.getElementById("progressRange"),
   progressValue: document.getElementById("progressValue"),
+  timeInput: document.getElementById("timeInput"),
   statusText: document.getElementById("statusText"),
   playerMount: document.getElementById("playerMount"),
   backgroundImage: document.getElementById("backgroundImage"),
   sceneLayer: document.getElementById("sceneLayer"),
   emptyState: document.getElementById("emptyState"),
   actualSizeButton: document.getElementById("actualSizeButton"),
+  autoFitButton: document.getElementById("autoFitButton"),
   canvasHint: document.getElementById("canvasHint"),
 };
 
@@ -104,7 +102,7 @@ const state = {
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const SKELETON_EXTENSIONS = new Set([".json", ".skel"]);
-const MIN_PREVIEW_ZOOM = 0.25;
+const MIN_PREVIEW_ZOOM = 0.01;
 const MAX_PREVIEW_ZOOM = 4;
 const MIN_SCENE_VISIBLE_PX = 52;
 const VIEWPORT_SAFE_PADDING = "100%";
@@ -199,9 +197,9 @@ function setControlAvailability(enabled) {
     elements.speedRange,
     elements.mixRange,
     elements.premultiplyToggle,
-    elements.loopToggle,
     elements.playPauseButton,
     elements.progressRange,
+    elements.timeInput,
   ].forEach((control) => {
     control.disabled = !enabled;
   });
@@ -373,6 +371,7 @@ function applyPreviewZoom(item = getActiveSceneItem()) {
 }
 
 function applyAllPreviewZoom() {
+  elements.actualSizeButton.textContent = `${Math.round(state.previewZoom * 100)}%`;
   elements.playerMount.dataset.previewZoom = state.previewZoom.toFixed(3);
   elements.playerMount.dataset.zoomMode = "global-layout";
   applyBackgroundPreviewZoom();
@@ -387,6 +386,29 @@ function setPreviewZoom(nextZoom) {
 
 function resetPreviewZoomToActualSize() {
   setPreviewZoom(1);
+}
+
+function fitPreviewToCanvas() {
+  const mount = elements.playerMount.getBoundingClientRect();
+  const rects = state.sceneItems.map((item) => item.element.getBoundingClientRect());
+  const hasBackground = !elements.backgroundImage.hidden;
+  if (hasBackground) rects.push(elements.backgroundImage.getBoundingClientRect());
+  if (!rects.length || mount.width <= 48 || mount.height <= 80) return;
+  const left = Math.min(...rects.map((rect) => rect.left)), right = Math.max(...rects.map((rect) => rect.right));
+  const top = Math.min(...rects.map((rect) => rect.top)), bottom = Math.max(...rects.map((rect) => rect.bottom));
+  // A background remains centered. Without one, center the complete scene group.
+  const cx = hasBackground ? mount.left + mount.width / 2 : (left + right) / 2;
+  const cy = hasBackground ? mount.top + mount.height / 2 : (top + bottom) / 2;
+  const width = Math.max(1, 2 * Math.max(cx - left, right - cx));
+  const height = Math.max(1, 2 * Math.max(cy - top, bottom - cy));
+  const nextZoom = clamp(state.previewZoom * Math.min((mount.width - 48) / width, (mount.height - 80) / height), MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM);
+  const factor = nextZoom / state.previewZoom;
+  state.sceneItems.forEach((item) => {
+    item.x = (item.x - (cx - mount.left - mount.width / 2)) * factor;
+    item.y = (item.y - (cy - mount.top - mount.height / 2)) * factor;
+    item.positionTouched = true;
+  });
+  setPreviewZoom(nextZoom);
 }
 
 function applySceneItemTransform(item) {
@@ -442,16 +464,17 @@ function resetProgressControls() {
   elements.progressRange.value = "0";
   updateRangeFill(elements.progressRange);
   elements.progressValue.textContent = "0.00s / 0.00s";
+  elements.timeInput.value = "0.0";
+  elements.timeInput.disabled = true;
 }
 
 function resetPlaybackDisplay() {
-  elements.playPauseButton.textContent = "暂停";
+  updatePlaybackButton();
   state.progressDragging = false;
   resetProgressControls();
 }
 
 function resetPlaybackDefaults() {
-  elements.loopToggle.checked = true;
   resetPlaybackDisplay();
 }
 
@@ -497,11 +520,48 @@ function updateProgressControls() {
   }
 
   elements.progressRange.disabled = false;
+  elements.timeInput.disabled = false;
+  elements.timeInput.max = String(timing.duration);
+  elements.timeInput.title = `当前时间 / ${formatSeconds(timing.duration)}`;
+  if (document.activeElement !== elements.timeInput) {
+    elements.timeInput.value = timing.elapsed.toFixed(3).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, ".0");
+  }
   if (!state.progressDragging) {
     elements.progressRange.value = String(timing.elapsed / timing.duration);
   }
   elements.progressValue.textContent = `${formatSeconds(timing.elapsed)} / ${formatSeconds(timing.duration)}`;
   updateRangeFill(elements.progressRange);
+  updatePlaybackButton();
+}
+
+function updatePlaybackButton() {
+  const playing = Boolean(getActiveSceneItem()?.player && !getActiveSceneItem().player.paused);
+  const label = playing ? "暂停" : "播放";
+  elements.playPauseButton.textContent = "";
+  elements.playPauseButton.dataset.playing = String(playing);
+  elements.playPauseButton.title = label;
+  elements.playPauseButton.setAttribute('aria-label', label);
+}
+
+let timelineResumeId = "";
+function beginTimelineScrub() {
+  if (state.progressDragging) return;
+  state.progressDragging = true;
+  const item = getActiveSceneItem();
+  timelineResumeId = item && !item.player.paused ? item.id : "";
+  if (timelineResumeId) item.player.pause();
+  updatePlaybackButton();
+}
+
+function endTimelineScrub() {
+  state.progressDragging = false;
+  const item = getSceneItemById(timelineResumeId);
+  timelineResumeId = "";
+  if (item) {
+    if (viewerIsActive()) item.player.play();
+    else viewerSuspendedPlayers.add(item.player);
+  }
+  updateProgressControls();
 }
 
 function stopProgressLoop() {
@@ -739,17 +799,23 @@ function renderLayerList() {
     moveUp.className = "layer-order-button";
     moveUp.type = "button";
     moveUp.dataset.action = "up";
-    moveUp.textContent = "上移";
+    moveUp.textContent = "↑";
+    moveUp.title = "上移（+）";
+    moveUp.setAttribute("aria-label", "上移");
     moveUp.disabled = index === 0;
 
     const moveDown = document.createElement("button");
     moveDown.className = "layer-order-button";
     moveDown.type = "button";
     moveDown.dataset.action = "down";
-    moveDown.textContent = "下移";
+    moveDown.textContent = "↓";
+    moveDown.title = "下移（-）";
+    moveDown.setAttribute("aria-label", "下移");
     moveDown.disabled = index === layers.length - 1;
 
     row.append(name, moveUp, moveDown);
+    row.draggable = true;
+    row.title = "拖动调整层级；+ 上移，- 下移";
     elements.layerList.appendChild(row);
   });
 }
@@ -768,7 +834,50 @@ function moveSceneLayer(sceneId, direction) {
   item.element.style.zIndex = String(item.zIndex);
   target.element.style.zIndex = String(target.zIndex);
   selectSceneItem(sceneId);
-  renderLayerList();
+  focusActiveLayer();
+}
+
+function focusActiveLayer() {
+  elements.layerList.querySelector('.layer-item.is-active .layer-name')?.focus({ preventScroll: true });
+  elements.layerList.querySelector('.layer-item.is-active')?.scrollIntoView({ block: 'nearest' });
+}
+
+let layerDragId = "";
+function clearLayerDrag() {
+  layerDragId = "";
+  elements.layerList.querySelectorAll('.layer-item').forEach((row) => row.classList.remove('is-layer-dragging', 'drop-before', 'drop-after'));
+}
+
+function handleLayerDrop(event) {
+  if (!layerDragId) return;
+  event.preventDefault();
+  const target = event.target.closest('.layer-item');
+  const layers = getLayerItemsTopFirst();
+  const item = getSceneItemById(layerDragId);
+  if (target && item && target.dataset.sceneId !== item.id) {
+    const reordered = layers.filter((layer) => layer.id !== item.id);
+    let index = reordered.findIndex((layer) => layer.id === target.dataset.sceneId);
+    if (event.clientY >= target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2) index += 1;
+    reordered.splice(index, 0, item);
+    reordered.forEach((layer, position) => {
+      layer.zIndex = reordered.length - position;
+      layer.element.style.zIndex = String(layer.zIndex);
+    });
+    state.nextZIndex = reordered.length + 1;
+    selectSceneItem(item.id);
+    focusActiveLayer();
+  }
+  clearLayerDrag();
+}
+
+function handleLayerShortcut(event) {
+  if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || !viewerIsActive()) return;
+  if (event.target instanceof Element && event.target.closest('input,select,textarea,[contenteditable]:not([contenteditable="false"])')) return;
+  const direction = ['+', '='].includes(event.key) || event.code === 'NumpadAdd' ? 'up'
+    : event.key === '-' || event.code === 'NumpadSubtract' ? 'down' : '';
+  if (!direction || !getActiveSceneItem()) return;
+  event.preventDefault();
+  moveSceneLayer(state.activeSceneId, direction);
 }
 
 function updateProjectHint(item = getActiveSceneItem()) {
@@ -1297,8 +1406,8 @@ function updateEmptyState() {
   });
   applyBackgroundPreviewZoom();
   elements.emptyState.hidden = hasPreviewContent;
-  elements.actualSizeButton.hidden = !hasPreviewContent;
   elements.actualSizeButton.disabled = !hasPreviewContent;
+  elements.autoFitButton.disabled = !hasPreviewContent;
   elements.canvasHint.hidden = !hasPreviewContent;
   syncSceneCompositeModes();
   renderLayerList();
@@ -1621,11 +1730,12 @@ function applyMix(item = getActiveSceneItem(), value = Number(elements.mixRange.
   item.player.animationState.data.defaultMix = item.mix;
 }
 
-function applyPremultipliedAlpha(item = getActiveSceneItem(), value = elements.premultiplyToggle.checked) {
+function applyPremultipliedAlpha(item = getActiveSceneItem(), value = !item?.premultipliedAlpha) {
   if (!item || !item.player || !item.player.config) return;
   item.premultipliedAlpha = Boolean(value);
   item.premultiplyTouched = true;
   item.player.config.premultipliedAlpha = item.premultipliedAlpha;
+  if (item.id === state.activeSceneId) elements.premultiplyToggle.setAttribute('aria-pressed', String(item.premultipliedAlpha));
   if (typeof item.player.drawFrame === "function") item.player.drawFrame(false);
 }
 
@@ -1658,14 +1768,14 @@ function applyAnimation(item = getActiveSceneItem(), animationName = elements.an
   invalidateBaseSceneSize(item);
   applyPreviewZoom(item);
   if (item.id === state.activeSceneId) {
-    elements.playPauseButton.textContent = "暂停";
+    updatePlaybackButton();
     updateProgressControls();
   }
 }
 
-function applyLoop(item = getActiveSceneItem(), value = elements.loopToggle.checked) {
+function applyLoop(item = getActiveSceneItem()) {
   if (!item || !item.player) return;
-  item.loop = Boolean(value);
+  item.loop = true;
   const animationState = item.player.animationState;
   const entry = animationState && (typeof animationState.getCurrent === "function" ? animationState.getCurrent(0) : animationState.tracks && animationState.tracks[0]);
   if (entry) entry.loop = item.loop;
@@ -1739,6 +1849,7 @@ function initializeSceneItem(item) {
 
 function syncControlsFromSceneItem(item) {
   if (!item) {
+    elements.premultiplyToggle.setAttribute('aria-pressed', 'true');
     fillNameSelect(elements.animationSelect, [], "未加载");
     fillNameSelect(elements.skinSelect, [], "未加载");
     setControlAvailability(false);
@@ -1755,9 +1866,8 @@ function syncControlsFromSceneItem(item) {
   elements.skinSelect.value = item.skinName;
   elements.speedRange.value = String(item.speed);
   elements.mixRange.value = String(item.mix);
-  elements.loopToggle.checked = item.loop;
-  elements.premultiplyToggle.checked = item.premultipliedAlpha;
-  elements.playPauseButton.textContent = item.player.paused ? "播放" : "暂停";
+  elements.premultiplyToggle.setAttribute('aria-pressed', String(item.premultipliedAlpha));
+  updatePlaybackButton();
   updateRangeLabels();
   updateProgressControls();
 }
@@ -1858,7 +1968,7 @@ async function tryLoadProjectWithRuntime(project, resources, order) {
     mix: 0.2,
     loop: true,
     paused: false,
-    premultipliedAlpha: resources.premultipliedAlpha,
+    premultipliedAlpha: true,
     premultiplyTouched: false,
     blendSummary: resources.blendSummary || createEmptyBlendSummary(),
     baseSceneWidth: 0,
@@ -2018,11 +2128,11 @@ function togglePlayback() {
   if (item.player.paused) {
     if (typeof item.player.play === "function") item.player.play();
     item.paused = false;
-    elements.playPauseButton.textContent = "暂停";
+    updatePlaybackButton();
   } else {
     if (typeof item.player.pause === "function") item.player.pause();
     item.paused = true;
-    elements.playPauseButton.textContent = "播放";
+    updatePlaybackButton();
   }
   updateProgressControls();
 }
@@ -2034,7 +2144,6 @@ function enqueueFiles(files) {
     .catch((error) => setStatus(error.message || String(error), true))
     .finally(() => {
       elements.filePicker.value = "";
-      elements.folderPicker.value = "";
     });
   return state.importQueue;
 }
@@ -2148,10 +2257,11 @@ function handleSceneDoubleClick(event) {
 }
 
 function bindEvents() {
-  elements.pickFilesButton.addEventListener("click", () => elements.filePicker.click());
-  elements.pickFolderButton.addEventListener("click", () => elements.folderPicker.click());
+  elements.dropZone.addEventListener("click", () => elements.filePicker.click());
+  elements.dropZone.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); elements.filePicker.click(); }
+  });
   elements.filePicker.addEventListener("change", () => enqueueFiles(elements.filePicker.files));
-  elements.folderPicker.addEventListener("change", () => enqueueFiles(elements.folderPicker.files));
   elements.projectSelect.addEventListener("change", loadSelectedProject);
   elements.resetTransformButton.addEventListener("click", () => resetSceneTransform());
   elements.removeAnimationButton.addEventListener("click", () => {
@@ -2174,12 +2284,12 @@ function bindEvents() {
     updateRangeLabels();
     applyMix();
   });
-  elements.premultiplyToggle.addEventListener("change", () => {
+  elements.premultiplyToggle.addEventListener("click", () => {
     applyPremultipliedAlpha();
   });
-  elements.loopToggle.addEventListener("change", () => applyLoop());
   elements.playPauseButton.addEventListener("click", togglePlayback);
   elements.actualSizeButton.addEventListener("click", () => resetPreviewZoomToActualSize());
+  elements.autoFitButton.addEventListener("click", fitPreviewToCanvas);
   elements.layerList.addEventListener("click", (event) => {
     const button = event.target.closest && event.target.closest("button[data-action]");
     const row = button && button.closest(".layer-item");
@@ -2187,23 +2297,51 @@ function bindEvents() {
     const sceneId = row.dataset.sceneId;
     if (button.dataset.action === "select") {
       selectSceneItem(sceneId);
+      focusActiveLayer();
     } else {
       moveSceneLayer(sceneId, button.dataset.action);
     }
   });
-  elements.progressRange.addEventListener("pointerdown", () => {
-    state.progressDragging = true;
+  elements.layerList.addEventListener('dragstart', (event) => {
+    const row = event.target.closest('.layer-item');
+    const action = event.target.closest('button')?.dataset.action;
+    if (!row || !event.dataTransfer || (action && action !== 'select')) { event.preventDefault(); return; }
+    layerDragId = row.dataset.sceneId;
+    event.dataTransfer.setData('application/x-foart-spine-layer', layerDragId);
+    event.dataTransfer.effectAllowed = 'move';
+    row.classList.add('is-layer-dragging');
   });
+  elements.layerList.addEventListener('dragover', (event) => {
+    if (!layerDragId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    elements.layerList.querySelectorAll('.layer-item').forEach((row) => row.classList.remove('drop-before', 'drop-after'));
+    const row = event.target.closest('.layer-item');
+    if (!row || row.dataset.sceneId === layerDragId) return;
+    const rect = row.getBoundingClientRect();
+    row.classList.add(event.clientY < rect.top + rect.height / 2 ? 'drop-before' : 'drop-after');
+    if (event.clientY < elements.layerList.getBoundingClientRect().top + 24) elements.layerList.scrollTop -= 12;
+    else if (event.clientY > elements.layerList.getBoundingClientRect().bottom - 24) elements.layerList.scrollTop += 12;
+  });
+  elements.layerList.addEventListener('drop', handleLayerDrop);
+  elements.layerList.addEventListener('dragend', clearLayerDrag);
+  document.addEventListener('keydown', handleLayerShortcut);
+  elements.playerMount.tabIndex = 0;
+  elements.playerMount.addEventListener('pointerdown', () => elements.playerMount.focus({ preventScroll: true }));
+  elements.progressRange.addEventListener("pointerdown", beginTimelineScrub);
   elements.progressRange.addEventListener("input", () => {
-    state.progressDragging = true;
     seekProgress(elements.progressRange.value);
   });
   ["pointerup", "pointercancel", "change", "blur"].forEach((eventName) => {
-    elements.progressRange.addEventListener(eventName, () => {
-      state.progressDragging = false;
-      updateProgressControls();
-    });
+    elements.progressRange.addEventListener(eventName, endTimelineScrub);
   });
+  window.addEventListener('pointerup', () => { if (state.progressDragging) endTimelineScrub(); });
+  elements.timeInput.addEventListener('input', () => {
+    const timing = getTrackTiming(getCurrentTrackEntry());
+    if (timing && elements.timeInput.value !== '') seekProgress(Number(elements.timeInput.value) / timing.duration);
+  });
+  elements.timeInput.addEventListener('blur', updateProgressControls);
+  elements.timeInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') elements.timeInput.blur(); });
   elements.playerMount.addEventListener("wheel", handlePreviewWheel, { passive: false });
   elements.sceneLayer.addEventListener("pointerdown", beginSceneDrag);
   elements.sceneLayer.addEventListener("pointermove", moveSceneDrag);
@@ -2227,21 +2365,53 @@ function bindEvents() {
     if (state.backgroundObjectUrl) URL.revokeObjectURL(state.backgroundObjectUrl);
   });
 
-  ["dragenter", "dragover"].forEach((eventName) => {
-    elements.dropZone.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      elements.dropZone.classList.add("drag-over");
-    });
+  [elements.dropZone, elements.playerMount].forEach(bindFileDrop);
+  ['dragover', 'drop'].forEach((type) => document.addEventListener(type, (event) => {
+    if (Array.from(event.dataTransfer?.types || []).includes('Files')) event.preventDefault();
+  }));
+}
+
+function bindFileDrop(zone) {
+  ['dragenter', 'dragover'].forEach((type) => zone.addEventListener(type, (event) => {
+    if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    zone.classList.add('drag-over');
+  }));
+  zone.addEventListener('dragleave', (event) => {
+    if (!zone.contains(event.relatedTarget)) zone.classList.remove('drag-over');
   });
-  ["dragleave", "drop"].forEach((eventName) => {
-    elements.dropZone.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      elements.dropZone.classList.remove("drag-over");
-    });
+  zone.addEventListener('drop', async (event) => {
+    if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+    event.preventDefault();
+    zone.classList.remove('drag-over');
+    try { await enqueueFiles(await filesFromDrop(event.dataTransfer)); }
+    catch (error) { setStatus(`导入失败：${error.message || error}`, true); }
   });
-  elements.dropZone.addEventListener("drop", (event) => {
-    enqueueFiles(event.dataTransfer.files);
-  });
+}
+
+async function filesFromDrop(transfer) {
+  // Capture entries during the drop event; the browser locks its data store afterwards.
+  const entries = Array.from(transfer.items || []).map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
+  const fallback = Array.from(transfer.files || []);
+  if (!entries.length) return fallback;
+  const files = [];
+  async function visit(entry, prefix = '') {
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      Object.defineProperty(file, 'webkitRelativePath', { value: prefix + file.name });
+      files.push(file);
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      while (true) {
+        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) break;
+        for (const child of batch) await visit(child, prefix + entry.name + '/');
+      }
+    }
+  }
+  for (const entry of entries) await visit(entry);
+  return files;
 }
 
 async function fileFromUrl(url) {

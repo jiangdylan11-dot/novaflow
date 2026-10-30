@@ -6,22 +6,17 @@
     <title>Spine 工程查看器</title>
     <link id="spine-runtime-style" rel="stylesheet" href="" />
     <link id="app-style" rel="stylesheet" href="styles.css?v=20260915-blend-backdrop" />
-    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-1" />
+    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-2" />
   </head>
   <body>
     <div class="app">
       <aside class="sidebar">
         <section class="panel">
-          <div id="dropZone" class="drop-zone" tabindex="0">
+          <div id="dropZone" class="drop-zone" role="button" tabindex="0" aria-label="拖入动画工程，点击可多选文件" title="点击多选文件，或将工程文件、文件夹拖入此处或画布">
             <strong>拖入动画工程</strong>
             <span>支持分批添加多个 .json / .skel / .atlas / 贴图</span>
           </div>
-          <div class="button-row">
-            <button id="pickFilesButton" class="soft-button" type="button">文件</button>
-            <button id="pickFolderButton" class="soft-button" type="button">文件夹</button>
-          </div>
           <input id="filePicker" class="visually-hidden" type="file" multiple />
-          <input id="folderPicker" class="visually-hidden" type="file" webkitdirectory directory multiple />
         </section>
 
         <section class="panel stack">
@@ -40,7 +35,7 @@
         </section>
 
         <section class="panel stack">
-          <div class="section-heading">动画层级</div>
+          <div class="section-heading" title="拖动排序；+ 上移，- 下移">动画层级</div>
           <div id="layerList" class="layer-list" aria-label="动画层级">
             <div class="layer-empty">暂无动画</div>
           </div>
@@ -86,29 +81,26 @@
             <strong>加载 Spine 导出工程</strong>
             <span>可分批添加多个工程，并上传一张画布背景</span>
           </div>
-          <button id="actualSizeButton" class="actual-size-button" type="button" hidden disabled title="恢复全部内容到原始尺寸分辨率">1:1 原始尺寸</button>
+          <div class="canvas-toolbar" role="toolbar" aria-label="画布显示">
+            <button id="actualSizeButton" class="actual-size-button" type="button" disabled title="恢复 100% 原始尺寸">100%</button>
+            <button id="autoFitButton" type="button" disabled title="完整显示画布中的工程和背景">自动适配</button>
+            <button id="premultiplyToggle" type="button" aria-pressed="true" disabled title="切换当前动画的预乘 Alpha">预乘 Alpha</button>
+          </div>
           <div id="canvasHint" class="canvas-hint" hidden>拖动当前动画 · 滚轮全局缩放 · 双击重置位置</div>
         </div>
         <div class="stage-controls" aria-label="预览播放控制">
-          <button id="playPauseButton" class="transport-button" type="button" disabled>暂停</button>
+          <button id="playPauseButton" class="transport-button" type="button" title="播放" aria-label="播放" disabled></button>
           <div class="timeline-group">
             <input id="progressRange" class="progress-range" type="range" min="0" max="1" step="0.001" value="0" aria-label="播放进度" disabled />
-            <output id="progressValue" class="progress-time">0.00s / 0.00s</output>
+            <input id="timeInput" class="progress-time" type="number" min="0" max="0" step="0.001" value="0.0" aria-label="当前时间（秒）" disabled />
+            <output id="progressValue" class="visually-hidden">0.00s / 0.00s</output>
           </div>
-          <label class="checkbox-label compact">
-            <input id="loopToggle" type="checkbox" checked disabled />
-            <span>循环</span>
-          </label>
-          <label class="checkbox-label compact">
-            <input id="premultiplyToggle" type="checkbox" disabled />
-            <span>预乘 Alpha</span>
-          </label>
         </div>
       </main>
     </div>
 
     <script src="vendor/novaflow-version-convert.js?v=3.7-roundtrip-1"></script>
     <script src="vendor/novaflow-skel-import.js?v=3.7-roundtrip-1"></script>
-    <script src="app.js?v=20261024-3.7-roundtrip-1"></script>
+    <script src="app.js?v=20261030-viewer-interactions-2"></script>
   </body>
 </html>
