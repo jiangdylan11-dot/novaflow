@@ -89,13 +89,13 @@ const adminQueries = {
     ascending: false,
     limit: 200
   },
-  web_ai_tasks: {
+  web_compute_usage: {
     // Who generated, when, and on whose machine - and nothing else.
     //
     // No prompt, no parameters, no output manifest: the operator asked to see
     // usage, not what anyone made. Reading those columns would put a user's
     // work on an admin screen for no reason, so they are not selected at all.
-    select: "id,user_id,assigned_worker_id,task_type,status,created_at,completed_at",
+    select: "id,user_id,user_account,assigned_worker_id,worker_name,task_type,model_id,status,attempt_count,charged_credit_cost,error_code,error_message,created_at,assigned_at,started_at,completed_at,failed_at,cancelled_at,updated_at",
     orderBy: "created_at",
     ascending: false,
     limit: 500
@@ -1067,32 +1067,36 @@ function getAdminGpuWorkers() {
 }
 
 async function getAdminWebTaskUsage(options = {}) {
-  const cap = options?.limit == null || options.limit === ""
-    ? null
-    : Math.max(1, Math.min(200, Math.round(Number(options.limit)) || 100));
-  const selectFields = adminQueries.web_ai_tasks.select;
+  const limit = Math.max(1, Math.min(100, Math.floor(Number(options.limit)) || 50));
+  const offset = Math.max(0, Math.min(1000000000, Math.floor(Number(options.offset)) || 0));
+  const selectFields = adminQueries.web_compute_usage.select;
   const clientState = getAdminClient();
-  if (!clientState.client) {
-    return readTable("web_ai_tasks", selectFields, { ...adminQueries.web_ai_tasks, limit: cap || adminQueries.web_ai_tasks.limit });
-  }
   const startedAt = Date.now();
+  if (!clientState.client) return supabaseErrorResult("web_compute_usage", "请配置后台连接", selectFields, options, 0);
+  const userId = String(options.userId || "");
+  if (userId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return supabaseErrorResult("web_compute_usage", "用户编号无效", selectFields, {}, 0);
+  const status = String(options.status || "");
+  if (status && !["created","queued","assigned","uploading","processing","completed","failed","cancelled","expired"].includes(status)) return supabaseErrorResult("web_compute_usage", "任务状态无效", selectFields, {}, 0);
   try {
-    const { collectPages: readPages } = await loadFeatureCredits();
-    const records = await readPages(async ({ offset, limit }) => {
-      const take = cap == null ? limit : Math.min(limit, cap - offset);
-      if (take <= 0) return [];
-      const { data, error } = await clientState.client
-        .from("web_ai_tasks")
-        .select(selectFields)
-        .order(adminQueries.web_ai_tasks.orderBy, { ascending: Boolean(adminQueries.web_ai_tasks.ascending) })
-        .range(offset, offset + take - 1);
-      if (error) throw error;
-      return data || [];
-    });
-    return supabaseResult("web_ai_tasks", records, selectFields, { ...adminQueries.web_ai_tasks, limit: cap || records.length }, Date.now() - startedAt);
+    let query = clientState.client.from("web_compute_usage").select(selectFields, { count: "exact" });
+    if (userId) query = query.eq("user_id", userId);
+    if (status) query = query.eq("status", status);
+    const { data, error, count } = await query.order("created_at", { ascending:false }).order("id", { ascending:false }).range(offset, offset + limit - 1);
+    if (error) throw error;
+    return { ...supabaseResult("web_compute_usage", data || [], selectFields, {limit,offset}, Date.now()-startedAt), total:Number(count || 0), offset, limit, hasMore:offset+(data || []).length<Number(count || 0) };
   } catch (err) {
-    return supabaseErrorResult("web_ai_tasks", err, selectFields, adminQueries.web_ai_tasks, Date.now() - startedAt);
+    return supabaseErrorResult("web_compute_usage", "使用记录读取失败，请确认已升级记录保留服务：" + String(err?.message || err), selectFields, {}, Date.now()-startedAt);
   }
+}
+
+async function getAdminComputeUsageSummary() {
+  const startedAt = Date.now(), state = getAdminClient();
+  if (!state.client) return supabaseErrorResult("web_compute_usage", "请配置后台连接", "", {}, 0);
+  try {
+    const {data,error} = await state.client.rpc("admin_compute_usage_summary");
+    if (error) throw error;
+    return supabaseResult("web_compute_usage",data || [],"",{},Date.now()-startedAt);
+  } catch (err) { return supabaseErrorResult("web_compute_usage","使用记录读取失败，请确认已升级记录保留服务："+String(err?.message || err),"",{},Date.now()-startedAt); }
 }
 
 function getAdminWorkerRegistrationCodes() {
@@ -1444,34 +1448,6 @@ async function purgeAdminWorkerRegistrationCodes() {
     if (error) throw error;
     logAdminData("info", "purge worker registration codes", { source: "supabase", status: "connected", deleted: (data || []).length });
     return adminWriteResult(operation, startedAt, { deleted: (data || []).length });
-  } catch (err) {
-    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
-  }
-}
-
-// Usage history older than N days. Only finished work goes: anything queued
-// or running belongs to the scheduler. Events cascade with their task.
-const WEB_TASK_TERMINAL_STATUSES = ["completed", "failed", "cancelled", "expired"];
-
-async function purgeAdminWebTasks(payload) {
-  const startedAt = Date.now();
-  const operation = "web_ai_tasks.purge";
-  const { client, result } = adminWriteClient(operation, startedAt);
-  if (!client) return result;
-
-  const days = Math.max(1, Math.min(3650, Math.floor(Number(payload?.olderThanDays ?? payload?.older_than_days ?? 30)) || 30));
-  const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
-
-  try {
-    const { data, error } = await client
-      .from("web_ai_tasks")
-      .delete()
-      .in("status", WEB_TASK_TERMINAL_STATUSES)
-      .lt("created_at", cutoff)
-      .select("id");
-    if (error) throw error;
-    logAdminData("info", "purge web tasks", { source: "supabase", status: "connected", days, deleted: (data || []).length });
-    return adminWriteResult(operation, startedAt, { deleted: (data || []).length, days, cutoff });
   } catch (err) {
     return adminWriteErrorResult(operation, err, Date.now() - startedAt);
   }
@@ -3823,12 +3799,12 @@ module.exports = {
   getAdminGrokProviderStatus,
   getAdminGpuWorkers,
   getAdminWebTaskUsage,
+  getAdminComputeUsageSummary,
   getAdminWorkerRegistrationCodes,
   createAdminWorkerRegistrationCode,
   revokeAdminWorkerRegistrationCode,
   deleteAdminWorkerRegistrationCode,
   purgeAdminWorkerRegistrationCodes,
-  purgeAdminWebTasks,
   setAdminGpuWorkerStatus,
   setAdminGpuWorkerAccessPolicy,
   setAdminGpuWorkerTier,

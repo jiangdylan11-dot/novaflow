@@ -428,13 +428,7 @@
                   <span id="computeUsageStatus" class="countPill"></span>
                   <div class="spacer"></div>
                   <div class="panelTools">
-                    <select id="computeUsagePurgeDays" class="tableSelect" title="清理多少天前的已完成记录">
-                      <option value="30">30 天前</option>
-                      <option value="90">90 天前</option>
-                      <option value="180">180 天前</option>
-                      <option value="365">一年前</option>
-                    </select>
-                    <button id="computePurgeUsage" class="btn secondary small" type="button" title="删除已完成、失败、取消或过期的旧记录" disabled>清理旧记录</button>
+                    <input id="computeUsageSearch" class="searchInput" type="search" placeholder="搜索用户记录" aria-label="搜索用户使用记录" />
                   </div>
                 </div>
                 <div class="tableViewport medium">
@@ -445,14 +439,15 @@
                         <th class="num">任务数</th>
                         <th>用过的算力节点</th>
                         <th>最近一次</th>
+                        <th class="actionsCol">操作</th>
                       </tr>
                     </thead>
                     <tbody id="computeUsageTableBody">
-                      <tr><td colspan="4"><div class="skeletonLine"></div></td></tr>
+                      <tr><td colspan="5"><div class="skeletonLine"></div></td></tr>
                     </tbody>
                   </table>
                 </div>
-                <div class="tableFootnote">谁、什么时候、用了哪台机器。不保存提示词正文和生成产物。清理只删除已结束的任务，排队和进行中的不受影响。</div>
+                <div class="tableFootnote">使用记录长期保留。点击“查看明细”按用户查看任务、节点、耗时和结果；不保存提示词正文和生成产物。</div>
               </section>
           </section>
 
@@ -484,6 +479,18 @@
               <div class="actions"><button id="saveOnlineConfig" class="btn primary" type="button">保存配置</button><button id="testOnlineConfig" class="btn secondary" type="button">测试连接</button></div>
             </div>
           </aside>
+        </div>
+
+        <div id="computeUsageDialog" class="modalOverlay" hidden>
+          <div class="modalPanel ledgerDialogPanel" role="dialog" aria-modal="true" aria-labelledby="computeUsageTitle" tabindex="-1">
+            <div class="modalHeader"><div class="modalTitle" id="computeUsageTitle">用户算力使用明细</div><button class="iconButton" type="button" data-dialog-close="computeUsageDialog" aria-label="关闭">×</button></div>
+            <div class="modalBody">
+              <div class="panelTools"><label>任务状态 <select id="computeUsageDetailStatus" class="tableSelect"><option value="">全部状态</option><option value="completed">已完成</option><option value="failed">失败</option><option value="processing">处理中</option><option value="queued">排队中</option><option value="assigned">已分配</option><option value="uploading">上传中</option><option value="created">已创建</option><option value="cancelled">已取消</option><option value="expired">已过期</option></select></label><button id="computeUsageDetailRefresh" class="btn secondary small" type="button">刷新</button></div>
+              <div class="tableViewport"><table class="dataTable computeDetailTable"><thead><tr><th>提交时间 / 任务编号</th><th>功能 / 模型</th><th>算力节点</th><th>状态 / 失败原因</th><th>执行耗时</th><th class="num">扣除积分</th></tr></thead><tbody id="computeUsageDetailBody"></tbody></table></div>
+              <div class="panelTools"><span id="computeUsageDetailCount" class="hint" role="status"></span><div class="spacer"></div><button id="computeUsageDetailPrevious" class="btn secondary small" type="button">上一页</button><button id="computeUsageDetailNext" class="btn secondary small" type="button">下一页</button></div>
+              <div class="hint">任务记录独立保留，删除账号或机器不会清除此处的历史。未分配机器的任务会明确标注。</div>
+            </div>
+          </div>
         </div>
 
         <!-- ============================ 抽屉：新建登录账号 ============================ -->
@@ -1249,6 +1256,11 @@
       .userCreditActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; white-space: nowrap; }
       .userCreditActions .btn { height: 26px; padding: 0 8px; font-size: 12px; }
       .modalPanel.ledgerDialogPanel { width: min(1180px, 100%); }
+      #computeUsageDialog .modalPanel { max-height:calc(100vh - 48px);overflow:auto; }
+      #computeUsageDialog .tableViewport { max-height:48vh; }
+      .computeDetailTable { min-width:980px; }
+      .computeDetailTable td { vertical-align:top; }
+      .computeDetailTable .hint { max-width:230px;white-space:normal;overflow-wrap:anywhere; }
       #creditLedgerDialog .modalBody { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
       #creditLedgerDialog .tableViewport { max-height: 48vh; flex-shrink: 0; }
       #creditLedgerDialog .dataTable { min-width: 760px; }

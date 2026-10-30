@@ -63,6 +63,7 @@ function registerLicenseAdminIpc() {
   registerAdminDataList("admin:data:ai_tasks:list", adminData.getAdminAiTasks);
   registerAdminDataList("admin:data:system_settings:list", adminData.getAdminSystemSettings);
   registerAdminDataList("admin:data:gpu_workers:list", adminData.getAdminGpuWorkers);
+  registerAdminDataList("admin:data:compute_usage:summary", adminData.getAdminComputeUsageSummary);
   ipcMain.handle("admin:data:web_task_usage:list", async (_evt, payload) => {
     try {
       const result = await adminData.getAdminWebTaskUsage(payload || {});
@@ -114,7 +115,6 @@ function registerLicenseAdminIpc() {
   registerAdminDataWrite("admin:data:gpu_workers:delete", adminData.deleteAdminGpuWorker);
   registerAdminDataWrite("admin:data:worker_codes:delete", adminData.deleteAdminWorkerRegistrationCode);
   registerAdminDataWrite("admin:data:worker_codes:purge", adminData.purgeAdminWorkerRegistrationCodes);
-  registerAdminDataWrite("admin:data:web_tasks:purge", adminData.purgeAdminWebTasks);
 
   ipcMain.handle("admin:data:provider_quotas:list", async (_evt, payload) => {
     try {

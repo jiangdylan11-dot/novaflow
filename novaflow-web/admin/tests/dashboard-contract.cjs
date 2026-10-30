@@ -44,6 +44,9 @@ assert(!indexHtml.includes('id="openCreditLedger"'), "user header must remove th
 for (const id of ['dashboardUsersMeta', 'dashboardWorkersMeta', 'dashboardRhConnection']) assert(indexHtml.includes(`id="${id}"`), "top metric status must remain available: " + id);
 assert(indexHtml.includes('id="backendConnectionDrawer"'), "backend connection settings must remain reachable");
 for (const id of ["computeMintDrawer", "computeCodesTableBody", "computeMintCode"]) assert(!indexHtml.includes(`id="${id}"`), "registration-code UI must be retired: " + id);
+for (const id of ["computePurgeUsage","computeUsagePurgeDays"]) assert(!indexHtml.includes(`id="${id}"`), "compute usage history must not expose cleanup: " + id);
+assert(!adminData.includes('async function purgeAdminWebTasks'), "compute usage history must not have a destructive write path");
+assert(indexHtml.includes('id="computeUsageDialog"'), "per-user usage details must be available");
 assert(!renderer.includes('loadAdminDataset("getAdminWorkerCodes")'), "node page must not load retired registration codes");
 assert(renderer.includes('workerPendingApproval'), "new unassigned nodes must be clearly pending approval");
 assert(indexHtml.includes('id="onlineSupabaseUrl"') && indexHtml.includes('id="onlineSecretKey"'), "backend connection fields must remain available");

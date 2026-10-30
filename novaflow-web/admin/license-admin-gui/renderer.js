@@ -1032,8 +1032,8 @@ function renderDashboardRecentActivity() {
       const time = textCell(stamp.text);
       time.title = stamp.title;
       tr.appendChild(time);
-      tr.appendChild(textCell(userAccountLabel(user) || user?.display_name || "-"));
-      tr.appendChild(textCell(worker?.worker_name || "尚未分配"));
+      tr.appendChild(textCell(userAccountLabel(user) || user?.display_name || task.user_account || "-"));
+      tr.appendChild(textCell(task.worker_name || worker?.worker_name || computeHistoryNode(task)));
       const badge = document.createElement("span");
       const status = String(task.status || "");
       badge.className = "badge " + (status === "completed" ? "active" : status === "failed" ? "error" : "info");
@@ -1554,7 +1554,7 @@ function renderComputeWorkers(workersResult) {
         const confirmed = await confirmByTyping({
           title: "删除算力节点",
           hint: name,
-          warning: "会删除这台节点的记录和它上报的模型清单；已完成任务的历史保留，只是不再关联到这台机器。再次接入需要重新登记并由后台审批。",
+          warning: "会删除这台节点和它上报的模型清单；使用历史及节点名称独立保留。再次接入需要重新登记并由后台审批。",
           label: "输入节点名称确认",
           expected: name,
           confirmText: "确认删除"
@@ -1596,85 +1596,71 @@ function renderComputeWorkers(workersResult) {
 // them are not even selected. Seeing that a user ran 40 generations on a
 // given node is an operations question; reading what they made is not, and
 // an admin screen is the wrong place to answer it by accident.
-function renderComputeUsage(usageResult, usersResult, workersResult) {
-  const status = $("computeUsageStatus");
-  const tasks = usageResult?.records || [];
-  const userById = new Map((usersResult?.records || []).map((u) => [String(u.id || ""), u]));
-  const workerById = new Map((workersResult?.records || []).map((w) => [String(w.id || ""), w]));
-
-  if (status) {
-    status.textContent = isErrorResult(usageResult)
-      ? computeErrorText(usageResult)
-      : tasks.length
-        ? tasks.length + " 条任务"
-        : "";
-  }
-  const purgeButton = $("computePurgeUsage");
-  if (purgeButton) purgeButton.disabled = !(usageResult?.source === "supabase" && usageResult?.status !== "error") || !tasks.length;
-
-  const byUser = new Map();
-  for (const task of tasks) {
-    const key = String(task.user_id || "");
-    if (!byUser.has(key)) {
-      byUser.set(key, { total: 0, failed: 0, workers: new Map(), latest: "" });
-    }
-    const row = byUser.get(key);
-    row.total += 1;
-    if (String(task.status || "") === "failed") row.failed += 1;
-    const workerId = String(task.assigned_worker_id || "");
-    if (workerId) {
-      const worker = workerById.get(workerId);
-      const name = worker?.worker_name || workerId.slice(0, 8);
-      row.workers.set(workerId, (row.workers.get(workerId) || 0) + 1);
-      row.workerNames = row.workerNames || new Map();
-      row.workerNames.set(workerId, name);
-    }
-    const at = String(task.created_at || "");
-    if (at > row.latest) row.latest = at;
-  }
-
-  const rows = [...byUser.entries()]
-    .sort((a, b) => b[1].total - a[1].total)
-    .map(([userId, row]) => {
-      const user = userById.get(userId);
-      const tr = document.createElement("tr");
-      tr.appendChild(textCell(userAccountLabel(user) || user?.display_name || userId.slice(0, 8) || "(未知用户)"));
-      tr.appendChild(textCell(
-        row.failed ? `${row.total}（失败 ${row.failed}）` : String(row.total)
-      ));
-      const names = [...(row.workerNames || new Map()).entries()]
-        .map(([id, name]) => name + " ×" + row.workers.get(id));
-      tr.appendChild(textCell(names.length ? names.join("、") : "-"));
-      tr.appendChild(textCell(row.latest ? formatDateTime(row.latest) : "-"));
-      return tr;
-    });
-
-  replaceRows(
-    "computeUsageTableBody",
-    rows,
-    4,
-    isUnconfiguredResult(usageResult) ? UNCONFIGURED_TEXT : isErrorResult(usageResult) ? computeErrorText(usageResult) : "还没有生成记录"
-  );
+let computeUsageSnapshot = { records: [] }, computeUsageUsers = new Map();
+let computeUsageDetail = { userId:'', name:'', offset:0, total:0, loading:false, sequence:0 };
+const COMPUTE_USAGE_PAGE_SIZE = 50;
+function computeHistoryNode(task) {
+  return task.worker_name || (task.assigned_worker_id ? '历史节点 · ' + task.assigned_worker_id.slice(0,8) : '未分配节点');
 }
-
-// Only finished task history is cleared by this operation.
-async function purgeComputeUsage() {
-  const button = $("computePurgeUsage");
-  const status = $("computeUsageStatus");
-  const days = Math.max(1, Number($("computeUsagePurgeDays")?.value || 30) || 30);
-  if (!confirm(`删除 ${days} 天前已完成、失败、取消或过期的生成记录？\n排队中和进行中的任务不会被删除。`)) return;
-  if (button) button.disabled = true;
+function renderComputeUsage(usageResult, usersResult) {
+  if (usageResult) computeUsageSnapshot = usageResult;
+  if (usersResult) computeUsageUsers = new Map((usersResult.records || []).map(user=>[user.id,user]));
+  const result = computeUsageSnapshot, records = result.records || [];
+  const total = records.reduce((sum,row)=>sum+Number(row.total_tasks || 0),0);
+  setText('computeUsageStatus',isErrorResult(result) ? computeErrorText(result) : total+' 条任务 · 长期保留');
+  const query = ($('computeUsageSearch')?.value || '').trim().toLocaleLowerCase();
+  const rows = records.filter(row=>{
+    const user=computeUsageUsers.get(row.user_id);
+    return !query || [userAccountLabel(user),user?.display_name,row.user_account,row.user_id].filter(Boolean).join(' ').toLocaleLowerCase().includes(query);
+  }).map(row=>{
+    const user=computeUsageUsers.get(row.user_id), name=userAccountLabel(user)||user?.display_name||row.user_account||row.user_id.slice(0,8);
+    const tr=document.createElement('tr');tr.appendChild(textCell(name));
+    tr.appendChild(textCell(String(row.total_tasks)+(Number(row.failed_tasks)>0?'（失败 '+row.failed_tasks+'）':'')));
+    tr.appendChild(textCell((row.workers || []).map(node=>(node.name || '历史节点 · '+node.id.slice(0,8))+' ×'+node.tasks).join('、') || '未分配节点'));
+    tr.appendChild(textCell(row.latest_at?formatDateTime(row.latest_at):'—'));
+    const detail=document.createElement('button');detail.type='button';detail.className='btn secondary small';detail.textContent='查看明细';
+    detail.addEventListener('click',()=>openComputeUsageDetail(row.user_id,name));tr.appendChild(nodeCell(detail));return tr;
+  });
+  replaceRows('computeUsageTableBody',rows,5,isErrorResult(result)?computeErrorText(result):query?'没有匹配的用户记录':'暂无使用记录');
+}
+function openComputeUsageDetail(userId,name) {
+  computeUsageDetail = {userId,name,offset:0,total:0,loading:false,sequence:computeUsageDetail.sequence+1};
+  $('computeUsageDetailStatus').value='';setText('computeUsageTitle',name+' · 算力使用明细');
+  openDataDialog('computeUsageDialog');void loadComputeUsageDetail();
+}
+async function loadComputeUsageDetail() {
+  const sequence=++computeUsageDetail.sequence;
+  const userId=computeUsageDetail.userId, offset=computeUsageDetail.offset;
+  computeUsageDetail.loading=true;
+  $('computeUsageDetailPrevious').disabled=true;$('computeUsageDetailNext').disabled=true;$('computeUsageDetailRefresh').disabled=true;
+  setText('computeUsageDetailCount','正在读取…');replaceRows('computeUsageDetailBody',[],6,'正在读取任务明细…');
   try {
-    const res = await window.adminAPI.purgeAdminWebTasks({ olderThanDays: days });
-    if (!res?.ok || res.result?.ok === false) {
-      throw new Error(String(res?.error || res?.result?.error || "清理失败"));
-    }
-    toast(`已清理 ${formatNumber(res.result?.deleted || 0)} 条生成记录`);
-    await loadComputeData();
-    await loadAdminData();
-  } catch (err) {
-    if (status) status.textContent = String(err?.message || err);
-    if (button) button.disabled = false;
+    const response=await window.adminAPI.getAdminWebTaskUsage({userId,offset,limit:COMPUTE_USAGE_PAGE_SIZE,status:$('computeUsageDetailStatus').value});
+    if(sequence!==computeUsageDetail.sequence)return;
+    if(!response?.ok || isErrorResult(response.result))throw Error(response?.error || computeErrorText(response.result) || '读取失败');
+    const result=response.result || {}, tasks=result.records || [];
+    computeUsageDetail.total=Number(result.total || 0);
+    const rows=tasks.map(task=>{
+      const tr=document.createElement('tr');
+      const cell=(primary,secondary)=>{const td=document.createElement('td');td.appendChild(Object.assign(document.createElement('div'),{textContent:primary}));if(secondary)td.appendChild(Object.assign(document.createElement('div'),{className:'hint',textContent:secondary}));return td;};
+      tr.appendChild(cell(formatDateTime(task.created_at),task.id));
+      tr.appendChild(cell(({image:'图像生成',video:'视频生成',renderer_workflow:'工作流计算',matting:'抠图',prompt_assistant:'提示词助手'})[task.task_type]||task.task_type||'—',task.model_id||''));
+      tr.appendChild(textCell(computeHistoryNode(task)));
+      tr.appendChild(cell(WEB_TASK_STATUS_TEXT[task.status]||task.status,[task.error_code,task.error_message].filter(Boolean).join(' · ')));
+      const ended=task.completed_at||task.failed_at||task.cancelled_at;
+      const elapsed=ended&&task.started_at?Date.parse(ended)-Date.parse(task.started_at):NaN;
+      tr.appendChild(cell(Number.isFinite(elapsed)&&elapsed>=0?durationText(elapsed):'—',Number(task.attempt_count)>1?'尝试 '+task.attempt_count+' 次':''));
+      tr.appendChild(textCell(formatCreditAmount(task.charged_credit_cost),'num'));return tr;
+    });
+    replaceRows('computeUsageDetailBody',rows,6,'该用户在此状态下暂无任务记录');
+    setText('computeUsageDetailCount','共 '+formatNumber(computeUsageDetail.total)+' 条 · 第 '+(Math.floor(offset/COMPUTE_USAGE_PAGE_SIZE)+1)+' 页');
+    $('computeUsageDetailPrevious').disabled=offset===0;
+    $('computeUsageDetailNext').disabled=!result.hasMore;
+  } catch(error) {
+    if(sequence!==computeUsageDetail.sequence)return;
+    replaceRows('computeUsageDetailBody',[],6,'读取失败：'+String(error?.message||error));setText('computeUsageDetailCount','读取失败，请重试');
+  } finally {
+    if(sequence===computeUsageDetail.sequence){computeUsageDetail.loading=false;$('computeUsageDetailRefresh').disabled=false;}
   }
 }
 
@@ -1682,7 +1668,7 @@ async function loadComputeData() {
   try {
     const workers = await loadAdminDataset("getAdminGpuWorkers", "computeDataBadge");
     const users = await loadAdminDataset("getAdminUsers");
-    const usage = await loadAdminDataset("getAdminWebTaskUsage");
+    const usage = await loadAdminDataset("getAdminComputeUsageSummary");
     computeState = { users: users.records || [], writable: users.source === "supabase" && users.status !== "error" };
     renderComputeWorkers(workers);
     renderComputeUsage(usage, users, workers);
@@ -2317,7 +2303,11 @@ async function init() {
       void submitMemberAdjust();
     }
   });
-  $("computePurgeUsage")?.addEventListener("click", () => { void purgeComputeUsage(); });
+  $('computeUsageSearch').addEventListener('input',()=>renderComputeUsage());
+  $('computeUsageDetailStatus').addEventListener('change',()=>{computeUsageDetail.offset=0;void loadComputeUsageDetail();});
+  $('computeUsageDetailRefresh').addEventListener('click',()=>{void loadComputeUsageDetail();});
+  $('computeUsageDetailPrevious').addEventListener('click',()=>{if(computeUsageDetail.loading)return;computeUsageDetail.offset=Math.max(0,computeUsageDetail.offset-COMPUTE_USAGE_PAGE_SIZE);void loadComputeUsageDetail();});
+  $('computeUsageDetailNext').addEventListener('click',()=>{if(computeUsageDetail.loading)return;computeUsageDetail.offset+=COMPUTE_USAGE_PAGE_SIZE;void loadComputeUsageDetail();});
   $("saveRunninghubRuntimeConfig").addEventListener("click", async () => {
     await saveProviderRuntimeConfig("runninghub");
   });
@@ -2359,6 +2349,7 @@ async function init() {
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!$("passwordEditDialog").hidden) closePasswordEditDialog();
+    else if (!$("computeUsageDialog").hidden) closeDataDialog("computeUsageDialog");
     else if (!$("creditLedgerDialog").hidden) closeDataDialog("creditLedgerDialog");
     else if (!$("memberAdjustDialog").hidden) closeDataDialog("memberAdjustDialog");
     else closeOpenDrawers();
@@ -2367,7 +2358,7 @@ async function init() {
   document.querySelectorAll("[data-dialog-close]").forEach((button) => {
     button.addEventListener("click", () => closeDataDialog(button.dataset.dialogClose));
   });
-  for (const id of ["creditLedgerDialog", "memberAdjustDialog"]) {
+  for (const id of ["creditLedgerDialog", "memberAdjustDialog", "computeUsageDialog"]) {
     $(id).addEventListener("click", (event) => { if (event.target === $(id)) closeDataDialog(id); });
     $(id).addEventListener("keydown", (event) => {
       if (event.key !== "Tab") return;
