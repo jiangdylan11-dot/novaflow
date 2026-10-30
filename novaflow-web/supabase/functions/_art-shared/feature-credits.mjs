@@ -22,7 +22,8 @@ export const DEFAULT_SETTLE_CAP_CREDITS = 40;
 // not this table. Text is about one token per two characters, plus the system
 // prompt and the request's max output budget. An image adds its usual token
 // weight. Video and audio are only named in the prompt, so they add none.
-// usd_per_million_tokens turns that into a USD hold. The per-message cap is
+// Known Grok 4.7 calls estimate input and output separately without assuming
+// cache hits; other models use usd_per_million_tokens. The per-message cap is
 // xiaotao_online.message_cap_credits.
 export const DEFAULT_XIAOTAO_ONLINE_ESTIMATE = Object.freeze({
   message_cap_credits: 80,
@@ -291,6 +292,22 @@ function clampOnlineInt(value, min, max, fallback) {
   return Number.isInteger(amount) && amount >= min && amount <= max ? amount : fallback;
 }
 
+function normalizeGrok47Rates(input) {
+  const stored = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const rate = (key, fallback) => {
+    const value = stored[key];
+    if (value == null || value === '' || typeof value === 'boolean') return fallback;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 && number <= 1000 ? number : fallback;
+  };
+  const threshold = Number(stored.high_input_threshold);
+  return {
+    input: rate('input', 1.7), output: rate('output', 5.1), cached_input: rate('cached_input', 0.425),
+    high_input: rate('high_input', 3.4), high_output: rate('high_output', 10.2), high_cached_input: rate('high_cached_input', 0.425),
+    high_input_threshold: Number.isSafeInteger(threshold) && threshold > 0 ? threshold : 200000
+  };
+}
+
 export function xiaotaoOnlinePolicy(config) {
   return normalizeCreditConfig(config).xiaotao_online;
 }
@@ -305,6 +322,7 @@ function normalizeXiaotaoOnline(input) {
     chars_per_token: clampOnlineInt(stored.chars_per_token, 1, 100, defaults.chars_per_token),
     output_tokens: clampOnlineInt(stored.output_tokens, 0, 100000, defaults.output_tokens),
     usd_per_million_tokens: Number.isFinite(usd) && usd >= 0 && usd <= 1000 ? usd : defaults.usd_per_million_tokens,
+    grok_4_7_rates: normalizeGrok47Rates(stored.grok_4_7_rates),
     file_tokens: {
       image: clampOnlineInt(files.image, 0, 1000000, defaults.file_tokens.image),
       video: clampOnlineInt(files.video, 0, 1000000, defaults.file_tokens.video),
@@ -331,7 +349,7 @@ export function xiaotaoOnlineSystemPrompt({ vision = false, promptLanguage = 'en
 // Reservation only. A longer message or a heavier file raises the hold because
 // it is expected to use more tokens. Nothing here is a flat per-file fee.
 // outputTokens is the request max_tokens. The default is that budget, 2048.
-export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, files = [], outputTokens, config, promptLanguage = 'en' } = {}) {
+export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, files = [], outputTokens, config, model, promptLanguage = 'en' } = {}) {
   const policy = xiaotaoOnlinePolicy(config);
   const counts = { image: 0, video: 0, audio: 0 };
   let fileTokens = 0;
@@ -346,8 +364,14 @@ export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, 
   const systemText = !active ? '' : system == null ? xiaotaoOnlineSystemPrompt({ vision: counts.image + counts.video + counts.audio > 0, promptLanguage }) : String(system);
   const chars = userChars + systemText.length;
   const outputBudget = outputTokens == null ? policy.output_tokens : clampOnlineInt(outputTokens, 0, 100000, policy.output_tokens);
-  const tokens = Math.ceil(chars / policy.chars_per_token) + outputBudget + fileTokens;
-  const usd = tokens / 1000000 * policy.usd_per_million_tokens;
+  const inputTokens = Math.ceil(chars / policy.chars_per_token) + fileTokens;
+  const tokens = inputTokens + outputBudget;
+  const grok47 = /^(?:xai\/)?grok-4\.7$/i.test(String(model || '').trim());
+  const rates = policy.grok_4_7_rates;
+  const high = inputTokens >= rates.high_input_threshold;
+  const usd = grok47
+    ? (inputTokens * (high ? rates.high_input : rates.input) + outputBudget * (high ? rates.high_output : rates.output)) / 1000000
+    : tokens / 1000000 * policy.usd_per_million_tokens;
   const raw = creditsFromUsd(usd, config);
   const credits = active ? Math.max(1, Math.min(policy.message_cap_credits, Math.max(0, raw || 0))) : 0;
   return { tokens, usd, rawCredits: raw, credits, counts, cap: policy.message_cap_credits };
@@ -356,10 +380,11 @@ export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, 
 // 多退少补: the desired charge is the actual USD amount, bounded by the
 // per-message cap, and is allowed to exceed the reservation. The SQL settlement
 // refunds the surplus or tops up the shortfall without taking the balance negative.
-// Money fields win. When they are null, a positive token count (total_tokens, or
-// prompt plus completion, nested or top-level) prices at usd_per_million_tokens.
-// A missing usage record still charges the reserved estimate.
-export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = {}) {
+// Money fields win. Grok 4.7 token estimates use RunningHub's published input,
+// output and cache rates; these estimates are not a provider invoice. An
+// incomplete Grok usage record is unpriced and refunded; other models retain
+// the legacy total-token fallback or reserved estimate.
+export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config, model } = {}) {
   const policy = xiaotaoOnlinePolicy(config);
   const normalized = normalizeCreditConfig(config);
   const cap = policy.message_cap_credits;
@@ -369,9 +394,19 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = 
   let usd = parsed.usd;
   let pricingSource = 'rh_consume_money';
   let usageMissing = false;
+  let tokenRateEstimate = null;
+  const grok47 = /^(?:xai\/)?grok-4\.7$/i.test(String(model || '').trim());
   if (usd == null) {
     const count = countedUsageTokens(tokens);
-    if (count == null) usageMissing = true;
+    if (grok47) {
+      tokenRateEstimate = estimateRunningHubGrok47(tokens, model, config);
+      if (tokenRateEstimate) {
+        usd = tokenRateEstimate.usd;
+        pricingSource = 'token_rate_estimate';
+      } else {
+        usageMissing = true;
+      }
+    } else if (count == null) usageMissing = true;
     else {
       usd = count / 1000000 * policy.usd_per_million_tokens;
       pricingSource = 'token_usage';
@@ -383,26 +418,27 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = 
     consumeMoney: usage && typeof usage === 'object' ? (usage.consumeMoney ?? null) : null,
     moneySource: parsed.source || null,
     usdCost: usd,
+    tokenRateEstimate,
     creditsPerUsd: normalized.credits_per_usd,
     markup: normalized.token_billing.markup,
     settleCap: cap,
     reservedCredits: reserved
   };
   if (usageMissing) {
-    const credits = Math.min(reserved, cap);
+    const credits = grok47 ? 0 : Math.min(reserved, cap);
     return {
       ...base,
       rawCredits: null,
       credits,
-      capped: reserved > cap,
-      settleCapped: reserved > cap,
+      capped: !grok47 && reserved > cap,
+      settleCapped: !grok47 && reserved > cap,
       reserveCapped: false,
       toppedUp: false,
       shortfall: 0,
       refund: Math.max(0, reserved - credits),
-      pricingSource: 'estimate_cap',
+      pricingSource: grok47 ? 'unpriced_usage' : 'estimate_cap',
       usageMissing: true,
-      warning: reserved > cap
+      warning: grok47 ? 'Grok 4.7 usage is incomplete or invalid; no credits charged' : reserved > cap
         ? `thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate capped at ${credits}`
         : 'thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate'
     };
@@ -494,6 +530,32 @@ function finiteTokenCount(value) {
   const amount = Number(text);
   if (!Number.isFinite(amount) || amount < 0) return null;
   return Math.round(amount);
+}
+
+// Prices in USD per million tokens, published by RunningHub on 2026-10-30.
+// xiaotao_online.grok_4_7_rates can override these rates as prices change.
+// A missing cache detail means zero known cached tokens, not proof of no hit.
+function estimateRunningHubGrok47(record, model, config) {
+  if (!record || !/^(?:xai\/)?grok-4\.7$/i.test(String(model || '').trim())) return null;
+  const input = finiteTokenCount(record.input_tokens ?? record.prompt_tokens);
+  const output = finiteTokenCount(record.output_tokens ?? record.completion_tokens);
+  const total = finiteTokenCount(record.total_tokens);
+  if (input == null || output == null || input + output <= 0 || (total != null && total !== input + output)) return null;
+  const details = record.input_tokens_details ?? record.prompt_tokens_details;
+  const cacheRaw = details && typeof details === 'object' ? details.cached_tokens : undefined;
+  const cached = cacheRaw == null ? 0 : finiteTokenCount(cacheRaw);
+  if (cached == null || cached > input) return null;
+  const stored = xiaotaoOnlinePolicy(config).grok_4_7_rates;
+  const threshold = stored.high_input_threshold;
+  const high = input >= threshold;
+  const inputRate = high ? stored.high_input : stored.input;
+  const outputRate = high ? stored.high_output : stored.output;
+  const cachedRate = high ? stored.high_cached_input : stored.cached_input;
+  return {
+    usd: ((input - cached) * inputRate + cached * cachedRate + output * outputRate) / 1000000,
+    inputTokens: input, outputTokens: output, cachedTokens: cached, cacheKnown: cacheRaw != null,
+    inputRate, outputRate, cachedRate, highInputThreshold: threshold
+  };
 }
 
 // Positive counts only. A normalized usage record fills missing counters with 0,
