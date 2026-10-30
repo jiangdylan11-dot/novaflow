@@ -103,6 +103,25 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     assert.equal(await frame.locator('#actualSizeButton').textContent(), '25%');
     await frame.locator('#actualSizeButton').click();
     assert.equal(await frame.evaluate(() => state.previewZoom), 1);
+    await frame.evaluate(() => { const item = getActiveSceneItem(); item.x = 120; item.y = 60; applySceneItemTransform(item); });
+    await frame.getByRole('button', { name: '重置位置', exact: true }).click();
+    assert.deepEqual(await frame.evaluate(() => ({ x: getActiveSceneItem().x, y: getActiveSceneItem().y })), { x: 0, y: 0 });
+    const backgroundChooserEvent = page.waitForEvent('filechooser');
+    await frame.getByRole('button', { name: '上传背景', exact: true }).click();
+    const backgroundChooser = await backgroundChooserEvent;
+    const background = fixtureFiles.find((file) => file.name.endsWith('.png'));
+    await backgroundChooser.setFiles({ name: background.name, mimeType: 'image/png', buffer: Buffer.from(background.bytes) });
+    await frame.waitForFunction(() => !elements.backgroundImage.hidden && !elements.clearBackgroundButton.disabled);
+    await frame.getByRole('button', { name: '清除背景', exact: true }).click();
+    assert(await frame.evaluate(() => elements.backgroundImage.hidden && elements.clearBackgroundButton.disabled));
+    const actionsPosition = await frame.evaluate(() => {
+      const actions = document.querySelector('.canvas-actions').getBoundingClientRect();
+      const canvas = elements.playerMount.getBoundingClientRect();
+      const timeline = document.querySelector('.stage-controls').getBoundingClientRect();
+      return { centered: Math.abs(actions.x + actions.width / 2 - canvas.x - canvas.width / 2) < 1, aboveTimeline: actions.bottom < timeline.top };
+    });
+    assert.deepEqual(actionsPosition, { centered: true, aboveTimeline: true });
+    assert.equal(await frame.locator('.sidebar #resetTransformButton,.sidebar #pickBackgroundButton,.sidebar #clearBackgroundButton').count(), 0);
     await frame.locator('#autoFitButton').click();
     assert(await frame.evaluate(() => {
       const mount = elements.playerMount.getBoundingClientRect();

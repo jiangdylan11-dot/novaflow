@@ -6,7 +6,7 @@
     <title>Spine 工程查看器</title>
     <link id="spine-runtime-style" rel="stylesheet" href="" />
     <link id="app-style" rel="stylesheet" href="styles.css?v=20260915-blend-backdrop" />
-    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-2" />
+    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-3" />
   </head>
   <body>
     <div class="app">
@@ -26,10 +26,7 @@
               <option value="">画布为空</option>
             </select>
           </label>
-          <div class="button-row">
-            <button id="resetTransformButton" class="soft-button" type="button" disabled>重置位置</button>
-            <button id="removeAnimationButton" class="soft-button danger-button" type="button" disabled>移除当前</button>
-          </div>
+          <button id="removeAnimationButton" class="soft-button danger-button" type="button" disabled>移除当前</button>
           <div id="detectedVersion" class="hint">未检测到版本</div>
           <div id="statusText" class="status">等待文件</div>
         </section>
@@ -39,16 +36,6 @@
           <div id="layerList" class="layer-list" aria-label="动画层级">
             <div class="layer-empty">暂无动画</div>
           </div>
-        </section>
-
-        <section class="panel stack">
-          <div class="section-heading">画布背景</div>
-          <div class="button-row">
-            <button id="pickBackgroundButton" class="soft-button" type="button">上传背景</button>
-            <button id="clearBackgroundButton" class="soft-button" type="button" disabled>清除背景</button>
-          </div>
-          <input id="backgroundPicker" class="visually-hidden" type="file" accept="image/*" />
-          <div id="backgroundHint" class="hint">未设置背景</div>
         </section>
 
         <section class="panel stack">
@@ -85,6 +72,19 @@
             <button id="actualSizeButton" class="actual-size-button" type="button" disabled title="恢复 100% 原始尺寸">100%</button>
             <button id="autoFitButton" type="button" disabled title="完整显示画布中的工程和背景">自动适配</button>
             <button id="premultiplyToggle" type="button" aria-pressed="true" disabled title="切换当前动画的预乘 Alpha">预乘 Alpha</button>
+          </div>
+          <div class="canvas-actions" role="toolbar" aria-label="画布操作">
+            <button id="resetTransformButton" type="button" disabled title="重置位置" aria-label="重置位置">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><path d="M12 3v4m0 10v4M3 12h4m10 0h4"/></svg>
+            </button>
+            <button id="pickBackgroundButton" type="button" title="上传背景" aria-label="上传背景" aria-describedby="backgroundHint">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+            </button>
+            <button id="clearBackgroundButton" type="button" disabled title="清除背景" aria-label="清除背景">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M21 15V5a2 2 0 0 0-2-2H9M3 9v10a2 2 0 0 0 2 2h14M5 21l5-5m4-4 2-2 5 5"/></svg>
+            </button>
+            <input id="backgroundPicker" class="visually-hidden" type="file" accept="image/*" />
+            <output id="backgroundHint" class="visually-hidden">未设置背景</output>
           </div>
           <div id="canvasHint" class="canvas-hint" hidden>拖动当前动画 · 滚轮全局缩放 · 双击重置位置</div>
         </div>

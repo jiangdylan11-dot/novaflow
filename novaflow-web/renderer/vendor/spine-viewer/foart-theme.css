@@ -131,6 +131,10 @@ input[type='checkbox'] { width: 13px; height: 13px; }
 .canvas-toolbar button, .canvas-toolbar .actual-size-button { position: static; min-height: 28px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: #bdbdbd; font-size: 12px; font-weight: 400; box-shadow: none; }
 .canvas-toolbar button:hover:not(:disabled) { background: #272727; color: #eaeaea; }
 .canvas-toolbar button[aria-pressed='true'] { background: #1c4136; color: #6ee7ce; }
+.canvas-actions { position: absolute; z-index: 6; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #303030; border-radius: 8px; background: #171717; }
+.canvas-actions button { display: inline-flex; align-items: center; justify-content: center; width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 6px; border: 0; border-radius: 5px; background: transparent; color: #bdbdbd; }
+.canvas-actions button:hover:not(:disabled) { background: #272727; color: #eaeaea; }
+.canvas-actions svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .canvas-hint { background: #151515; border: 0; color: #929292; font-size: 11px; }
 .empty-state { color: #777; }
 .empty-state strong { color: #bdbdbd; font-size: 14px; font-weight: 400; }
