@@ -3486,6 +3486,46 @@ async function readSettingValue(client, key) {
   return data?.value && typeof data.value === "object" ? data.value : {};
 }
 
+// These are operator-entered assumptions, not historical receipts or actual
+// profit. Keep them in their own setting so saving them cannot change prices,
+// provider configuration, or the existing ambiguous credits_to_cny field.
+const PROFIT_ESTIMATE_SETTING = "feature_credit_profit_estimate";
+function profitEstimateAmount(value, label, strict = false) {
+  if (value == null || value === "") return null;
+  const n = typeof value === "boolean" || typeof value === "object" ? NaN : Number(value);
+  if (!Number.isFinite(n) || n <= 0 || n > 1000000) {
+    if (strict) throw new Error(`${label}必须是大于 0 且不超过 1000000 的数字，留空表示未设置`);
+    return null;
+  }
+  return n;
+}
+function normalizeProfitEstimateSettings(value, strict = false) {
+  const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    credit_price_cny: profitEstimateAmount(input.credit_price_cny, "每积分参考售价", strict),
+    usd_cny: profitEstimateAmount(input.usd_cny, "美元兑人民币参考汇率", strict)
+  };
+}
+async function getProfitEstimateSettings() {
+  const { client, error } = getAdminClient();
+  if (!client) throw new Error(error ? `后台连接失败：${String(error.message || error)}` : "后台尚未连接，无法读取毛利估算参数");
+  return normalizeProfitEstimateSettings(await readSettingValue(client, PROFIT_ESTIMATE_SETTING));
+}
+async function saveProfitEstimateSettings(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)
+    || !Object.hasOwn(payload, "credit_price_cny") || !Object.hasOwn(payload, "usd_cny")) {
+    throw new Error("请同时提供积分参考售价和汇率，未设置的字段请留空");
+  }
+  const next = normalizeProfitEstimateSettings(payload, true);
+  const { client, error } = getAdminClient();
+  if (!client) throw new Error(error ? `后台连接失败：${String(error.message || error)}` : "后台尚未连接，无法保存毛利估算参数");
+  const existing = await readSettingValue(client, PROFIT_ESTIMATE_SETTING);
+  const saved = await upsertAdminSystemSetting({ key: PROFIT_ESTIMATE_SETTING, value: { ...existing, ...next } });
+  if (!saved?.ok || saved.status !== "connected") throw new Error(saved?.error || "保存毛利估算参数失败");
+  if (!saved.record || !saved.record.value || typeof saved.record.value !== "object") throw new Error("服务器未确认毛利估算参数，保存结果未知");
+  return normalizeProfitEstimateSettings(saved.record?.value);
+}
+
 async function readFeatureCreditConfig() {
   const { normalizeCreditConfig } = await loadFeatureCredits();
   const clientState = getAdminClient();
@@ -3770,6 +3810,8 @@ module.exports = {
   getFeatureCreditAdmin,
   readFeatureCreditConfig,
   saveFeatureCreditAdmin,
+  getProfitEstimateSettings,
+  saveProfitEstimateSettings,
   queryCreditLedger,
   callFeatureCreditRpc,
   migrateGrokQuotaToCredits

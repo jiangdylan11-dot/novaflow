@@ -927,6 +927,29 @@ const WEB_TASK_STATUS_TEXT = {
 let dashboardActivityTab = "ledger";
 let dashboardSnapshot = null;
 let rhRefreshLockedUntil = 0;
+let profitEstimateSettings = null;
+
+// Only a reference calculation: no payment, gifted-credit, historical-price,
+// tax or operating-expense attribution is available in the ledger.
+function estimatedLedgerMargin(row, settings = profitEstimateSettings) {
+  const numeric = (value) => value == null || value === "" || typeof value === "boolean" ? NaN : Number(value);
+  const price = numeric(settings?.credit_price_cny), exchange = numeric(settings?.usd_cny);
+  const credits = numeric(row?.settled_credits), costUsd = numeric(row?.rh_cost_usd);
+  const feature = String(row?.feature || "").toLowerCase();
+  const currency = String(row?.rh_cost_currency || "USD").toUpperCase();
+  if (row?.status !== "settled" || !feature || feature === "admin_adjust" || feature === "quota_migration" || feature === "local" || /^local[_-]/.test(feature)
+      || !(Number.isFinite(price) && price > 0 && Number.isFinite(exchange) && exchange > 0)
+      || !(Number.isFinite(credits) && credits > 0 && Number.isFinite(costUsd) && costUsd >= 0) || currency !== "USD") return null;
+  const income = credits * price, cost = costUsd * exchange, margin = income - cost;
+  return [income, cost, margin].every(Number.isFinite) ? { income, cost, margin } : null;
+}
+
+function estimatedCnyCell(value) {
+  const cell = textCell(value == null ? "—" : `¥${value.toFixed(4)}`);
+  cell.classList.add("num");
+  cell.title = "按当前参考售价与汇率估算；赠分、历史价格、手续费及其他费用未计入，RH 成本可能是估算。";
+  return cell;
+}
 
 function formatUsdAmount(value) {
   if (value == null || value === "") return null;
@@ -1073,9 +1096,17 @@ function renderDashboardRecentActivity() {
     empty("暂无已结算积分记录", "实际发生积分变动后显示在这里");
     return;
   }
+  const estimates = rows.map((row) => estimatedLedgerMargin(row)).filter(Boolean);
+  const recentMargin = document.createElement("div");
+  recentMargin.className = "cardHint";
+  const total = estimates.reduce((sum, item) => sum + item.margin, 0);
+  const amount = estimates.length && Number.isFinite(total) ? `¥${total.toFixed(4)}` : "—";
+  recentMargin.textContent = `最近流水预估毛利：${amount}（可计算 ${estimates.length} / 显示 ${rows.length} 条）`;
+  recentMargin.title = "仅统计下方显示的流水，按当前参考售价和汇率估算；赠分、历史售价、手续费及其他费用未计入，不是净利润。";
+  container.appendChild(recentMargin);
   const table = document.createElement("table");
   table.className = "dataTable activityTable";
-  table.innerHTML = "<thead><tr><th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class=\"num\">积分</th><th class=\"num\">估算 RH 成本</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class=\"num\">积分</th><th class=\"num\">估算 RH 成本</th><th class=\"num\">参考收入（元）</th><th class=\"num\">预估毛利（元）</th></tr></thead>";
   const body = document.createElement("tbody");
   rows.forEach((row) => {
     const stamp = activityStamp(row.created_at);
@@ -1093,7 +1124,11 @@ function renderDashboardRecentActivity() {
     tr.appendChild(credit);
     const cost = textCell(row.rh_cost_usd == null || row.rh_cost_usd === "" ? "-" : formatUsdAmount(row.rh_cost_usd) || "-");
     cost.classList.add("num");
+    if (row.rh_cost_usd != null && row.rh_cost_usd !== "") cost.title = `${row.rh_cost_usd} USD（可能为估算）`;
     tr.appendChild(cost);
+    const estimate = estimatedLedgerMargin(row);
+    tr.appendChild(estimatedCnyCell(estimate?.income));
+    tr.appendChild(estimatedCnyCell(estimate?.margin));
     body.appendChild(tr);
   });
   table.appendChild(body);
@@ -1780,7 +1815,7 @@ async function loadAdminData() {
     renderProviderRuntimeConfigControls(null, null, runninghubStatus);
     syncCreditAdjustment(users, credits);
     renderDashboard({ users, credits, providers, settings, runninghubStatus, usage, workers, ledger });
-    await renderFeatureCreditAdmin();
+    await Promise.all([renderFeatureCreditAdmin(), loadProfitEstimateSettings()]);
   } catch (err) {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
@@ -2806,6 +2841,7 @@ async function init() {
   $("checkRunninghubProvider").addEventListener("click", checkRunningHubProvider);
   $("refreshDomesticBalance")?.addEventListener("click", () => { void refreshDomesticBalance(); });
   $("saveFeatureCredits")?.addEventListener("click", () => { void saveFeatureCreditForm(); });
+  $("saveProfitEstimate")?.addEventListener("click", () => { void saveProfitEstimateSettings(); });
   $("queryCreditLedger")?.addEventListener("click", () => { void queryLedger(false); });
   $("exportCreditLedger")?.addEventListener("click", () => { void queryLedger(true); });
   $("runQuotaMigration")?.addEventListener("click", () => { void runQuotaMigration(); });
@@ -3116,6 +3152,44 @@ function setIfIdle(id, value) {
   node.value = value == null ? "" : String(value);
 }
 
+async function loadProfitEstimateSettings() {
+  try {
+    if (typeof window.adminAPI?.getProfitEstimateSettings !== "function") throw new Error("后台暂不支持毛利估算设置");
+    const response = await window.adminAPI.getProfitEstimateSettings();
+    if (!response?.ok) throw new Error(response?.error || "读取失败");
+    profitEstimateSettings = response.result || null;
+    setIfIdle("profitCreditPriceCny", profitEstimateSettings?.credit_price_cny);
+    setIfIdle("profitUsdCny", profitEstimateSettings?.usd_cny);
+    setText("profitEstimateStatus", profitEstimateSettings?.credit_price_cny && profitEstimateSettings?.usd_cny ? "已读取" : "未设置");
+    renderDashboardRecentActivity();
+    return true;
+  } catch (error) {
+    profitEstimateSettings = null;
+    setIfIdle("profitCreditPriceCny", null);
+    setIfIdle("profitUsdCny", null);
+    setText("profitEstimateStatus", String(error?.message || "读取失败"));
+    renderDashboardRecentActivity();
+    return false;
+  }
+}
+
+async function saveProfitEstimateSettings() {
+  try {
+    if (typeof window.adminAPI?.saveProfitEstimateSettings !== "function") throw new Error("后台暂不支持毛利估算设置");
+    const response = await window.adminAPI.saveProfitEstimateSettings({
+      credit_price_cny: $("profitCreditPriceCny")?.value ?? "",
+      usd_cny: $("profitUsdCny")?.value ?? ""
+    });
+    if (!response?.ok) throw new Error(response?.error || "保存失败");
+    profitEstimateSettings = response.result || null;
+    setText("profitEstimateStatus", "已保存");
+    renderDashboardRecentActivity();
+    if ($("creditLedgerDialog") && !$("creditLedgerDialog").hidden) void queryLedger(false);
+  } catch (error) {
+    setText("profitEstimateStatus", String(error?.message || "保存失败"));
+  }
+}
+
 function renderFeaturePriceFields(prices) {
   const host = $("featureCreditPrices");
   if (!host) return;
@@ -3292,7 +3366,7 @@ let ledgerQuerySequence = 0;
 function showLedgerMessage(message) {
   const row = document.createElement("tr");
   const cell = textCell(message);
-  cell.colSpan = 7;
+  cell.colSpan = 9;
   row.appendChild(cell);
   $("creditLedgerBody").replaceChildren(row);
 }
@@ -3316,7 +3390,7 @@ async function queryLedger(download) {
       if (!records.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 7;
+        td.colSpan = 9;
         td.textContent = "没有匹配的流水";
         tr.appendChild(td);
         body.appendChild(tr);
@@ -3353,7 +3427,11 @@ async function queryLedger(download) {
           const cost = document.createElement("td");
           cost.className = "num";
           cost.textContent = row.rh_cost_usd == null || row.rh_cost_usd === "" ? "" : (formatUsdAmount(row.rh_cost_usd) || "");
+          if (row.rh_cost_usd != null && row.rh_cost_usd !== "") cost.title = `${row.rh_cost_usd} USD（可能为估算）`;
           tr.appendChild(cost);
+          const estimate = estimatedLedgerMargin(row);
+          tr.appendChild(estimatedCnyCell(estimate?.income));
+          tr.appendChild(estimatedCnyCell(estimate?.margin));
           body.appendChild(tr);
         }
       }
