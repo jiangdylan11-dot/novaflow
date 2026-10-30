@@ -140,7 +140,7 @@
       for (const [id, record] of records) if (record.blob) records.delete(id);
       clearPreview(); clearThumbnails();
       feedback = '临时仓库已清理，本地文件夹中的作品仍保留';
-      tell(); notice();
+      tell();
       if (panel && !panel.hidden) await refreshList();
     });
   }
@@ -156,18 +156,6 @@
     panel.querySelector('[data-warehouse-action="disconnect"]').hidden = !directory;
     panel.querySelector('[data-warehouse-action="open-folder"]').disabled = !directory || permission !== 'granted';
     panel.querySelector('[data-warehouse-action="retry"]').hidden = !lastError || !pendingCount() || permission !== 'granted';
-  }
-  function notice() {
-    if (panel && !panel.hidden) { tell(); return; }
-    let node = root.document.getElementById('novaflow-warehouse-notice');
-    if (!node) {
-      node = root.document.createElement('button'); node.id = 'novaflow-warehouse-notice';
-      // Under the full-screen editors (2147483640) and dialogs: it sat on their bottom-right buttons.
-      node.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483000;padding:10px 16px;border:1px solid #29594A;border-radius:8px;background:#1C4136;color:#fff;font-size:12px;cursor:pointer';
-      node.onclick = () => open(); root.document.body.appendChild(node);
-    }
-    node.textContent = lastError ? '仓库保存未完成 · 点击查看' : '有 ' + pendingCount() + ' 个临时结果 · 关闭后清理，连接本地仓库可保留';
-    node.hidden = pendingCount() === 0 && !lastError;
   }
   function cleanName(name, type) {
     let value = String(name || '').split(/[\\/]/).pop().replace(/[<>:"|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(-150);
@@ -218,9 +206,9 @@
       if ((!selected || !directory || !directory.isSameEntry || !await directory.isSameEntry(selected))) folderTrail = [];
       directory = selected;
     }
-    if (!directory) { tell(); notice(); return; }
+    if (!directory) { tell(); return; }
     permission = await directory.queryPermission({ mode: 'readwrite' });
-    if (permission !== 'granted') { tell(); notice(); return; }
+    if (permission !== 'granted') { tell(); return; }
     const run = async () => {
       for (const record of records.values()) {
         if (!record.blob) continue;
@@ -237,7 +225,7 @@
       else await run();
       lastError = '';
     } catch (error) { lastError = '未写入本地文件夹，结果仅在当前页面临时保留，请及时重试或下载：' + error.message; }
-    tell(); notice();
+    tell();
     if (panel && !panel.hidden) await refreshList();
   }
   async function save({ blob, name }) {
@@ -254,7 +242,7 @@
         await flushNow();
         return { ok: !records.get(id).blob, pending: !!records.get(id).blob };
       });
-    } catch (error) { lastError = '结果入库失败：' + error.message; tell(); notice(); return { ok: false, error: lastError }; }
+    } catch (error) { lastError = '结果入库失败：' + error.message; tell(); return { ok: false, error: lastError }; }
   }
 
   async function connect() {
@@ -330,7 +318,7 @@
       if (cached) { thumbnailBytes -= cached.blob.size; thumbnailCache.delete(key); }
       clearPreview();
       lastError = ''; feedback = item.pending ? '已删除未保存结果' : '已从本地文件夹删除素材';
-      await refreshList(); tell(); notice();
+      await refreshList(); tell();
     });
   }
   function confirmRemove(item, host) {
@@ -656,18 +644,9 @@
       });
     }
     previousFocus = root.document.activeElement; panel.hidden = false;
-    const tip = root.document.getElementById('novaflow-warehouse-notice'); if (tip) tip.hidden = true;
     tell(); panel.querySelector('button').focus();
     await ready; await enqueue(async () => { await flushNow(); await refreshList(); }); tell();
     return { ok: true, result: { opened: true, mapped: !!directory } };
   }
-  // A pending-save reminder belongs to the current work context. Switching
-  // modules dismisses the reminder, while pending files remain in the queue.
-  root.document?.addEventListener?.('click', event => {
-    const entry = event.target?.closest?.('[data-novaflow-primary-entry], [data-novaflow-audio-entry]');
-    if (!entry) return;
-    const tip = root.document.getElementById('novaflow-warehouse-notice');
-    if (tip) tip.hidden = true;
-  }, true);
   root.NovaFlowWebWarehouse = { open, save, connect, authorize, disconnect, openFolder, removeAsset, clearTemporary, ready };
 })(typeof window !== 'undefined' ? window : globalThis);
