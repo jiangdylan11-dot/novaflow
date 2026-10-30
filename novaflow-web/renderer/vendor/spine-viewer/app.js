@@ -499,32 +499,35 @@ function resetSceneTransform(item = getActiveSceneItem()) {
 function resetSceneLayout() {
   if (state.sceneItems.length <= 1) { resetSceneTransform(getActiveSceneItem() || state.sceneItems[0]); return; }
   const mount = elements.playerMount.getBoundingClientRect();
-  const oldZoom = state.previewZoom, gap = 24;
+  const gap = 24;
   const entries = state.sceneItems.slice().sort((a, b) => a.order - b.order).map((item) => {
     const bounds = getFixedArtworkBounds(item);
-    return { item, bounds, width: Math.max(16, bounds.width / oldZoom), height: Math.max(16, bounds.height / oldZoom) };
+    const size = captureBaseSceneSize(captureBasePreviewViewport(false, item), false, item);
+    return { item, width: Math.max(16, bounds.width / item.element.offsetWidth * size.width), height: Math.max(16, bounds.height / item.element.offsetHeight * size.height) };
   });
-  const area = entries.reduce((sum, entry) => sum + (entry.width + gap) * (entry.height + gap), 0);
-  const targetWidth = Math.max(...entries.map((entry) => entry.width), Math.sqrt(area * mount.width / Math.max(1, mount.height)));
-  let x = 0, y = 0, rowHeight = 0, totalWidth = 0;
-  for (const entry of entries) {
-    if (x && x + entry.width > targetWidth) { y += rowHeight + gap; x = 0; rowHeight = 0; }
-    entry.x = x; entry.y = y;
-    x += entry.width + gap; rowHeight = Math.max(rowHeight, entry.height);
-    totalWidth = Math.max(totalWidth, x - gap);
-  }
-  const totalHeight = y + rowHeight;
+  const columns = Math.min(entries.length, Math.max(1, Math.ceil(Math.sqrt(entries.length * mount.width / Math.max(1, mount.height)))));
+  const columnWidths = Array(columns).fill(0), rowHeights = Array(Math.ceil(entries.length / columns)).fill(0);
+  entries.forEach((entry, index) => {
+    columnWidths[index % columns] = Math.max(columnWidths[index % columns], entry.width);
+    rowHeights[Math.floor(index / columns)] = Math.max(rowHeights[Math.floor(index / columns)], entry.height);
+  });
+  const centers = (sizes) => {
+    let position = 0;
+    return sizes.map((size) => { const center = position + size / 2; position += size + gap; return center; });
+  };
+  const columnCenters = centers(columnWidths), rowCenters = centers(rowHeights);
+  const totalWidth = columnWidths.reduce((sum, value) => sum + value, 0) + gap * (columnWidths.length - 1);
+  const totalHeight = rowHeights.reduce((sum, value) => sum + value, 0) + gap * (rowHeights.length - 1);
   const zoom = clamp(Math.min(1, (mount.width - 64) / Math.max(1, totalWidth), (mount.height - 80) / Math.max(1, totalHeight)), MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM);
   state.canvasPanX = state.canvasPanY = 0;
   setPreviewZoom(zoom, { scaleLayout: false });
-  for (const entry of entries) {
-    const item = entry.item, ratio = zoom / oldZoom, shift = sceneAnchorShift(item);
-    const bounds = Object.fromEntries(Object.entries(entry.bounds).map(([key, value]) => [key, value * ratio]));
-    item.x = (entry.x - totalWidth / 2) * zoom - shift.x + item.element.offsetWidth / 2 - bounds.left;
-    item.y = (entry.y - totalHeight / 2) * zoom - shift.y + item.element.offsetHeight / 2 - bounds.top;
+  entries.forEach((entry, index) => {
+    const item = entry.item, shift = sceneAnchorShift(item), bounds = getFixedArtworkBounds(item);
+    item.x = (columnCenters[index % columns] - totalWidth / 2) * zoom - shift.x + item.element.offsetWidth / 2 - bounds.left - bounds.width / 2;
+    item.y = (rowCenters[Math.floor(index / columns)] - totalHeight / 2) * zoom - shift.y + item.element.offsetHeight / 2 - bounds.top - bounds.height / 2;
     item.positionTouched = true;
     applySceneItemTransform(item); showSceneOutline(item, bounds);
-  }
+  });
 }
 
 function handlePreviewWheel(event) {

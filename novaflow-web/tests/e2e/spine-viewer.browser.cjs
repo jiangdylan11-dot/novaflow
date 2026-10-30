@@ -52,7 +52,8 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
       const files = [];
       for (const version of ['3.7', '3.8', '4.0', '4.1', '4.2']) {
         const name = `fixture-${version}`;
-        const attachments = { picture: { picture: { width: 32, height: 32 } } };
+        const variant = ['3.7', '3.8', '4.0', '4.1', '4.2'].indexOf(version);
+        const attachments = { picture: { picture: { width: [32,48,24,40,20][variant], height: [32,20,48,28,40][variant] } } };
         const duration = version === '3.7' ? .4 : version === '3.8' ? 1.2 : 1.0;
         const skeleton = {
           skeleton: { spine: `${version}.00`, width: 32, height: 32 },
@@ -226,6 +227,13 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
       const rects = state.sceneItems.map((item) => { const r = item.element.getBoundingClientRect(), b = getFixedArtworkBounds(item); return { left: r.left + b.left, top: r.top + b.top, right: r.left + b.left + b.width, bottom: r.top + b.top + b.height }; });
       return rects.every((r, i) => r.left >= mount.left && r.right <= mount.right && r.top >= mount.top && r.bottom <= mount.bottom && rects.every((other, j) => i === j || r.right <= other.left || r.left >= other.right || r.bottom <= other.top || r.top >= other.bottom));
     }), 'reset must arrange previously moved, overlapping projects inside the canvas');
+    assert(await frame.evaluate(() => {
+      const mount = elements.playerMount.getBoundingClientRect();
+      const items = [...state.sceneItems].sort((a,b) => a.order - b.order);
+      const columns = Math.min(items.length, Math.ceil(Math.sqrt(items.length * mount.width / mount.height)));
+      const centers = items.map((item) => { const r = item.element.getBoundingClientRect(), b = getFixedArtworkBounds(item); return { x: r.left + b.left + b.width / 2, y: r.top + b.top + b.height / 2 }; });
+      return centers.every((center, index) => Math.abs(center.x - centers[index % columns].x) < .05 && Math.abs(center.y - centers[Math.floor(index / columns) * columns].y) < .05);
+    }), 'different sized animations must share their column and row centers');
     assert.deepEqual(await layerOrder(), originalOrder);
     const backgroundChooserEvent = page.waitForEvent('filechooser');
     await frame.getByRole('button', { name: '上传背景', exact: true }).click();
