@@ -36,8 +36,13 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await page.getByRole('button', { name: '工具', exact: true }).click();
     const entry = page.locator('[data-novaflow-spine-viewer-entry="1"]');
     await entry.waitFor();
+    // Use independent viewports so width checks do not relocate floating UI
+    // into the canvas controls used by the subsequent interaction checks.
     for (const [viewportWidth, panelWidth] of [[1000, 174], [1280, 194], [1440, 218]]) {
-      await page.setViewportSize({ width: viewportWidth, height: 1000 });
+      const page = await browser.newPage({ viewport: { width: viewportWidth, height: 1000 } });
+      await page.route('**/novaflow-web-account.js*', (route) => route.fulfill({ contentType: 'text/javascript', body: '' }));
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('button', { name: '工具', exact: true }).click();
       for (const [label, panelSelector, uploadSelector] of [
         ['PNG 压缩', '[data-novaflow-tools-left-panel]', '[data-novaflow-tools-upload-zone]'],
         ['JPG 压缩', '[data-novaflow-tools-left-panel]', '[data-novaflow-tools-upload-zone]'],
@@ -60,6 +65,12 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
         assert.equal(await upload.evaluate((node) => window.FoartButtonTheme.isButton(node)), false);
         await page.mouse.move(700, 20);
       }
+      await page.locator('[data-novaflow-spine-viewer-entry="1"]').click();
+      const viewer = await page.locator('#novaflow-spine-viewer-root iframe').elementHandle().then((element) => element.contentFrame());
+      await page.locator('#novaflow-spine-viewer-root[data-viewer-ready="1"] iframe').waitFor({ state: 'visible' });
+      assert.equal(await viewer.locator('.sidebar').evaluate((node) => node.getBoundingClientRect().width), panelWidth);
+      assert.equal(await viewer.locator('#dropZone').evaluate((node) => node.getBoundingClientRect().width), panelWidth - 28);
+      await page.close();
     }
     await page.getByRole('button', { name: 'PNG 压缩', exact: true }).click();
     let releaseViewerStyle, sawViewerStyle;
@@ -78,11 +89,6 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await page.locator('#novaflow-spine-viewer-root[data-viewer-ready="1"] iframe').waitFor({ state: 'visible' });
     assert.equal(await page.locator('[data-novaflow-tools-workspace]').evaluate((node) => getComputedStyle(node).visibility), 'hidden');
     await page.unroute('**/vendor/spine-viewer/foart-theme.css*');
-    for (const [viewportWidth, panelWidth] of [[1000, 174], [1280, 194], [1440, 218]]) {
-      await page.setViewportSize({ width: viewportWidth, height: 1000 });
-      await frame.waitForFunction((width) => document.querySelector('.sidebar').getBoundingClientRect().width === width, panelWidth);
-      assert.equal(await frame.locator('#dropZone').evaluate((node) => node.getBoundingClientRect().width), panelWidth - 28);
-    }
 
     assert.equal(await frame.locator('#blendModeSelect').count(), 0);
     assert.equal(await frame.locator('#projectSelect').count(), 0);
