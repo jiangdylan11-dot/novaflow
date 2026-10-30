@@ -384,7 +384,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.173";
+const RELEASE_VERSION = "2.0.174";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -580,7 +580,7 @@ const MATTING_TASK_TYPE = 'video_matting';
 // one uploaded JSON file and the reply comes back as one output file.
 const PROMPT_ASSISTANT_TASK_TYPE = 'prompt_assistant';
 const PROMPT_ASSISTANT_MODEL_ID = 'prompt-assistant';
-const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style']);
+const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style', 'art-agent-chat']);
 const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
 const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
 
