@@ -23,6 +23,16 @@ async function complete(learning,{method='分别分析受光面、暗面与局�
   return {session,proposal,resultId};}
 const tick=()=>new Promise(r=>setTimeout(r,30));
 
+test('optimized creation feedback retains both planned and actually applied prompts and forbids later rewrites',async t=>{
+  const {learning}=await fixture(t),session=await learning.begin(request(),'flash');
+  await learning.planned(session,{ok:true,data:{proposal:{proposalId:'optimized',prompt:'draft',action:'generate'},toolTrace:[]}});
+  const receipt={action:'receipt',taskId:session.taskId,proposalId:'optimized',execution:'applied',executedPrompt:'actual optimized prompt',executedNegativePrompt:'wrong text',promptFramework:'ordinary-art-semantic-fusion'};
+  await learning.command(receipt);
+  const task=(await learning.command({action:'list'})).tasks[0];assert.equal(task.plannedPrompt,'draft');assert.equal(task.prompt,receipt.executedPrompt);assert.equal(task.negativePrompt,'wrong text');
+  await assert.rejects(learning.command({...receipt,executedPrompt:'rewritten'}),/首次应用/);
+  await learning.command({action:'receipt',taskId:session.taskId,proposalId:'optimized',execution:'succeeded',resultId:'actual-image',resultSHA256:'a'.repeat(64)});
+});
+
 test('only actual result feedback is recorded; silence and another generation do not imply satisfaction',async t=>{
   const f=await fixture(t),task=await complete(f.learning);assert.equal((await f.learning.command({action:'list'})).tasks[0].feedback,'unrated');
   assert.equal(f.sent.length,0);await assert.rejects(f.learning.command({action:'feedback',taskId:task.session.taskId,resultId:'wrong',message:'这次很好'}),/实际成图/);

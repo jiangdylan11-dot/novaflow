@@ -326,7 +326,7 @@
     const runtime = () => options.runtime || root.__NovaFlowArtGenerate;
     const direction = () => options.direction || root.NovaFlowArtDirection;
     let applied = null, fixedRoles = null;
-    const snapshotOwners = new WeakMap(), creationSettings = new WeakMap();
+    const snapshotOwners = new WeakMap(), creationSettings = new WeakMap(), optimizedCreations = new WeakMap();
     function context() {
       const rt = runtime(); if (!rt?.captureContext || !direction()) fail('绘图页面尚未就绪，请稍后再试');
       rt.capturePrompt?.(); const value = rt.captureContext();
@@ -484,6 +484,23 @@
       }
       return readSampling();
     }
+    async function optimizeProposal(proposal, snapshot, message, options = {}) {
+      if(snapshot.artContext.task!=='creation')return proposal;
+      const current=captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')});
+      if(!sameSnapshot(snapshot,current) || proposal.contextFingerprint!==await fingerprint(current))fail('绘图内容已变化，未优化旧方案');
+      if(typeof root.__NovaFlowSmartAI?.optimizeForAgent!=='function')fail('原有生图提示词优化框架尚未加载');
+      const model=root.NovaFlowArtGenerateModels?.capabilityFor?.('local',proposal.generationMode,current.artContext);
+      const result=await root.__NovaFlowSmartAI.optimizeForAgent({...options,surface:'art',prompt:proposal.prompt,negativePrompt:proposal.negativePrompt,
+        requirements:message,engine:current.artContext.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1',generationMode:proposal.generationMode,
+        supportsNegativePrompt:model?.negativePrompt!==false});
+      if(options.signal?.aborted || !sameSnapshot(snapshot,captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')})))fail('绘图内容已变化或优化已停止，未写入或生成');
+      const slots=[...result.prompt.matchAll(/<image(\d+)>/g)].map(m=>m[1]);
+      if(proposal.generationMode==='img2img' && !slots.includes('1') || slots.some(n=>n!=='1'))fail('生图优化未保留当前原图引用，未写入或生成');
+      const next={...proposal,prompt:result.displayPrompt || result.prompt,modelPrompt:result.prompt,negativePrompt:result.negativePrompt,promptOptimization:result.optimization,
+        analysisBackend:result.analysisBackend,resourcesReleased:result.resourcesReleased,generationReady:result.generationReady};
+      optimizedCreations.set(next,{prompt:next.prompt,modelPrompt:next.modelPrompt,negativePrompt:next.negativePrompt,contextFingerprint:proposal.contextFingerprint});
+      return next;
+    }
     async function applyProposal(proposal, snapshot, {sampling} = {}) {
       if (runtime()?.state.running) fail('当前正在生成，请等待结束');
       if (sampling && !sameSnapshot(sampling.binding,readSampling().binding)) fail('已确认参数或参考内容已变化，请重新确认');
@@ -491,8 +508,10 @@
         const withResult=snapshot.images.some(i=>i.role==='result'), current=captureCreation({includeResult:withResult});
         if (!sameSnapshot(snapshot,current) || proposal.contextFingerprint!==await fingerprint(current)) fail('绘图内容已变化，旧方案未执行');
         if (proposal.kind!=='qwen21-agent-direct' || proposal.resourcesReleased!==true || proposal.generationReady!==true || proposal.analysisBackend!=='strata'
-          || proposal.modelIdentity?.verification!=='server-model-id' || !proposal.modelIdentity.id || !Array.isArray(proposal.promptIds) || !proposal.promptIds.length) fail('缺少已核验的模型资源交接凭据');
-        if(typeof proposal.prompt!=='string' || !proposal.prompt.trim() || proposal.negativePrompt!==current.artContext.negativePrompt || !['txt2img','img2img'].includes(proposal.generationMode)) fail('创作方案内容无效');
+          || !['server-model-id','server-weight-path'].includes(proposal.modelIdentity?.verification) || !proposal.modelIdentity.id || !Array.isArray(proposal.promptIds) || !proposal.promptIds.length) fail('缺少已核验的模型资源交接凭据');
+        const optimized=optimizedCreations.get(proposal);
+        if(proposal.promptOptimization && (!optimized || optimized.prompt!==proposal.prompt || optimized.modelPrompt!==proposal.modelPrompt || optimized.negativePrompt!==proposal.negativePrompt || optimized.contextFingerprint!==proposal.contextFingerprint))fail('原有优化结果已变化或未经过本次校验');
+        if(typeof proposal.prompt!=='string' || !proposal.prompt.trim() || !optimized && proposal.negativePrompt!==current.artContext.negativePrompt || !['txt2img','img2img'].includes(proposal.generationMode)) fail('创作方案内容无效');
         const refs=proposal.generationMode==='txt2img' ? [] : current.images.filter(i=>i.role==='subject');
         if(proposal.generationMode==='img2img' && !refs.length && current.lastResult?.imageUrl) refs.push({dataUrl:current.lastResult.imageUrl,name:current.lastResult.name || '当前成图',source:1,role:'subject'});
         if(proposal.generationMode==='img2img' && refs.length!==1) fail('没有可供修改的完整原图或成图');
@@ -501,7 +520,7 @@
         if(Object.entries(creationSettings.get(current) || {}).some(([key,value])=>key!=='mode' && JSON.stringify(canonical(state[key]))!==JSON.stringify(canonical(value)))) fail('绘图参数已变化，未执行旧方案');
         const settings=proposal.settings || {};
         if(Object.keys(settings).some(k=>!['width','height'].includes(k) || !Number.isInteger(settings[k]) || settings[k]<64 || settings[k]>4096)) fail('绘图尺寸无效');
-        Object.assign(state,settings,{mode:proposal.generationMode,prompt:proposal.prompt});
+        Object.assign(state,settings,{mode:proposal.generationMode,prompt:proposal.prompt,negativePrompt:proposal.negativePrompt});
         if (sampling) {
           const models = root.NovaFlowArtGenerateModels;
           models.setLocalSamplingValue(state,state.mode,'steps',String(sampling.steps));
@@ -511,7 +530,8 @@
         }
         rt.render?.({forceBottom:true});
         const expected=captureCreation({includeResult:withResult}), runState=copy(Object.fromEntries(SETTINGS.filter(k=>state[k]!==undefined).map(k=>[k,state[k]])));
-        const prepared={state:{...runState,count:1},promptSnapshot:{prompt:proposal.prompt,negativePrompt:proposal.negativePrompt},references:refs.map((r,i)=>({...r,role:'subject',sourceNumber:i+1})),direct:true,agentRun:true,
+        const prepared={state:{...runState,count:1},promptSnapshot:{prompt:optimized ? proposal.modelPrompt : proposal.prompt,negativePrompt:proposal.negativePrompt},references:refs.map((r,i)=>({...r,role:'subject',sourceNumber:i+1})),direct:true,agentRun:true,
+          plan:{schema:'nf.art.agent-creation.v1',prompt:proposal.prompt,modelPrompt:optimized ? proposal.modelPrompt : proposal.prompt},
           originalPrompt:current.artContext.prompt,agentContextFingerprint:proposal.contextFingerprint,agentInputFingerprint:await fingerprint(expected),
           assertCurrent:()=>{if(context().state!==state || !sameSnapshot(expected,captureCreation({includeResult:withResult}))) fail('绘图内容已变化，旧方案已失效');},recordReview:()=>{}};
         applied={prepared,snapshot:expected}; rt.stageAgentPrepared?.(prepared); return {snapshot:expected};
@@ -553,7 +573,7 @@
       if (result?.id && result.id !== previous && result.imageUrl) return copy(result);
       fail(rt.state.error || rt.state.status || '未取得新的实际成图');
     }
-    return Object.freeze({capture, captureAny, captureCreation, captureChat, readSampling, setSampling, currentResult:()=>runtime()?.selectedResult?.(), hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
+    return Object.freeze({capture, captureAny, captureCreation, captureChat, readSampling, setSampling, optimizeProposal, currentResult:()=>runtime()?.selectedResult?.(), hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
   }
   function roundedCredits(value) {
     if (value == null || value === '') return null;
@@ -581,7 +601,7 @@
     }
     function onlineQuote(message) {return predictOnline(onlineEstimateInput(message));}
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
-    let mediaAbort = null;
+    let mediaAbort = null, promptAbort = null;
     const recapture = snapshot => snapshot.artContext.task === 'creation' ? bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')}) : bridge.capture({includeResult:snapshot.images.length===3});
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
     state.learningTask = null; state.learningWarning = '';
@@ -594,6 +614,7 @@
     async function recordReceipt(execution, result, proposal = state.proposal) {
       if (!state.learningTask || !proposal?.proposalId) return;
       try {await learningCommand({action:'receipt',taskId:state.learningTask.taskId,proposalId:proposal.proposalId,execution,
+        ...(proposal.promptOptimization && execution==='applied' ? {executedPrompt:proposal.modelPrompt,displayPrompt:proposal.prompt,executedNegativePrompt:proposal.negativePrompt,promptFramework:proposal.promptOptimization.framework} : {}),
         ...(result ? {resultId:result.id,resultSHA256:await sha256(imageBytes(result.imageUrl))} : {})});}
       catch (error) {state.learningWarning = '本次结果未写入任务记录：' + String(error.message || error);}
     }
@@ -837,7 +858,7 @@
         if(data.mediaPlan && !media.discussionOnly(message)) {
           if(data.resourcesReleased!==true || data.generationReady!==true || data.analysisBackend!=='strata')fail('本地模型尚未确认释放资源，音视操作未执行');
           mediaAbort=new root.AbortController();state.generating=true;
-          const result=await media.execute(data.mediaPlan,{snapshot,fingerprint,signal:mediaAbort.signal,onProgress:op=>{
+          const result=await media.execute(data.mediaPlan,{snapshot,fingerprint,signal:mediaAbort.signal,requirements:message,onOptimizationStatus:text=>{state.status=text;notify();},onProgress:op=>{
             state.status='正在'+({generate_video:'生成视频',generate_music:'生成音乐',generate_sfx:'生成音效',import_resource:'导入素材',split:'分割片段',trim:'裁切片段',move:'移动片段',rate:'调整速度',volume:'调整音量',fade:'设置淡入淡出',duplicate:'复制片段',remove:'移除片段',export:'导出音视'}[op.action] || '处理音视')+'…';notify();
           }});
           const rows=result.results.map(r=>r.action?.startsWith('generate_') || r.taskId
@@ -935,7 +956,7 @@
           const dataUrl = await resolveReferenceDataUrl(image);
           images.push({dataUrl, role:image.role, source:image.source, name:image.name, ...imageDimensions(image)});
         }
-        const payload = {requestId:activeRequest, provider:state.provider, mode, promptLanguage:'en', conversationId:state.conversationId || undefined, message, history:copy(state.history), artContext:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:lastUploads.map(({kind, name}) => ({kind, name}))} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {})};
+        const payload = {requestId:activeRequest, provider:state.provider, mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:state.conversationId || undefined, message, history:copy(state.history), artContext:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:lastUploads.map(({kind, name}) => ({kind, name}))} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {})};
         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新页面或启动本地助手');
         const responsePromise = api().artAgentChat(payload); startStatusPolling(operation, activeRequest);
         const response = await responsePromise;
@@ -955,17 +976,28 @@
         }
         state.learningTask = data.learning || null; state.learningWarning = response.learningWarning || '';
         if (state.provider === 'local') {state.localSession = null; updateLocalSession(data.chatSession);}
+        let finalProposal=data.proposal;
+        if(mode==='creation' && data.proposal && sameSnapshot(snapshot,recapture(snapshot))) {
+          state.conversationId=data.conversationId || state.conversationId;if(Array.isArray(data.history))state.history=copy(data.history);
+          if(typeof bridge.optimizeProposal!=='function')fail('原有生图优化入口尚未就绪');
+          stopStatusPolling();promptAbort=new root.AbortController();state.status='正在按当前生图模型调用原有优化框架…';notify();
+          finalProposal=await bridge.optimizeProposal(copy(data.proposal),snapshot,message,{signal:promptAbort.signal,onProgress:text=>{state.status=text;notify();}});
+          if(operation!==serial || stopped || promptAbort.signal.aborted)return false;
+          promptAbort=null;
+          data.toolTrace=[...(data.toolTrace || []),{name:'optimize_generation_prompt',result:finalProposal.promptOptimization}];
+          state.promptOptimization=copy(finalProposal.promptOptimization);
+        }
         const discussionOnly=/[?？]|吗[。！!]?\s*$|解释|讨论|聊聊|什么意思|为什么|如何|怎么|(?:不要|不用|别|先不|暂不).{0,6}(?:生成|生图|出图|执行|应用)|(?:只|仅).{0,8}(?:提示词|方案|讨论|解释)/.test(message)
           || /(?:给我|提供|输出).{0,12}提示词/.test(message) && !/写入|填入|写到|写进|填进|填到|应用|生成一张|直接生成|生图/.test(message);
         const promptOnly=discussionOnly || !data.proposal?.action || data.proposal.action==='prompt';
-        const reply=mode!=='chat' && data.proposal && promptOnly ? data.reply+'\n\n完整提示词：\n```text\n'+data.proposal.prompt+'\n```' : data.reply;
+        const reply=mode!=='chat' && finalProposal && promptOnly ? data.reply+'\n\n完整提示词：\n```text\n'+finalProposal.prompt+'\n```' : data.reply;
         const receipt = state.provider === 'api' ? creditReceipt(data.quota) : '';
         state.messages.push({role:'assistant', content:reply, ...(receipt ? {receipt} : {})});
         state.conversationId = data.conversationId || state.conversationId;
         if (Array.isArray(data.history)) state.history = copy(data.history);
         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
         const unchanged = mode === 'chat' || sameSnapshot(snapshot, recapture(snapshot));
-        if (mode !== 'chat' && data.proposal && unchanged && data.proposal.contextFingerprint === contextFingerprint) {state.proposal = copy(data.proposal); state.proposalSnapshot = snapshot; state.status = '方案已准备，可直接说“按这个方案生成”';}
+        if (mode !== 'chat' && finalProposal && unchanged && finalProposal.contextFingerprint === contextFingerprint) {state.proposal = finalProposal===data.proposal?copy(finalProposal):finalProposal; state.proposalSnapshot = snapshot; state.status = '方案已准备，可直接说“按这个方案生成”';}
         else state.status = !unchanged ? '当前绘图已变化，这次回复中的建议未应用' : mode === 'chat' && state.provider === 'local' && snapshot.artContext.surface === 'drawing' ? '已回复 · 当前仅对话，尚未形成可生图双图上下文' : '已回复';
         const action=execution || (!discussionOnly && ['apply','generate'].includes(data.proposal?.action) ? {generate:data.proposal.action==='generate'} : null);
         if (action) {
@@ -977,9 +1009,10 @@
         }
         return true;
       } catch (error) {if (operation === serial && !stopped) {state.error = String(error?.message || error); state.status = '未提交生成';} return false;}
-      finally {if (operation === serial) {stopStatusPolling(); state.pending = false; state.operation = null; activeRequest = ''; activeSnapshot = null; notify();}}
+      finally {if (operation === serial) {stopStatusPolling();promptAbort=null; state.pending = false; state.operation = null; activeRequest = ''; activeSnapshot = null; notify();}}
     }
     async function stop() {
+      if(promptAbort) {state.status='正在停止本次提示词优化…';promptAbort.abort();notify();return;}
       if(mediaAbort) {state.status='正在停止本次音视任务…';mediaAbort.abort();notify();return;}
       if (state.confirmation && !state.pending && !state.generating) return cancelConfirmation();
       if (state.generating) {state.status = '正在停止生成…'; notify(); await bridge.cancelGeneration(); return;}
@@ -1001,7 +1034,7 @@
           await recordReceipt('applied');
           if (state.samplingApproval) {const actual = bridge.readSampling(); if (actual.variant === state.samplingApproval.variant && actual.steps === state.samplingApproval.steps && actual.cfg === state.samplingApproval.cfg) state.samplingApproval = actual;}
         }
-        state.status = '已应用到绘图，保留原负向和手动参数'; notify();
+        state.status = state.proposal.promptOptimization ? '已应用优化后的提示词，保留手动参数' : '已应用到绘图，保留原负向和手动参数'; notify();
         if (generate) {
           if (!samplingUnchanged(state.samplingApproval)) fail('实际采样或参考内容已变化，请重新确认后生成');
           state.generating = true; state.localSession = null; state.status = '正在通过绘图流程生成一张…'; notify();

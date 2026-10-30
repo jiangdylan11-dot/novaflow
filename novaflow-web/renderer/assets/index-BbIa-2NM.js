@@ -2037,6 +2037,8 @@ return{aiSeqMode:u,setAiSeqMode:d,aiSeqGenType:f,setAiSeqGenType:p,getAiSeqWorkf
       h3:ze==='minimax_h3_local'?{profile:nfH3Profile,seconds:nfH3DurationInput,fps:nfH3Fps,steps:nfH3Steps,width:nfH3Width,height:nfH3Height,ratio:nfH3AspectRatio,megapixels:nfH3Megapixels,custom:nfH3Custom}:null,
       cloud:ze==='cloud'?nfAiSeqPickLiveCloudParams():null,
       h3References:(window.NovaFlowH3Media?.store?.get(Jr)||[]).map(ref=>window.NovaFlowMediaAgent?.referenceStamp(ref)||null),references:[un,gn,Sn,nfJimengImage2Ref,nfJimengImage3Ref,nfJimengImage4Ref,nfJimengVideoRef,nfJimengAudioRef].map(ref=>window.NovaFlowMediaAgent?.referenceStamp(ref)||null)}),
+    optimizationContext:async()=>({modelId:ze,mode:Ve,durationSeconds:ze==='minimax_h3_local'?Number(nfH3DurationInput):Number(vt('duration'))||Number(Ct)/Number(Dt),
+      resources:Ve==='multi_reference'?await window.NovaFlowH3Media.snapshot(Jr):(Ve==='image_video'?[un]:Ve==='first_last'?[gn,Sn]:[]).map((ref,i)=>({key:i?'last_frame':'first_frame',kind:'image',label:i?'尾帧':'首帧',occupied:!!ref?.dataUrl,available:true,sourceId:window.NovaFlowMediaAgent.referenceStamp(ref)?.id||'',fileName:ref?.fileName||'',previewUrl:ref?.dataUrl||''}))}),
     status:()=>({state:an?.state||'idle',message:an?.message||'',promptId:an?.promptId||''}),
     resources:()=>(Dn||[]).map(r=>({id:String(r.id),promptId:String(r.promptId||''),name:String(r.filename||''),kind:r.sourceKind||'video'})),
     setRequest:op=>{if(op.seconds!==undefined){if(ze==='minimax_h3_local'){window.NovaFlowAiSequenceMiniMaxH3Workflow.normalizeDuration({seconds:op.seconds,fps:nfH3Fps});nfSetH3DurationInput(String(op.seconds));}else if(ze==='cloud'){

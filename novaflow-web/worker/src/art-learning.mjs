@@ -64,6 +64,11 @@ export function createArtLearning({directory,getOwner,skillService=createArtSkil
       if(p.action==='receipt'){need(t.proposalId&&t.proposalId===p.proposalId&&['applied','succeeded','failed'].includes(p.execution),'执行回执与提案不符');
         if(t.execution==='succeeded'){need(p.execution==='succeeded'&&t.resultId===p.resultId,'不能覆盖已完成的结果');return {ok:true};}
         need(['proposed','applied'].includes(t.execution),'任务不接受执行回执');if(p.execution==='succeeded')need(typeof p.resultId==='string'&&p.resultId.length<=160&&/^[a-f0-9]{64}$/.test(p.resultSHA256||''),'缺少实际结果编号或摘要');
+        if(p.executedPrompt!==undefined){need(p.execution==='applied'&&t.execution==='proposed','最终提示词只能在首次应用时记录');
+          const prompt=text(p.executedPrompt),negativePrompt=text(p.executedNegativePrompt||''),framework=text(p.promptFramework||'',80);
+          need(prompt.trim()&&['ordinary-art-structured','ordinary-art-semantic-fusion'].includes(framework),'最终提示词或优化框架无效');
+          const displayPrompt=text(p.displayPrompt||prompt);
+          t.plannedPrompt=t.prompt;t.prompt=prompt;t.displayPrompt=displayPrompt;t.negativePrompt=negativePrompt;t.promptFramework=framework;}
         t.execution=p.execution;if(p.resultId){t.resultId=text(p.resultId,160);t.resultSHA256=p.resultSHA256;}return {ok:true};}
       need(p.action==='feedback','未知任务操作');need(t.execution==='succeeded'&&t.resultId&&t.resultId===p.resultId,'反馈必须关联本任务实际成图');
       const message=text(p.message),state=p.feedback||classifyArtFeedback(message);need(['satisfied','unsatisfied','revision','adopted','unrated'].includes(state),'反馈类别无效');

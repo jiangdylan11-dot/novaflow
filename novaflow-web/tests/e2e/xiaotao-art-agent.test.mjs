@@ -47,6 +47,7 @@ function env({cfg=5} = {}) {
     localStorage:{getItem:k => saved.get(k), setItem:(k, v) => saved.set(k, v)}, __NovaFlowArtGenerate:runtime,
     NovaFlowArtGenerateModels:{capabilityFor:() => ({engine:'qwen-2.1'}), localSamplingFor:() => ({cfg:5, steps:8})}};
   sandbox.window = sandbox; const vm = createContext(sandbox);
+  sandbox.__NovaFlowSmartAI={optimizeForAgent:async options=>({prompt:options.prompt,negativePrompt:options.negativePrompt,resourcesReleased:true,generationReady:true,analysisBackend:'strata',modelIdentity:{id:'flash-fixture',verification:'server-model-id'},optimization:{schema:'nf.agent.prompt-optimization.v1',framework:'ordinary-art-semantic-fusion'}})};
   runInContext(readFileSync(new URL('../../renderer/art-generate-model.resource.js',import.meta.url),'utf8'),vm);
   sandbox.NovaFlowArtGenerateModels={...sandbox.NovaFlowArtGenerateModels};
   for (const file of ['art-direction.workflow.js', 'xiaotao-art-agent.js']) runInContext(readFileSync(new URL('../../renderer/' + file, import.meta.url), 'utf8'), vm);
@@ -94,6 +95,23 @@ async function creationProposal(e,{action='generate',generationMode='txt2img',in
     action,generationMode,settings:{},kind:'qwen21-agent-direct',version:'agent-direct-v1',contextFingerprint:await e.api.fingerprint(snapshot),promptIds:['actual-native-id'],
     resourcesReleased:true,generationReady:true,analysisBackend:'strata',modelIdentity:{id:'flash-fixture',verification:'server-model-id'},...extra};
 }
+
+test('ordinary creation stages the original optimizer output exactly and rejects altered or stale optimized proposals',async()=>{
+  const e=env();e.refs.splice(0);e.state.mode='txt2img';
+  const draft=await creationProposal(e,{modelIdentity:{id:'verified-flash',verification:'server-weight-path'}}),snapshot=e.bridge.captureCreation(),sampler=plain(e.state.samplingOverrides);
+  e.sandbox.__NovaFlowSmartAI.optimizeForAgent=async()=>({prompt:'Two red spheres on the left, one blue cube on the right, title “春日计划”.',displayPrompt:'左侧两个红球，右侧一个蓝色立方体，标题“春日计划”。',negativePrompt:'额外物体，错误文字',
+    resourcesReleased:true,generationReady:true,analysisBackend:'strata',modelIdentity:{id:'flash',verification:'server-weight-path'},optimization:{framework:'ordinary-art-semantic-fusion'}});
+  const optimized=await e.bridge.optimizeProposal(draft,snapshot,'保留数量、位置和文字');
+  await assert.rejects(e.bridge.applyProposal({...optimized,prompt:'changed'},snapshot),/优化结果已变化/);
+  await e.bridge.applyProposal(optimized,snapshot);
+  assert.equal(e.getPrepared().promptSnapshot.prompt,optimized.modelPrompt);assert.equal(e.state.prompt,optimized.prompt);assert.match(e.state.prompt,/左侧/);assert.equal(e.getPrepared().promptSnapshot.negativePrompt,optimized.negativePrompt);
+  assert.equal(e.getPrepared().plan.schema,'nf.art.agent-creation.v1','Native result recording requires prepared plan metadata');
+  assert.deepEqual(plain(e.state.samplingOverrides),sampler);
+  const gate=deferred(),nextSnapshot=e.bridge.captureCreation(),nextDraft=await creationProposal(e);
+  e.sandbox.__NovaFlowSmartAI.optimizeForAgent=async()=>{await gate.promise;return optimized;};
+  const pending=e.bridge.optimizeProposal(nextDraft,nextSnapshot,'调整光照');e.state.width+=16;gate.resolve();
+  await assert.rejects(pending,/内容已变化/);
+});
 
 test('native application actions distinguish prompt-only, writing to the field, and a requested visual revision', async () => {
   const e=env({cfg:3}), payloads=[]; let action='prompt';

@@ -3321,7 +3321,7 @@
 
   function artHighQualityCgRenderingGuardInstruction(options = {}) {
     const needsGuard = options.textOnly === true
-      ? /真人.{0,8}(?:转|改|重绘).{0,8}(?:二次元|动漫|2\.5D|游戏\s*CG)|(?:二次元|动漫|2\.5D|游戏\s*CG).{0,8}(?:重绘|风格化)/i.test(String(state.requirements || ""))
+      ? /真人.{0,8}(?:转|改|重绘).{0,8}(?:二次元|动漫|2\.5D|游戏\s*CG)|(?:二次元|动漫|2\.5D|游戏\s*CG).{0,8}(?:重绘|风格化)/i.test(String(options.prompt ?? state.requirements ?? ""))
       : artNeedsHighQualityCgGuard();
     if (!needsGuard) return "";
     return "高质量CG渲染约束：若主图是真人照片，保留人物身份、脸型、发型、可见外观状态、姿势、镜头关系与场景结构，不保留摄影媒介；必须彻底重绘材质、体积与光影，禁止在照片上叠加漫画描边滤镜。轮廓主要依靠明暗、色彩、材质、景深与柔和边缘建立，边缘干净自然、与整体画风一致；皮肤、头发、原图已有材质与环境必须具有可信层次，达到高品质二次元游戏宣传CG完成度。";
@@ -3331,12 +3331,12 @@
     const textOnly = options.textOnly === true;
     const sharedProfile = window.NovaFlowArtQualityProfile?.build?.({
       prompt: options.prompt ?? state.requirements,
-      assetType: state.starterPreset,
+      assetType: options.starterPreset ?? state.starterPreset,
       style: textOnly ? "auto" : state.artStyle
     });
     if (sharedProfile) return sharedProfile.negativeInstruction;
     const needsGuard = textOnly
-      ? /真人.{0,8}(?:转|改|重绘).{0,8}(?:二次元|动漫|2\.5D|游戏\s*CG)|(?:二次元|动漫|2\.5D|游戏\s*CG).{0,8}(?:重绘|风格化)/i.test(String(state.requirements || ""))
+      ? /真人.{0,8}(?:转|改|重绘).{0,8}(?:二次元|动漫|2\.5D|游戏\s*CG)|(?:二次元|动漫|2\.5D|游戏\s*CG).{0,8}(?:重绘|风格化)/i.test(String(options.prompt ?? state.requirements ?? ""))
       : artNeedsHighQualityCgGuard();
     if (!needsGuard) return "";
     return "粗黑描边，统一黑色外轮廓，厚重墨线，漫画勾线，简笔线稿，扁平赛璐璐，色块断层，海报化色阶，低细节头发，蜡像皮肤，塑料质感，过度锐化，照片滤镜式动漫化，低完成度插画";
@@ -3444,7 +3444,7 @@
   }
 
   function buildSmartAiRequirements(options = {}) {
-    const requirements = String(state.requirements || "").trim();
+    const requirements = String(options.requirements ?? state.requirements ?? "").trim();
     const includeUserIntent = options.includeUserIntent !== false;
     const userIntentFirst = options.userIntentFirst === true;
     const purpose = String(options.purpose || "").trim();
@@ -3461,17 +3461,17 @@
       : purpose === "create"
         ? "提示词创作模式：当前没有原提示词；根据用户创作要求输出一份完整、可直接生图的提示词，禁止只输出建议或摘要。"
         : "";
-    if (state.context?.surface !== "art" || state.mode !== "optimize") return requirements;
+    if ((options.context || state.context)?.surface !== "art" || (options.mode || state.mode) !== "optimize") return requirements;
     const sharedQualityProfile = window.NovaFlowArtQualityProfile?.build?.({
       prompt: modelFacingRequirements,
-      assetType: state.starterPreset,
+      assetType: options.starterPreset ?? state.starterPreset,
       style: "auto",
       mode: "txt2img"
     });
     return [
       userIntentFirst ? userIntentInstruction : "",
       textOperationInstruction,
-      sharedQualityProfile?.directorInstruction || artHighQualityCgRenderingGuardInstruction({ textOnly: true }),
+      sharedQualityProfile?.directorInstruction || artHighQualityCgRenderingGuardInstruction({ textOnly: true, prompt: modelFacingRequirements }),
       artAutomaticQualityInstruction(),
       !userIntentFirst ? userIntentInstruction : ""
     ].filter(Boolean).join("\n");
@@ -5160,6 +5160,111 @@
     });
   }
 
+  // Agent and the original dialog share the same request builders, compilers
+  // and validators. This entry never writes fields or starts generation.
+  async function optimizeForAgent(options = {}) {
+    const api = window.electronAPI || {}, signal = options.signal;
+    let requestId = window.crypto.randomUUID();
+    const check = () => { if (signal?.aborted) throw new Error("本次提示词优化已停止"); };
+    if (typeof api.promptAssistantOptimizePrompt !== "function") throw new Error("原有提示词优化服务尚未就绪");
+    const cancel = () => { void Promise.resolve(api.promptAssistantCancelRequest?.({requestId})).catch(() => {}); };
+    signal?.addEventListener("abort", cancel, {once:true});
+    try {
+      check();
+      const source = String(options.prompt || "").trim(), user = String(options.requirements || "").trim();
+      if (!source) throw new Error("缺少要优化的完整提示词");
+      let request, prepared, current, protectedPrompt, protectedNegative;
+      const art = options.surface === "art", h3 = !art && options.videoContext?.modelId === MINIMAX_H3_MODEL_ID;
+      const structured = art && shouldUseStructuredArtPromptContract(source);
+      if (art) {
+        protectedPrompt = protectSmartAiResourceMentions(source.replace(/<image(\d+)>/g, "@参考图$1"));
+        protectedNegative = protectSmartAiResourceMentions(String(options.negativePrompt || ""));
+        request = {surface:"art", purpose:"optimize", prompt:protectedPrompt.text, currentPrompt:protectedPrompt.text,
+          targetEngine:"qwen-2.1",qwenPromptMode:options.generationMode==='img2img'?'img2img':'txt2img',agentModelLanguage:"en",
+          negativePrompt:protectedNegative.text, supportsNegativePrompt:options.supportsNegativePrompt !== false, nsfw:false,
+          ...(structured ? {promptSchema:ORDINARY_ART_PROMPT_SCHEMA} : {}),
+          requirements:buildSmartAiRequirements({context:{surface:"art"},mode:"optimize",purpose:"optimize",requirements:user,starterPreset:"",userIntentFirst:true})};
+      } else if (h3) {
+        const workflow = getMiniMaxH3PromptWorkflow();
+        current = {...options.videoContext,prompt:source,requirements:user};
+        prepared = workflow.prepareRequest(current);
+        const h3ReferenceFrames = await captureH3ReferenceFrames(current,prepared);
+        const intent=source+"\n"+user;
+        const executionRequirements=[
+          !/配乐|音乐|bgm|music|钢琴|piano|音轨|soundtrack/i.test(user) ? "未要求配乐：不要音乐，不要配乐，背景音乐填写 N/A。只保留与用户动作相符的环境声音。" : "",
+          /固定镜头|固定摄像|静止镜头|static (?:shot|camera)|fixed camera/i.test(intent) && /停住|停止|停下|stop/i.test(intent)
+            && !/出画|画外|离开画面|滚出|特写|局部|close.?up|out of (?:the )?frame/i.test(user)
+            ? `固定镜头内停止的动作编排：根据画幅和主体尺寸留足运动余量，主体完整留在画框中，只在画面内短距离移动，不出画、不裁掉主体，不跟拍或变焦；在总时长结束前完成减速，${Number(current.durationSeconds)>=3 ? "最后一秒" : "末段"}保持完全静止。用户明确的画面要求优先。` : ""
+        ].filter(Boolean).join("\n");
+        request = {surface:"animation",purpose:MINIMAX_H3_PROMPT_PURPOSE,prompt:prepared.prompt,negativePrompt:"",supportsNegativePrompt:false,
+          requirements:[prepared.requirements,user ? "用户本次要求（最高优先级）："+user : "",executionRequirements].filter(Boolean).join("\n\n"),
+          h3Mode:current.mode,durationSeconds:current.durationSeconds,visualSchema:MINIMAX_H3_VISUAL_SCHEMA,
+          contentPolicy:prepared.context.contentPolicy,h3ReferenceFrames};
+      } else {
+        request = {surface:"animation",purpose:"optimize",prompt:source,currentPrompt:source,supportsNegativePrompt:false,negativePrompt:"",
+          requirements:user};
+      }
+      check();options.onRequest?.(requestId);options.onProgress?.(h3 ? "正在使用原有视频框架优化动作、镜头和声音…" : art ? "正在使用原有生图框架优化画面与约束…" : "正在使用原有视频提示词优化框架…");
+      const response = await api.promptAssistantOptimizePrompt({...request,requestId});
+      check();
+      if (!response || response.ok === false) throw new Error(response?.error || "原有提示词优化失败，未写入或生成");
+      const released = response.data || response;
+      const handoff = {...response,...released};
+      if (handoff.analysisBackend !== "strata" || handoff.resourcesReleased !== true || handoff.generationReady !== true
+        || !["server-model-id","server-weight-path"].includes(handoff.modelIdentity?.verification) || !handoff.modelIdentity?.id) throw new Error("提示词优化模型尚未确认释放，未写入或生成");
+      const parsed = readSmartAiResult(response);
+      const modelPromptPolicy=response.modelPromptPolicy || response.result?.modelPromptPolicy || response.data?.modelPromptPolicy || "";
+      if(art && modelPromptPolicy!=="qwen21-task-policy-v1")throw new Error("本机生图优化服务需要更新，未使用缺少模型适配的旧结果");
+      if (!parsed.prompt) throw new Error("原有优化框架未返回完整提示词");
+      let prompt = parsed.prompt, negativePrompt = String(options.negativePrompt || ""), displayPrompt = prompt;
+      if (art) {
+        if (structured && (parsed.editContract !== ORDINARY_ART_EDIT_CONTRACT || parsed.promptSchema !== ORDINARY_ART_PROMPT_SCHEMA)) throw smartAiStructuredPromptError({code:"prompt_contract_mismatch"});
+        const restored = restoreSmartAiResourceMentions(prompt,protectedPrompt);
+        if (!restored.ok) throw smartAiResourceMentionError(restored.error);
+        prompt = restored.text;
+        if (structured) { const structure=validateSmartAiStructuredArtPrompt(prompt);if(!structure.ok)throw smartAiStructuredPromptError(structure); }
+        const preservation=validateSmartAiArtPromptPreservation(source.replace(/<image(\d+)>/g,"@参考图$1"),prompt,user,{deterministicMerge:structured});
+        if(!preservation.ok)throw smartAiPromptPreservationError(preservation);
+        const quality=window.NovaFlowArtQualityProfile;
+        const leaked=quality?.findLeakedDirectorText?.(prompt);if(leaked)throw new Error("优化结果包含内部指令，未写入或生成");
+        if(options.supportsNegativePrompt!==false) {
+          if(!parsed.hasNegativePrompt)throw new Error("原有优化框架未返回负向提示词");
+          const restoredNegative=restoreSmartAiResourceMentions(parsed.negativePrompt,protectedNegative);
+          if(!restoredNegative.ok)throw smartAiResourceMentionError(restoredNegative.error);
+          negativePrompt=restoredNegative.text;
+          const guard=artHighQualityCgNegativeGuardInstruction({textOnly:true,prompt,starterPreset:""}).split("，").filter(term=>!/人体|手指|手脚|肢体|五官|爪子|骨骼|比例/u.test(term)||!/手部|手指|手掌|手臂|肢|五官|人体|爪|骨骼/u.test(negativePrompt)).join("，");
+          negativePrompt=mergeSmartAiNegativePrompt(negativePrompt,guard);
+        }
+        displayPrompt=prompt.replace(/@参考图\s*(\d+)/g,(_,n)=>`<image${n}>`);
+        const modelPrompt=String(released.modelPrompt || "").trim();
+        if(released.modelPromptLanguage!=="en" || !modelPrompt)throw new Error("原优化框架未返回中英文对应提示词，未写入或生成");
+        const restoredModel=restoreSmartAiResourceMentions(modelPrompt,protectedPrompt);
+        if(!restoredModel.ok)throw smartAiResourceMentionError(restoredModel.error);
+        prompt=restoredModel.text.replace(/@参考图\s*(\d+)/g,(_,n)=>`<image${n}>`);
+      } else if(h3) {
+        const result=getMiniMaxH3PromptWorkflow().validateAndRestore({text:parsed.prompt,context:prepared.context,current});
+        prompt=result.modelText;displayPrompt=result.text;
+        // The original optimizer may return Chinese fields first. Complete its
+        // existing translate-only compiler and cache the pair for native submit.
+        const compiled=await getMiniMaxH3PromptWorkflow().compileForGeneration({...current,prompt:displayPrompt},async compileRequest=>{
+          check();requestId=window.crypto.randomUUID();options.onRequest?.(requestId);options.onProgress?.("正在将中文视频提示词编译为模型英文…");
+          const translated=await api.promptAssistantOptimizePrompt({...compileRequest,requestId});check();
+          const releasedTranslation={...translated,...translated?.data};
+          if(!translated || translated.ok===false)throw new Error(translated?.error || "视频执行提示词翻译失败");
+          if(releasedTranslation.analysisBackend!=="strata" || releasedTranslation.resourcesReleased!==true || releasedTranslation.generationReady!==true
+            || !["server-model-id","server-weight-path"].includes(releasedTranslation.modelIdentity?.verification) || !releasedTranslation.modelIdentity?.id)throw new Error("视频编译模型尚未确认释放");
+          const translatedPrompt=readSmartAiResult(translated).prompt;if(!translatedPrompt)throw new Error("视频执行编译未返回完整提示词");return translatedPrompt;
+        });
+        if(compiled.asWritten)throw new Error("视频优化结果未通过官方执行格式检查");
+        prompt=compiled.modelText;displayPrompt=compiled.text;
+      }
+      check();
+      return {prompt,negativePrompt,displayPrompt,resourcesReleased:true,generationReady:true,analysisBackend:"strata",modelIdentity:handoff.modelIdentity,
+        optimization:{schema:"nf.agent.prompt-optimization.v1",requestId,modelIdentity:handoff.modelIdentity,framework:art ? (structured ? "ordinary-art-structured" : "ordinary-art-semantic-fusion") : h3 ? "minimax-h3" : "animation",engine:options.engine || options.videoContext?.modelId || "",modelPromptPolicy,sourcePrompt:source,userRequirements:user,prompt,negativePrompt,displayPrompt,
+          ...(h3?{mode:current.mode,durationSeconds:current.durationSeconds,referenceFrames:request.h3ReferenceFrames.length}:{}),timing:handoff.timing || null}};
+    } finally {signal?.removeEventListener("abort",cancel);}
+  }
+
   // H3 prompts kept in the prompt history before the official layout (【任务定位】 five
   // sections) open in the current display with the editor's aliases. This script runs
   // before the bundle mounts React and reads the key, so entries are rewritten in place.
@@ -5206,6 +5311,7 @@
     });
     observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
     window.__NovaFlowSmartAI = {
+      optimizeForAgent,
       compileH3ForGeneration,
       compileH3ReferenceForGeneration(options) {
         return compileH3ForGeneration({ ...options, mode: "multi_reference" });

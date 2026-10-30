@@ -84,16 +84,26 @@
     return {ok:true,action:op.action,target:op.target,clipId:clip.id,timeline:timeline(editor)};
   }
   function refresh(editor) {editor.commitEdit();editor.select(editor.selectedClip?.()?.id || null);root.NovaFlowAiSequenceVideoMergeWorkspace?.refresh?.();}
-  async function generateVideo(op,signal) {
+  async function generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus}={}) {
     root.NovaFlowAudioStudio?.open('video');
     let gen=root.NovaFlowAiSequenceGeneration;
     if(!gen)fail('视频生成接口尚未就绪');
     if(gen.status()?.state==='running')fail('已有视频任务在执行，请等待完成');
+    if(typeof root.__NovaFlowSmartAI?.optimizeForAgent!=='function' || typeof gen.optimizationContext!=='function')fail('原有视频提示词优化框架尚未就绪，请刷新页面');
+    const videoContext=await gen.optimizationContext();
+    videoContext.durationSeconds=op.seconds ?? videoContext.durationSeconds;
+    const optimized=await root.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',videoContext,prompt:op.prompt || gen.capture().prompt,requirements,signal,onProgress:onOptimizationStatus});
+    if(signal?.aborted)fail('本次视频生成已停止');
+    if(await fingerprint(capture())!==await fingerprint(snapshot))fail('视频素材或参数在优化期间变化，未写入或生成');
+    op={...op,prompt:optimized.displayPrompt || optimized.prompt};
+    gen=root.NovaFlowAiSequenceGeneration;
     const before=new Set((gen.resources() || []).map(r=>r.id));
     gen.setRequest(op);
     await new Promise(r=>root.setTimeout(r,100));
     if(signal?.aborted)fail('音视操作已停止');
     gen=root.NovaFlowAiSequenceGeneration;
+    if(gen.capture().prompt!==op.prompt)fail('视频优化提示词未完整写入，未开始生成');
+    onOptimizationStatus?.('提示词已优化，正在生成视频…');
     const started=Date.now(),initialStatus=gen.status(),initial=JSON.stringify(initialStatus);
     let changed=false;
     const abort=()=>{void Promise.resolve(root.NovaFlowAiSequenceGeneration?.cancel?.()).catch(()=>{});};signal?.addEventListener('abort',abort,{once:true});
@@ -107,14 +117,14 @@
         const added=current.resources().filter(r=>!before.has(r.id));
         const produced=status?.promptId && status.promptId!==initialStatus?.promptId
           ? added.filter(r=>r.promptId===status.promptId || r.id.startsWith(status.promptId+':')) : [];
-        if(changed && status?.state==='done' && produced.length)return {ok:true,action:op.action,resources:produced};
+        if(changed && status?.state==='done' && produced.length)return {ok:true,action:op.action,resources:produced,optimization:optimized.optimization,executedPrompt:optimized.prompt};
         if(!changed && Date.now()-started>15000)fail('视频任务未启动，请检查模型、素材和连接状态');
         if(Date.now()-started>30*60*1000)fail('视频生成等待超时，请在视频任务中检查状态');
         await new Promise(r=>root.setTimeout(r,500));
       }
     } finally {signal?.removeEventListener('abort',abort);}
   }
-  async function execute(plan,{snapshot,fingerprint,signal,onProgress=()=>{}}={}) {
+  async function execute(plan,{snapshot,fingerprint,signal,requirements='',onOptimizationStatus=()=>{},onProgress=()=>{}}={}) {
     if(!plan || !Array.isArray(plan.operations) || !plan.operations.length || plan.operations.length>12)fail('音视执行方案无效');
     if(typeof plan.planId!=='string' || usedPlans.has(plan.planId))fail('这份音视方案已执行或编号无效，请重新发送需求');
     if(plan.contextFingerprint!==await fingerprint(snapshot) || plan.contextFingerprint!==await fingerprint(capture()))fail('音视内容已变化，请重新发送需求');
@@ -125,7 +135,7 @@
       if(!['video','audio'].includes(op.target))fail('音视操作目标无效');
       onProgress(op,results.length);
       try {
-        if(op.action==='generate_video')results.push(await generateVideo(op,signal));
+        if(op.action==='generate_video')results.push(await generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus}));
         else if(['generate_music','generate_sfx'].includes(op.action)) {
           root.NovaFlowAudioStudio.open('audio');
           results.push(await root.NovaFlowAudioStudio.agentGenerate(op,{signal}));

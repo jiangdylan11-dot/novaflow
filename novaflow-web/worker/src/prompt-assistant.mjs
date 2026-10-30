@@ -257,6 +257,8 @@ export function normalizeOptimizeRequest(payload = {}) {
       supportsNegativePrompt: payload.supportsNegativePrompt !== false,
       nsfw: payload.nsfw === true,
       requirements, surface, purpose, provider: 'local', currentPrompt,
+      ...(surface==='art' && payload.targetEngine==='qwen-2.1' ? {targetEngine:'qwen-2.1',qwenPromptMode:payload.qwenPromptMode==='img2img'?'img2img':'txt2img'} : {}),
+      ...(surface==='art' && payload.targetEngine==='qwen-2.1' && payload.agentModelLanguage==='en' ? {agentModelLanguage:'en'} : {}),
       ...(usesUiQwen ? { targetEngine:'qwen-2.1', supportsNegativePrompt:payload.supportsNegativePrompt !== false, uiDesignIntent:payload.uiDesignIntent, uiPreserveLayout:payload.uiPreserveLayout } : {}),
       ...(usesH3 ? { h3ReferenceFrames: h3ReferenceFrames(payload.h3ReferenceFrames, requirements) } : {}),
       ...(usesH3 && payload.h3Reverse === true ? { h3Reverse: true } : {}),

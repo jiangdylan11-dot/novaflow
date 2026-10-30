@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
+import {webcrypto} from 'node:crypto';
 
 const read = (file) => readFileSync(new URL('../../renderer/' + file, import.meta.url), 'utf8');
 const TEXT_REQUIRED = '请先在提示词或补充要求里写想要的效果';
@@ -84,7 +85,7 @@ function page({ respond } = {}) {
   });
   const storage = new Map([['novaflow.client.auth.session.v1', JSON.stringify({ session: { token: 'session-token' } })]]);
   const context = vm.createContext({
-    console, setTimeout, clearTimeout, Event, JSON, Promise,
+    console, setTimeout, clearTimeout, Event, JSON, Promise,crypto:webcrypto,
     URL: class extends URL { static createObjectURL() { return 'blob:fake'; } static revokeObjectURL() {} },
     fetch: async () => ({ ok: true, status: 200, blob: async () => ({ size: 100, type: 'image/png' }) }),
     Image: FakeImage,
@@ -603,4 +604,53 @@ test('the plain animation dialog reads its frames together with the prompt and �
   assert.equal(p.calls.grokReverse[0].prompt, '人物转身');
   assert.equal(p.calls.grokReverse[0].requirements, '镜头轻推');
   assert.equal(p.calls.grokReverse[0].images.length, 1);
+});
+
+const releasedForAgent={analysisBackend:'strata',resourcesReleased:true,generationReady:true,modelIdentity:{id:'verified-flash',verification:'server-model-id'}};
+test('Xiaotao art uses the original semantic optimizer and preserves exact literal text and model policy',async()=>{
+  const prompt='米白色背景，左边两个红色圆球，右边一个蓝色方块，底部黑字“春日计划”。';
+  const optimized='[风格设定]\n极简磨砂3D海报。\n[主体物品]\n左边两个红色圆球，右边一个蓝色方块。\n[环境背景]\n米白色背景，保留大面积留白。\n[光线与色彩]\n左上方柔和光线，物体下面有浅淡接触阴影。\n[拍摄参数]\n平视构图，底部黑字“春日计划”。';
+  const modelPrompt='A matte 3D poster on an off-white background, exactly two red spheres on the left and one blue cube on the right, with the black title “春日计划” centered at the bottom. Soft light, generous empty space.';
+  const p=page({respond:()=>({ok:true,data:{...releasedForAgent,modelIdentity:{id:'verified-flash',verification:'server-weight-path'},prompt:optimized,modelPrompt,modelPromptLanguage:'en',negativePrompt:'额外物品，文字错误',modelPromptPolicy:'qwen21-task-policy-v1'}})});
+  const result=await p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'art',prompt,requirements:'保留主体数量与标题，优化光照和材质',generationMode:'txt2img',supportsNegativePrompt:true});
+  assert.equal(p.calls.local.length,1);assert.equal(p.calls.local[0].purpose,'optimize');assert.equal(p.calls.local[0].targetEngine,'qwen-2.1');
+  assert.equal(p.calls.local[0].qwenPromptMode,'txt2img');assert.match(p.calls.local[0].requirements,/提示词编辑模式/);
+  assert.equal(result.prompt,modelPrompt);assert.equal(result.displayPrompt,optimized);assert.equal(p.calls.local[0].agentModelLanguage,'en');assert.equal(result.negativePrompt,'额外物品，文字错误');assert.equal(result.optimization.sourcePrompt,prompt);
+  assert.equal(result.optimization.modelIdentity.verification,'server-weight-path');
+});
+test('Xiaotao cannot bypass optimizer failures, missing policy or an unconfirmed model release',async()=>{
+  for(const response of [{ok:false,error:'原框架校验失败'},{ok:true,...releasedForAgent,prompt:'一只猫'},
+    {ok:true,...releasedForAgent,resourcesReleased:false,prompt:'一只猫',modelPromptPolicy:'qwen21-task-policy-v1'},
+    {ok:true,...releasedForAgent,modelIdentity:{id:'unverified',verification:'claimed'},prompt:'一只猫',modelPromptPolicy:'qwen21-task-policy-v1'}]) {
+    const p=page({respond:()=>response});
+    await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'art',prompt:'一只猫',requirements:'优化',supportsNegativePrompt:false}));
+    assert.equal(p.calls.local.length,1);
+  }
+});
+test('Xiaotao video reuses H3 protocol validation and emits directly executable model fields',async()=>{
+  const prompt='integrated_multimodal_description: [Shot 1] A red ball rolls to the right, slows down, and stops on a grey floor. The camera holds a static shot.\noverall_soundscape: Soft rolling friction.\nnon_diegetic_music: N/A';
+  const displayPrompt='integrated_multimodal_description: [Shot 1] 一个红色球在灰色地面向右滚动，逐渐减速并停下，摄像机保持固定镜头。\noverall_soundscape: 柔和的滚动摩擦声。\nnon_diegetic_music: N/A';
+  let calls=0;
+  const p=page({respond:()=>({ok:true,...releasedForAgent,prompt:++calls===1?displayPrompt:JSON.stringify({modelPrompt:prompt,displayPrompt})})});
+  const result=await p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',prompt:'红球先向右滚动再停住，固定镜头',requirements:'保持一个红球，4秒内完成',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}});
+  assert.equal(p.calls.local[0].purpose,'minimax-h3-prompt-enhance');assert.equal(p.calls.local[0].durationSeconds,4);
+  assert.equal(p.calls.local[0].h3ReferenceFrames.length,0);assert.match(result.prompt,/integrated_multimodal_description/);
+  assert.equal(p.calls.local.length,2);assert.match(p.calls.local[1].requirements,/H3 compile: translate-only/);
+  assert.notEqual(p.calls.local[0].requestId,p.calls.local[1].requestId);
+  assert.match(p.calls.local[0].requirements,/不要音乐/);assert.match(p.calls.local[0].requirements,/完整留在画框中/);
+  assert.match(result.prompt,/rolls to the right/);assert.equal(result.optimization.framework,'minimax-h3');
+  assert.match(result.displayPrompt,/红色球/);assert.notEqual(result.displayPrompt,result.prompt);
+});
+
+test('H3 cannot use the manual as-written fallback when its separate English compiler has not released',async()=>{
+  const display='integrated_multimodal_description: [Shot 1] 一个红色球向右滚动后停住，固定镜头。\noverall_soundscape: 轻微滚动声。\nnon_diegetic_music: N/A';
+  let calls=0;const p=page({respond:()=>({ok:true,...releasedForAgent,prompt:display,...(++calls===2?{resourcesReleased:false}:{})})});
+  await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',prompt:'红球滚动后停住',requirements:'固定镜头',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}}),/官方执行格式检查/);
+  assert.equal(calls,2);
+});
+
+test('video execution defaults do not override an explicit exit from frame or requested soundtrack',async()=>{
+  const p=page({respond:()=>({ok:false,error:'fixture stops after observing request'})});
+  await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',prompt:'固定镜头，红球滚出画面后停住',requirements:'红球滚出画面后停住，保留钢琴配乐',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}}));
+  assert.doesNotMatch(p.calls.local[0].requirements,/未要求配乐：|固定镜头内停止的动作编排/);
 });

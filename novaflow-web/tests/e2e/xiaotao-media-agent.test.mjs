@@ -94,14 +94,16 @@ test('execution rechecks actual timeline and refuses stale or replayed plans bef
 test('video completion receipt includes only outputs belonging to its actual prompt',async()=>{
   const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
   vm.runInContext(source,ctx);vm.runInContext(agentSource,ctx);
-  let status={state:'idle',promptId:''},resources=[];
+  let status={state:'idle',promptId:''},resources=[],prompt='';
+  ctx.__NovaFlowSmartAI={optimizeForAgent:async()=>({prompt:'Optimized video prompt.',displayPrompt:'优化后的视频提示词。',optimization:{framework:'minimax-h3'}})};
   ctx.NovaFlowAudioStudio={sub:()=> 'video',open(){},resources:()=>[]};
-  ctx.NovaFlowAiSequenceGeneration={capture:()=>({mode:'local'}),status:()=>status,resources:()=>resources,setRequest(){},submit:async()=>{
+  ctx.NovaFlowAiSequenceGeneration={capture:()=>({mode:'local',prompt}),optimizationContext:async()=>({modelId:'minimax_h3_local',mode:'text_video',durationSeconds:2,resources:[]}),status:()=>status,resources:()=>resources,setRequest(op){prompt=op.prompt;},submit:async()=>{
     status={state:'done',promptId:'owned-task'};resources=[{id:'local-unrelated-import',name:'unrelated.mp4'},{id:'owned-task:output:video.mp4',name:'actual.mp4'}];
   }};
   const media=ctx.NovaFlowMediaAgent,fingerprint=ctx.NovaFlowXiaotaoArtAgent.fingerprint,snapshot=media.capture();
   const result=await media.execute({planId:'video-plan',contextFingerprint:await fingerprint(snapshot),operations:[{action:'generate_video',target:'video'}]},{snapshot,fingerprint});
   assert.equal(result.results[0].resources.length,1);assert.equal(result.results[0].resources[0].name,'actual.mp4');
+  assert.equal(prompt,'优化后的视频提示词。');assert.equal(result.results[0].executedPrompt,'Optimized video prompt.');
 });
 test('stopping during media fingerprinting cannot send a late model request',async()=>{
   let release,entered;

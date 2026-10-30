@@ -178,6 +178,9 @@ try {
   check(shaped.request.promptSchema === 'nf.art.prompt.v1' && shaped.request.promptDetailMode === 'simple-structured-v1' && shaped.request.requirements.length === 2000 && shaped.timeoutMs === 300000, 'structured art prompts keep their schema and limits');
   const patch = normalizeOptimizeRequest({ purpose: 'optimize', currentPrompt: 'a cat' });
   check(patch.request.promptSchema === undefined && patch.timeoutMs === 900000, 'a plain rewrite gets the desktop\'s long budget');
+  const modelEdit=normalizeOptimizeRequest({surface:'art',purpose:'optimize',targetEngine:'qwen-2.1',qwenPromptMode:'img2img',currentPrompt:'只改变球的颜色'}).request;
+  check(modelEdit.targetEngine==='qwen-2.1' && modelEdit.qwenPromptMode==='img2img','ordinary Qwen editing retains model-specific rewriting rules through the original service');
+  check(!('qwenPromptMode' in normalizeOptimizeRequest({surface:'animation',purpose:'optimize',targetEngine:'qwen-2.1',qwenPromptMode:'img2img'}).request),'image rewriting rules do not cross into video');
   assert.throws(() => normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', h3ReferenceFrames: [{ label: '<Picture 1>', dataUrl: 'data:image/png;base64,QQ==' }] }), /H3 参考画面与素材不匹配/); checks++;
   // An H3 requirement carries the whole source prompt first and the user's own request last.
   const longH3 = normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', requirements: 'x'.repeat(30000) + '\n用户修改要求：镜头慢慢推近' });

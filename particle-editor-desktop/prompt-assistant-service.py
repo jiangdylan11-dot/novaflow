@@ -62,6 +62,7 @@ from prompt_assistant.art_prompt_contract import (
     terminal_constraint_text as art_prompt_terminal_constraint_text,
 )
 from prompt_assistant.qwen3_vl_adapter import Qwen3VLProviderError
+from prompt_assistant.qwen21_prompt_policy import inject_policy as inject_qwen21_policy, policy_for as qwen21_policy_for, compile_agent_english, VERSION as QWEN21_POLICY_VERSION
 from prompt_assistant.pe_adapter import ComfyPEAdapter
 from prompt_assistant.flash_adapter import (
     FlashAdapter, flash_backend_enabled, begin_flash_request, end_flash_request, flash_request_summary,
@@ -14964,6 +14965,7 @@ class PromptAssistant:
                 resource_tokens=resource_tokens,
                 nsfw_enabled=nsfw_enabled,
             )
+            model_prompt = inject_qwen21_policy(model_prompt, payload)
             self.status = "推理中"
             raw_ir = self.generate(
                 model_prompt,
@@ -16692,6 +16694,7 @@ class PromptAssistant:
         enrich = not instruction and not art_prompt_uses_own_sections(source)
         template = ("<|im_start|>system\n" + (ART_ENRICH_SYSTEM_TEXT if enrich else ART_SEMANTIC_FUSION_RULES)
                     + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n")
+        template = inject_qwen21_policy(template, payload)
         preserve = list(dict.fromkeys(re.findall(r"成年|女性|男性|站立|坐姿|跪姿|俯卧|仰卧|右手|左手|全身|仰视", source)))
         for requested, category in [(r"男|女|性别", r"女性|男性"), (r"动作|姿势|姿态|站|坐|躺|趴|跪",r"站立|坐姿|跪姿|俯卧|仰卧"), (r"右手|左手|手臂|抬手",r"右手|左手"), (r"构图|镜头|全身|半身|特写|俯视|仰视|平视|景别",r"全身|仰视")]:
             if re.search(requested, instruction):
@@ -16795,6 +16798,7 @@ class PromptAssistant:
         if not requirement:
             raise ValueError("请描述你想画的内容")
         template = "<|im_start|>system\n" + ART_CREATE_SYSTEM_TEXT + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        template = inject_qwen21_policy(template, payload)
         # Only the user's own words reach the writer; the director text is appended at generation time.
         request = "用户的创作需求：\n" + requirement + "\n\n" + ART_CREATE_INSTRUCTION
         failure = ""
@@ -21923,7 +21927,11 @@ def _handle_request(payload: dict) -> dict:
     if command == "status":
         return assistant.status_payload()
     if command == "optimizePrompt":
-        return assistant.optimize_prompt(payload)
+        result = assistant.optimize_prompt(payload)
+        if isinstance(result, dict) and qwen21_policy_for(payload):
+            result = compile_agent_english(payload, result, assistant.generate)
+            result["modelPromptPolicy"] = QWEN21_POLICY_VERSION
+        return result
     if command == "describeArtStyle":
         return assistant.describe_art_style(payload)
     if command == "reverseImagePrompt":
