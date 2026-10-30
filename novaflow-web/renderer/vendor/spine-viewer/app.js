@@ -38,7 +38,6 @@ const elements = {
   runtimeBadge: document.getElementById("runtimeBadge"),
   dropZone: document.getElementById("dropZone"),
   filePicker: document.getElementById("filePicker"),
-  projectSelect: document.getElementById("projectSelect"),
   resetTransformButton: document.getElementById("resetTransformButton"),
   detectedVersion: document.getElementById("detectedVersion"),
   layerList: document.getElementById("layerList"),
@@ -763,35 +762,9 @@ async function buildProjects() {
   return projects;
 }
 
-function fillProjectSelect() {
-  elements.projectSelect.innerHTML = "";
-  if (!state.sceneItems.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "画布为空";
-    elements.projectSelect.appendChild(option);
-    elements.projectSelect.disabled = true;
-    elements.resetTransformButton.disabled = true;
-    return;
-  }
-
-  state.sceneItems
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .forEach((item) => {
-    const option = document.createElement("option");
-    option.value = item.id;
-    option.textContent = item.project.label;
-    elements.projectSelect.appendChild(option);
-    });
-  elements.projectSelect.disabled = false;
-  elements.resetTransformButton.disabled = false;
+function syncResetControl() {
+  elements.resetTransformButton.disabled = !state.sceneItems.length;
   elements.resetTransformButton.title = state.sceneItems.length > 1 ? '自动排列全部动画' : '重置位置';
-  elements.projectSelect.value = state.activeSceneId || state.sceneItems[0].id;
-}
-
-function getSelectedSceneItem() {
-  return getSceneItemById(elements.projectSelect.value);
 }
 
 function renderLayerList() {
@@ -1468,7 +1441,7 @@ function removeSceneItem(sceneId, dismiss = true) {
     state.activeSceneId = "";
     if (next) selectSceneItem(next.id);
   }
-  fillProjectSelect();
+  syncResetControl();
   updateEmptyState();
   autoLayoutUntouchedScenes();
   updateProjectHint();
@@ -1486,7 +1459,7 @@ function disposePlayer() {
   state.activeSceneId = "";
   state.player = null;
   state.loaded = false;
-  fillProjectSelect();
+  syncResetControl();
   updateEmptyState();
 }
 
@@ -2093,7 +2066,6 @@ function selectSceneItem(sceneId) {
   state.sceneItems.forEach((candidate) => {
     candidate.element.classList.toggle("is-active", candidate.id === item.id);
   });
-  elements.projectSelect.value = item.id;
   elements.playerMount.dataset.previewZoom = state.previewZoom.toFixed(3);
   renderLayerList();
   syncControlsFromSceneItem(item);
@@ -2127,7 +2099,7 @@ async function loadProjectsIntoScene(projects) {
       syncViewerPlayback();
       syncLegacyRuntimeResizeHandler();
       loadedCount += 1;
-      fillProjectSelect();
+      syncResetControl();
       updateEmptyState();
       autoLayoutUntouchedScenes();
       if (!state.activeSceneId) selectSceneItem(item.id);
@@ -2136,7 +2108,7 @@ async function loadProjectsIntoScene(projects) {
     }
   }
 
-  fillProjectSelect();
+  syncResetControl();
   updateEmptyState();
   if (getActiveSceneItem()) selectSceneItem(state.activeSceneId);
   if (errors.length) {
@@ -2144,11 +2116,6 @@ async function loadProjectsIntoScene(projects) {
   } else {
     setStatus(`已新增 ${loadedCount} 个动画，画布共 ${state.sceneItems.length} 个`);
   }
-}
-
-function loadSelectedProject() {
-  const item = getSelectedSceneItem();
-  if (item) selectSceneItem(item.id);
 }
 
 function togglePlayback() {
@@ -2291,7 +2258,6 @@ function bindEvents() {
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); elements.filePicker.click(); }
   });
   elements.filePicker.addEventListener("change", () => enqueueFiles(elements.filePicker.files));
-  elements.projectSelect.addEventListener("change", loadSelectedProject);
   elements.resetTransformButton.addEventListener("click", resetSceneLayout);
   elements.pickBackgroundButton.addEventListener("click", () => elements.backgroundPicker.click());
   elements.backgroundPicker.addEventListener("change", () => {
@@ -2502,7 +2468,6 @@ window.NovaFlowSpineViewer = {
 };
 document.addEventListener("visibilitychange", syncViewerPlayback);
 
-resetSelect(elements.projectSelect, "画布为空");
 fillNameSelect(elements.animationSelect, [], "未加载");
 fillNameSelect(elements.skinSelect, [], "未加载");
 updateRangeLabels();
