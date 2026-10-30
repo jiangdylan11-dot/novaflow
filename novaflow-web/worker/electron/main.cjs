@@ -156,6 +156,7 @@ async function ensureWorker() {
     workerName: config.workerName,
     registrationCode: config.registrationCode || '',
     logger: log,
+    clearRunFiles,
     onProgress: progress
   });
   configDirty = false;

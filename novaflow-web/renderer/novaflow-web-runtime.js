@@ -317,6 +317,7 @@
         buffer += decoder.decode(value, { stream: true });
         const messages = buffer.split('\n\n'); buffer = messages.pop();
         if (messages.includes('data: closed')) {
+          await root.NovaFlowWebWarehouse?.clearTemporary?.();
           // Browsers may disallow closing an externally opened tab. In that
           // case cover the stopped editor rather than leave active controls.
           const panel = root.document.createElement('div');

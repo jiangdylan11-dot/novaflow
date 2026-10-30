@@ -85,7 +85,9 @@ export async function createLocalAssistant(options) {
   const releaseUnused = async () => {
     const s = worker.getState();
     if (!s.localRunning && !s.sharing && !s.draining && !s.currentTaskId) {
+      const hadServices = servicesRunning;
       await services.stop(); servicesRunning = false; runtimes = [];
+      if (hadServices) await options.clearRunFiles?.();
     }
   };
   worker.onChange(() => {

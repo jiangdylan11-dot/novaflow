@@ -1,5 +1,5 @@
 // Real disk writes behind File System Access handles; verify permission loss,
-// persisted pending outputs, collisions, deduplication, and cancellation.
+// session-only temporary outputs, legacy cleanup, collisions and permissions.
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdtemp, readdir, rm, mkdir, unlink, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -62,7 +62,18 @@ function idb() {
             if (op === 'put') map.set(key || value.id, value);
             if (op === 'delete') map.delete(value);
             queueMicrotask(() => tx.oncomplete()); return { result };
-          }]));
+          }]).concat([['openCursor', () => {
+            const request = {}, remaining = [...map.keys()];
+            function next() {
+              queueMicrotask(() => {
+                const key = remaining.shift();
+                request.result = key === undefined ? null : { value: map.get(key), delete: () => map.delete(key), continue: next };
+                request.onsuccess();
+                if (key === undefined) tx.oncomplete();
+              });
+            }
+            next(); return request;
+          }]]));
           return tx;
         } };
         request.onsuccess();
@@ -87,14 +98,23 @@ function boot() {
   runInContext(source, createContext(sandbox)); return sandbox.NovaFlowWebWarehouse;
 }
 try {
+  // Old browser queues are removed without touching any user's local files.
+  stores.outputs.set('legacy-image', { id: 'legacy-image', blob: new Blob(['old-image']) });
+  stores.outputs.set('legacy-video', { id: 'legacy-video', blob: new Blob(['old-video']) });
+  stores.outputs.set('saved-metadata', { id: 'saved-metadata', blob: null, savedName: 'user-original.png' });
   let warehouse = boot(); await warehouse.ready;
+  check(stores.outputs.size, 1);
+  check(stores.outputs.has('saved-metadata'), true);
+  stores.outputs.clear();
   const image = new Blob(['original-image-bytes'], { type: 'image/png' });
   await warehouse.save({ name: '../fixture.png', blob: image });
   check((await readdir(dir)).length, 0);
-  check(stores.outputs.size, 1);
+  check(stores.outputs.size, 0); // Temporary bytes never enter the browser profile.
   check(requests, 0); // No background permission prompt.
   warehouse = boot(); await warehouse.ready;
   await warehouse.connect();
+  check((await readdir(dir)).length, 0); // Closing/reloading does not resurrect unsaved media.
+  await warehouse.save({ name: 'fixture.png', blob: image });
   check((await readdir(dir)).length, 1);
   check(await readFile(join(dir, (await readdir(dir))[0]), 'utf8'), 'original-image-bytes');
   check([...stores.outputs.values()][0].blob, null);
@@ -106,7 +126,9 @@ try {
   check(writes, 1); check(requests, 0);
   warehouse = boot(); await warehouse.ready;
   await warehouse.authorize();
-  check(writes, 2); check(requests, 1);
+  check(writes, 1); check(requests, 1); // The previous session's unsaved video expired.
+  await warehouse.save({ name: 'movie.mp4', blob: video });
+  check(writes, 2);
   // Saved names never carry the source name: Image_/Video_ + day + a per-day number.
   const now = new Date();
   const day = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
@@ -134,7 +156,7 @@ try {
   check(disconnected.pending, true); // Another tab cannot retain a disconnected mapping.
   check((await readdir(dir)).length, 5);
   // Removing a pending result must not leave a blob that a later reconnect saves.
-  const pendingRecord = [...stores.outputs.values()].find(record => record.blob);
+  const pendingRecord = { id: 'after-disconnect.png:' + Buffer.from(await webcrypto.subtle.digest('SHA-256', await image.arrayBuffer())).toString('hex') };
   await olderTab.removeAsset({ ...pendingRecord, pending: true });
   check(stores.outputs.get(pendingRecord.id).discarded, true);
   check(stores.outputs.get(pendingRecord.id).blob, null);
@@ -152,6 +174,17 @@ try {
   check((await readdir(dir)).includes(deleteName), false);
   check((await readdir(dir)).includes('.novaflow-trash'), false);
   check((await readdir(dir)).includes(nextName), true);
+
+  // Stopping the local workbench clears its unsaved queue, while mapped files
+  // survive cleanup, reload and reconnect. A new result can be saved afterwards.
+  await warehouse.disconnect();
+  await warehouse.save({ name: 'temporary.png', blob: collision });
+  const beforeCleanup = await readdir(dir);
+  await warehouse.clearTemporary();
+  await warehouse.connect();
+  check(await readdir(dir), beforeCleanup);
+  await warehouse.save({ name: 'new-session.png', blob: image });
+  check((await readdir(dir)).length, beforeCleanup.length + 1);
 
 } finally { await rm(dir, { recursive: true, force: true }); }
 console.log(checks + ' passed, 0 failed: local warehouse persistence and permissions');

@@ -78,11 +78,17 @@ const workflowDir = join(dataDir, 'workflows'); await mkdir(workflowDir);
 await writeFile(join(workflowDir, 'qwen_t2i.json'), JSON.stringify({ comfy: 'image', bindings: {}, graph: { '1': { class_type: 'Fixture', inputs: {} } } }));
 const license = { state: async () => ({ status: licensed ? 'licensed' : 'locked', machineId: 'fixture' }),
   assertAllowed: async () => { if (!licensed) throw Object.assign(new Error('license rejected'), { status: 403 }); }, importLicense: async () => { throw new Error('fixture'); } };
-let serviceStarts = 0;
-const services = { start: async () => { serviceStarts++; return [{ kind: 'image', running: true, reused: true }]; }, stop: async () => {} };
+let serviceStarts = 0, cleanupRuns = 0, servicesStopped = true;
+const services = { start: async () => { serviceStarts++; servicesStopped = false; return [{ kind: 'image', running: true, reused: true }]; }, stop: async () => { servicesStopped = true; } };
 const assistant = await createLocalAssistant({ ...isolatedAssistantOptions, controlUrl, dataDir, configPath: join(dataDir, 'identity.json'), workflowDir, webRoot,
   localPort: 0, gatewayPort: 0, gatewayHost: '127.0.0.1', tunnel: false, workerName: 'assistant-test',
-  comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl, license, services, pollIntervalMs: 30 });
+  comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl, license, services, pollIntervalMs: 30,
+  clearRunFiles: () => {
+    const state = assistant.getState();
+    assert(!state.localRunning && !state.sharing && !state.currentTaskId);
+    assert(servicesStopped, 'files must be removed after the runtimes stop');
+    cleanupRuns++;
+  } });
 let origin, pairing;
 const call = async (method, path, body, extra = {}) => {
   const r = await fetch(origin + path, { method, headers: { 'content-type': 'application/json', 'x-novaflow-local': pairing, ...extra }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -203,15 +209,19 @@ try {
   check(assistant.getState().sharing, 'denied local startup preserves active share');
   licensed = true;
   const startsBeforeLocal = serviceStarts;
+  const cleanupBeforeLocal = cleanupRuns;
   await assistant.start();
   check(serviceStarts === startsBeforeLocal, 'local start reuses sharing runtime');
   await assistant.stopLocal();
   check(assistant.getState().sharing && assistant.getState().currentTaskId === independent.id, 'closing local leaves shared task running');
+  check(cleanupRuns === cleanupBeforeLocal, 'closing local never deletes the active shared task files');
   await assistant.stopSharing();
   check(!assistant.getState().sharing && !assistant.getState().draining, 'share stops immediately while editor is closed');
   finished.add(queued.at(-1)); autoFinish = true;
   await wait(() => remoteResults.has(independent.id));
   check(remoteResults.get(independent.id).action === 'fail', 'independent shared job is cancelled by stop');
+  await wait(() => cleanupRuns > cleanupBeforeLocal);
+  check(cleanupRuns === cleanupBeforeLocal + 1, 'stopping both switches cleans temporary files once after task cancellation and runtime stop');
   await assistant.startSharing();
   check(assistant.getState().sharing && !assistant.getState().localRunning, 'share restarts independently after stop');
   await assistant.stopSharing();

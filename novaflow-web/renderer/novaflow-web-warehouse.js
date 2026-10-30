@@ -1,4 +1,4 @@
-// Browser-owned local warehouse. Only generated outputs enter the save queue;
+// Browser-owned local warehouse. Unsaved media lives only in this page session;
 // selecting a folder never uploads its files to the control plane or Worker.
 (function (root) {
   'use strict';
@@ -8,7 +8,7 @@
   const records = new Map();
   let db, directory = null, permission = 'prompt', lastError = '', panel, status, listing, preview, previousFocus;
   let serial = Promise.resolve(), previewUrl = '', busy = false, feedback = '';
-  let folderLabel, connectionLabel, errorLabel, summary, breadcrumbs, search, sort, viewer;
+  let folderLabel, connectionLabel, errorLabel, summary, breadcrumbs, search, sort, viewer, warehouseTitle;
   let folderTrail = [], entries = [], filter = 'all', listingVersion = 0, thumbnailObserver;
   const thumbnailUrls = new Set();
   const thumbnailCache = new Map(), thumbnailFolders = new WeakMap(), thumbnailCancels = new Set();
@@ -102,14 +102,28 @@
     });
   }
   async function persist(record) {
-    if (db) await transaction('outputs', 'readwrite', store => store.put(record));
+    // IndexedDB belongs to the browser profile (usually the system disk), not
+    // the assistant's temporary directory. Never persist unsaved media there.
+    if (db && !record.blob) await transaction('outputs', 'readwrite', store => store.put(record));
   }
   const ready = (async () => {
     try {
       db = await database();
       directory = await transaction('settings', 'readonly', store => store.get('directory')) || null;
-      const saved = await transaction('outputs', 'readonly', store => store.getAll());
-      saved.forEach(record => records.set(record.id, record));
+      // Scan one entry at a time: the legacy queue can contain thousands of
+      // large images/videos. getAll() would load all those bytes into RAM.
+      await transaction('outputs', 'readwrite', store => {
+        const request = store.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const record = cursor.value;
+          // Actual files in a mapped folder are outside this store.
+          if (record.blob) cursor.delete();
+          else records.set(record.id, record);
+          cursor.continue();
+        };
+      });
       if (directory) permission = await directory.queryPermission({ mode: 'readwrite' });
     } catch (error) { lastError = '仓库设置未能恢复：' + error.message; }
   })();
@@ -120,12 +134,23 @@
     return next;
   }
   function pendingCount() { return [...records.values()].filter(item => item.blob).length; }
+  async function clearTemporary() {
+    await ready;
+    return enqueue(async () => {
+      for (const [id, record] of records) if (record.blob) records.delete(id);
+      clearPreview(); clearThumbnails();
+      feedback = '临时仓库已清理，本地文件夹中的作品仍保留';
+      tell(); notice();
+      if (panel && !panel.hidden) await refreshList();
+    });
+  }
   function tell() {
     if (!status) return;
+    warehouseTitle.textContent = directory ? '本地仓库' : '临时仓库';
     folderLabel.textContent = directory ? directory.name : '连接本地文件夹';
     connectionLabel.textContent = directory ? (permission === 'granted' ? '已连接本机' : '需要恢复授权') : '尚未连接';
     connectionLabel.dataset.connected = String(!!directory && permission === 'granted');
-    status.textContent = feedback || (pendingCount() ? pendingCount() + ' 个结果等待保存' : directory && permission === 'granted' ? '新生成的图片、视频和音频将自动保存到此文件夹' : '选择作品文件夹，即可浏览并自动保存生成结果');
+    status.textContent = feedback || (pendingCount() ? pendingCount() + ' 个临时结果 · 关闭或刷新页面、停止本地服务后清理，请及时下载或连接文件夹保存' : directory && permission === 'granted' ? '新生成的图片、视频和音频将自动保存到此文件夹，作品不会自动删除' : '临时结果在关闭或刷新页面、停止本地服务后清理；连接本地文件夹可永久保存');
     errorLabel.textContent = lastError; errorLabel.hidden = !lastError;
     panel.querySelector('[data-warehouse-action="authorize"]').hidden = !directory || permission === 'granted';
     panel.querySelector('[data-warehouse-action="disconnect"]').hidden = !directory;
@@ -141,7 +166,7 @@
       node.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483000;padding:10px 16px;border:1px solid #29594A;border-radius:8px;background:#1C4136;color:#fff;font-size:12px;cursor:pointer';
       node.onclick = () => open(); root.document.body.appendChild(node);
     }
-    node.textContent = lastError ? '仓库保存未完成 · 点击查看' : '有 ' + pendingCount() + ' 个生成结果待保存 · 连接本地仓库';
+    node.textContent = lastError ? '仓库保存未完成 · 点击查看' : '有 ' + pendingCount() + ' 个临时结果 · 关闭后清理，连接本地仓库可保留';
     node.hidden = pendingCount() === 0 && !lastError;
   }
   function cleanName(name, type) {
@@ -200,7 +225,7 @@
       for (const record of records.values()) {
         if (!record.blob) continue;
         const latest = db && await transaction('outputs', 'readonly', store => store.get(record.id));
-        if (latest?.discarded) { records.set(record.id, latest); continue; }
+        if (latest?.discarded || latest?.savedName) { records.set(record.id, latest); continue; }
         const name = await write(record);
         const saved = { ...record, savedName: name, blob: null };
         // Keep the retryable blob until the disk write and local index commit.
@@ -211,7 +236,7 @@
       if (root.navigator.locks) await root.navigator.locks.request('novaflow-warehouse-write', run);
       else await run();
       lastError = '';
-    } catch (error) { lastError = '未写入本地文件夹，结果保留待重试：' + error.message; }
+    } catch (error) { lastError = '未写入本地文件夹，结果仅在当前页面临时保留，请及时重试或下载：' + error.message; }
     tell(); notice();
     if (panel && !panel.hidden) await refreshList();
   }
@@ -221,11 +246,10 @@
       name = cleanName(name, blob.type);
       const hash = await digest(blob), id = name + ':' + hash;
       return await enqueue(async () => {
+        feedback = '';
         if (!records.has(id)) {
           const record = { id, name, hash, blob, createdAt: Date.now() };
           records.set(id, record);
-          try { await persist(record); }
-          catch (error) { lastError = '浏览器暂存失败，请保持页面打开并连接文件夹：' + error.message; notice(); }
         }
         await flushNow();
         return { ok: !records.get(id).blob, pending: !!records.get(id).blob };
@@ -389,7 +413,7 @@
     clearThumbnails(); listing.replaceChildren(); breadcrumbs.replaceChildren();
     const version = ++listingVersion;
     const pending = [...records.values()].filter(item => item.blob).map(item => ({ ...item, pending: true, kind: 'file' }));
-    const rootCrumb = action(breadcrumbs, directory ? directory.name : '本地仓库', () => { folderTrail = []; return refreshList(); });
+    const rootCrumb = action(breadcrumbs, directory ? directory.name : '临时仓库', () => { folderTrail = []; return refreshList(); });
     rootCrumb.className = 'nf-wh-crumb';
     folderTrail.forEach((folder, index) => {
       node('span', '/', breadcrumbs);
@@ -589,7 +613,7 @@
       panel.setAttribute('data-novaflow-runtime-ignore', '1');
       const card = node('section', null, panel); card.className = 'nf-wh-card'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true'); card.setAttribute('aria-label', '本地仓库');
       const header = node('header', null, card); header.className = 'nf-wh-header';
-      const title = node('div', null, header); title.className = 'nf-wh-title'; node('h2', '本地仓库', title);
+      const title = node('div', null, header); title.className = 'nf-wh-title'; warehouseTitle = node('h2', '临时仓库', title);
       connectionLabel = node('span', '', header); connectionLabel.className = 'nf-wh-connection';
       const x = action(header, '', close, 'close'); x.className = 'nf-wh-close'; x.setAttribute('aria-label', '关闭仓库'); icon('close', x);
       errorLabel = node('div', '', card); errorLabel.className = 'nf-wh-error'; errorLabel.setAttribute('role', 'alert');
@@ -645,5 +669,5 @@
     const tip = root.document.getElementById('novaflow-warehouse-notice');
     if (tip) tip.hidden = true;
   }, true);
-  root.NovaFlowWebWarehouse = { open, save, connect, authorize, disconnect, openFolder, removeAsset, ready };
+  root.NovaFlowWebWarehouse = { open, save, connect, authorize, disconnect, openFolder, removeAsset, clearTemporary, ready };
 })(typeof window !== 'undefined' ? window : globalThis);
