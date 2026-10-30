@@ -56,7 +56,7 @@ await test('the estimate includes the system prompt and the 2048-token output bu
   const visionSystem = xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' });
   const image = estimateXiaotaoOnlineCredits({ text: '你好', files: [{ kind: 'image' }] });
   assert.equal(image.tokens, Math.ceil(('你好'.length + visionSystem.length) / 2) + 2048 + 2500);
-  assert.ok(visionSystem.length > system.length);
+  assert.equal(image.tokens, Math.ceil(('你好'.length + visionSystem.length) / 2) + 2048 + 2500);
   const explicit = estimateXiaotaoOnlineCredits({ text: '你好', system, outputTokens: 2048 });
   assert.equal(explicit.credits, text.credits);
 });

@@ -212,18 +212,19 @@ async function getAdminRunningHubProviderStatus({ checkAccount = false } = {}) {
     }
   }
   const cached = runningHubCheck?.baseUrl === env.baseUrl && runningHubCheck?.apiKey === env.apiKey ? runningHubCheck.result : null;
-  let serverSync={synced:false,error:'尚未确认服务器同步'};
+  let serverSync={synced:false,error:'尚未确认服务器同步'},serverFields={};
   try {
     const {client}=getAdminClient();
     if(client){
       const {data,error}=await client.rpc('novaflow_runninghub_config_get',{});
       if(error)throw new Error('server config unavailable');
       const row=Array.isArray(data)?data[0]:data;
+      if(row)serverFields={llmBaseUrl:row.llm_base_url,llmModel:row.llm_model};
       serverSync=row?{synced:row.api_key===env.apiKey,configured:!!row.api_key,revision:row.revision,updatedAt:row.updated_at}
         :{synced:false,configured:false,error:'服务器尚无同步配置，请重新保存 Key'};
     }
   } catch {serverSync={synced:false,error:'无法读取服务器同步状态'};}
-  return { ...runningHub.publicStatus(env), ...(cached || {}),serverSync };
+  return { ...runningHub.publicStatus(env), ...(cached || {}),...serverFields,serverSync };
 }
 
 const DOMESTIC_BALANCE_REFRESH_MS = 10 * 60 * 1000;
@@ -2407,11 +2408,16 @@ async function setAdminProviderRuntimeConfig(payload) {
   try {
     const clientState = getAdminClient();
     if (!clientState.client) throw new Error('未连接服务器，RunningHub 配置未保存或同步');
+    const {data: currentRows,error: readError}=await clientState.client.rpc('novaflow_runninghub_config_get',{});
+    if(readError)throw new Error('无法读取服务器当前配置，未覆盖服务器设置');
+    const current=Array.isArray(currentRows)?currentRows[0]:currentRows,defaults=runningHub.readConfig(()=>'');
     const { data: serverConfig, error: syncError } = await clientState.client.rpc('novaflow_runninghub_config_set', {
       p_api_key: parsed.updateApiKey ? parsed.apiKey : null,
       p_clear: parsed.clearApiKey,
-      p_llm_base_url: parsed.llmBaseUrl,
-      p_llm_model: parsed.llmModel
+      // Only the Key is editable. A stale readonly field must not overwrite
+      // the server's working endpoint/model during a later Key save.
+      p_llm_base_url: current?.llm_base_url || defaults.llmBaseUrl,
+      p_llm_model: current?.llm_model || parsed.llmModel || defaults.llmModel
     });
     if (syncError || serverConfig?.synced !== true) throw new Error('RunningHub 配置未同步到服务器，请检查连接或服务端升级状态');
     const written = [];
@@ -2447,8 +2453,8 @@ async function setAdminProviderRuntimeConfig(payload) {
       env: {
         provider_key: parsed.providerKey,
         baseUrl: env.baseUrl,
-        llmBaseUrl: env.llmBaseUrl,
-        llmModel: env.llmModel,
+        llmBaseUrl: current?.llm_base_url || defaults.llmBaseUrl,
+        llmModel: current?.llm_model || parsed.llmModel || defaults.llmModel,
         gptImageEndpoint: env.gptImageEndpoint,
         hasApiKey: Boolean(env.hasApiKey),
         configured: Boolean(env.configured)

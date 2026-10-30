@@ -103,7 +103,7 @@ test("invalid account Key reports the actionable provider error without echoing 
   assert(!JSON.stringify(result).includes(fakeKey));
 });
 
-function adminFixture({ accountBody = { code: 0, data: { remainMoney: "12.5", currency: "CNY" } }, cacheWriteFails = false, syncFails = false } = {}) {
+function adminFixture({ accountBody = { code: 0, data: { remainMoney: "12.5", currency: "CNY" } }, cacheWriteFails = false, syncFails = false, serverRow=null } = {}) {
   const filename = path.resolve(__dirname, "../license-admin-gui/admin-data.js");
   const realRequire = createRequire(filename);
   const registry = new Map();
@@ -129,8 +129,10 @@ function adminFixture({ accountBody = { code: 0, data: { remainMoney: "12.5", cu
       return query;
     },
     rpc: async (name,args) => {
+      if(name==='novaflow_runninghub_config_get')return {data:serverRow?[serverRow]:[]};
       if(name==='novaflow_runninghub_config_set') {
         if(syncFails)return {error:{message:'fixture sync failed'}};
+        serverRow={api_key:args.p_clear?'':args.p_api_key??serverRow?.api_key??'',llm_base_url:args.p_llm_base_url,llm_model:args.p_llm_model};
         serverWrites.push(args);return {data:{synced:true,configured:!args.p_clear,revision:serverWrites.length,updatedAt:'2026-10-30T00:00:00Z'}};
       }
       return {data:0};
@@ -207,6 +209,15 @@ test('server synchronization failure cannot report success or change the local K
   assert.equal(result.ok,false);assert.match(result.error,/未同步到服务器/);
   assert.equal(f.writes.length,0);assert.equal(f.env.NOVAFLOW_RUNNINGHUB_API_KEY,'original-local-key');
   assert(!JSON.stringify(result).includes(fakeKey));
+});
+
+test('readonly endpoint/model come from the server and an old local address cannot overwrite them when saving a Key',async()=>{
+  const f=adminFixture({serverRow:{api_key:fakeKey,llm_base_url:'https://llm.runninghub.ai/v1',llm_model:'xai/grok-4.7'}});
+  Object.assign(f.env,{NOVAFLOW_RUNNINGHUB_API_KEY:fakeKey,NOVAFLOW_RUNNINGHUB_LLM_BASE_URL:'https://llm.runninghub.cn/v1'});
+  const status=await f.api.getAdminRunningHubProviderStatus();
+  assert.equal(status.llmBaseUrl,'https://llm.runninghub.ai/v1');assert(!JSON.stringify(status).includes(fakeKey));
+  assert.equal((await f.api.setAdminProviderRuntimeConfig({providerKey:'runninghub',apiKey:fakeKey,llmBaseUrl:'https://llm.runninghub.cn/v1',llmModel:'stale-model'})).ok,true);
+  assert.equal(f.serverWrites[0].p_llm_base_url,'https://llm.runninghub.ai/v1');assert.equal(f.serverWrites[0].p_llm_model,'xai/grok-4.7');
 });
 
 test("old provider env writes are rejected and do not touch stored secrets", async () => {
