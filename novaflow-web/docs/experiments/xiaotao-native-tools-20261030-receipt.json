@@ -1,5 +1,35 @@
 {
-  "release": "2.0.178",
+  "release": {
+    "version": "2.0.178",
+    "sourceCommit": "b2e9557f",
+    "packaged": true,
+    "installed": false,
+    "sites": [
+      "https://foart.net",
+      "https://www.foart.net",
+      "https://novaflow.jiangdylan11.workers.dev"
+    ],
+    "serviceVersionsVerified": [
+      "novaflow-web",
+      "novaflow-backend",
+      "novaflow-companion"
+    ],
+    "installerSha256": "1bfae167207918952e7ac9454fd306163f75402947e19c7bbae82fdec9aee228",
+    "tests": {
+      "feature": 143,
+      "entry": 4,
+      "runtimeCheck": "pass",
+      "edgeCopies": "pass",
+      "backendSharedCopies": "pass"
+    },
+    "formalOnlineSmoke": {
+      "loggedInWorkbench": true,
+      "request": "请打开Foart音频工具，不生成任何内容，不导出文件。打开后结束。",
+      "actualAudioWorkspaceVisible": true,
+      "reply": "已按要求打开工具。已打开音频工具",
+      "chargedCredits": 4
+    }
+  },
   "environment": "Authenticated local Foart workbench, real production companion and existing GPU worker; no mocked generation",
   "video": [
     {
@@ -96,7 +126,11 @@
       ],
       "alphaCorners": 0
     },
-    "poseHeadRotationX": 15
+    "poseHeadRotationX": 15,
+    "poseContinuationHeadRotationX": [
+      -10,
+      20
+    ]
   },
   "audioContinuation": {
     "gainBefore": 0.5,
@@ -117,6 +151,13 @@
   ],
   "concurrentChangesRetained": [
     "01798286",
-    "4f9a8867"
-  ]
+    "4f9a8867",
+    "9b0f2e42",
+    "aed5e977"
+  ],
+  "localBrain": {
+    "realNativeAudioWorkspaceOpened": true,
+    "finishFromRealReceiptWithoutSecondPlanner": true,
+    "generationNotStarted": true
+  }
 }
