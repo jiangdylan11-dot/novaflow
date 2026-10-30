@@ -7713,7 +7713,7 @@
       const r = b.getBoundingClientRect()
       const menu = h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 4)}px` },
         items.filter(Boolean).map((it) => h('button', { disabled: it.disabled, title: it.title, onclick: () => { closeMenu(); it.run() } },
-          it.icon ? h('span', { html: ICON[it.icon], style: 'display:inline-flex' }) : null, it.label, it.kb ? h('span', { class: 'kb' }, it.kb) : null)))
+          it.icon ? h('span', { 'data-menu-icon': it.icon, html: ICON[it.icon], style: 'display:inline-flex' }) : null, it.label, it.kb ? h('span', { class: 'kb' }, it.kb) : null)))
       mountMenu(menu)
       const mr = menu.getBoundingClientRect()
       if (mr.bottom > innerHeight - 8) menu.style.top = Math.round(r.top - mr.height - 4) + 'px'
