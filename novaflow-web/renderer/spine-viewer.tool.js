@@ -7,6 +7,7 @@
   const viewerUrl = new URL('./vendor/spine-viewer/index.html', document.currentScript.src).href
   let active = false
   let frame = null
+  let frameReady = false
   const workspaces = new Map()
 
   const textOf = (node) => String(node?.textContent || '').replace(/\s+/g, ' ').trim()
@@ -66,17 +67,30 @@
       root = document.createElement('section')
       root.id = ROOT_ID
       root.setAttribute('aria-label', 'SPINE 查看器')
-      Object.assign(root.style, { position: 'fixed', zIndex: '120', overflow: 'hidden', background: '#171a1f' })
+      Object.assign(root.style, { position: 'fixed', zIndex: '120', overflow: 'hidden', background: '#151515' })
+      root.setAttribute('aria-busy', 'true')
+      root.dataset.viewerReady = '0'
       frame = document.createElement('iframe')
       frame.title = 'SPINE 查看器'
       frame.src = viewerUrl
-      Object.assign(frame.style, { display: 'block', border: '0', width: '100%', height: '100%' })
-      frame.addEventListener('load', notifyViewer)
+      Object.assign(frame.style, { display: 'block', border: '0', width: '100%', height: '100%', visibility: 'hidden', background: '#151515', colorScheme: 'dark' })
+      frame.addEventListener('load', () => {
+        // Keep the opaque neutral surface through initial navigation and CSS loading.
+        // The parent clock also runs if the user switches tools while it loads.
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+          frameReady = true
+          frame.style.visibility = 'visible'
+          root.dataset.viewerReady = '1'
+          root.setAttribute('aria-busy', 'false')
+          notifyViewer()
+        }))
+      })
       root.appendChild(frame)
       document.body.appendChild(root)
     }
     root.hidden = false
     root.inert = false
+    frame.style.visibility = frameReady ? 'visible' : 'hidden'
     syncBounds()
     syncSelection()
     notifyViewer()
