@@ -2884,8 +2884,8 @@
         '.nf-same-name-title{font-size:14px;font-weight:600}',
         '.nf-same-name-text{line-height:1.6;word-break:break-all}',
         '.nf-same-name-hint{margin-top:4px;font-size:11px;color:#8A8F98}',
-        '.nf-same-name-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}',
-        '.nf-same-name-btn{height:30px;padding:0 14px;border:0;border-radius:6px;background:#2A2A2A;color:#EEF4FC;font-size:12px;cursor:pointer;outline:none}',
+        '.nf-same-name-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:220px;max-width:100%;margin:16px auto 0}',
+        '.nf-same-name-btn{box-sizing:border-box;width:100%;height:30px;display:flex;align-items:center;justify-content:center;padding:0 14px;border:0;border-radius:6px;background:#2A2A2A;color:#EEF4FC;font-size:12px;white-space:nowrap;cursor:pointer;outline:none}',
         '.nf-same-name-btn:hover{background:#373737;color:#fff}',
         '.nf-same-name-btn[data-primary]{background:#1EA672;color:#fff}',
         '.nf-same-name-btn[data-primary]:hover{background:#22B47C}'
