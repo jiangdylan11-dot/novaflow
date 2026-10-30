@@ -13,13 +13,14 @@ function createWindow() {
   // window; the default used to be 1200x760, which pushed every list into a
   // horizontal scroll.
   const win = new BrowserWindow({
+    show: false,
     width: 1440,
     height: 880,
     minWidth: 1080,
     minHeight: 680,
     title: "Foart 后台管理",
     icon: path.join(__dirname, "build", "foart-admin-brush.ico"),
-    backgroundColor: "#0B0E13",
+    backgroundColor: "#101010",
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "license-admin-gui", "preload.js"),
@@ -28,6 +29,7 @@ function createWindow() {
     }
   });
   win.setMenuBarVisibility(false);
+  win.once("ready-to-show", () => win.show());
   win.loadFile(path.join(__dirname, "license-admin-gui", "index.html"));
 }
 
