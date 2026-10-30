@@ -942,11 +942,17 @@
               </div>
               <div class="formGrid topGap" id="featureCreditPrices"></div>
               <div class="cardHint">小桃在线对话和看图按实际用量及成本估算动态结算，默认加价 1.5 倍（服务器可调整）；上面的固定价仅供备用报价，不代表实际扣分。文生图加价倍数不影响小桃。</div>
-              <div class="cardHint topGap">毛利估算使用下方参考价与汇率：适用于付费积分，不能识别赠分和历史不同售价；不含手续费、服务器及运营费用。RH 成本可能为估算，不是净利润。</div>
+              <div class="cardHint topGap">毛利按用户购买积分的参考售价和 RH 美元成本估算；无法识别赠分或历史不同售价，不含手续费、服务器及运营费用。RH 成本可能为估算，不是净利润。</div>
               <div class="formGrid topGap">
-                <div class="row"><div class="label">每积分参考售价（元/分）</div><div class="field"><input id="profitCreditPriceCny" type="number" min="0" step="0.000001" placeholder="留空不计算" /></div></div>
-                <div class="row"><div class="label">美元汇率（元/USD）</div><div class="field"><input id="profitUsdCny" type="number" min="0" step="0.0001" placeholder="留空不计算" /></div></div>
+                <div class="row"><div class="label">每积分参考售价（美元/分）</div><div class="field"><input id="profitCreditPriceUsd" type="number" min="0" step="any" placeholder="留空不计算" /></div></div>
               </div>
+              <details class="topGap"><summary>人民币参考价与汇率（兼容已有设置，可选）</summary>
+                <div class="cardHint">美元参考售价优先；留空时才使用完整的人民币售价和汇率换算。</div>
+                <div class="formGrid topGap">
+                  <div class="row"><div class="label">每积分参考售价（元/分）</div><div class="field"><input id="profitCreditPriceCny" type="number" min="0" step="any" placeholder="可选" /></div></div>
+                  <div class="row"><div class="label">美元汇率（元/USD）</div><div class="field"><input id="profitUsdCny" type="number" min="0" step="any" placeholder="可选" /></div></div>
+                </div>
+              </details>
               <div class="actions"><button id="saveProfitEstimate" class="btn" type="button">保存毛利估算参数</button><span id="profitEstimateStatus" class="hint">未设置</span></div>
               <div class="formGrid topGap">
                 <div class="row">
@@ -1287,13 +1293,13 @@
                 <table class="dataTable">
                   <thead>
                     <tr>
-                      <th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class="num">积分</th><th class="num">估算 RH 成本</th><th class="num">参考收入（元）</th><th class="num">预估毛利（元）</th>
+                      <th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class="num">积分</th><th class="num">估算 RH 成本（美元）</th><th class="num">参考收入（美元）</th><th class="num">预估毛利（美元）</th>
                     </tr>
                   </thead>
                   <tbody id="creditLedgerBody"><tr><td colspan="9">尚未查询</td></tr></tbody>
                 </table>
               </div>
-              <div class="cardHint">收入按当前参考积分售价折算，毛利减去 RH 成本；赠分、历史售价、手续费及其他支出未计入。两项仅供估算，不是净利润。</div>
+              <div class="cardHint">收入按当前参考积分售价折算，毛利减去 RH 成本；未设置售价或成本缺失时显示“—”。赠分、历史售价、手续费及其他支出未计入，两项仅供估算，不是净利润。</div>
             </div>
           </div>
         </div>
