@@ -876,7 +876,7 @@ test('an old or foreign status reply cannot replace a stopped task or a later lo
   const controller = e.api.createController({bridge:e.bridge,timers,api:() => ({artAgentChat:async () => {if (++requests === 1) {firstEntered.resolve(); return oldReply.promise;} secondEntered.resolve(); return newReply.promise;},artAgentStop:async () => ({ok:true}),promptAssistantGetStatus:async () => ++statusCalls === 1 ? oldStatus.promise : ({ok:true,chatSession:{state:'loading',modelLoaded:false,activeRequestId:'a-different-request'}})})});
   const first = controller.send('第一条'); await firstEntered.promise; await controller.stop();
   const second = controller.send('第二条'); await secondEntered.promise; await Promise.resolve();
-  const currentStatus=controller.state.status; assert.match(currentStatus,/正在连接本地助手|正在等待本地分析启动/);
+  const currentStatus=controller.state.status; assert.match(currentStatus,/正在连接 Foart 算力助手|正在等待本地分析启动/);
   oldStatus.resolve({ok:true,chatSession:{state:'loading',modelLoaded:false}}); await Promise.resolve(); await Promise.resolve();
   assert.equal(controller.state.status,currentStatus); assert.equal(controller.state.localSession,null); assert.equal(timers.pending.size,1);
   newReply.resolve({ok:true,data:{reply:'第二条回复',history:[]}}); await second;
