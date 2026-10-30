@@ -379,14 +379,14 @@ await test('calibration excludes missing usage, zero cost, caps and ledger short
   }
 });
 
-await test('a text-only online turn keeps the general chat prompt and token billing', async () => {
+await test('a text-only online turn keeps the Foart-only role, distinct input capabilities and token billing', async () => {
   const text = companionInput({ requestId: 'text-only-1234', mode: 'chat', promptLanguage: 'en', message: '你好', history: [] });
   assert.equal(text.textOnly, true);
-  assert.match(text.input[0].content[0].text, /使用云端API的智能助手/);
-  assert.doesNotMatch(text.input[0].content[0].text, /参考资源/);
+  assert.match(text.input[0].content[0].text, /Foart 的专用制作与工具控制助手/);
+  assert.match(text.input[0].content[0].text, /没有附带图片像素或应用执行工具/);
   const vision = companionInput({ requestId: 'vision-only-12', mode: 'chat', message: '看图', history: [], images: [{ role: 'attachment', dataUrl: PNG }] });
   assert.equal(vision.textOnly, false);
-  assert.match(vision.input[0].content[0].text, /参考资源/);
+  assert.match(vision.input[0].content[0].text, /附带完整图片像素/);
   const events = [];
   const service = createCompanionChat({
     provider: { baseUrl: 'https://provider.test/v1', model: 'chat-fixture', apiKey: 'fixture-private' },
@@ -397,8 +397,8 @@ await test('a text-only online turn keeps the general chat prompt and token bill
     }),
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body);
-      assert.match(body.messages[0].content, /使用云端API的智能助手/);
-      assert.doesNotMatch(body.messages[0].content, /参考资源/);
+      assert.match(body.messages[0].content, /Foart 的专用制作与工具控制助手/);
+      assert.match(body.messages[0].content, /没有附带图片像素或应用执行工具/);
       return Response.json({
         id: 'cmpl-text', model: 'chat-fixture',
         choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '你好，我是小桃AI。' } }],

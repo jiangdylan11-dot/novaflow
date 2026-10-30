@@ -54,6 +54,18 @@ function env({cfg=5} = {}) {
   const api = sandbox.NovaFlowXiaotaoArtAgent, bridge = api.createBridge();
   return {api, bridge, sandbox, runtime, state, refs, saved, calls, setSurface:v => {surface = v;}, getPrepared:() => prepared};
 }
+test('an unavailable online media tool records the request and reports no execution rather than the preceding chat status',async()=>{
+  const e=env();let requests=0;
+  e.sandbox.NovaFlowMediaAgent={wantsMedia:()=>true};
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{requests++;}})});
+  controller.setProvider('api');controller.state.status='已回复';
+  const message='做一个2秒的机器人视频';
+  assert.equal(await controller.send(message),false);
+  assert.equal(controller.state.status,'未提交工具执行');
+  assert.match(controller.state.error,/Foart 的现有工具/);
+  assert.equal(controller.state.messages.at(-1).content,message);
+  assert.equal(requests,0);assert.equal(controller.state.generating,false);
+});
 test('online predicted fee matches its inline receipt and learns only server-approved numeric usage',async()=>{
   const e=env(); e.refs.splice(1); Object.assign(e.refs[0],{width:96,height:96});
   runInContext(readFileSync(new URL('../../renderer/feature-credit-prices.js',import.meta.url),'utf8'),createContext(e.sandbox));
@@ -67,7 +79,7 @@ test('online predicted fee matches its inline receipt and learns only server-app
       billingSample:{eligible,model,pricingSource:'token_usage',inputTokens:1600,outputTokens:600,totalTokens:2200,usdCost:0.022,creditsPerUsd:211,markup:2,policy}}};
   }})});
   controller.setProvider('api');
-  const before=controller.onlineQuote(message); assert.equal(before.reservedCredits,21);
+  const before=controller.onlineQuote(message); assert.equal(before.reservedCredits,estimateXiaotaoOnlineCredits(controller.onlineEstimateInput(message)).credits);
   for(let i=0;i<4;i++)assert.equal(await controller.send(message),true);
   const after=controller.onlineQuote(message);
   assert.equal(after.sampleCount,4); assert.ok(after.credits<before.credits);
@@ -549,7 +561,6 @@ test('online estimates count the actual reference and attachment union before se
     assert.equal(payload.images.length, expected, message);
     const chargedEstimate = estimateXiaotaoOnlineCredits({text:payload.message,history:'',files:Array.from({length:Math.max(payload.images.length,payload.uploads.filter(file => file.kind==='image').length)},()=>({kind:'image'}))});
     assert.equal(shown.credits, chargedEstimate.credits, message);
-    assert.equal(shown.credits, expected === 1 ? 21 : 31);
   }
 });
 

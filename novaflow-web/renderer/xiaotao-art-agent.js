@@ -850,7 +850,7 @@
     }
     async function sendMedia(message, {recordMessage=true,requestMessage=message,intent=null}={}) {
       const media=root.NovaFlowMediaAgent;
-      if(state.provider!=='local') {state.error='执行音视操作请切换“本地智能”，在线智能目前提供对话建议';notify();return false;}
+      if(state.provider!=='local') {if(recordMessage)pushUser(message);state.error='本次在线智能请求尚未接入音视工具，未提交操作。视频和音频仍由 Foart 的现有工具制作。';state.status='未提交工具执行';notify();return false;}
       if((state.staged || []).length) {state.error='请先将音视频素材导入音视资源列表，再告诉小桃如何处理';notify();return false;}
       const operation=++serial;
       stopped=false;activeMode='media';activeSnapshot=null;activeRequest=root.crypto.randomUUID();
@@ -969,7 +969,7 @@
       }
       if (recordMessage) {pushUser(message); recordMessage = false;}
       let execution = executionIntent(message);
-      if (execution && state.provider !== 'local') {state.error = '在线智能可以分析参考图片；执行绘图请切换本地智能'; notify(); return false;}
+      if (execution && state.provider !== 'local') {state.error = '本次在线智能请求尚未接入绘图工具，未提交操作。请在 Foart 生图版块使用当前模型。';state.status='未提交工具执行'; notify(); return false;}
       const requestedGeneration = samplingRequest(message) || task?.surface==='image' && !task.discussion && !task.named.length;
       const requestedFeedback = state.provider === 'local' && bridge.hasResult?.() && feedbackRequest(message);
       if (state.provider === 'local' && bridge.hasResult?.() && typeof api()?.artLearning === 'function'

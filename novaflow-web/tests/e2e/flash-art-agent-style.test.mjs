@@ -1,3 +1,4 @@
+import {withXiaotaoFoartRole} from '../../packages/shared/src/xiaotao-role-policy.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
@@ -48,7 +49,7 @@ test('drawing inherits the entire formal director body and records a distinct na
   const body=FLASH_ART_SYSTEM.slice(0,FLASH_ART_SYSTEM.lastIndexOf('Return ONLY JSON:'));
   assert.ok(body.length>1000 && body.length<2500);
   assert.ok(body.includes('one coherent design')); 
-  assert.equal(FLASH_ART_AGENT_SYSTEM.slice(0,body.length),body);
+  assert.ok(FLASH_ART_AGENT_SYSTEM.startsWith(withXiaotaoFoartRole(body)));
   assert.equal(FLASH_ART_AGENT_SYSTEM.includes('Return ONLY JSON:'),false);
   assert.equal(FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,FLASH_ART_SYSTEM_SHA256);
   assert.equal(FLASH_ART_AGENT_STYLE_VERSION,'agent-style-director-v1');
