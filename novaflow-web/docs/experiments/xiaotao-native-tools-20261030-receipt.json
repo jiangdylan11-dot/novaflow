@@ -159,5 +159,18 @@
     "realNativeAudioWorkspaceOpened": true,
     "finishFromRealReceiptWithoutSecondPlanner": true,
     "generationNotStarted": true
+  },
+  "deliveryCorrection": {
+    "date": "2026-10-30",
+    "status": "not-valid-as-compute-assistant-acceptance",
+    "actualInstalledExecutable": "C:/Program Files/FoartCompute/FoartCompute.exe",
+    "actualInstalledVersion": "2.0.183",
+    "actualInstalledMain": "electron/compute-main.cjs",
+    "computeOnly": true,
+    "computeBranch": "codex/compute-assistant",
+    "computeBranchVersionObserved": "2.0.187",
+    "deployedControlVersionObserved": "2.0.178",
+    "oldInstallerApplicableToComputeAssistant": false,
+    "requiredFollowUp": "Merge compute-only assistant and Xiaotao tool changes; verify machine-policy protocol and native task execution on the website architecture."
   }
 }
