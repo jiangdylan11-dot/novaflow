@@ -1,0 +1,112 @@
+// Run after sync:runtime with Playwright resolvable via NODE_PATH.
+const { chromium } = require('playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const http = require('node:http');
+const output = path.resolve(__dirname, '../../../work/spine-viewer');
+
+(async () => {
+  const root = path.resolve(__dirname, '../../web-dist');
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' };
+  const server = http.createServer(async (request, response) => {
+    try {
+      const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+      const file = path.resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
+      if (!file.startsWith(root + path.sep)) { response.writeHead(403).end(); return; }
+      response.setHeader('Content-Type', types[path.extname(file)] || 'application/octet-stream');
+      response.end(await fs.readFile(file));
+    } catch { response.writeHead(404).end(); }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  server.unref();
+  const url = process.env.NF_VIEWER_URL || `http://127.0.0.1:${server.address().port}/`;
+  const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--enable-webgl', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    // Authentication is exercised by the entry checks; this test covers the local tool UI.
+    await page.route('**/novaflow-web-account.js*', (route) => route.fulfill({ contentType: 'text/javascript', body: '' }));
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '工具', exact: true }).click();
+    const entry = page.locator('[data-novaflow-spine-viewer-entry="1"]');
+    await entry.waitFor();
+    await entry.click();
+    const frame = await page.locator('#novaflow-spine-viewer-root iframe').elementHandle().then((element) => element.contentFrame());
+    await frame.waitForFunction(() => Boolean(window.NovaFlowSpineViewer));
+    assert.equal(await frame.locator('#blendModeSelect').count(), 0);
+    const imported = await frame.evaluate(async () => {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 32;
+      const context = canvas.getContext('2d'); context.fillStyle = '#ff8040'; context.fillRect(0, 0, 32, 32);
+      const image = await new Promise((resolve) => canvas.toBlob(resolve));
+      const files = [];
+      for (const version of ['3.7', '3.8', '4.0', '4.1', '4.2']) {
+        const name = `fixture-${version}`;
+        const attachments = { picture: { picture: { width: 32, height: 32 } } };
+        const skeleton = {
+          skeleton: { spine: `${version}.00`, width: 32, height: 32 },
+          bones: [{ name: 'root' }], slots: [{ name: 'picture', bone: 'root', attachment: 'picture' }],
+          skins: version === '3.7' ? { default: attachments } : [{ name: 'default', attachments }],
+          animations: { idle: { bones: { root: { rotate: [{ angle: 0 }, { time: 1, angle: 30 }] } } } },
+        };
+        const atlas = `${name}.png\nsize: 32,32\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\npicture\n  rotate: false\n  xy: 0, 0\n  size: 32, 32\n  orig: 32, 32\n  offset: 0, 0\n  index: -1\n`;
+        files.push(new File([JSON.stringify(skeleton)], `${name}.json`), new File([atlas], `${name}.atlas`), new File([image], `${name}.png`, { type: 'image/png' }));
+      }
+      await enqueueFiles(files);
+      return { count: state.sceneItems.length, versions: state.sceneItems.map((item) => item.runtimeVersion), status: elements.statusText.textContent };
+    });
+    assert.equal(imported.count, 5, JSON.stringify(imported));
+    assert.deepEqual(imported.versions, ['3.7', '3.8', '4.0', '4.1', '4.2']);
+    await frame.locator('#speedRange').fill('1.5');
+    assert.equal(await frame.evaluate(() => getActiveSceneItem().speed), 1.5);
+    await frame.locator('#playPauseButton').click();
+    const selected = await frame.evaluate(() => state.activeSceneId);
+    await page.getByRole('button', { name: 'SPINE 图集转换', exact: true }).click();
+    assert(await page.locator('#novaflow-spine-viewer-root').isHidden());
+    assert(await frame.evaluate(() => state.sceneItems.every((item) => item.player.paused)));
+    await entry.click();
+    assert.equal(await frame.evaluate(() => state.sceneItems.length), 5);
+    assert.equal(await frame.evaluate(() => getActiveSceneItem().speed), 1.5);
+    assert.equal(await frame.evaluate(() => state.activeSceneId), selected);
+    assert(await frame.evaluate(() => getActiveSceneItem().player.paused));
+    assert(await frame.evaluate(() => state.sceneItems.some((item) => !item.player.paused)));
+    await page.getByRole('button', { name: 'PNG 压缩', exact: true }).click();
+    assert(await page.locator('#novaflow-spine-viewer-root').isHidden());
+    await entry.click();
+    await page.getByRole('button', { name: '美工', exact: true }).click();
+    await entry.waitFor({ state: 'detached' });
+    assert(await page.locator('#novaflow-spine-viewer-root').isHidden());
+    await page.getByRole('button', { name: '工具', exact: true }).click();
+    await entry.click();
+    assert.equal(await page.locator('[data-novaflow-spine-viewer-entry="1"]').count(), 1);
+    assert.equal(await frame.evaluate(() => state.sceneItems.length), 5);
+    const rects = await page.evaluate(() => ({
+      viewer: document.querySelector('#novaflow-spine-viewer-root').getBoundingClientRect().toJSON(),
+      workspace: document.querySelector('[data-novaflow-tools-workspace]').getBoundingClientRect().toJSON(),
+    }));
+    assert(Math.abs(rects.viewer.x - rects.workspace.x) < 1);
+    assert(rects.viewer.width > 500 && rects.viewer.height > 300);
+    const painted = await frame.evaluate(() => state.sceneItems.map((item) => {
+      const player = item.player, gl = player.context.gl;
+      player.drawFrame(false);
+      const pixels = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4);
+      gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      return pixels.some((value, index) => index % 4 === 3 && value > 0);
+    }));
+    assert(painted.every(Boolean), 'every runtime must draw visible pixels');
+    await fs.mkdir(output, { recursive: true });
+    await page.screenshot({ path: path.join(output, 'integrated.png') });
+    await frame.locator('.sidebar').screenshot({ path: path.join(output, 'tools-panel.png') });
+    if (process.env.NF_VIEWER_FIXTURES) {
+      const fixtureDir = path.resolve(process.env.NF_VIEWER_FIXTURES);
+      const files = (await fs.readdir(fixtureDir)).filter((name) => /\.(json|skel|atlas|png)$/i.test(name)).map((name) => path.join(fixtureDir, name));
+      await frame.locator('#filePicker').setInputFiles(files);
+      await frame.waitForFunction(() => !elements.statusText.classList.contains('error') && /^已新增/.test(elements.statusText.textContent) && state.sceneItems.length > 5);
+      await page.screenshot({ path: path.join(output, 'real-projects.png') });
+      console.log(await frame.locator('#statusText').textContent());
+    }
+    assert.deepEqual(errors, []);
+    console.log(JSON.stringify({ ok: true, imported, painted, switching: true, userPausePreserved: true, errors }));
+  } finally { await browser.close(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+})().catch((error) => { console.error(error); process.exitCode = 1; });

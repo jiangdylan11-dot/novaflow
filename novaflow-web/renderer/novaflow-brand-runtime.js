@@ -2350,7 +2350,7 @@
   const NOVAFLOW_PRIMARY_BUTTON_FILL = "rgb(30, 166, 114)";
   // 工具's self-drawn panels: their buttons take the sections' one weight, not
   // the green main action's 600.
-  const NOVAFLOW_TOOLS_OWN_PANEL_SELECTOR = "#novaflow-png-remove-black-root, #novaflow-mp4-compress-root, #novaflow-video-format-convert-root, #novaflow-spine-atlas-webp-root";
+  const NOVAFLOW_TOOLS_OWN_PANEL_SELECTOR = "#novaflow-png-remove-black-root, #novaflow-mp4-compress-root, #novaflow-video-format-convert-root, #novaflow-spine-atlas-webp-root, #novaflow-spine-viewer-root";
   const NOVAFLOW_STRONG_FONT_WEIGHT = "600";
   const NOVAFLOW_ICON_FONT_WEIGHT = "900";
   const NOVAFLOW_THIN_ARROW_STROKE = "1.35px";

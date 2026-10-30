@@ -1,0 +1,16 @@
+# Foart Spine 查看器
+
+由本机 `D:/AI_APP/spine查看` 的网页实现接入；独立 Electron 包及测试素材不进入运行资源。
+入口是 `renderer/spine-viewer.tool.js`，页面在同源 iframe 中运行，样式与主页面隔离。
+
+- 工具 → SPINE 查看器，位于 SPINE 图集转换之后。
+- 导入 JSON / SKEL、atlas 和贴图，支持 3.7、3.8、4.0、4.1、4.2 多工程同屏播放。
+- 保留动画、皮肤、播放速度、融合时长、预乘 Alpha、层级、背景、拖动和全局缩放。
+- 移除工程整体混合设置；Spine 内部槽位混合和纯特效画布的自动合成兼容继续由运行时处理。
+- `foart-theme.css` 对齐现有工具面板的 220px 深色侧栏、按钮、字号及绿色滑条。
+- 切换工具保留当前工程，并暂停隐藏页面；回到查看器只恢复原先播放中的动画。
+
+Spine runtimes 与原查看器的兼容补丁随 `vendor/` 保存；3.7 使用 3.8.95 兼容查看。
+修改后在仓库根目录运行 `npm run sync:runtime`、`npm run check:runtime`。
+浏览器验收：让 Playwright 可被 Node 解析后运行 `node novaflow-web/tests/e2e/spine-viewer.browser.cjs`。
+可选环境变量 `NF_VIEWER_FIXTURES` 指定真实素材目录；不设置时使用生成的五版本工程。

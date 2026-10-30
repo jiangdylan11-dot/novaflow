@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spine 工程查看器</title>
+    <link id="spine-runtime-style" rel="stylesheet" href="" />
+    <link id="app-style" rel="stylesheet" href="styles.css?v=20260915-blend-backdrop" />
+    <link rel="stylesheet" href="foart-theme.css?v=20261030-tools-1" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <section class="panel">
+          <div id="dropZone" class="drop-zone" tabindex="0">
+            <strong>拖入动画工程</strong>
+            <span>支持分批添加多个 .json / .skel / .atlas / 贴图</span>
+          </div>
+          <div class="button-row">
+            <button id="pickFilesButton" class="soft-button" type="button">文件</button>
+            <button id="pickFolderButton" class="soft-button" type="button">文件夹</button>
+          </div>
+          <input id="filePicker" class="visually-hidden" type="file" multiple />
+          <input id="folderPicker" class="visually-hidden" type="file" webkitdirectory directory multiple />
+        </section>
+
+        <section class="panel stack">
+          <label>
+            <span>当前动画</span>
+            <select id="projectSelect" disabled>
+              <option value="">画布为空</option>
+            </select>
+          </label>
+          <div class="button-row">
+            <button id="resetTransformButton" class="soft-button" type="button" disabled>重置位置</button>
+            <button id="removeAnimationButton" class="soft-button danger-button" type="button" disabled>移除当前</button>
+          </div>
+          <div id="detectedVersion" class="hint">未检测到版本</div>
+          <div id="statusText" class="status">等待文件</div>
+        </section>
+
+        <section class="panel stack">
+          <div class="section-heading">动画层级</div>
+          <div id="layerList" class="layer-list" aria-label="动画层级">
+            <div class="layer-empty">暂无动画</div>
+          </div>
+        </section>
+
+        <section class="panel stack">
+          <div class="section-heading">画布背景</div>
+          <div class="button-row">
+            <button id="pickBackgroundButton" class="soft-button" type="button">上传背景</button>
+            <button id="clearBackgroundButton" class="soft-button" type="button" disabled>清除背景</button>
+          </div>
+          <input id="backgroundPicker" class="visually-hidden" type="file" accept="image/*" />
+          <div id="backgroundHint" class="hint">未设置背景</div>
+        </section>
+
+        <section class="panel stack">
+          <label>
+            <span>动画</span>
+            <select id="animationSelect" disabled></select>
+          </label>
+          <label>
+            <span>皮肤</span>
+            <select id="skinSelect" disabled></select>
+          </label>
+          <label class="range-row">
+            <span>播放速度</span>
+            <output id="speedValue">1.00x</output>
+            <input id="speedRange" type="range" min="0" max="3" step="0.05" value="1" disabled />
+          </label>
+          <label class="range-row">
+            <span>融合时长</span>
+            <output id="mixValue">0.20s</output>
+            <input id="mixRange" type="range" min="0" max="2" step="0.05" value="0.2" disabled />
+          </label>
+        </section>
+      </aside>
+
+      <main class="stage">
+        <div id="playerMount" class="player-mount">
+          <img id="backgroundImage" class="stage-background" alt="" draggable="false" hidden />
+          <div id="sceneLayer" class="scene-layer"></div>
+          <div id="emptyState" class="empty-state">
+            <strong>加载 Spine 导出工程</strong>
+            <span>可分批添加多个工程，并上传一张画布背景</span>
+          </div>
+          <button id="actualSizeButton" class="actual-size-button" type="button" hidden disabled title="恢复全部内容到原始尺寸分辨率">1:1 原始尺寸</button>
+          <div id="canvasHint" class="canvas-hint" hidden>拖动当前动画 · 滚轮全局缩放 · 双击重置位置</div>
+        </div>
+        <div class="stage-controls" aria-label="预览播放控制">
+          <button id="playPauseButton" class="transport-button" type="button" disabled>暂停</button>
+          <div class="timeline-group">
+            <input id="progressRange" class="progress-range" type="range" min="0" max="1" step="0.001" value="0" aria-label="播放进度" disabled />
+            <output id="progressValue" class="progress-time">0.00s / 0.00s</output>
+          </div>
+          <label class="checkbox-label compact">
+            <input id="loopToggle" type="checkbox" checked disabled />
+            <span>循环</span>
+          </label>
+          <label class="checkbox-label compact">
+            <input id="premultiplyToggle" type="checkbox" disabled />
+            <span>预乘 Alpha</span>
+          </label>
+        </div>
+      </main>
+    </div>
+
+    <script src="vendor/novaflow-version-convert.js?v=3.7-roundtrip-1"></script>
+    <script src="vendor/novaflow-skel-import.js?v=3.7-roundtrip-1"></script>
+    <script src="app.js?v=20261024-3.7-roundtrip-1"></script>
+  </body>
+</html>
