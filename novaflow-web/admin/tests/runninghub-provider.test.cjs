@@ -103,12 +103,13 @@ test("invalid account Key reports the actionable provider error without echoing 
   assert(!JSON.stringify(result).includes(fakeKey));
 });
 
-function adminFixture({ accountBody = { code: 0, data: { remainMoney: "12.5", currency: "CNY" } }, cacheWriteFails = false } = {}) {
+function adminFixture({ accountBody = { code: 0, data: { remainMoney: "12.5", currency: "CNY" } }, cacheWriteFails = false, syncFails = false } = {}) {
   const filename = path.resolve(__dirname, "../license-admin-gui/admin-data.js");
   const realRequire = createRequire(filename);
   const registry = new Map();
   const writes = [];
-  const env = {};
+  const env = {NOVAFLOW_SUPABASE_URL:'https://fixture.invalid',NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY:'fixture-role'};
+  const serverWrites=[];
   const logs = [];
   let checks = 0;
   const module = { exports: {} };
@@ -127,7 +128,13 @@ function adminFixture({ accountBody = { code: 0, data: { remainMoney: "12.5", cu
       };
       return query;
     },
-    rpc: async () => ({ data: 0 })
+    rpc: async (name,args) => {
+      if(name==='novaflow_runninghub_config_set') {
+        if(syncFails)return {error:{message:'fixture sync failed'}};
+        serverWrites.push(args);return {data:{synced:true,configured:!args.p_clear,revision:serverWrites.length,updatedAt:'2026-10-30T00:00:00Z'}};
+      }
+      return {data:0};
+    }
   };
   const context = {
     module, exports: module.exports, process: { env, platform: "win32" },
@@ -143,7 +150,7 @@ function adminFixture({ accountBody = { code: 0, data: { remainMoney: "12.5", cu
       : name === "./runninghub-provider.cjs" ? { ...rh, checkAccount: async (c) => { checks++; return rh.checkAccount(c, { fetchImpl: async () => ({ ok: true, json: async () => accountBody }) }); } } : realRequire(name)
   };
   vm.runInNewContext(fs.readFileSync(filename, "utf8"), context, { filename });
-  return { api: module.exports, registry, writes, env, logs, settings, checks: () => checks };
+  return { api: module.exports, registry, writes, serverWrites, env, logs, settings, checks: () => checks };
 }
 
 test("failed live check stays visible over the old shared balance on subsequent reads", async () => {
@@ -172,6 +179,8 @@ test("save persists RunningHub config, preserves blank key, clears explicitly, a
   f.env.NOVAFLOW_GROK_API_KEY = "unrelated-grok-key";
   let result = await f.api.setAdminProviderRuntimeConfig({ providerKey: "runninghub", apiKey: fakeKey, llmModel: "chosen-model" });
   assert.equal(result.ok, true);
+  assert.equal(result.serverSync.synced,true);
+  assert.equal(f.serverWrites[0].p_api_key,fakeKey);
   assert.equal(result.env.hasApiKey, true);
   assert.equal(f.registry.get(rh.ENV.apiKey), fakeKey);
   assert.equal(f.registry.has(rh.ENV.llmModel), false);
@@ -181,12 +190,23 @@ test("save persists RunningHub config, preserves blank key, clears explicitly, a
   assert.equal(Object.hasOwn(result.env, "googleImageEndpoint"), false);
   result = await f.api.setAdminProviderRuntimeConfig({ providerKey: "runninghub", apiKey: "" });
   assert.equal(result.ok, true);
+  assert.equal(f.serverWrites.at(-1).p_api_key,null,'Blank preserves the server Key rather than overwriting it with local state');
   assert.equal(f.registry.get(rh.ENV.apiKey), fakeKey);
   assert.equal(f.env.NOVAFLOW_GROK_API_KEY, "unrelated-grok-key");
   result = await f.api.setAdminProviderRuntimeConfig({ providerKey: "runninghub", clearApiKey: true });
   assert.equal(result.env.hasApiKey, false);
+  assert.equal(f.serverWrites.at(-1).p_clear,true);
   assert.equal(f.registry.has(rh.ENV.apiKey), false);
   assert(!f.logs.join("\n").includes(fakeKey));
+});
+
+test('server synchronization failure cannot report success or change the local Key',async()=>{
+  const f=adminFixture({syncFails:true});
+  f.env.NOVAFLOW_RUNNINGHUB_API_KEY='original-local-key';
+  const result=await f.api.setAdminProviderRuntimeConfig({providerKey:'runninghub',apiKey:fakeKey});
+  assert.equal(result.ok,false);assert.match(result.error,/未同步到服务器/);
+  assert.equal(f.writes.length,0);assert.equal(f.env.NOVAFLOW_RUNNINGHUB_API_KEY,'original-local-key');
+  assert(!JSON.stringify(result).includes(fakeKey));
 });
 
 test("old provider env writes are rejected and do not touch stored secrets", async () => {
@@ -258,8 +278,16 @@ test("runninghub config route rejects a mislabeled provider key and does not sto
   process.env.NOVAFLOW_ADMIN_API_TOKEN = "test-admin-token-not-a-provider-key";
   delete process.env.NOVAFLOW_RUNNINGHUB_API_KEY;
   process.env.NOVAFLOW_GROK_API_KEY = "existing-grok-key";
-  const { createAdminServer } = require("../admin-server/server.js");
-  const server = createAdminServer();
+  const fixture = adminFixture();
+  Object.assign(fixture.env, { NOVAFLOW_ADMIN_API_TOKEN: process.env.NOVAFLOW_ADMIN_API_TOKEN, NOVAFLOW_GROK_API_KEY: process.env.NOVAFLOW_GROK_API_KEY });
+  const serverFile = path.resolve(__dirname, "../admin-server/server.js");
+  const serverRequire = createRequire(serverFile), serverModule = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(serverFile, "utf8"), {
+    module: serverModule, exports: serverModule.exports, __filename: serverFile, __dirname: path.dirname(serverFile),
+    require: name => name === "../license-admin-gui/admin-data" ? fixture.api : serverRequire(name),
+    process, console, Buffer, URL, setTimeout, clearTimeout, setInterval, clearInterval, fetch, AbortController
+  }, { filename: serverFile });
+  const server = serverModule.exports.createAdminServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
   const post = (body) => new Promise((resolve, reject) => {
@@ -298,7 +326,8 @@ test("runninghub config route rejects a mislabeled provider key and does not sto
     assert.equal(process.env.NOVAFLOW_RUNNINGHUB_API_KEY, undefined);
     const accepted = await post({ providerKey: "runninghub", apiKey: "rh-fixture-key-not-real" });
     assert.equal(accepted.body.ok, true);
-    assert.equal(process.env.NOVAFLOW_RUNNINGHUB_API_KEY, "rh-fixture-key-not-real");
+    assert.equal(fixture.env.NOVAFLOW_RUNNINGHUB_API_KEY, "rh-fixture-key-not-real");
+    assert.equal(process.env.NOVAFLOW_RUNNINGHUB_API_KEY, undefined);
     assert.equal(process.env.NOVAFLOW_GROK_API_KEY, "existing-grok-key");
     assert.equal(JSON.stringify(accepted.body).includes("rh-fixture-key-not-real"), false);
   } finally {

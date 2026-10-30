@@ -10,6 +10,8 @@ let status = rh.publicStatus(config);
 let checks = 0;
 let saves = 0;
 let failCheck = false;
+let failSave = false;
+let serverSync={synced:false};
 const errors = [];
 const uiRoot = process.env.NOVAFLOW_ADMIN_UI_ROOT || path.resolve(__dirname, "../license-admin-gui");
 const preload = path.join(uiRoot, "preload.js");
@@ -18,7 +20,7 @@ for (const channel of new Set([...fs.readFileSync(preload, "utf8").matchAll(/ipc
     if (channel === "admin-default-paths") return {};
     if (channel === "admin-status") return { ok: true, status: {} };
     if (channel === "admin-online-config") return { ok: true, config: {} };
-    if (channel === "admin:provider:runninghub:status") return { ok: true, result: status };
+    if (channel === "admin:provider:runninghub:status") return { ok: true, result: {...status,serverSync} };
     if (channel === "admin:data:feature_credits:get") return { ok: true, result: {
       config: {}, domesticBalance: { remainMoney: status.connected ? 0 : 9.5773, currency: "USD", checkedAt: "2026-10-28T10:34:10.400Z" },
       balanceError: status.status === "error" ? status.error : null, lowBalance: { stale: !status.connected }
@@ -28,15 +30,17 @@ for (const channel of new Set([...fs.readFileSync(preload, "utf8").matchAll(/ipc
       status = failCheck
         ? { ...rh.publicStatus(config), checked: true, status: "error", error: "RunningHub：当前 Key 未找到对应账户（APIKEY_USER_NOT_FOUND）" }
         : { ...rh.publicStatus(config), connected: true, checked: true, status: "connected", balance: { supported: true, money: 0, currency: "USD", text: "0 USD · 100 RH币" }, currentTaskCounts: 0 };
-      return { ok: true, result: status };
+      return { ok: true, result: {...status,serverSync} };
     }
     if (channel === "admin:provider:runtime-config:set") {
       assert.equal(payload.providerKey, "runninghub");
       saves++;
+      if(failSave)return {ok:false,error:'服务器同步失败'};
       const parsed = rh.parseConfig(payload);
       config = { ...parsed, apiKey: parsed.clearApiKey ? "" : parsed.apiKey || config.apiKey };
       status = rh.publicStatus(config);
-      return { ok: true, result: { ok: true } };
+      serverSync={synced:true,revision:saves};
+      return { ok: true, result: { ok: true,serverSync } };
     }
     return { ok: true, result: { source: "mock", status: "mock", records: [] } };
   });
@@ -64,6 +68,7 @@ app.whenReady().then(async () => {
   assert.equal(checks, 1, "save must perform exactly one read-only check");
   assert.equal(config.llmModel, "fixture-model");
   assert.equal(await run(`document.getElementById('runninghubRuntimeApiKey').value`), "");
+  assert.equal(await run(`document.getElementById('providerRuntimeConfigStatus').textContent`),'本机与服务器配置一致');
   assert.equal(await run(`document.getElementById('runninghubRuntimeGoogleImageEndpoint')`), null);
   assert.equal(await run(`document.getElementById('comfyRuntimeApiKey')`), null);
   assert.equal(await run(`document.getElementById('grokRuntimeApiKey')`), null);
@@ -88,6 +93,12 @@ app.whenReady().then(async () => {
   await run(`renderDashboardRhCard({state:'ready', domesticBalance:{remainMoney:null}})`);
   assert.equal(await run(`$('dashboardRhDomesticBalance').textContent`), "—", "missing balance must never become zero dollars");
   await run(`showModule('ai-services')`);
+  failSave=true;
+  await run(`window.__syncAlert='';window.alert=message=>{window.__syncAlert=message;};$('runninghubRuntimeApiKey').value='retry-this-key';saveProviderRuntimeConfig('runninghub')`);
+  assert.equal(await run(`$('runninghubRuntimeApiKey').value`),'retry-this-key','Failed synchronization must retain input for retry');
+  assert.match(await run(`$('providerRuntimeConfigStatus').textContent`),/同步未完成/);
+  assert.match(await run(`window.__syncAlert`),/服务器同步失败/);
+  await run(`$('runninghubRuntimeApiKey').value='';loadAdminData()`);
   for (const width of [1440, 1080]) {
     win.setSize(width, 1080);
     const layout = await run(`new Promise(resolve => requestAnimationFrame(() => resolve({

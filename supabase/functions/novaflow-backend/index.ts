@@ -13,6 +13,7 @@ import { readRunningHubLlmConfig, postRunningHubResponses, uiCatalogResponsesReq
 import { createOnlineAiCharge } from "../_art-shared/online-ai-charge.mjs";
 import { createFeatureCreditPorts, normalizeCreditConfig, publicCreditError } from "../_art-shared/feature-credits.mjs";
 import { RELEASE_VERSION } from "../_art-shared/release.mjs";
+import { createRunningHubServerConfig } from "../_art-shared/runninghub-server-config.mjs";
 import {
   licenseVerificationRejected,
   normalizeLicenseVerificationInput,
@@ -124,9 +125,10 @@ function sessionTtlSeconds(): number {
   return Number.isInteger(value) && value > 0 ? value : DEFAULT_SESSION_TTL_SECONDS;
 }
 
+const serverProvider = createRunningHubServerConfig({rpc:(name:string,args:AnyRecord)=>adminClient().rpc(name,args),env});
 function runningHubLlm() {
   try {
-    return readRunningHubLlmConfig(env);
+    return serverProvider.read();
   } catch {
     return { apiKey: "", baseUrl: "", model: DEFAULT_RUNNINGHUB_LLM_MODEL, configured: false };
   }
@@ -1694,6 +1696,7 @@ Deno.serve(async (req: Request) => {
       return new Response(null, { status: 204, headers: corsHeaders(req) });
     }
     if (req.method === "GET" && path === "/health") {
+      await serverProvider.refresh();
       return jsonResponse(req, 200, {
         ok: true,
         service: "NovaFlow Backend",
@@ -1740,6 +1743,7 @@ Deno.serve(async (req: Request) => {
         const code = (error as Error & { code?: string })?.code;
         return jsonResponse(req, statusCode, { ok: false, error: sanitizeError(error), ...(code ? { code } : {}) });
       }
+      if(path.includes('/grok/') || path.includes('/runninghub/'))await serverProvider.refresh();
       if (req.method === "GET" && (path === "/api/auth/me" || path === "/api/client/credits")) {
         const credits = await creditBalance(session.user.id);
         return jsonResponse(req, 200, {

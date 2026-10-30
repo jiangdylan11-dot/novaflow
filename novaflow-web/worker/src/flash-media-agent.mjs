@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const ACTIONS = ['generate_video','generate_music','generate_sfx','import_resource','split','trim','move','rate','volume','fade','duplicate','remove','export'];
+const ACTIONS = ['generate_video','optimize_video_prompt','generate_music','generate_sfx','import_resource','split','trim','move','rate','volume','fade','duplicate','remove','export'];
 const properties = {
   action:{type:'string',enum:ACTIONS}, target:{type:'string',enum:['video','audio']},
   clipId:{type:'string'}, resourceId:{type:'string'}, prompt:{type:'string'},
@@ -28,6 +28,7 @@ export function validateMediaOperations(operations) {
       if (op[key] !== undefined) check(typeof op[key] === 'number' && Number.isFinite(op[key]) && op[key] >= 0 && op[key] <= 86400,'音视时间或数值无效');
     for (const key of ['clipId','resourceId','prompt']) if(op[key]!==undefined) check(typeof op[key]==='string' && op[key].trim() && op[key].length<=12000,'音视文本参数无效');
     if(op.loop!==undefined)check(typeof op.loop==='boolean','音视循环参数无效');
+    if(op.action==='optimize_video_prompt')check(op.target==='video' && operations.length===1,'提示词优化必须单独应用到视频');
     if(op.action.startsWith('generate_')) {
       generations++;
       check(generations===1 && operations.length===1,'每轮只能生成一个音视任务，完成后再继续剪辑');
@@ -47,12 +48,17 @@ export function validateMediaOperations(operations) {
 export async function planFlashMedia({payload, flash, signal}) {
   const generation=payload.artContext?.generation;
   const modeRules=generation?.mode==='minimax_h3_local' ? `\nCurrent H3 mode is ${generation.genType}; follow currentMedia.generation.promptProtocol and the actual uploaded reference bindings. Never change this mode or treat a multi-reference input as a first/last frame. In multi_reference, preserve the user's exact image/video/audio labels in the requested prompt; h3References supplies the actual modelToken, sourceId, kind and Chinese label. Pictures may supply subject appearance/style, video may supply motion/editing/continuation, audio may supply reuse/reference: their roles come from the user's request and the original optimizer, never infer all uploads have the same role. Do not invent media labels or infer unheard audio contents from filenames. Keep an explicit audio reuse/reference request; do not replace it with generic music or silence. Final mode-specific optimization and compilation run in the original application workflow.` : '';
-  const messages=[{role:'system',content:FLASH_MEDIA_AGENT_SYSTEM+modeRules},...payload.history,
+  const conversationRules=`\nContinue the same task across short follow-ups. The latest user correction overrides conflicting earlier prompt details. Keep the original deliverable, duration, loop goal and source identities unless changed by the user. Application execution receipts are facts about what actually ran; old assistant explanations are not proof. Never repeat an old plan as if it answered a new correction. For a request to optimize/change/write the video prompt, call control_media with optimize_video_prompt to run the original optimizer and write it; this action does not generate. If the user requests regeneration or optimization AND generation, use generate_video. A stronger acting request (e.g. 凶悍、呲牙咧嘴) must become concrete visible motion in the new prompt. Reference metadata and filenames do not show pixels: never invent hair/clothes/body parts or unseen traits. The optimizer can inspect the actual images. Avoid boilerplate, parameter recitals and false completion claims. Describe planned changes briefly; the application reports actual completion and actual mode.`;
+  const messages=[{role:'system',content:FLASH_MEDIA_AGENT_SYSTEM+modeRules+conversationRules},...payload.history,
     {role:'user',content:JSON.stringify({userMessage:payload.message,contextFingerprint:payload.contextFingerprint,currentMedia:payload.artContext})}];
   const toolTrace=[], promptIds=[];
-  const explicit=!(/[?？]|(?:能不能|可不可以|能否|是否|怎么|如何|为什么)|吗[。！!]?\s*$|(?:不要|不用|别|先不|暂不).{0,10}(?:生成|执行|剪辑|修改|导出|处理)|(?:只|仅).{0,6}(?:提示词|方案|建议|聊聊|讨论|解释)/.test(payload.message)
-    || /(?:给我|提供|输出|写).{0,10}(?:提示词|方案|建议)/.test(payload.message) && !/并生成|直接生成|执行|写入|填入/.test(payload.message))
-    && /(?:请|帮我|给我|把|将|做|让|换|改|生成|制作|开始|执行|裁切|剪辑|分割|剪掉|截取|移动|变速|调|设置|导入|导出|复制|删除|移除|淡入|淡出|处理)|\b(?:generate|create|trim|split|move|set|export|import|delete|duplicate|fade|adjust)\b/i.test(payload.message);
+  let latest=payload.message.split('本次最新要求优先，替换与它冲突的旧描述：').at(-1);
+  if(payload.message.includes('本次最新要求优先，替换与它冲突的旧描述：') && /不符合|不满意|需要|性格|凶悍|呲牙|龇牙|更.{0,8}(?:点|一些|一点)/.test(latest))latest='修改 '+latest;
+  const promptEdit=/(?:提示词.{0,6}(?:优化|修改|调整|改|写入|填入)|(?:优化|修改|调整|写入|填入).{0,6}提示词)/.test(latest);
+  const explicit=!(/[?？]|(?:能不能|可不可以|能否|是否|怎么|如何|为什么)|吗[。！!]?\s*$|(?:不要|不用|别|先不|暂不).{0,10}(?:生成|执行|剪辑|修改|导出|处理)|(?:只|仅).{0,6}(?:方案|建议|聊聊|讨论|解释)/.test(latest)
+    || !promptEdit && /(?:只|仅).{0,6}提示词/.test(latest)
+    || /(?:给我|提供|输出|写).{0,10}(?:提示词|方案|建议)/.test(latest) && !/并生成|直接生成|执行|写入|填入/.test(latest))
+    && /(?:优化|请|帮我|给我|把|将|做|让|换|改|生成|制作|开始|执行|裁切|剪辑|分割|剪掉|截取|移动|变速|调|设置|导入|导出|复制|删除|移除|淡入|淡出|处理)|\b(?:generate|create|trim|split|move|set|export|import|delete|duplicate|fade|adjust)\b/i.test(latest);
   for(let round=1;round<=2;round++) {
     if(signal?.aborted)throw new Error('音视分析已取消');
     const response=await flash.inferConversation({messages,...(explicit ? {tools:FLASH_MEDIA_AGENT_TOOLS.filter(t=>t.function.name!=='get_media_context'),toolChoice:'required'} : {}),maxTokens:3072,temperature:.2,reasoningEffort:'none',reasoningBudgetTokens:0,stage:'media-agent'});
@@ -81,6 +87,7 @@ export async function planFlashMedia({payload, flash, signal}) {
     check(call.function.name==='control_media' && Object.keys(args).every(k=>['contextFingerprint','explanation','operations'].includes(k)) && args.contextFingerprint===payload.contextFingerprint,'音视方案与当前页面不符');
     check(typeof args.explanation==='string' && args.explanation.trim() && args.explanation.length<=3000,'缺少音视操作说明');
     validateMediaOperations(args.operations);
+    if(promptEdit && !/并生成|重新生成|重新做|重做|直接生成|开始生成|并制作|再生成/.test(latest))check(args.operations.every(op=>op.action==='optimize_video_prompt'),'本次只要求优化提示词，未授权重新生成');
     const plan={contextFingerprint:payload.contextFingerprint,operations:args.operations,explanation:args.explanation,
       planId:createHash('sha256').update(payload.requestId).digest('hex')};
     toolTrace.push({id:call.id,name:'control_media',result:{executionPending:true}});

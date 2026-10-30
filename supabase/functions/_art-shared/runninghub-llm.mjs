@@ -45,7 +45,7 @@ export function readRunningHubLlmConfig(source = {}) {
 
 export function runningHubHttpError(status) {
   const code = Number(status) || 0;
-  if (code === 401 || code === 403) return '在线模型拒绝了当前密钥，请核对 RunningHub Key';
+  if (code === 401 || code === 403) return '在线模型鉴权未通过（HTTP '+code+'），请核对线上配置是否已同步，以及企业共享 Key 的调用权限';
   if (code === 402 || code === 429) return '在线模型额度或请求频率不足，请稍后重试';
   if (code === 404) return '在线模型地址或模型 ID 不可用';
   if (code === 400) return '在线模型没有接受这次请求';
@@ -83,7 +83,7 @@ export function describeRunningHubFailure(httpStatus, data) {
   let statusCode = http >= 400 && http < 600 ? http : 502;
   let retryable = false;
   if (business === 1014) {
-    message = '在线模型拒绝了当前密钥类型（1014），请核对 RunningHub Key 与站点';
+    message = '在线模型拒绝了当前密钥类型（1014），请核对企业共享 Key 的调用权限';
     statusCode = 403;
   } else if (business === 421) {
     message = '在线模型正在排队，请稍后重试';

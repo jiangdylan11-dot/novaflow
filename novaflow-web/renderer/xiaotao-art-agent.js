@@ -584,7 +584,7 @@
     return `本次实扣 ${settled} ${unit}${estimated == null ? '' : `（预估 ${estimated}）`}`;
   }
   function createController({bridge, api = () => root.electronAPI, storage = root.localStorage, onChange = () => {}, timers = root, uploadHost = null} = {}) {
-    const state = {provider:'local', mode:'chat', messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'本地 Flash', toolTrace:[], localSession:null};
+    const state = {provider:'local', mode:'chat', activeTask:null,messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'本地 Flash', toolTrace:[], localSession:null};
     const pricingKey = 'novaflow.xiaotao-pricing.v1';
     let metering = null;
     const pricingTtl = 15 * 60 * 1000;
@@ -630,11 +630,27 @@
       for (const item of Object.values(sessions)) item.messages = (item.messages || []).filter(m => ['user','assistant','status'].includes(m.role) && typeof m.content === 'string' && !/要放到哪里？请选择一个位置/.test(m.content)).slice(-40);
       const previousProvider = saved?.provider === 'api' ? 'api' : 'local';
       Object.assign(state, sessions[previousProvider]);
+      if(saved?.activeTask && ['image','video','audio'].includes(saved.activeTask.surface))state.activeTask=copy(saved.activeTask);
       if (previousProvider !== state.provider) state.conversationId = '';
     } catch {}
     state.staged = []; state.pendingUploads = []; state.pendingUploadId = '';
     let stagedSeq = 0, carryAttachments = null, carryAsk = null, lastUploads = [], lastPreparedTask='', pendingIntent=null;
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
+    function recoverActiveTask() {
+      if(state.activeTask)return;
+      const resources=root.NovaFlowAiSequenceGeneration?.resources?.() || [];
+      for(let i=state.messages.length-1;i>=0;i--){
+        const entry=state.messages[i];if(entry.role!=='assistant' || !entry.content.startsWith('生成完成：'))continue;
+        const resource=resources.find(r=>r.name && entry.content.includes(r.name));if(!resource)continue;
+        const requests=state.messages.slice(0,i).filter(m=>m.role==='user');
+        const original=requests.findLast(m=>uploadApi()?.inferTask?.(m.content,[])?.surface==='video');if(!original)continue;
+        const inferred=uploadApi().inferTask(original.content,[]);
+        const task=root.NovaFlowWebRuntime?.tasks?.get?.(resource.promptId || resource.id?.split(':')[0]);
+        const actual=({fl2v:'first_last',i2v:'image_video',r2v:'multi_reference',t2v:'text_video'})[task?.parameters?.mode];
+        state.activeTask={...inferred,baseRequest:original.content,revisions:requests.slice(requests.indexOf(original)+1).map(m=>m.content).slice(-8),
+          ...(actual?{mode:actual}:{}),status:'completed',outputs:[{id:resource.id,name:resource.name,promptId:resource.promptId}]};return;
+      }
+    }
     let cachedHost = null;
     const host = () => uploadHost || (cachedHost ||= uploadApi()?.createUploadHost?.(root));
     function pushUser(content) {
@@ -690,7 +706,7 @@
       try {
       lastUploads = ready.map(item => ({kind:item.kind, name:item.name, file:item.file, mimeType:item.mimeType, ...imageDimensions(item), ...(item.kind === 'image' && item.previewUrl ? {dataUrl:item.previewUrl} : {})}));
       const uploads = uploadApi(); if (!uploads) {state.error = '上传模块未加载'; notify(); return false;}
-      const plan = uploads.planRoutes(message, ready);
+      const plan = uploads.planRoutes(message, ready,state.activeTask);
       const notes = []; let failed = plan.reject.length > 0;
       for (const item of plan.place) {
         try {const receipt = await host().place(item); notes.push(`已放入${item.destination.label}：${item.name}`); item.receipt = receipt;}
@@ -703,7 +719,7 @@
       state.pendingUploads=[];state.pendingUploadId='';
       if (notes.length) carryAsk = {role:'status', content:notes.join('\n')};
       state.staged = state.staged.filter(item => !ready.includes(item));
-      const task=uploads.inferTask?.(message,ready);lastPreparedTask=task?task.surface+':'+task.mode:'';
+      const task=uploads.inferTask?.(message,ready,state.activeTask);lastPreparedTask=task?task.surface+':'+task.mode:'';
       return true;
       } finally {state.uploading=false;notify();}
     }
@@ -726,7 +742,7 @@
     }
     function notify() {
       sessions[state.provider] = {messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId};
-      try {storage?.setItem(STORAGE_KEY, JSON.stringify({provider:state.provider, sessions:Object.fromEntries(Object.entries(sessions).map(([key, value]) => [key,{...value,messages:value.messages.map(({role, content, receipt, level}) => ({role, content, ...(typeof receipt === 'string' && receipt ? {receipt} : {}), ...(level === 'error' ? {level} : {})}))}]))}));} catch {}
+      try {storage?.setItem(STORAGE_KEY, JSON.stringify({provider:state.provider,activeTask:state.activeTask,sessions:Object.fromEntries(Object.entries(sessions).map(([key, value]) => [key,{...value,messages:value.messages.map(({role, content, receipt, level}) => ({role, content, ...(typeof receipt === 'string' && receipt ? {receipt} : {}), ...(level === 'error' ? {level} : {})}))}]))}));} catch {}
       onChange(state);
     }
     function stopStatusPolling() {if (statusTimer !== null) {timers.clearTimeout(statusTimer); statusTimer = null;}}
@@ -766,18 +782,19 @@
       const poll = async () => {
         statusTimer = null; if (!current()) return;
         try {
-          const response = await api().promptAssistantGetStatus();
+          const response = await api().promptAssistantGetStatus({requestId});
           if (!current()) return;
           const data = response?.result || response?.data || response, session = data?.chatSession, progress = data?.operation;
           if (response?.ok !== false && data?.ok !== false) {
-            if (progress?.requestId === requestId && ['loading','analyzing','releasing'].includes(progress.phase)) {
+            if (progress?.requestId === requestId && ['connecting','queued','assigned','uploading','preparing','loading','analyzing','processing','releasing','completed'].includes(progress.phase)) {
               state.operation = copy(progress);
-              const elapsed = Math.max(0,Math.floor((Date.now() - (Number(progress.startedAt) || activeStartedAt)) / 1000));
-              const labels=activeMode==='media'?{loading:'正在加载本地模型',analyzing:'正在分析音视素材和时间轴',releasing:'正在释放模型资源，准备音视操作'}:{loading:'正在加载本地模型',analyzing:'正在分析当前绘图',releasing:'正在释放模型资源，准备生图'};
+              const elapsed = Math.max(0,Math.floor((Date.now() - Math.min(activeStartedAt,Number(progress.startedAt)||activeStartedAt)) / 1000));
+              const activity=progress.stage==='compile'?'编译模型执行提示词':progress.stage==='optimize'?'优化提示词':activeMode==='media'?'分析音视任务':'分析当前绘图';
+              const labels={connecting:'正在连接算力节点',queued:'正在排队等待算力节点',assigned:'已分配算力节点',uploading:'正在传输任务素材',preparing:'正在准备'+activity,loading:'正在加载本地模型',analyzing:'正在'+activity,processing:'算力节点处理中，详细阶段尚未回传',releasing:'正在释放模型资源，准备'+(activeMode==='media'?'音视操作':'生图'),completed:'本轮分析已完成'};
               state.status = `${labels[progress.phase]} · 本次已用 ${elapsed} 秒`; onChange(state);
             } else if (activeMode === 'chat' && (!session?.activeRequestId || session.activeRequestId === requestId)) updateLocalSession(session,true);
             else if (!progress && (!session?.activeRequestId || session.activeRequestId === requestId)) {
-              state.operation = null; state.status = `请求已提交，正在等待本地分析启动 · 本次已用 ${Math.max(0,Math.floor((Date.now()-activeStartedAt)/1000))} 秒`; onChange(state);
+              state.operation = null; state.status = `请求处理中，正在获取算力节点状态 · 本次已用 ${Math.max(0,Math.floor((Date.now()-activeStartedAt)/1000))} 秒`; onChange(state);
             }
           }
         } catch {}
@@ -844,9 +861,12 @@
         const snapshot=media.capture(),contextFingerprint=await fingerprint(snapshot);
         if(operation!==serial || stopped)return false;
         activeStartedAt=Date.now();
-        const responsePromise=api()?.artAgentChat?.({requestId:activeRequest,provider:'local',mode:'media',promptLanguage:'en',
+        const directPlan=media.directVideoPlan?.(message,intent,snapshot,contextFingerprint);
+        if(directPlan?.reuseOptimizedPrompt && state.activeTask?.status!=='completed')directPlan.reuseOptimizedPrompt=false;
+        const responsePromise=directPlan?Promise.resolve({ok:true,data:{reply:'',mediaPlan:directPlan,toolTrace:[{name:'route_video_request',result:{executionPending:true,source:'application-intent'}}]}})
+          :api()?.artAgentChat?.({requestId:activeRequest,provider:'local',mode:'media',promptLanguage:'en',
           conversationId:state.conversationId || undefined,message:requestMessage,history:copy(state.history),artContext:snapshot.artContext,images:[],contextFingerprint});
-        startStatusPolling(operation,activeRequest);
+        if(!directPlan)startStatusPolling(operation,activeRequest);
         const response=await responsePromise;stopStatusPolling();
         if(operation!==serial || stopped)return false;
         if(!response?.ok) {if(['unknown-conversation','flash-agent-unknown-conversation'].includes(response?.errorCode))state.conversationId='';fail(response?.error || '音视分析未完成，请检查本地助手');}
@@ -854,26 +874,45 @@
         if(typeof data?.reply!=='string')fail('音视分析回复不完整');
         state.conversationId=data.conversationId || state.conversationId;
         if(Array.isArray(data.history))state.history=copy(data.history);
+        else if(directPlan)state.history=[...state.history,{role:'user',content:message}].slice(-12);
         state.model=data.model || '本地 Flash';state.toolTrace=data.toolTrace || [];
-        state.messages.push({role:'assistant',content:data.reply});notify();
-        if(data.needsInput){pendingIntent={...(intent || {surface:'video',mode:''}),message:requestMessage};state.status='等待补充需求';return true;}
+        if(data.needsInput){state.messages.push({role:'assistant',content:data.reply});pendingIntent={...(intent || {surface:'video',mode:''}),message:requestMessage};state.status='等待补充需求';return true;}
         pendingIntent=null;
         if(data.mediaPlan && !media.discussionOnly(requestMessage)) {
-          if(data.resourcesReleased!==true || data.generationReady!==true || data.analysisBackend!=='strata')fail('本地模型尚未确认释放资源，音视操作未执行');
+          if(!directPlan && (data.resourcesReleased!==true || data.generationReady!==true || data.analysisBackend!=='strata'))fail('本地模型尚未确认释放资源，音视操作未执行');
           mediaAbort=new root.AbortController();state.generating=true;
-          const result=await media.execute(data.mediaPlan,{snapshot,fingerprint,signal:mediaAbort.signal,requirements:requestMessage,onOptimizationStatus:text=>{state.status=text;notify();},onProgress:op=>{
+          const actualGeneration=snapshot.artContext?.generation;
+          state.activeTask={...(intent?.revision?state.activeTask:{}),surface:intent?.surface || data.mediaPlan.operations[0]?.target || 'video',mode:actualGeneration?.genType || intent?.mode || '',
+            baseRequest:intent?.revision?state.activeTask?.baseRequest || message:message,
+            revisions:intent?.revision?[...(state.activeTask?.revisions || []),message].slice(-8):[],
+            ...(Number.isFinite(intent?.seconds)?{seconds:intent.seconds}:{}),loop:!!intent?.loop,
+            references:copy(actualGeneration?.references || actualGeneration?.h3References || []),status:'running'};
+          const result=await media.execute(data.mediaPlan,{snapshot,fingerprint,signal:mediaAbort.signal,requirements:message,reuseOptimizedPrompt:directPlan?.reuseOptimizedPrompt===true,onOptimizationRequest:id=>{activeRequest=id;startStatusPolling(operation,id);},onOptimizationStatus:text=>{if(/正在生成视频/.test(text))stopStatusPolling();state.status=text;notify();},onProgress:op=>{
             state.status='正在'+({generate_video:'生成视频',generate_music:'生成音乐',generate_sfx:'生成音效',import_resource:'导入素材',split:'分割片段',trim:'裁切片段',move:'移动片段',rate:'调整速度',volume:'调整音量',fade:'设置淡入淡出',duplicate:'复制片段',remove:'移除片段',export:'导出音视'}[op.action] || '处理音视')+'…';notify();
           }});
-          const rows=result.results.map(r=>r.action?.startsWith('generate_') || r.taskId
+          stopStatusPolling();
+          const rows=result.results.map(r=>r.action==='optimize_video_prompt' ? '已优化并写入'+(r.modeLabel || '视频')+'提示词：\n'+r.displayPrompt : r.action?.startsWith('generate_') || r.taskId
             ? '生成完成：'+(r.name || r.resources?.map(item=>item.name).join('、') || r.resourceId || '')
             : r.action==='export' ? '导出完成：'+r.fileName+'（'+r.bytes+' 字节）'
               : ({split:'已分割片段',trim:'已裁切片段',move:'已移动片段',rate:'已调整速度',volume:'已调整音量',fade:'已设置淡入淡出',duplicate:'已复制片段',remove:'已移除片段',import_resource:'已导入时间轴'}[r.action] || '操作已完成'));
-          state.mediaReceipt=copy(result);state.messages.push({role:'assistant',content:rows.join('\n')});
-          state.status='音视操作已完成';
-        } else state.status='已回复';
+          const receipt=rows.join('\n');
+          const last=result.results.at(-1);
+          if(last?.mode)state.activeTask.mode=last.mode;
+          state.activeTask.status='completed';state.activeTask.outputs=result.results.flatMap(r=>(r.resources || []).map(({id,name,promptId})=>({id,name,promptId})));
+          if(last?.displayPrompt)state.activeTask.displayPrompt=last.displayPrompt;
+          state.mediaReceipt=copy(result);state.messages.push({role:'assistant',content:receipt});
+          const facts='应用实际执行回执（仅为已执行事实）：'+JSON.stringify({results:result.results.map(({action,mode,resources,displayPrompt})=>({action,mode,resources:resources?.map(({id,name,promptId})=>({id,name,promptId})),displayPrompt}))});
+          if(state.history.at(-1)?.role==='assistant')state.history.pop();
+          state.history=[...state.history,{role:'assistant',content:facts.slice(0,12000)}].slice(-12);
+          // The model's session owns its pre-execution history. Start the next
+          // session with the complete text plus actual receipt, rather than
+          // submitting a different history under that old session identity.
+          state.conversationId='';
+          state.status=last?.action==='optimize_video_prompt'?'提示词已更新，可继续修改或生成':'音视操作已完成';
+        } else {state.messages.push({role:'assistant',content:data.reply});state.status='已回复';}
         return true;
       } catch(error) {
-        if(operation===serial){state.error=String(error?.message || error);state.status=mediaAbort?.signal.aborted?'音视操作已停止':'音视操作未全部完成';}
+        if(operation===serial){if(state.activeTask?.status==='running')state.activeTask.status='failed';state.error=String(error?.message || error);state.status=mediaAbort?.signal.aborted?'音视操作已停止':'音视操作未全部完成';}
         return false;
       } finally {if(operation===serial){stopStatusPolling();state.pending=false;state.generating=false;state.operation=null;activeRequest='';mediaAbort=null;notify();}}
     }
@@ -884,9 +923,14 @@
       if (!message) {if ((state.staged || []).length) {state.error = '请先说明这些文件的用途，再发送'; notify();} return false;}
       const newConversation=/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message);
       if(newConversation){reset();lastUploads=[];return true;}
-      let task=uploadApi()?.inferTask?.(message,state.staged.length?state.staged:lastUploads);
+      recoverActiveTask();
+      let task=uploadApi()?.inferTask?.(message,state.staged.length?state.staged:lastUploads,state.activeTask);
       const continuation=pendingIntent && task && !task.discussion && (task.surface==='chat'||task.surface===pendingIntent.surface) && !/取消|重新|另外|新建/.test(message) ? pendingIntent : null;
-      const requestMessage=continuation ? continuation.message+'\n用户补充：'+message : message;
+      const requestMessage=continuation ? continuation.message+'\n用户补充：'+message : task?.revision
+        ? '继续修改同一个'+({video:'视频',audio:'音频',image:'图片'}[state.activeTask.surface] || '')+'任务。\n原始用户需求：'+state.activeTask.baseRequest
+          +'\n此前修改要求：'+(state.activeTask.revisions || []).join('；')
+          +'\n上次实际执行信息（仅为事实，可根据需求选择合适工具）：'+JSON.stringify({mode:state.activeTask.mode,seconds:state.activeTask.seconds,loop:state.activeTask.loop,status:state.activeTask.status,outputs:state.activeTask.outputs})
+          +'\n本次最新要求优先，替换与它冲突的旧描述：'+message : message;
       if(continuation)task={...continuation};
       const predictionInput = state.provider === 'api' ? onlineEstimateInput(message) : null;
       const prediction = predictionInput ? predictOnline(predictionInput) : null;
@@ -1010,9 +1054,9 @@
           state.conversationId=data.conversationId || state.conversationId;if(Array.isArray(data.history))state.history=copy(data.history);
           if(typeof bridge.optimizeProposal!=='function')fail('原有生图优化入口尚未就绪');
           stopStatusPolling();promptAbort=new root.AbortController();state.status='正在按当前生图模型调用原有优化框架…';notify();
-          finalProposal=await bridge.optimizeProposal(copy(data.proposal),snapshot,message,{signal:promptAbort.signal,onProgress:text=>{state.status=text;notify();}});
+          finalProposal=await bridge.optimizeProposal(copy(data.proposal),snapshot,requestMessage,{signal:promptAbort.signal,onRequest:id=>{activeRequest=id;startStatusPolling(operation,id);},onProgress:text=>{state.status=text;notify();}});
           if(operation!==serial || stopped || promptAbort.signal.aborted)return false;
-          promptAbort=null;
+          promptAbort=null;stopStatusPolling();
           data.toolTrace=[...(data.toolTrace || []),{name:'optimize_generation_prompt',result:finalProposal.promptOptimization}];
           state.promptOptimization=copy(finalProposal.promptOptimization);
         }
@@ -1030,6 +1074,8 @@
         else state.status = !unchanged ? '当前绘图已变化，这次回复中的建议未应用' : mode === 'chat' && state.provider === 'local' && snapshot.artContext.surface === 'drawing' ? '已回复 · 当前仅对话，尚未形成可生图双图上下文' : '已回复';
         const action=execution || (!discussionOnly && ['apply','generate'].includes(data.proposal?.action) ? {generate:data.proposal.action==='generate'} : null);
         if (action) {
+          state.activeTask={surface:'image',mode:finalProposal?.generationMode || task?.mode || 'txt2img',baseRequest:task?.revision?state.activeTask?.baseRequest || message:message,
+            revisions:task?.revision?[...(state.activeTask?.revisions || []),message].slice(-8):[],status:'prepared'};
           if (!state.proposal) {state.error = unchanged ? '本次未取得可执行的绘图方案，尚未生成。' : '绘图内容已变化，本次未生成。'; return false;}
           stopStatusPolling(); state.pending = false;
           const approvedFeedback = includeResult && state.samplingApproval && requestedFeedback;
@@ -1076,7 +1122,7 @@
       finally {state.generating = false; state.applying = false; notify();}
     }
     function releaseStagedMedia() { releasePreviews(state.staged); releasePreviews(state.pendingUploads); }
-    function reset() {if (state.pending || state.generating || state.applying || state.uploading) return false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; lastUploads=[];lastPreparedTask='';pendingIntent=null;bridge.clearPrepared(); releaseStagedMedia(); for (const provider of ['local','api']) sessions[provider] = {messages:[],history:[],conversationId:''}; Object.assign(state, {messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify(); return true;}
+    function reset() {if (state.pending || state.generating || state.applying || state.uploading) return false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; lastUploads=[];lastPreparedTask='';pendingIntent=null;bridge.clearPrepared(); releaseStagedMedia(); for (const provider of ['local','api']) sessions[provider] = {messages:[],history:[],conversationId:''}; Object.assign(state, {activeTask:null,messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify(); return true;}
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying || state.uploading) return false;
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null; pendingIntent=null;

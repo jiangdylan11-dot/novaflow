@@ -262,6 +262,7 @@ export function normalizeOptimizeRequest(payload = {}) {
       ...(usesUiQwen ? { targetEngine:'qwen-2.1', supportsNegativePrompt:payload.supportsNegativePrompt !== false, uiDesignIntent:payload.uiDesignIntent, uiPreserveLayout:payload.uiPreserveLayout } : {}),
       ...(usesH3 ? { h3ReferenceFrames: h3ReferenceFrames(payload.h3ReferenceFrames, requirements) } : {}),
       ...(usesH3 && payload.h3Reverse === true ? { h3Reverse: true } : {}),
+      ...(usesH3 && payload.agentCompileForGeneration === true ? { agentCompileForGeneration: true } : {}),
       ...(usesH3 && h3Mode ? { h3Mode } : {}),
       ...(usesH3 && h3Duration !== undefined && h3Duration !== null && h3Duration !== '' ? { durationSeconds: h3Duration } : {}),
       ...(usesH3 && h3VisualSchema ? { visualSchema: h3VisualSchema } : {}),
@@ -489,8 +490,8 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
             NOVAFLOW_FLASH_BASE_URL:candidateConfig.baseUrl || 'http://127.0.0.1:8198',
             NOVAFLOW_FLASH_MODEL_ID:flashSession?.identity?.id || '',
             NOVAFLOW_FLASH_MAX_TOKENS:String(candidateConfig.maxTokens || 4096),
-            NOVAFLOW_FLASH_REASONING_EFFORT:candidateConfig.reasoningEffort || 'low',
-            NOVAFLOW_FLASH_REASONING_BUDGET_TOKENS:String(candidateConfig.reasoningBudgetTokens ?? 1024)
+            NOVAFLOW_FLASH_REASONING_EFFORT:flashSession?.requestPolicy?.reasoningEffort || candidateConfig.reasoningEffort || 'low',
+            NOVAFLOW_FLASH_REASONING_BUDGET_TOKENS:String(flashSession?.requestPolicy?.reasoningBudgetTokens ?? candidateConfig.reasoningBudgetTokens ?? 1024)
           } : {})
         }
       });
@@ -656,7 +657,11 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     async runWithFlashSession(session, method, payload, context = {}) {
       if (analysisBackend !== 'strata' || !session?.identity?.id || typeof session.infer !== 'function') return invalid(new Error('缺少已验证的 Flash 会话'));
       if (flashSession || lease) return {ok:false,error:'本地 AI 正在处理另一项任务',errorCode:'prompt-assistant-busy'};
-      flashSession = session;
+      // The agent already supplies the task and the original H3 protocol. Avoid
+      // spending another 1024 reasoning tokens per optimization/translation;
+      // keep the same writer, translator and validators.
+      flashSession = payload?.agentCompileForGeneration === true
+        ? {...session,requestPolicy:{reasoningEffort:'none',reasoningBudgetTokens:0}} : session;
       try {
         return context.taskId ? await api.runForTask(context.taskId,method,payload,context) : await api[method](payload);
       } finally { await stop(); flashSession = null; }

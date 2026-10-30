@@ -523,7 +523,7 @@
             <div class="pageHead">
               <div>
                 <h1 class="pageTitle">AI 服务</h1>
-                <div class="pageHint">在线供应商只配置 RunningHub API Key。Key 只写入后台环境，页面不回显，也不写入 Supabase Edge 密钥。</div>
+                <div class="pageHint">RunningHub API Key 保存后自动同步至服务器的加密配置，供在线服务使用；页面不回显完整 Key。</div>
               </div>
               <div class="pageTools">
                 <span id="aiServicesDataBadge" class="pill skeletonPill"></span>
@@ -566,8 +566,8 @@
               </div>
               <div class="providerConfigGrid">
                 <section class="providerConfigCard runninghubConfigCard">
-                  <div class="cardTitle small">RunningHub（国内站）</div>
-                  <div class="cardHint">可写项只有 API Key。图像走国内站，在线语言模型走国际站（默认 xai/grok-4.7）。地址和模型只读，改环境变量后重启生效。失败或审核不扣积分。</div>
+                  <div class="cardTitle small">RunningHub</div>
+                  <div class="cardHint">保存 API Key 后将同步到服务器并加密存储，在线服务下一次请求即使用新配置。地址和模型只读。只有服务器确认后才显示同步成功；同步失败会保留输入供重试。失败或审核不扣积分。</div>
                   <div class="formGrid">
                     <div class="row full">
                       <div class="label">生成 API Base URL</div>
@@ -579,7 +579,7 @@
                     </div>
                     <label class="checkField full"><input id="runninghubRuntimeClearKey" type="checkbox" />清空 RunningHub API Key</label>
                     <div class="row full">
-                      <div class="label">LLM Base URL（国际站，只读）</div>
+                      <div class="label">LLM Base URL（只读）</div>
                       <div class="field"><input id="runninghubRuntimeLlmBaseUrl" type="url" spellcheck="false" readonly placeholder="https://llm.runninghub.ai/v1" /></div>
                     </div>
                     <div class="row full">

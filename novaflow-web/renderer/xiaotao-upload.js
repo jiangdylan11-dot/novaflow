@@ -139,30 +139,40 @@
   }
   // Route from the requested deliverable, independently of the currently open page.
   // Unassigned attachments remain conversation inputs; slot names are never a user decision.
-  function inferTask(message, files = []) {
+  function inferTask(message, files = [], previous = null) {
     const text = String(message || '').trim();
     const kinds = Array.from(files || []).map(file => file.kind);
-    const discussion = question(text) || /怎么|如何|为什么|是什么|能不能|可不可以|能否|是否|(?:只|仅).{0,8}(?:分析|看看|提示词|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,8}(?:生成|执行|制作|修改)/.test(text);
+    let discussion = question(text) || /怎么|如何|为什么|是什么|能不能|可不可以|能否|是否|(?:只|仅).{0,8}(?:分析|看看|提示词|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,8}(?:生成|执行|制作|修改)/.test(text);
+    const promptEdit=/(?:提示词.{0,6}(?:优化|修改|调整|改|写入|填入)|(?:优化|修改|调整|写入|填入).{0,6}提示词)/.test(text);
+    if(promptEdit && !question(text) && !/怎么|如何|为什么|能不能|可不可以|能否|是否|(?:不要|不用|别|先不|暂不).{0,6}(?:优化|修改|写入|填入)|(?:只|仅).{0,6}(?:分析|讨论|解释)/.test(text))discussion=false;
     const imageEdit = /换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(text);
     const video = /视频|动画|动效|动态|动起来|动一动|跑起来|转起来|循环动|首尾帧|首帧|尾帧|多参|镜头|剪辑|时间轴/.test(text);
     const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(text);
     let surface = imageEdit && !/视频|片段/.test(text) ? 'image' : video ? 'video' : audio ? 'audio'
-      : /生图|出图|做图|画图|绘图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(text) || kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(text) ? 'image' : 'chat';
+      : /生图|出图|做图|画图|绘图|静态图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(text) || kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(text) ? 'image' : 'chat';
     if (discussion) surface = 'chat';
-    const loop = surface === 'video' && /循环|无缝|loop/i.test(text);
+    const newTask=/新建|新的任务|另一个任务|另外做|重新开始|不要原来|独立制作/.test(text);
+    const feedback=/不符合|不满意|性格|凶悍|凶一点|需要|重新做|重做|换|改|调整|优化|提示词|表情|动作|呲牙|龇牙|刚才|这个|再来|继续|还是|不对|效果|更.{0,8}(?:点|一些|一点)/.test(text);
+    const explicitImage=/图生图|生图|出图|静态图|(?:画|生成|制作).{0,5}(?:一张|图片|张图)/.test(text);
+    const explicitVideo=/视频|动画|动效|动态/.test(text);
+    const previousSurface=previous?.surface || previous?.kind;
+    const revision=!!previous && !discussion && !newTask && feedback && (!explicitImage || previousSurface==='image') && (!explicitVideo || previousSurface==='video');
+    if(revision)surface=previousSurface;
+    const loop = surface === 'video' && (/循环|无缝|loop/i.test(text) || revision && previous.loop===true);
     const named = discussion ? [] : namedDestinations(text);
     let mode = surface === 'image' ? (kinds.includes('image') ? 'img2img' : 'txt2img')
       : surface === 'video' ? kinds.some(kind => kind !== 'image') || /多参/.test(text) ? 'multi_reference'
         : /首尾帧|首帧|尾帧/.test(text) || loop && kinds.includes('image') ? 'first_last'
           : kinds.includes('image') ? 'image_video' : 'text_video' : '';
     if (imageEdit && kinds.includes('image')) mode = 'img2img';
+    if(revision && previous.mode)mode=previous.mode;
     const duration = text.match(/(\d+(?:\.\d+)?)\s*(?:秒|s\b)/i);
-    return {surface, mode, loop, discussion, named, ...(duration ? {seconds:Number(duration[1])} : {})};
+    return {surface, mode, loop, discussion, named,revision, ...(duration ? {seconds:Number(duration[1])} : revision && Number.isFinite(previous.seconds)?{seconds:previous.seconds}:{})};
   }
-  function planRoutes(message, files) {
+  function planRoutes(message, files, previous=null) {
     const text = String(message || '').trim();
     const asking = question(text);
-    const task = inferTask(message, files);
+    const task = inferTask(message, files,previous);
     const named = asking || task.discussion ? [] : namedDestinations(text);
     const place = [];
     const ask = [];

@@ -969,7 +969,14 @@ export function createWorker(options) {
     catch (error) { throw new Error('提示词请求不是有效的 JSON：' + String(error.message || error)); }
 
     await reportProgress(task.id, TASK_STATE.PROCESSING, 10, '本地模型推理中');
-    const reply = await assistant.runForTask(task.id, method, request && typeof request === 'object' ? request : {}, { isCancelled: () => { try { checkCancelled(task.id); return false; } catch { return true; } } });
+    let progressReports=Promise.resolve();
+    const onProgress=event=>{
+      if(!['preparing','loading','analyzing','releasing'].includes(event?.phase)||!['analysis','optimize','compile'].includes(event?.stage))return;
+      progressReports=progressReports.then(()=>reportProgress(task.id,TASK_STATE.PROCESSING,10,'NFPA1:'+event.phase+':'+event.stage)).catch(()=>{});
+    };
+    let reply;
+    try{reply=await assistant.runForTask(task.id, method, request && typeof request === 'object' ? request : {}, {onProgress,isCancelled: () => { try { checkCancelled(task.id); return false; } catch { return true; } }});}
+    finally{await progressReports.catch(()=>{});}
     checkCancelled(task.id);
     const bytes = Buffer.from(JSON.stringify(reply ?? { ok: false, error: '提示词助手没有返回结果' }));
     await writeFile(join(outDir, PROMPT_ASSISTANT_RESULT_FILE), bytes);

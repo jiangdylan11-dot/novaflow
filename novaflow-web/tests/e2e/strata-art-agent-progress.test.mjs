@@ -38,7 +38,7 @@ for(const mode of ['drawing','creation'])test(`${mode} exposes request-bound loa
   assert.equal(assistant.status().operation,null);
   const payload=request(mode),running=assistant.artAgentChat(payload);await loadEntered.promise;
   const loading=assistant.status();
-  assert.deepEqual(Object.keys(loading.operation).sort(),['mode','phase','phaseStartedAt','requestId','startedAt'].sort());
+  assert.deepEqual(Object.keys(loading.operation).sort(),['mode','stage','phase','phaseStartedAt','requestId','startedAt'].sort());
   assert.equal(loading.operation.requestId,payload.requestId);assert.equal(loading.operation.mode,mode);assert.equal(loading.operation.phase,'loading');
   assert.ok(loading.operation.startedAt<=loading.operation.phaseStartedAt);assert.equal(loading.runtimeStatus,'加载中');
   assert.equal(loading.chatSession.state,'cold');assert.equal(loading.modelLoaded,false);
@@ -95,4 +95,20 @@ test('ordinary warm chat keeps its existing residency status and never impersona
   const result=await assistant.artAgentChat(payload);assert.equal(result.ok,true);assert.equal(assistant.status().operation,null);
   assert.equal(assistant.status().chatSession.state,'warm');assert.equal(assistant.status().modelLoaded,true);
   await assistant.stop();assert.equal(assistant.status().operation,null);assert.equal(assistant.status().chatSession.state,'cold');
+});
+
+test('pooled Python optimization reports processing after the owned model is ready, not perpetual loading',async()=>{
+  const phases=[];let assistant;
+  assistant=createStrataPromptAssistant({config:{expectedModel:{ids:[MODEL]}},comfyUrls:[],
+    lifecycle:{load:async()=>({ok:true}),unload:async()=>({ok:true,released:true})},
+    fetchImpl:async url=>url.endsWith('/v1/models')?Response.json({data:[{id:MODEL}]}):new Response('',{status:404}),
+    legacyApi:{stop:async()=>{},runWithFlashSession:async()=>{
+      assert.equal(assistant.status().operation.phase,'analyzing');
+      assert.equal(assistant.status().operation.stage,'optimize');return {ok:true,data:{positivePrompt:'实际优化结果'}};
+    }}});
+  const requestId=randomUUID();
+  const result=await assistant.runForTask('owned-task','optimizePrompt',{requestId,surface:'animation'}, {onProgress:event=>phases.push(event)});
+  assert.equal(result.ok,true);assert.equal(result.resourcesReleased,true);
+  assert.deepEqual(phases.map(event=>event.phase),['preparing','loading','analyzing','releasing']);
+  assert(phases.every(event=>event.requestId===requestId && event.stage==='optimize'));
 });

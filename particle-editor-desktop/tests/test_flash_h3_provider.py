@@ -16,6 +16,20 @@ SERVICE = FIXTURES.SERVICE
 
 
 class FlashH3ProviderTest(unittest.TestCase):
+    def test_agent_bilingual_compile_reuses_the_same_optimizer_instance(self):
+        assistant = object.__new__(SERVICE.PromptAssistant)
+        payload = {"surface": "animation", "purpose": "minimax-h3-prompt-enhance", "prompt": "角色露出犬齿", "h3Mode": "image_video", "durationSeconds": 2}
+        chinese = {"positivePrompt": "中文原有格式", "negativePrompt": "", "rawOutput": "optimize"}
+        bilingual = {"positivePrompt": '{"modelPrompt":"English","displayPrompt":"中文原有格式"}', "negativePrompt": "", "rawOutput": "compile"}
+        with patch.object(assistant, "optimize_h3_base", return_value=chinese) as optimize, patch.object(assistant, "translate_h3_base", return_value=bilingual.copy()) as translate:
+            self.assertEqual(assistant.optimize_prompt(payload), chinese)
+            translate.assert_not_called()
+            result = assistant.optimize_prompt({**payload, "agentCompileForGeneration": True})
+            self.assertEqual(optimize.call_count, 2)
+            self.assertEqual(translate.call_args.args[0], chinese["positivePrompt"])
+            self.assertEqual(result["positivePrompt"], bilingual["positivePrompt"])
+            self.assertEqual(result["rawOutput"], "optimize\ncompile")
+
     def run_path(self, backend, *, visual):
         fixture = FIXTURES.H3LocalVisualContractTest()
         fixture.setUp()

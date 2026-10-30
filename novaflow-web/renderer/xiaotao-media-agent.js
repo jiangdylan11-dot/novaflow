@@ -3,6 +3,7 @@
   const fail = message => {throw new Error(message);};
   const clone = value => JSON.parse(JSON.stringify(value));
   const references = new WeakMap(), usedPlans=new Set(); let referenceSerial=0;
+  let preparedVideo=null;
   function referenceStamp(ref) {
     if(!ref || typeof ref!=='object')return null;
     let stamp=references.get(ref);
@@ -43,9 +44,29 @@
     return /视频|动画|动起来|音频|音效|音乐|配乐|剪辑|时间轴|淡入|淡出|音轨|音视/.test(message);
   }
   function discussionOnly(message) {
+    const revision=String(message || '').includes('本次最新要求优先，替换与它冲突的旧描述：');
+    message=String(message || '').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1);
+    if(revision && /不符合|不满意|需要|性格|凶悍|呲牙|龇牙|更.{0,8}(?:点|一些|一点)/.test(message))message='修改 '+message;
+    if(/(?:把|将|帮我|请)?[^。！？\n]{0,25}(?:提示词.{0,6}(?:优化|修改|调整|改|写入|填入)|(?:优化|修改|调整|写入|填入).{0,6}提示词)/.test(message)
+      && !/[?？]|怎么|如何|为什么|能不能|可不可以|能否|是否|(?:不要|不用|别|先不|暂不).{0,6}(?:优化|修改|写入|填入)|(?:只|仅).{0,6}(?:分析|讨论|解释)/.test(message))return false;
     return !/(?:请|帮我|给我|把|将|做|让|换|改|生成|制作|开始|执行|裁切|剪辑|分割|剪掉|截取|移动|变速|调|设置|导入|导出|复制|删除|移除|淡入|淡出|增大|减小|小点|大点|处理)|\b(?:generate|create|trim|split|move|set|export|import|delete|duplicate|fade|adjust)\b/i.test(message)
       || /[?？]|(?:能不能|可不可以|能否|是否|怎么|如何|为什么)|吗[。！!]?\s*$|(?:不要|不用|别|先不|暂不|只需|只要).{0,10}(?:生成|执行|剪辑|修改|导出|处理)|(?:只|仅).{0,6}(?:提示词|方案|建议|聊聊|讨论|解释)/.test(message)
       || /(?:给我|提供|输出|写).{0,10}(?:提示词|方案|建议)/.test(message) && !/并生成|直接生成|执行|写入|填入/.test(message);
+  }
+  function directVideoPlan(message,intent,snapshot,contextFingerprint) {
+    if(intent?.surface!=='video' || intent.discussion || discussionOnly((intent?.revision?'本次最新要求优先，替换与它冲突的旧描述：':'')+message))return null;
+    const generation=snapshot.artContext?.generation;
+    if(generation?.mode!=='minimax_h3_local' || !['text_video','image_video','first_last','multi_reference'].includes(generation.genType))return null;
+    if(generation.referenceSlots?.some(slot=>!slot.occupied))return null;
+    if(/剪辑|剪掉|裁切|分割|截取|时间轴|片段|导入|导出|删除|移除|变速|音量|音轨|淡入|淡出/.test(message))return null;
+    const promptEdit=/(?:提示词.{0,6}(?:优化|修改|调整|改|写入|填入)|(?:优化|修改|调整|写入|填入).{0,6}提示词)/.test(message);
+    const generate=/做|生成|制作|重做/.test(message);
+    const feedback=intent.revision && /不符合|不满意|需要|性格|凶悍|呲牙|龇牙|更.{0,8}(?:点|一些|一点)/.test(message);
+    if(!promptEdit && !generate && !feedback)return null;
+    const onlyPrompt=promptEdit && !/并生成|重新生成|重新做|重做|直接生成|开始生成|再生成/.test(message);
+    const reuse=/^(?:请)?(?:按|用)(?:刚才|刚刚|上次|已经)?优化后的提示词(?:重新|再)?(?:做|生成|制作)(?:一次)?(?:视频|动画)?[。！!]*$/.test(message.trim());
+    return {planId:root.crypto.randomUUID(),contextFingerprint,operations:[{action:onlyPrompt?'optimize_video_prompt':'generate_video',target:'video',
+      prompt:generation.prompt || message,...(intent.seconds!==undefined?{seconds:intent.seconds}:{}),loop:!!intent.loop}],reuseOptimizedPrompt:reuse};
   }
   async function openEditor(target) {
     const audio=root.NovaFlowAudioStudio;
@@ -95,7 +116,7 @@
     return {ok:true,action:op.action,target:op.target,clipId:clip.id,timeline:timeline(editor)};
   }
   function refresh(editor) {editor.commitEdit();editor.select(editor.selectedClip?.()?.id || null);root.NovaFlowAiSequenceVideoMergeWorkspace?.refresh?.();}
-  async function generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus}={}) {
+  async function generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus,onOptimizationRequest,reuseOptimizedPrompt}={}) {
     root.NovaFlowAudioStudio?.open('video');
     let gen=root.NovaFlowAiSequenceGeneration;
     if(!gen)fail('视频生成接口尚未就绪');
@@ -103,7 +124,10 @@
     if(typeof root.__NovaFlowSmartAI?.optimizeForAgent!=='function' || typeof gen.optimizationContext!=='function')fail('原有视频提示词优化框架尚未就绪，请刷新页面');
     const videoContext=await gen.optimizationContext();
     videoContext.durationSeconds=op.seconds ?? videoContext.durationSeconds;
-    const optimized=await root.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',videoContext,prompt:op.prompt || gen.capture().prompt,requirements,signal,onProgress:onOptimizationStatus});
+    const stamp=await fingerprint(snapshot);
+    const reuseHit=reuseOptimizedPrompt && preparedVideo?.fingerprint===stamp;
+    const optimized=reuseHit ? preparedVideo.optimized
+      : await root.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',videoContext,prompt:op.prompt || gen.capture().prompt,requirements,signal,onRequest:onOptimizationRequest,onProgress:onOptimizationStatus});
     if(signal?.aborted)fail('本次视频生成已停止');
     if(await fingerprint(capture())!==await fingerprint(snapshot))fail('视频素材或参数在优化期间变化，未写入或生成');
     op={...op,prompt:optimized.displayPrompt || optimized.prompt};
@@ -114,6 +138,10 @@
     if(signal?.aborted)fail('音视操作已停止');
     gen=root.NovaFlowAiSequenceGeneration;
     if(gen.capture().prompt!==op.prompt)fail('视频优化提示词未完整写入，未开始生成');
+    const actualMode=gen.capture().genType || videoContext.mode;
+    const modeLabel=({first_last:'首尾帧视频',image_video:'图生视频',text_video:'文生视频',multi_reference:'多参视频'})[actualMode] || '视频';
+    preparedVideo={fingerprint:await fingerprint(capture()),optimized};
+    if(op.action==='optimize_video_prompt')return {ok:true,action:op.action,mode:actualMode,modeLabel,displayPrompt:op.prompt,executedPrompt:optimized.prompt,optimization:optimized.optimization};
     onOptimizationStatus?.('提示词已优化，正在生成视频…');
     const started=Date.now(),initialStatus=gen.status(),initial=JSON.stringify(initialStatus);
     let changed=false;
@@ -128,14 +156,14 @@
         const added=current.resources().filter(r=>!before.has(r.id));
         const produced=status?.promptId && status.promptId!==initialStatus?.promptId
           ? added.filter(r=>r.promptId===status.promptId || r.id.startsWith(status.promptId+':')) : [];
-        if(changed && status?.state==='done' && produced.length)return {ok:true,action:op.action,resources:produced,optimization:optimized.optimization,executedPrompt:optimized.prompt};
+        if(changed && status?.state==='done' && produced.length)return {ok:true,action:op.action,mode:actualMode,modeLabel,resources:produced,displayPrompt:op.prompt,optimizationReused:reuseHit,optimization:optimized.optimization,executedPrompt:optimized.prompt};
         if(!changed && Date.now()-started>15000)fail('视频任务未启动，请检查模型、素材和连接状态');
         if(Date.now()-started>30*60*1000)fail('视频生成等待超时，请在视频任务中检查状态');
         await new Promise(r=>root.setTimeout(r,500));
       }
     } finally {signal?.removeEventListener('abort',abort);}
   }
-  async function execute(plan,{snapshot,fingerprint,signal,requirements='',onOptimizationStatus=()=>{},onProgress=()=>{}}={}) {
+  async function execute(plan,{snapshot,fingerprint,signal,requirements='',reuseOptimizedPrompt=false,onOptimizationStatus=()=>{},onOptimizationRequest=()=>{},onProgress=()=>{}}={}) {
     if(!plan || !Array.isArray(plan.operations) || !plan.operations.length || plan.operations.length>12)fail('音视执行方案无效');
     if(typeof plan.planId!=='string' || usedPlans.has(plan.planId))fail('这份音视方案已执行或编号无效，请重新发送需求');
     if(plan.contextFingerprint!==await fingerprint(snapshot) || plan.contextFingerprint!==await fingerprint(capture()))fail('音视内容已变化，请重新发送需求');
@@ -146,7 +174,7 @@
       if(!['video','audio'].includes(op.target))fail('音视操作目标无效');
       onProgress(op,results.length);
       try {
-        if(op.action==='generate_video')results.push(await generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus}));
+        if(['generate_video','optimize_video_prompt'].includes(op.action))results.push(await generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus,onOptimizationRequest,reuseOptimizedPrompt}));
         else if(['generate_music','generate_sfx'].includes(op.action)) {
           root.NovaFlowAudioStudio.open('audio');
           results.push(await root.NovaFlowAudioStudio.agentGenerate(op,{signal}));
@@ -171,5 +199,5 @@
     }
     return {ok:true,results};
   }
-  root.NovaFlowMediaAgent={capture,wantsMedia,discussionOnly,execute,referenceStamp,h3ReferenceContext,h3PromptProtocol,timeline,edit};
+  root.NovaFlowMediaAgent={capture,wantsMedia,discussionOnly,directVideoPlan,execute,referenceStamp,h3ReferenceContext,h3PromptProtocol,timeline,edit};
 })(typeof window!=='undefined'?window:globalThis);

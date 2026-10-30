@@ -5192,7 +5192,7 @@
         const h3ReferenceFrames = await captureH3ReferenceFrames(current,prepared);
         request = {surface:"animation",purpose:MINIMAX_H3_PROMPT_PURPOSE,prompt:prepared.prompt,negativePrompt:"",supportsNegativePrompt:false,
           requirements:[prepared.requirements,modelUser ? "用户本次要求（最高优先级）："+modelUser : ""].filter(Boolean).join("\n\n"),
-          h3Mode:current.mode,durationSeconds:current.durationSeconds,visualSchema:MINIMAX_H3_VISUAL_SCHEMA,
+          h3Mode:current.mode,durationSeconds:current.durationSeconds,visualSchema:MINIMAX_H3_VISUAL_SCHEMA,agentCompileForGeneration:true,
           contentPolicy:prepared.context.contentPolicy,h3ReferenceFrames};
       } else {
         throw new Error("当前视频模型没有已接入的原有优化规则，未使用通用规则替代，请选择当前支持的视频模型");

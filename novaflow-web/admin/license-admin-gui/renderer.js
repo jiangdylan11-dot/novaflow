@@ -848,7 +848,7 @@ function isRunningHubProvider(provider) {
 function ensureCoreAiProviders(providers) {
   const list = (Array.isArray(providers) ? providers : []).filter(isRunningHubProvider);
   if (!list.length) {
-    list.push({ id: "provider-runninghub-ui", name: "RunningHub（国内站）", provider_key: "runninghub", status: "disabled", billing_multiplier: null });
+    list.push({ id: "provider-runninghub-ui", name: "RunningHub", provider_key: "runninghub", status: "disabled", billing_multiplier: null });
   }
   return list;
 }
@@ -869,7 +869,7 @@ function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runningh
   if ($("runninghubRuntimeClearKey")) $("runninghubRuntimeClearKey").checked = false;
   if ($("runninghubRuntimeConfigHint")) $("runninghubRuntimeConfigHint").textContent = runninghubStatus?.configured ? "当前 Key 已配置" : "当前 Key 未配置";
 
-  if (status) status.textContent = "写入本机后台环境变量";
+  if (status) status.textContent = runninghubStatus?.serverSync?.synced ? "本机与服务器配置一致" : runninghubStatus?.serverSync?.error || "本机与服务器配置不一致，请重新保存";
 }
 
 function renderRunningHubProviderHealth(status) {
@@ -888,7 +888,7 @@ function renderRunningHubProviderHealth(status) {
 
 function runningHubProviderRow(provider, status) {
   const tr = document.createElement("tr");
-  tr.appendChild(textCell(provider.name || "RunningHub（国内站）"));
+  tr.appendChild(textCell(provider.name || "RunningHub"));
   tr.appendChild(textCell(status?.configured ? "已配置（不回显）" : "未配置"));
   const badge = document.createElement("span");
   badge.className = "badge " + (status?.connected ? "active" : status?.checked ? "error" : "disabled");
@@ -2215,22 +2215,23 @@ async function saveProviderRuntimeConfig(providerKey) {
   }
   const providerName = "RunningHub";
   const willChangeKey = payload.clearApiKey ? "清空当前 API Key" : payload.updateApiKey ? "覆盖当前 API Key" : "不修改当前 API Key";
-  const confirmed = confirm(`确定保存 ${providerName} 配置？\n${willChangeKey}\n真实 Key 只写入本机后台环境变量，不会回显。`);
+  const confirmed = confirm(`确定保存 ${providerName} 配置？\n${willChangeKey}\n将同步到服务器并加密保存，供在线服务使用；完整 Key 不会回显。`);
   if (!confirmed) return;
 
   try {
-    if (status) status.textContent = "保存中...";
+    if (status) status.textContent = "正在保存并同步服务器...";
     const res = await window.adminAPI.setAdminProviderRuntimeConfig(payload);
     const result = res?.result || {};
     if (!res?.ok || result.status === "error" || result.ok === false) {
-      if (status) status.textContent = "保存失败";
+      if (status) status.textContent = "保存或服务器同步未完成";
       alert(result.error || res?.error || `保存 ${providerName} 配置失败`);
       return;
     }
     if ($("runninghubRuntimeApiKey")) $("runninghubRuntimeApiKey").value = "";
     if ($("runninghubRuntimeClearKey")) $("runninghubRuntimeClearKey").checked = false;
-    if (status) status.textContent = "已保存";
-    toast(`${providerName} 配置已保存`);
+    if(result.serverSync?.synced!==true)throw new Error('服务器未确认同步，不能显示保存成功，请升级后台与服务器');
+    if (status) status.textContent = "已保存并同步服务器";
+    toast(`${providerName} 配置已保存并同步服务器`);
     await loadAdminData();
     if (key === "runninghub") await checkRunningHubProvider();
   } catch (err) {

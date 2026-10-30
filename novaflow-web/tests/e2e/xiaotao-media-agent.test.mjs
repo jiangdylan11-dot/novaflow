@@ -9,6 +9,52 @@ import {createStrataPromptAssistant} from '../../worker/src/strata-prompt-assist
 import {collectOutputs} from '../../worker/src/comfy/comfy-client.mjs';
 const source=await readFile(new URL('../../renderer/xiaotao-media-agent.js',import.meta.url),'utf8');
 const agentSource=await readFile(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
+const uploadSource=await readFile(new URL('../../renderer/xiaotao-upload.js',import.meta.url),'utf8');
+
+test('video feedback stays on its original deliverable and prompt optimization performs a write without generation',async()=>{
+  const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,console,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
+  for(const script of [uploadSource,source,agentSource])vm.runInContext(script,ctx);
+  let prompt='原视频提示词',submits=0,optimizations=0,optimizedRequirements='',status={state:'idle'},resources=[];
+  ctx.NovaFlowAudioStudio={sub:()=> 'video',open(){},resources:()=>[]};
+  ctx.NovaFlowAiSequenceGeneration={capture:()=>({mode:'minimax_h3_local',genType:'image_video',prompt}),
+    optimizationContext:async()=>({modelId:'minimax_h3_local',mode:'image_video',durationSeconds:2,resources:[]}),status:()=>status,resources:()=>resources,
+    setRequest:op=>{prompt=op.prompt;},submit:()=>{submits++;status={state:'done',promptId:'new-'+submits};resources=[...resources,{id:'new-'+submits+':output',name:'new-'+submits+'.mp4'}];}};
+  ctx.__NovaFlowSmartAI={optimizeForAgent:async options=>{optimizations++;optimizedRequirements=options.requirements;if(optimizations===1)assert.match(options.requirements,/呲牙咧嘴/);return {prompt:'The jackal bares its teeth then returns to its original pose in a two second loop.',displayPrompt:'豺狼头抬起上唇，呲牙咧嘴露出犬齿，再收回原位，完成两秒循环。'};}};
+  const store=new Map(),payloads=[];
+  const controller=ctx.NovaFlowXiaotaoArtAgent.createController({bridge:{clearPrepared(){}},storage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)},api:()=>({artAgentChat:async p=>{
+    payloads.push(p);const result=await createFlashArtAgent().run({payload:JSON.parse(JSON.stringify(p)),flash:flash(p,[{action:'optimize_video_prompt',target:'video',prompt:'需要呲牙咧嘴'}])});
+    return {ok:true,data:{...result,resourcesReleased:true,generationReady:true,analysisBackend:'strata'}};
+  }})});
+  controller.state.activeTask={surface:'video',mode:'image_video',baseRequest:'做一个2秒循环待机动画',seconds:2,loop:true,status:'completed',outputs:[{id:'real:out',name:'actual.mp4'}]};
+  assert.equal(await controller.send('把提示词优化下，需要呲牙咧嘴'),true,controller.state.error);
+  assert.equal(payloads.length,0,'A clear prompt edit needs the original optimizer, not an extra planner inference');assert.equal(optimizedRequirements,'把提示词优化下，需要呲牙咧嘴');assert.equal(controller.state.activeTask.seconds,2);
+  assert.equal(submits,0);assert.equal(optimizations,1);assert.match(prompt,/犬齿/);assert.match(controller.state.messages.at(-1).content,/已优化并写入图生视频提示词/);
+  assert.doesNotMatch(controller.state.messages.at(-1).content,/生成完成|首尾帧/);assert.match(controller.state.history.at(-1).content,/optimize_video_prompt/);
+  assert.equal(controller.state.conversationId,'','Execution receipts cannot reuse the model session with an older history');
+  assert.equal(await controller.send('按优化后的提示词重新做视频'),true,controller.state.error);
+  assert.equal(submits,1);assert.equal(optimizations,1,'Exact reuse of the validated prompt avoids another model load');
+  assert.equal(controller.state.activeTask.outputs[0].name,'new-1.mp4');
+  prompt='用户手动修改过的提示词';
+  assert.equal(await controller.send('按优化后的提示词重新做视频'),true,controller.state.error);
+  assert.equal(optimizations,2,'Manual edits invalidate the prepared prompt');assert.equal(submits,2);
+  const restored=ctx.NovaFlowXiaotaoArtAgent.createController({bridge:{clearPrepared(){}},storage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)}});
+  assert.equal(restored.state.activeTask.surface,'video');assert.equal(restored.state.activeTask.seconds,2);assert.equal(restored.state.activeTask.loop,true);
+  const next=ctx.NovaFlowXiaotaoUpload.inferTask('不符合人物性格，需要凶悍点',[],restored.state.activeTask);
+  assert.equal(next.surface,'video');assert.equal(next.seconds,2);assert.equal(next.loop,true);
+  assert.equal(ctx.NovaFlowXiaotaoUpload.inferTask('再画一张静态图',[],restored.state.activeTask).surface,'image');
+  assert.equal(ctx.NovaFlowXiaotaoUpload.inferTask('为什么效果不好？',[],restored.state.activeTask).surface,'chat');
+  assert.equal(restored.reset(),true);assert.equal(restored.state.activeTask,null);
+});
+
+test('prompt changes require an execution tool; a planner cannot turn optimization alone into a paid generation',async()=>{
+  for(const message of ['把提示词优化下，需要呲牙咧嘴','优化提示词','只优化提示词，不生成']){
+    const p=request();p.message=message;
+    const ctx=vm.createContext({console});vm.runInContext(source,ctx);assert.equal(ctx.NovaFlowMediaAgent.discussionOnly(message),false,message);
+    const result=await createFlashArtAgent().run({payload:p,flash:flash(p,[{action:'optimize_video_prompt',target:'video',prompt:'露出犬齿'}])});
+    assert.equal(result.mediaPlan.operations[0].action,'optimize_video_prompt');
+    await assert.rejects(createFlashArtAgent().run({payload:{...p,requestId:randomUUID()},flash:flash(p,[{action:'generate_video',target:'video'}])}),/未授权重新生成/);
+  }
+});
 
 test('reference video/image/audio previews cannot become generated task outputs',()=>{
   const outputs=collectOutputs({outputs:{14:{images:[{filename:'generated.mp4',subfolder:'video',type:'output'}]},

@@ -17028,7 +17028,12 @@ class PromptAssistant:
                 minimax_h3_block_sensitive_minor(raw_prompt + "\n" + minimax_h3_prompt_enhance_user_requirement(requirements, raw_prompt))
             if minimax_h3_mode.upper() == "REF2VA":
                 return self.optimize_h3_reference(raw_prompt, requirements, minimax_h3_duration, payload.get('h3ReferenceFrames'), payload.get('h3Reverse') is True, check)
-            return self.optimize_h3_base(raw_prompt, requirements, minimax_h3_mode, minimax_h3_duration, payload.get('h3ReferenceFrames'), check)
+            optimized = self.optimize_h3_base(raw_prompt, requirements, minimax_h3_mode, minimax_h3_duration, payload.get('h3ReferenceFrames'), check)
+            if payload.get('agentCompileForGeneration') is True and H3_TRANSLATE_ONLY not in requirements:
+                compiled = self.translate_h3_base(optimized['positivePrompt'], minimax_h3_mode, minimax_h3_duration)
+                compiled['rawOutput'] = '\n'.join(filter(None, [optimized.get('rawOutput', ''), compiled.get('rawOutput', '')]))
+                return compiled
+            return optimized
         is_animation = is_minimax_h3 or is_animation_prompt_payload(payload)
         is_ui_design = is_ui_design_prompt_payload(payload)
         if is_ui_design and payload.get("targetEngine") == "qwen-2.1":

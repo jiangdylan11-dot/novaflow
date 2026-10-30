@@ -244,7 +244,7 @@
   }
   async function pooledPromptAssistant(action, payload) {
     const requestId = typeof payload.requestId === 'string' ? payload.requestId : '';
-    const owned = { taskId:'', cancelled:false };
+    const owned = { taskId:'', cancelled:false,startedAt:Date.now(),stage:action==='art-agent-chat'?'analysis':/H3 compile: translate-only/.test(payload.requirements || '')?'compile':'optimize' };
     if (requestId) pooledPromptRequests.set(requestId, owned);
     const check = () => { if (owned.cancelled) throw new Error('本次提示词分析已取消'); };
     try {
@@ -302,11 +302,26 @@
     }
     return {ok:true,cancelled:true,matched:true};
   }
+  async function pooledPromptStatus({requestId}={}) {
+    try {
+      const owned=pooledPromptRequests.get(requestId);
+      if(owned){
+        const task=owned.taskId?tasks.get(owned.taskId):null;
+        const note=String(task?.progress_note || task?.note || '');
+        const match=/^NFPA1:(preparing|loading|analyzing|releasing):(analysis|optimize|compile)$/.exec(note);
+        const phase=match?.[1] || (!task?'connecting':['created','queued'].includes(task.status)?'queued':task.status==='uploading'?'uploading':task.status==='processing'?'processing':task.status==='completed'?'completed':'assigned');
+        return {ok:true,result:{available:true,reason:'compute-node',operation:{requestId,phase,stage:match?.[2] || owned.stage,source:'pool',taskId:owned.taskId,startedAt:owned.startedAt}}};
+      }
+      const caps=await control('GET','/api/web/capabilities');
+      return {ok:true,result:{available:(caps.taskTypes || []).some(t=>t.task_type==='prompt_assistant' && t.available_workers>0),reason:'compute-node'}};
+    }catch(error){return {ok:false,error:String(error.message || error)};}
+  }
   async function waitForTaskEnd(taskId, timeoutMs) {
     const started = Date.now();
     for (;;) {
       const res = await control('GET', '/api/web/tasks/' + taskId);
       const task = (res && res.task) || {};
+      tasks.set(taskId,task);
       if (task.status === 'completed') { tasks.set(taskId, task); return task; }
       if (task.status === 'failed' || task.status === 'cancelled' || task.status === 'expired') {
         throw new Error(taskErrorText(task));
@@ -1428,9 +1443,9 @@
     runtimeOpenOutputFolder: async () => root.NovaFlowWebWarehouse
       ? root.NovaFlowWebWarehouse.open() : ({ ok: false, error: '仓库组件未加载，请刷新网页后重试' }),
     runtimeFreeMemory: async () => ({ ok: true, result: {} }),
-    promptAssistantGetStatus: async () => taskMode() === 'local'
+    promptAssistantGetStatus: async (payload={}) => taskMode() === 'local' && !pooledPromptRequests.has(payload.requestId)
       ? localControl('GET', '/local/prompt-assistant/status').catch(error => ({ ok: false, enabled: false, error: String(error.message || error) }))
-      : control('GET','/api/web/capabilities').then(caps=>({ok:true,result:{available:(caps.taskTypes || []).some(t=>t.task_type==='prompt_assistant' && t.available_workers>0),reason:'compute-node'}})).catch(error=>({ok:false,error:String(error.message || error)})),
+      : pooledPromptStatus(payload),
     promptAssistantOptimizePrompt: async (payload) => localPromptAssistant('optimize-prompt', payload),
     promptAssistantUiDesignCpu: async (payload) => {
       // The old node rejects the deliberately empty image record during normalization, before any model work.
