@@ -203,7 +203,7 @@ function mapRecord(row) {
 
 async function testConnection(userDataDir) {
   const client = createAdminClient(userDataDir);
-  const { data, error, status } = await client.from("licenses").select("id").limit(1);
+  const { data, error, status } = await client.from("users").select("id").limit(1);
   if (error) throw new Error(error.message || String(error));
   return { ok: true, status: Number(status || 200), rows: Array.isArray(data) ? data.length : 0 };
 }
@@ -319,6 +319,7 @@ async function deleteLicense(userDataDir, input) {
 }
 
 module.exports = {
+  requireSecretConfig,
   DEFAULT_SUPABASE_URL,
   DEFAULT_REMOTE_EXPIRE_AT,
   getPublicConfig,

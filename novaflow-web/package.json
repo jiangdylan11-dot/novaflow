@@ -1,9 +1,9 @@
 {
   "name": "novaflow-web-workspace",
   "private": true,
-  "version": "2.0.178",
+  "version": "2.0.194",
   "type": "module",
-  "description": "NovaFlow Web independent workspace: browser editor, local assistant, administration and GPU workers.",
+  "description": "Foart website editor, compute-only assistant and administration.",
   "workspaces": [
     "packages/shared",
     "control-local",
@@ -12,14 +12,14 @@
   ],
   "scripts": {
     "control:dev": "node control-local/src/server.mjs",
-    "start": "node tools/start-local-stack.mjs",
+    "start": "npm --prefix worker run dev",
     "web:dev": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",
     "web:preview": "npm --prefix web run preview",
     "worker:dev": "npm --prefix worker run dev",
     "worker:headless": "node worker/src/main-headless.mjs",
-    "assistant:start": "node worker/src/main-local.mjs",
-    "worker:build": "node tools/build-web-renderer.mjs --minify && node tools/fetch-cloudflared.mjs && npm --prefix worker run build:win",
+    "assistant:start": "node worker/src/main-compute.mjs",
+    "worker:build": "node tools/prepare-compute-renderer.mjs && node tools/fetch-cloudflared.mjs && npm --prefix worker run build:win",
     "test": "node tests/run-tests.mjs",
     "test:sql": "node tests/e2e/sql-contract.test.mjs",
     "test:migration-concurrency": "node tools/test-quota-migration-concurrency.mjs",
@@ -27,6 +27,8 @@
     "test:control": "node tests/e2e/control-plane.test.mjs",
     "test:security": "node tests/e2e/security.test.mjs",
     "test:multiworker": "node tests/e2e/multi-worker.test.mjs",
+    "test:compute": "node --test tests/e2e/compute-launcher.test.mjs tests/e2e/compute-assistant.test.mjs tests/e2e/compute-renderer.test.mjs tests/e2e/compute-machine-policy.test.mjs tests/e2e/compute-auto-enrollment.test.mjs tests/e2e/web-compute-node.test.mjs tests/e2e/compute-usage-history.test.mjs",
+    "test:compute-ui": "electron tests/e2e/compute-launcher-ui.cjs",
     "test:e2e": "node tests/e2e/full-pipeline.test.mjs",
     "verify:stable": "npm run verify:independent",
     "sync:edge": "node tools/sync-edge-function.mjs",
@@ -45,7 +47,8 @@
     "fetch:cloudflared": "node tools/fetch-cloudflared.mjs",
     "verify:independent": "node tools/check-independent-workspace.mjs",
     "admin:start": "npm --prefix admin start",
-    "admin:build": "npm --prefix admin run build:win"
+    "admin:build": "npm --prefix admin run build:win",
+    "deploy:control": "node tools/deploy-control-plane.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

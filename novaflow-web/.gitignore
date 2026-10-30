@@ -20,6 +20,8 @@ worker.config.json
 # Build output of the renderer transform
 web-dist/
 worker-renderer/
+compute-renderer/
+worker/dist-compute/
 # ffmpeg.wasm's 32 MB core, GPL. tools/fetch-ffmpeg-core.mjs gets it; the build calls that.
 renderer/vendor/ffmpeg/core/
 # 视频抠图 in the browser: ONNX Runtime Web (tools/fetch-onnxruntime-web.mjs, the build calls it) and the

@@ -499,6 +499,7 @@ Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
 
   return new Response(result.body == null ? null : JSON.stringify(result.body), {
     status: result.status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...CORS }
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
+      'x-foart-deployment': env('DENO_DEPLOYMENT_ID') || 'unknown', ...CORS }
   });
 });

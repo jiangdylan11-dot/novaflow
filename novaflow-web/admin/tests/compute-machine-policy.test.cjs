@@ -1,0 +1,126 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { createRequire } = require('node:module');
+
+const owner = '11111111-1111-4111-8111-111111111111';
+const guest = '22222222-2222-4222-8222-222222222222';
+const payload = () => ({ id: 'node-one', worker_name: '合作方算力', owner_id: owner, enabled: true, owner_enabled: true,
+  sharing_enabled: false, sharing_scope: 'selected', allowed_user_ids: [guest] });
+
+function fixture({ error, missing = false, deletionNode = null, concurrentApproval = false, env = { NOVAFLOW_SUPABASE_URL: 'https://fixture.supabase.co', NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY: 'fixture-only' } } = {}) {
+  const filename = path.resolve(__dirname, '../license-admin-gui/admin-data.js');
+  const realRequire = createRequire(filename);
+  const writes = [];
+  const client = { from(table) {
+    assert.equal(table, 'gpu_workers');
+    const query = { filters: [], update(row) { this.row = JSON.parse(JSON.stringify(row)); return this; },
+      eq(column, value) { this.filters.push([column, value]); if (column === 'id') this.id = value; return this; },
+      is(column, value) { this.filters.push([column, value]); return this; }, select() { return this; }, delete() { this.deleting = true; return this; },
+      async maybeSingle() { if (deletionNode) return { data: { ...deletionNode }, error }; writes.push({ ...this.row, id: this.id }); return { data: missing ? null : { ...this.row, id: this.id }, error }; },
+      then(resolve, reject) {
+        return Promise.resolve().then(() => {
+          assert.equal(this.deleting, true);
+          if (concurrentApproval) deletionNode.owner_id = owner;
+          const matches = this.filters.every(([key, value]) => deletionNode[key] === value);
+          if (matches) writes.push({ deleted: this.id });
+          return { data: matches ? [{ id: this.id, worker_name: deletionNode.worker_name }] : [], error };
+        }).then(resolve, reject);
+      } };
+    return query;
+  } };
+  const module = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports,
+    console: { log() {}, warn() {} }, process: { env, platform: 'linux' },
+    require: (name) => name === '@supabase/supabase-js' ? { createClient: () => client } : realRequire(name)
+  }, { filename });
+  return { api: module.exports, writes };
+}
+
+test('node enable/disable never overwrites the worker heartbeat status', async () => {
+  const { api, writes } = fixture();
+  assert.equal((await api.setAdminGpuWorkerStatus({ id: 'node-one', status: 'maintenance' })).ok, true);
+  assert.equal((await api.setAdminGpuWorkerStatus({ id: 'node-one', status: 'idle' })).ok, true);
+  assert.equal(writes[0].enabled, false);
+  assert.equal(writes[1].enabled, true);
+  assert.equal(writes.some((row) => 'status' in row), false);
+});
+
+test('private owner use and selected sharing are saved independently', async () => {
+  const { api, writes } = fixture();
+  const privatePolicy = payload();
+  const saved = await api.setAdminGpuWorkerAccessPolicy(privatePolicy);
+  assert.equal(saved.ok, true);
+  assert.equal(writes[0].owner_enabled, true);
+  assert.equal(writes[0].sharing_enabled, false);
+  assert.equal(writes[0].owner_id, owner);
+  assert.equal(writes[0].worker_name, '合作方算力');
+  assert.equal(writes[0].name_managed, true);
+  const sharedPolicy = { ...privatePolicy, owner_enabled: false, sharing_enabled: true, allowed_user_ids: [guest, guest] };
+  assert.equal((await api.setAdminGpuWorkerAccessPolicy(sharedPolicy)).ok, true);
+  assert.deepEqual(writes[1].allowed_user_ids, [guest]);
+  assert.equal(writes[1].owner_enabled, false);
+  assert.equal(writes[1].sharing_scope, 'selected');
+});
+
+test('invalid or incomplete policy cannot reach the database', async () => {
+  const { api, writes } = fixture();
+  for (const patch of [
+    { worker_name: ' ' }, { worker_name: 'x'.repeat(81) }, { enabled: 'false' }, { owner_id: null }, { owner_id: null, owner_enabled: false }, { sharing_scope: 'all' },
+    { allowed_user_ids: ['invalid'] }, { sharing_enabled: true, allowed_user_ids: [] }
+  ]) {
+    assert.equal((await api.setAdminGpuWorkerAccessPolicy({ ...payload(), ...patch })).status, 'error');
+  }
+  assert.equal(writes.length, 0);
+});
+
+test('unassigned pending nodes may be deleted online, approved online nodes are protected', async () => {
+  const node = { id: 'node-one', worker_name: 'pending', owner_id: null, enabled: false, owner_enabled: false, sharing_enabled: false,
+    status: 'idle', last_heartbeat: new Date().toISOString() };
+  const pending = fixture({ deletionNode: { ...node } });
+  assert.equal((await pending.api.deleteAdminGpuWorker({ id: node.id })).ok, true);
+  assert.deepEqual(pending.writes, [{ deleted: node.id }]);
+  for (const patch of [{ owner_id: owner }, { enabled: true }, { sharing_enabled: true }, { owner_enabled: true }]) {
+    const approved = fixture({ deletionNode: { ...node, ...patch } });
+    assert.equal((await approved.api.deleteAdminGpuWorker({ id: node.id })).status, 'error');
+    assert.equal(approved.writes.length, 0);
+  }
+  const race = fixture({ deletionNode: { ...node }, concurrentApproval: true });
+  assert.equal((await race.api.deleteAdminGpuWorker({ id: node.id })).status, 'error');
+  assert.equal(race.writes.length, 0);
+});
+
+test('missing migration and missing node never report successful saves', async () => {
+  const migrated = fixture({ error: { message: "Could not find the 'sharing_enabled' column in schema cache" } });
+  const result = await migrated.api.setAdminGpuWorkerAccessPolicy(payload());
+  assert.equal(result.status, 'error'); assert.match(result.error, /数据库迁移/); assert.notEqual(result.ok, true);
+  const missing = fixture({ missing: true });
+  assert.equal((await missing.api.setAdminGpuWorkerAccessPolicy(payload())).status, 'error');
+  assert.equal((await missing.api.setAdminGpuWorkerStatus({ id: 'node-one', status: 'idle' })).status, 'error');
+});
+
+test('saved backend connection is shared with data management and environment retains precedence', () => {
+  const saved = fixture({ env: {} });
+  saved.api.setAdminConnectionResolver(() => ({ supabaseUrl: 'https://saved.supabase.co', secretKey: 'saved-fixture-only' }));
+  assert.equal(saved.api.readAdminSupabaseEnv().configured, true);
+  assert.equal(saved.api.readAdminSupabaseEnv().supabaseUrl, 'https://saved.supabase.co');
+  assert.equal(saved.api.readAdminSupabaseEnv().serviceRoleKey, 'saved-fixture-only');
+  const env = fixture();
+  env.api.setAdminConnectionResolver(() => ({ supabaseUrl: 'https://saved.supabase.co', secretKey: 'saved-fixture-only' }));
+  assert.equal(env.api.readAdminSupabaseEnv().serviceRoleKey, 'fixture-only');
+});
+
+test('connection test checks the current users table without querying historical licenses', async () => {
+  const filename = path.resolve(__dirname, '../license-admin-online.js');
+  const realRequire = createRequire(filename);
+  const module = { exports: {} };
+  const tables = [];
+  vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
+    module, exports: module.exports, process: { env: { NOVAFLOW_SUPABASE_URL: 'https://fixture.supabase.co', NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY: 'fixture-only' } },
+    require: name => name === 'electron' ? { safeStorage: {} } : name === '@supabase/supabase-js' ? { createClient: () => ({ from(table) { tables.push(table); return { select() { return this; }, async limit() { return { data: [], status: 200 }; } }; } }) } : realRequire(name)
+  }, { filename });
+  assert.equal((await module.exports.testConnection('fixture-unused')).ok, true);
+  assert.deepEqual(tables, ['users']);
+});

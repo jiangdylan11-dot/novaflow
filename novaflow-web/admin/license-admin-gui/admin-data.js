@@ -45,6 +45,15 @@ const RETIRED_PROVIDER_ENV_NAMES = new Set([
 
 let cachedClient = null;
 let cachedClientEnvKey = "";
+let adminConnectionResolver = null;
+
+// Main-process-only resolver for the saved, encrypted backend connection.
+// Credentials never cross the preload bridge.
+function setAdminConnectionResolver(resolve) {
+  adminConnectionResolver = typeof resolve === "function" ? resolve : null;
+  cachedClient = null;
+  cachedClientEnvKey = "";
+}
 
 const adminQueries = {
   users: {
@@ -72,7 +81,7 @@ const adminQueries = {
     limit: 500
   },
   gpu_workers: {
-    select: "id,owner_id,worker_name,status,tier,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
+    select: "id,owner_id,worker_name,name_managed,status,tier,enabled,owner_enabled,sharing_enabled,sharing_scope,allowed_user_ids,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
     // Until 20260925010000_novaflow_web_node_tiers.sql is applied there is no
     // tier column; the page still has to list the nodes.
     fallbackSelect: "id,owner_id,worker_name,status,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
@@ -80,13 +89,13 @@ const adminQueries = {
     ascending: false,
     limit: 200
   },
-  web_ai_tasks: {
+  web_compute_usage: {
     // Who generated, when, and on whose machine - and nothing else.
     //
     // No prompt, no parameters, no output manifest: the operator asked to see
     // usage, not what anyone made. Reading those columns would put a user's
     // work on an admin screen for no reason, so they are not selected at all.
-    select: "id,user_id,assigned_worker_id,task_type,status,created_at,completed_at",
+    select: "id,user_id,user_account,assigned_worker_id,worker_name,task_type,model_id,status,attempt_count,charged_credit_cost,error_code,error_message,created_at,assigned_at,started_at,completed_at,failed_at,cancelled_at,updated_at",
     orderBy: "created_at",
     ascending: false,
     limit: 500
@@ -256,7 +265,15 @@ function normalizeBaseUrl(value) {
 function readAdminEnvValue(name) {
   const fromProcess = String(process.env[name] || "").trim();
   if (fromProcess) return fromProcess;
-  return readWindowsUserEnvValue(name);
+  const fromRegistry = readWindowsUserEnvValue(name);
+  if (fromRegistry) return fromRegistry;
+  if (adminConnectionResolver && [ENV_SUPABASE_URL, ENV_SERVICE_ROLE_KEY].includes(name)) {
+    try {
+      const saved = adminConnectionResolver();
+      return String((name === ENV_SUPABASE_URL ? saved?.supabaseUrl : saved?.secretKey) || "").trim();
+    } catch { /* A fresh machine has no saved connection yet. */ }
+  }
+  return "";
 }
 
 function readWindowsUserEnvValue(name) {
@@ -1050,32 +1067,50 @@ function getAdminGpuWorkers() {
 }
 
 async function getAdminWebTaskUsage(options = {}) {
-  const cap = options?.limit == null || options.limit === ""
-    ? null
-    : Math.max(1, Math.min(200, Math.round(Number(options.limit)) || 100));
-  const selectFields = adminQueries.web_ai_tasks.select;
+  const limit = Math.max(1, Math.min(100, Math.floor(Number(options.limit)) || 50));
+  const offset = Math.max(0, Math.min(1000000000, Math.floor(Number(options.offset)) || 0));
+  const selectFields = adminQueries.web_compute_usage.select;
   const clientState = getAdminClient();
-  if (!clientState.client) {
-    return readTable("web_ai_tasks", selectFields, { ...adminQueries.web_ai_tasks, limit: cap || adminQueries.web_ai_tasks.limit });
-  }
   const startedAt = Date.now();
+  if (!clientState.client) return supabaseErrorResult("web_compute_usage", "请配置后台连接", selectFields, options, 0);
+  const userId = String(options.userId || "");
+  if (userId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return supabaseErrorResult("web_compute_usage", "用户编号无效", selectFields, {}, 0);
+  const status = String(options.status || "");
+  if (status && !["created","queued","assigned","uploading","processing","completed","failed","cancelled","expired"].includes(status)) return supabaseErrorResult("web_compute_usage", "任务状态无效", selectFields, {}, 0);
   try {
-    const { collectPages: readPages } = await loadFeatureCredits();
-    const records = await readPages(async ({ offset, limit }) => {
-      const take = cap == null ? limit : Math.min(limit, cap - offset);
-      if (take <= 0) return [];
-      const { data, error } = await clientState.client
-        .from("web_ai_tasks")
-        .select(selectFields)
-        .order(adminQueries.web_ai_tasks.orderBy, { ascending: Boolean(adminQueries.web_ai_tasks.ascending) })
-        .range(offset, offset + take - 1);
-      if (error) throw error;
-      return data || [];
-    });
-    return supabaseResult("web_ai_tasks", records, selectFields, { ...adminQueries.web_ai_tasks, limit: cap || records.length }, Date.now() - startedAt);
+    let query = clientState.client.from("web_compute_usage").select(selectFields, { count: "exact" });
+    if (userId) query = query.eq("user_id", userId);
+    if (status) query = query.eq("status", status);
+    const { data, error, count } = await query.order("created_at", { ascending:false }).order("id", { ascending:false }).range(offset, offset + limit - 1);
+    if (error) throw error;
+    return { ...supabaseResult("web_compute_usage", data || [], selectFields, {limit,offset}, Date.now()-startedAt), total:Number(count || 0), offset, limit, hasMore:offset+(data || []).length<Number(count || 0) };
   } catch (err) {
-    return supabaseErrorResult("web_ai_tasks", err, selectFields, adminQueries.web_ai_tasks, Date.now() - startedAt);
+    return supabaseErrorResult("web_compute_usage", "使用记录读取失败，请确认已升级记录保留服务：" + String(err?.message || err), selectFields, {}, Date.now()-startedAt);
   }
+}
+
+async function getAdminComputeUsageSummary() {
+  const startedAt = Date.now(), state = getAdminClient();
+  if (!state.client) return supabaseErrorResult("web_compute_usage", "请配置后台连接", "", {}, 0);
+  try {
+    const {data,error} = await state.client.rpc("admin_compute_usage_summary");
+    if (error) throw error;
+    return supabaseResult("web_compute_usage",data || [],"",{},Date.now()-startedAt);
+  } catch (err) { return supabaseErrorResult("web_compute_usage","使用记录读取失败，请确认已升级记录保留服务："+String(err?.message || err),"",{},Date.now()-startedAt); }
+}
+
+async function deleteAdminComputeUsage(payload = {}) {
+  const startedAt=Date.now(), operation='web_compute_usage.manual_delete';
+  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const userId=String(payload.userId || ''), taskId=payload.taskId == null ? null : String(payload.taskId);
+  if(payload.confirmed!==true || !uuid.test(userId) || (taskId!==null&&!uuid.test(taskId)) || !Number.isFinite(Date.parse(payload.before))) return adminWriteErrorResult(operation,'请明确确认用户、记录和删除时间范围',Date.now()-startedAt);
+  const {client,result}=adminWriteClient(operation,startedAt);if(!client)return result;
+  try {
+    const {data,error}=await client.rpc('admin_delete_compute_usage',{p_user_id:userId,p_task_id:taskId,p_before:new Date(payload.before).toISOString()});
+    if(error)throw error;
+    if(!Number.isInteger(data?.deleted)||data.deleted<0)throw Error('服务器未确认删除结果');
+    return adminWriteResult(operation,startedAt,{deleted:data.deleted});
+  } catch(error){return adminWriteErrorResult(operation,String(error?.message||error),Date.now()-startedAt);}
 }
 
 function getAdminWorkerRegistrationCodes() {
@@ -1205,12 +1240,13 @@ async function setAdminGpuWorkerStatus(payload) {
   try {
     const { data, error } = await clientState.client
       .from("gpu_workers")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ enabled: status === "idle", updated_at: new Date().toISOString() })
       .eq("id", id)
       .select(adminQueries.gpu_workers.select)
       .maybeSingle();
-    if (error) throw error;
-    logAdminData("info", "set gpu worker status", { source: "supabase", status: "connected", id, workerStatus: status });
+    if (error) throw workerPolicyError(error);
+    if (!data) throw new Error("算力节点不存在，设置未保存");
+    logAdminData("info", "set gpu worker status", { source: "supabase", status: "connected", id, enabled: status === "idle" });
     return {
       source: "supabase",
       status: "connected",
@@ -1223,6 +1259,49 @@ async function setAdminGpuWorkerStatus(payload) {
   } catch (err) {
     return adminWriteErrorResult(operation, err, Date.now() - startedAt);
   }
+}
+
+function workerPolicyError(error) {
+  const message = String(error?.message || error || "");
+  if (/enabled|name_managed|sharing_scope|allowed_user_ids|schema cache|does not exist|could not find/i.test(message)) {
+    return new Error("算力机器权限设置尚未迁移，请先应用算力访问策略数据库迁移后重试；本次未保存。");
+  }
+  return error;
+}
+
+async function setAdminGpuWorkerAccessPolicy(payload) {
+  const startedAt = Date.now();
+  const operation = "gpu_workers.set_access_policy";
+  const fail = (error) => adminWriteErrorResult(operation, error, Date.now() - startedAt);
+  const id = String(payload?.id || "").trim();
+  if (!id) return fail("缺少算力节点 id");
+  const workerName = typeof payload?.worker_name === "string" ? payload.worker_name.trim() : "";
+  if (!workerName || workerName.length > 80) return fail("机器名称须为 1–80 个字符");
+  const fields = ["enabled", "owner_enabled", "sharing_enabled"];
+  if (fields.some((field) => typeof payload?.[field] !== "boolean")) return fail("启用、本人使用和对外分享必须分别设置");
+  const scope = payload?.sharing_scope;
+  if (!["pool", "selected"].includes(scope)) return fail("请选择共享池或指定用户");
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ownerId = String(payload?.owner_id || "").trim();
+  if (ownerId && !uuid.test(ownerId)) return fail("本人账号无效");
+  if (!ownerId) return fail("请选择设备归属账号；关闭本人使用也需保留节点归属");
+  if (!Array.isArray(payload.allowed_user_ids) || payload.allowed_user_ids.some((value) => typeof value !== "string" || !uuid.test(value))) return fail("指定用户列表无效");
+  const users = [...new Set(payload.allowed_user_ids)];
+  if (users.length > 200) return fail("指定用户不能超过 200 人");
+  if (payload.sharing_enabled && scope === "selected" && !users.length) return fail("请至少选择一个可使用算力的账号");
+  const clientState = getAdminClient();
+  if (!clientState.client) return fail(clientState.error || "Supabase 未配置，不能写入");
+  try {
+    const { data, error } = await clientState.client.from("gpu_workers").update({
+      worker_name: workerName, name_managed: true, owner_id: ownerId || null, enabled: payload.enabled, owner_enabled: payload.owner_enabled,
+      sharing_enabled: payload.sharing_enabled, sharing_scope: scope,
+      allowed_user_ids: users, updated_at: new Date().toISOString()
+    }).eq("id", id).select(adminQueries.gpu_workers.select).maybeSingle();
+    if (error) throw workerPolicyError(error);
+    if (!data) throw new Error("算力节点不存在，设置未保存");
+    logAdminData("info", "set gpu worker access policy", { id, enabled: payload.enabled, sharingEnabled: payload.sharing_enabled });
+    return { source: "supabase", status: "connected", configured: true, ok: true, operation, durationMs: Date.now() - startedAt, record: data };
+  } catch (error) { return fail(error); }
 }
 
 // Node tiers. 普通 (standard) nodes serve 中级 and 高级 accounts, 高级
@@ -1299,21 +1378,25 @@ async function deleteAdminGpuWorker(payload) {
   try {
     const { data: worker, error: readError } = await client
       .from("gpu_workers")
-      .select("id,worker_name,status,last_heartbeat")
+      .select("id,worker_name,owner_id,enabled,owner_enabled,sharing_enabled,status,last_heartbeat")
       .eq("id", id)
       .maybeSingle();
     if (readError) throw readError;
     if (!worker) throw new Error("算力节点不存在或已删除");
     const beat = Date.parse(worker.last_heartbeat || "") || 0;
     const live = ["idle", "busy"].includes(String(worker.status || "")) && Date.now() - beat < GPU_WORKER_OFFLINE_AFTER_MS;
-    if (live) throw new Error("节点还在线，请先停用，等它离线后再删除");
+    const pending = !worker.owner_id && worker.enabled === false && worker.owner_enabled === false && worker.sharing_enabled === false;
+    if (live && !pending) throw new Error("节点还在线，请先在助手停止节点，等它离线后再删除");
 
-    const { data, error } = await client
+    let deletion = client
       .from("gpu_workers")
       .delete()
-      .eq("id", id)
-      .select("id,worker_name");
+      .eq("id", id);
+    // Recheck pending state in the write so concurrent approval cannot be deleted.
+    if (pending) deletion = deletion.is("owner_id", null).eq("enabled", false).eq("owner_enabled", false).eq("sharing_enabled", false);
+    const { data, error } = await deletion.select("id,worker_name");
     if (error) throw error;
+    if (!(data || []).length) throw new Error("节点状态已变化或记录已删除，请刷新后重试");
     logAdminData("info", "delete gpu worker", { source: "supabase", status: "connected", id, name: worker.worker_name });
     return adminWriteResult(operation, startedAt, { deleted: (data || []).length, record: worker });
   } catch (err) {
@@ -1379,34 +1462,6 @@ async function purgeAdminWorkerRegistrationCodes() {
     if (error) throw error;
     logAdminData("info", "purge worker registration codes", { source: "supabase", status: "connected", deleted: (data || []).length });
     return adminWriteResult(operation, startedAt, { deleted: (data || []).length });
-  } catch (err) {
-    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
-  }
-}
-
-// Usage history older than N days. Only finished work goes: anything queued
-// or running belongs to the scheduler. Events cascade with their task.
-const WEB_TASK_TERMINAL_STATUSES = ["completed", "failed", "cancelled", "expired"];
-
-async function purgeAdminWebTasks(payload) {
-  const startedAt = Date.now();
-  const operation = "web_ai_tasks.purge";
-  const { client, result } = adminWriteClient(operation, startedAt);
-  if (!client) return result;
-
-  const days = Math.max(1, Math.min(3650, Math.floor(Number(payload?.olderThanDays ?? payload?.older_than_days ?? 30)) || 30));
-  const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
-
-  try {
-    const { data, error } = await client
-      .from("web_ai_tasks")
-      .delete()
-      .in("status", WEB_TASK_TERMINAL_STATUSES)
-      .lt("created_at", cutoff)
-      .select("id");
-    if (error) throw error;
-    logAdminData("info", "purge web tasks", { source: "supabase", status: "connected", days, deleted: (data || []).length });
-    return adminWriteResult(operation, startedAt, { deleted: (data || []).length, days, cutoff });
   } catch (err) {
     return adminWriteErrorResult(operation, err, Date.now() - startedAt);
   }
@@ -3742,6 +3797,7 @@ async function migrateGrokQuotaToCredits(payload) {
 }
 
 module.exports = {
+  setAdminConnectionResolver,
   artKnowledgeRequest: (operation, payload) => require('./art-knowledge-manager.cjs').createArtKnowledgeManager({getClient:()=>getAdminClient().client}).request(operation,payload),
   ENV_SUPABASE_URL,
   ENV_SERVICE_ROLE_KEY,
@@ -3801,13 +3857,15 @@ module.exports = {
   getAdminGrokProviderStatus,
   getAdminGpuWorkers,
   getAdminWebTaskUsage,
+  getAdminComputeUsageSummary,
+  deleteAdminComputeUsage,
   getAdminWorkerRegistrationCodes,
   createAdminWorkerRegistrationCode,
   revokeAdminWorkerRegistrationCode,
   deleteAdminWorkerRegistrationCode,
   purgeAdminWorkerRegistrationCodes,
-  purgeAdminWebTasks,
   setAdminGpuWorkerStatus,
+  setAdminGpuWorkerAccessPolicy,
   setAdminGpuWorkerTier,
   deleteAdminGpuWorker,
   hashWorkerRegistrationCode,

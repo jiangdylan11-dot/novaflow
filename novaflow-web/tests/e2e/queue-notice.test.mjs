@@ -1,3 +1,4 @@
+import { approveComputeWorker } from '../helpers.mjs';
 // Queue notice (2026-10-15, user: 节点忙碌时弹框提示排队、已等多久、预计多久，能取消排队).
 //
 // A task waiting for a node learns its place in line and roughly when it starts from the control
@@ -67,6 +68,7 @@ try {
       hardware: { gpu_name: 'RTX', vram_mb: 32768, ram_mb: 65536, worker_version: '0.1.0', comfy_version: '0.31.1', endpoint_url: 'http://127.0.0.1:9555', transport: 'direct' }
     }
   });
+  await approveComputeWorker(ctx.db,workerId);
   const node = reg.body.workerToken;
   await call(BASE, 'POST', '/api/worker/models', { token: node, body: { models: [{ model_id: 'qwen-image-2511', model_version: '1', status: WORKER_MODEL_STATUS.READY }] } });
   await call(BASE, 'POST', '/api/worker/heartbeat', { token: node, body: { status: 'idle' } });

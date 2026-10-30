@@ -82,6 +82,7 @@ app.whenReady().then(async () => {
   failCheck = true;
   await run(`showModule('dashboard'); refreshDomesticBalance()`);
   assert.equal(await run(`$('dashboardRhDomesticBalance').textContent`), "—");
+  assert.equal(await run(`$('dashboardRhConnection').textContent`), "检测失败");
   assert.match(await run(`$('dashboardRhDomesticMeta').textContent`), /APIKEY_USER_NOT_FOUND/);
   assert.match(await run(`$('toast').textContent`), /APIKEY_USER_NOT_FOUND/);
   await run(`loadAdminData()`);
@@ -89,6 +90,7 @@ app.whenReady().then(async () => {
   failCheck = false;
   await run(`rhRefreshLockedUntil = 0; refreshDomesticBalance()`);
   assert.equal(await run(`$('dashboardRhDomesticBalance').textContent`), "0.00USD");
+  assert.equal(await run(`$('dashboardRhConnection').textContent`), "账户连接正常");
   assert.equal(await run(`$('toast').textContent`), "已更新国内站余额");
   await run(`renderDashboardRhCard({state:'ready', domesticBalance:{remainMoney:null}})`);
   assert.equal(await run(`$('dashboardRhDomesticBalance').textContent`), "—", "missing balance must never become zero dollars");

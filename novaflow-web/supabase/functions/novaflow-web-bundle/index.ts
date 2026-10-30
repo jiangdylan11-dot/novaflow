@@ -384,7 +384,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.178";
+const RELEASE_VERSION = "2.0.194";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -3059,6 +3059,7 @@ Deno.serve(async (req: Request, info: Deno.ServeHandlerInfo) => {
 
   return new Response(result.body == null ? null : JSON.stringify(result.body), {
     status: result.status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...CORS }
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
+      'x-foart-deployment': env('DENO_DEPLOYMENT_ID') || 'unknown', ...CORS }
   });
 });

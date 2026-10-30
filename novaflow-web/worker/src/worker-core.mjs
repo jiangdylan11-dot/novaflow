@@ -200,7 +200,7 @@ export function createWorker(options) {
     configPath,
     comfyImageUrl = 'http://127.0.0.1:8188',
     comfyVideoUrl: configuredVideoUrl = '',
-    modelsRoot = '',
+    modelsRoot: configuredModelsRoot = '',
     gatewayPort = 8790,
     gatewayHost = '0.0.0.0',
     publicEndpoint = '',
@@ -208,15 +208,25 @@ export function createWorker(options) {
     workerName = 'novaflow-worker',
     rendererDir = '',
     registrationCode = '',
+    registrationProfile = '',
     ownerSessionToken = '',
     pollIntervalMs = 2000,
+    heartbeatIntervalMs = HEARTBEAT_INTERVAL_SECONDS * 1000,
     localTasks = null,
     // The node's 提示词助手 (a function, because the assistant is created after
     // the worker it shares the GPU with). Absent on a node without one.
     promptAssistant = null,
     logger
   } = options;
+  let modelsRoot = configuredModelsRoot;
   const promptAssistantRef = () => (typeof promptAssistant === 'function' ? promptAssistant() : promptAssistant) || null;
+  const hasComputePolicy = policy => policy && ['enabled', 'owner_enabled', 'sharing_enabled'].every(key => typeof policy[key] === 'boolean')
+    && ['pool', 'selected'].includes(policy.sharing_scope) && Array.isArray(policy.allowed_user_ids);
+  function requireComputePolicy(policy) {
+    if (registrationProfile === 'compute-only' && !hasComputePolicy(policy)) {
+      throw new Error('平台算力机器权限服务需要升级；本节点尚未开始接收任务，请联系管理员');
+    }
+  }
   // Video (MiniMax H3) runs on the image runtime since 2026-09-26; see videoRuntimeUrl.
   const comfyVideoUrl = videoRuntimeUrl(configuredVideoUrl, comfyImageUrl);
 
@@ -256,6 +266,10 @@ export function createWorker(options) {
     transport: 'direct',
     lastError: '',
     lastHeartbeatAt: null,
+    platformOnline: false,
+    platformWorkerName: '',
+    pendingApproval: null,
+    runtimeReady: registrationProfile !== 'compute-only',
     startedAt: nowIso(),
     comfy: { image: false, video: false },
     features: { qwenImage21: false },
@@ -272,7 +286,7 @@ export function createWorker(options) {
   function snapshotState() {
     return {
       workerId: state.workerId,
-      workerName,
+      workerName: state.platformWorkerName || workerName,
       status: state.status,
       currentTaskId: state.currentTaskId,
       gpu: state.gpu,
@@ -289,7 +303,11 @@ export function createWorker(options) {
       stats: { ...state.stats },
       version: WORKER_VERSION,
       boundAccount: state.boundAccount || null,
-      localRunning, sharing, draining, queuedLocal: localTasks?.pendingCount() || 0
+      policy: state.policy ? structuredClone(state.policy) : null,
+      pendingApproval: state.pendingApproval,
+      runtimeReady: state.runtimeReady,
+      localRunning, sharing, draining, queuedLocal: localTasks?.pendingCount() || 0,
+      connected: sharing && state.platformOnline && Boolean(state.endpointUrl)
     };
   }
 
@@ -320,7 +338,7 @@ export function createWorker(options) {
   const comfyImage = createComfyClient({ baseUrl: comfyImageUrl, logger: log });
   const comfyVideo = createComfyClient({ baseUrl: comfyVideoUrl, logger: log });
 
-  const loraCatalog = createWorkerLoraCatalog({ modelsRoot, image: comfyImage, video: comfyVideo });
+  let loraCatalog = createWorkerLoraCatalog({ modelsRoot, image: comfyImage, video: comfyVideo });
   let lastModelReportAt = 0;
   let lastFeatureProbeAt = 0;
 
@@ -369,6 +387,7 @@ export function createWorker(options) {
         state.workerId = String(raw.workerId);
         state.workerSecret = String(raw.workerSecret);
         state.boundAccount = raw.boundAccount || null;
+        if (registrationProfile === 'compute-only') state.platformWorkerName = String(raw.workerName || '');
         return true;
       }
     } catch { /* first run */ }
@@ -383,7 +402,7 @@ export function createWorker(options) {
     await writeFile(configPath, JSON.stringify({
       workerId: state.workerId,
       workerSecret: state.workerSecret,
-      workerName,
+      workerName: state.platformWorkerName || workerName,
       boundAccount: state.boundAccount || null,
       controlUrl,
       savedAt: nowIso()
@@ -439,8 +458,9 @@ export function createWorker(options) {
 
     const body = {
       worker_id: state.workerId,
-      worker_name: workerName,
+      worker_name: state.platformWorkerName || workerName,
       worker_secret: state.workerSecret,
+      ...(registrationProfile ? { profile: registrationProfile } : {}),
       hardware
     };
     if (activeRegistrationCode && !sessionToken) body.registration_code = activeRegistrationCode;
@@ -451,6 +471,12 @@ export function createWorker(options) {
     });
     state.workerToken = res.workerToken;
     state.grantKey = res.grantKey;
+    state.policy = res.policy || res.worker?.policy || null;
+    requireComputePolicy(state.policy);
+    state.pendingApproval = res.worker?.pending_approval ?? state.policy?.pending_approval ?? null;
+    if (res.worker?.worker_name) state.platformWorkerName = String(res.worker.worker_name);
+    await saveIdentity();
+    state.platformOnline = true;
     state.status = 'idle';
     log('registered', { workerId: state.workerId, gpu: state.gpu.name, vramMb: state.gpu.vramMb });
     emit();
@@ -458,6 +484,16 @@ export function createWorker(options) {
   }
 
   async function reportModels(onProgress = () => {}) {
+    // Pending/unready public nodes remain visible to the administrator without
+    // advertising somebody else's already-running ComfyUI or prompt runtime.
+    if (registrationProfile === 'compute-only' && !state.runtimeReady) {
+      state.models = [];
+      state.features.qwenImage21 = false;
+      if (state.workerToken) await callControl('POST', '/api/worker/models', { body: { models: [] }, token: state.workerToken });
+      lastModelReportAt = Date.now();
+      emit();
+      return [];
+    }
     onProgress(75, '正在检测可用模型');
     const byId = new Map();
     for (const runtime of ['image', 'video']) {
@@ -539,17 +575,43 @@ export function createWorker(options) {
     return models;
   }
 
+  // An accepted heartbeat is not proof that this client can accept work. The
+  // compute-only appliance must also have an acknowledged policy and a ready
+  // runtime. Other worker profiles retain their existing behavior.
+  function mayAdvertiseCompute() {
+    return registrationProfile !== 'compute-only' || (state.platformOnline && hasComputePolicy(state.policy)
+      && state.policy.enabled && (state.policy.owner_enabled || state.policy.sharing_enabled)
+      && !state.pendingApproval && state.runtimeReady);
+  }
+  async function withdrawAdvertisedStatus() {
+    try {
+      await callControl('POST', '/api/worker/heartbeat', {
+        token: state.workerToken,
+        body: { status: 'maintenance', current_task_id: localTasks?.has(state.currentTaskId) ? null : state.currentTaskId }
+      });
+    } catch { /* No connection: the server's heartbeat timeout remains the fallback. */ }
+  }
+
+  let heartbeatInFlight = null;
   async function heartbeat() {
+    if (heartbeatInFlight) return heartbeatInFlight;
+    heartbeatInFlight = performHeartbeat().finally(() => { heartbeatInFlight = null; });
+    return heartbeatInFlight;
+  }
+  async function performHeartbeat() {
+    let sentStatus = 'maintenance';
     try {
       if (tunnel) state.endpointUrl = tunnel.url || '';
       const previous = { ...state.comfy };
       state.comfy.image = await comfyImage.isUp();
       state.comfy.video = await comfyVideo.isUp();
       if (previous.image !== state.comfy.image || previous.video !== state.comfy.video || Date.now() - lastModelReportAt > 120000) await reportModels();
-      await callControl('POST', '/api/worker/heartbeat', {
+      sentStatus = sharing && (!tunnel || tunnel.url) && !localTasks?.has(state.currentTaskId) && mayAdvertiseCompute()
+        ? state.status : 'maintenance';
+      const reply = await callControl('POST', '/api/worker/heartbeat', {
         token: state.workerToken,
         body: {
-            status: sharing && (!tunnel || tunnel.url) && !localTasks?.has(state.currentTaskId) ? state.status : 'maintenance',
+          status: sentStatus,
           current_task_id: localTasks?.has(state.currentTaskId) ? null : state.currentTaskId,
           hardware: {
             vram_mb: state.gpu?.vramMb,
@@ -559,15 +621,36 @@ export function createWorker(options) {
           }
         }
       });
+      if (registrationProfile === 'compute-only') {
+        state.policy = reply.policy || reply.worker?.policy || null;
+        requireComputePolicy(state.policy);
+      } else if (reply.policy || reply.worker?.policy) state.policy = reply.policy || reply.worker.policy;
+      if (reply.worker) {
+        state.pendingApproval = reply.worker.pending_approval ?? state.policy?.pending_approval ?? null;
+        if (reply.worker.worker_name) state.platformWorkerName = String(reply.worker.worker_name);
+      }
+      state.platformOnline = true;
       state.lastHeartbeatAt = nowIso();
       state.lastError = '';
+      // The policy may have changed in this response after the server already
+      // stored an idle heartbeat; withdraw that advertisement immediately.
+      if (registrationProfile === 'compute-only' && sentStatus !== 'maintenance' && !mayAdvertiseCompute()) {
+        await withdrawAdvertisedStatus();
+      }
     } catch (error) {
+      state.platformOnline = false;
       // A 401 means our token aged out; re-register rather than going quiet.
       if (error.status === 401) {
         log('worker token rejected, re-registering');
         await register().catch((e) => { state.lastError = String(e?.message || e); });
       } else {
         state.lastError = String(error?.message || error);
+      }
+      // An old/malformed server can accept the heartbeat and omit policy from
+      // its response. Remove the false idle status while the connection works.
+      if (registrationProfile === 'compute-only' && sentStatus !== 'maintenance' && error.status !== 401) {
+        emit();
+        await withdrawAdvertisedStatus();
       }
     }
     emit();
@@ -1012,9 +1095,16 @@ export function createWorker(options) {
     const local = localRunning && localTasks?.next();
     if (local) claim = { task: local };
     else if (!sharing || !running || (tunnel && !tunnel.url)) return false;
+    if (!local && registrationProfile === 'compute-only' && (!hasComputePolicy(state.policy) || !state.policy.enabled
+      || !(state.policy.owner_enabled || state.policy.sharing_enabled) || !state.runtimeReady)) return false;
     try {
       if (!claim) claim = await callControl('POST', '/api/worker/claim', { token: state.workerToken });
     } catch (error) {
+      if (registrationProfile === 'compute-only') {
+        state.platformOnline = false;
+        state.lastError = String(error.message || error);
+        emit();
+      }
       if (error.status === 401) await register().catch(() => {});
       return false;
     }
@@ -1197,7 +1287,9 @@ export function createWorker(options) {
     starting = startResources(onProgress).catch(async (error) => {
       await closeSharing().catch(() => {});
       if (error.message === 'missing session token' || error.message === 'unknown worker') {
-        error.message = '云端没有此节点的注册记录，请在设置中填写新的注册码，保存后重新启动';
+        error.message = registrationProfile === 'compute-only'
+          ? '平台自动接入服务需要升级，请联系管理员'
+          : '云端没有此节点的注册记录，请在设置中填写新的注册码，保存后重新启动';
       } else if (error.message === 'registration code is invalid or used up') {
         error.message = '注册码无效、已过期或已使用，请填写新的注册码，保存后重新启动';
       }
@@ -1255,7 +1347,7 @@ export function createWorker(options) {
     sharing = true;
     draining = false;
 
-    timers.push(setInterval(() => { heartbeat().catch(() => {}); }, HEARTBEAT_INTERVAL_SECONDS * 1000));
+    timers.push(setInterval(() => { heartbeat().catch(() => {}); }, heartbeatIntervalMs));
     timers.push(setInterval(() => { claimAndRun().catch(() => {}); }, pollIntervalMs));
     timers.push(setInterval(() => { reportModels().catch(() => {}); }, 10 * 60 * 1000));
     timers.push(setInterval(() => { sweepFiles().catch(() => {}); }, 15 * 60 * 1000));
@@ -1329,9 +1421,22 @@ export function createWorker(options) {
     sweepFiles,
     register,
     retargetComfy,
+    retargetModelsRoot(value) {
+      if (registrationProfile !== 'compute-only' || state.currentTaskId || !value || value === modelsRoot) return;
+      modelsRoot = String(value);
+      loraCatalog = createWorkerLoraCatalog({ modelsRoot, image: comfyImage, video: comfyVideo });
+    },
+    setComputeReady(ready) {
+      if (registrationProfile !== 'compute-only') return;
+      const next = ready === true;
+      if (state.runtimeReady === next) return;
+      state.runtimeReady = next;
+      emit();
+      if (!next && sharing && state.workerToken) void withdrawAdvertisedStatus();
+    },
     getState: snapshotState,
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-    get identity() { return { workerId: state.workerId, workerName }; },
+    get identity() { return { workerId: state.workerId, workerName: state.platformWorkerName || workerName }; },
     get gatewayEndpoint() { return state.endpointUrl; },
     get localEndpoint() { return state.localEndpointUrl; },
     get transport() { return state.transport; }

@@ -76,8 +76,6 @@ let passwordEditState = {
   userId: "",
   accountLabel: ""
 };
-// Last signing-key status from refresh(); the dashboard's system panel shows it.
-let signingKeyStatusText = "";
 
 const USER_STATUS_OPTIONS = [
   ["active", "active"],
@@ -85,10 +83,10 @@ const USER_STATUS_OPTIONS = [
 ];
 
 // users.plan decides where a user's work may run: 普通 (trial) only on the
-// machine the local assistant opened, 中级 (standard) also on 普通 pool
+// machine assigned to that account, 中级 (standard) also on 普通 pool
 // nodes, 高级 (pro) on every pool node. Legacy team is the same as pro.
 const USER_PLAN_OPTIONS = [
-  ["trial", "普通（仅本机）"],
+  ["trial", "普通（本人算力）"],
   ["standard", "中级（普通节点）"],
   ["pro", "高级（所有节点）"]
 ];
@@ -114,18 +112,9 @@ function setGlobalStatus(text, tone, options = {}) {
   if (tone) el.classList.add(tone);
 }
 
-function showTab(tabName) {
-  const name = String(tabName || "online");
-  document.querySelectorAll(".tab[data-tab]").forEach((el) => {
-    el.classList.toggle("active", el.getAttribute("data-tab") === name);
-  });
-  document.querySelectorAll(".tabPanel").forEach((el) => {
-    el.classList.toggle("active", el.id === `tab-${name}`);
-  });
-}
-
 function showModule(moduleName) {
-  const name = String(moduleName || "dashboard");
+  const requested = String(moduleName || "dashboard");
+  const name = ["dashboard", "users", "ai-services", "compute", "art-knowledge"].includes(requested) ? requested : "dashboard";
   document.querySelectorAll(".moduleNavButton").forEach((el) => {
     el.classList.toggle("active", el.getAttribute("data-module") === name);
   });
@@ -874,6 +863,7 @@ function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runningh
 
 function renderRunningHubProviderHealth(status) {
   const connection = !status?.configured ? "未配置 Key" : status?.connected ? "账户连接正常" : status?.checked ? "检测失败" : "已配置，尚未检测";
+  setText("dashboardRhConnection", connection);
   renderSettingRows("runninghubProviderHealthRows", [
     { label: "生成 API 地址", value: status?.baseUrl || "https://www.runninghub.cn" },
     { label: "连接状态", value: connection },
@@ -1084,8 +1074,8 @@ function renderDashboardRecentActivity() {
       const time = textCell(stamp.text);
       time.title = stamp.title;
       tr.appendChild(time);
-      tr.appendChild(textCell(userAccountLabel(user) || user?.display_name || "-"));
-      tr.appendChild(textCell(worker?.worker_name || "尚未分配"));
+      tr.appendChild(textCell(userAccountLabel(user) || user?.display_name || task.user_account || "-"));
+      tr.appendChild(textCell(task.worker_name || worker?.worker_name || computeHistoryNode(task)));
       const badge = document.createElement("span");
       const status = String(task.status || "");
       badge.className = "badge " + (status === "completed" ? "active" : status === "failed" ? "error" : "info");
@@ -1263,7 +1253,6 @@ function renderDashboard(data) {
   const users = data.users?.records || [];
   const credits = data.credits?.records || [];
   const totalCredits = credits.reduce((sum, item) => sum + (Number(item.balance || 0) || 0), 0);
-  const sourceLabel = hasErrorResult(results) ? "Supabase Error" : hasSupabaseResult(results) ? "Supabase" : "未配置";
   const usersUnconfigured = isUnconfiguredResult(data.users);
   const creditsUnconfigured = isUnconfiguredResult(data.credits);
   const usersEl = $("dashboardUsersCount");
@@ -1271,17 +1260,14 @@ function renderDashboard(data) {
   const creditEl = $("dashboardCreditCost");
   if (creditEl) creditEl.textContent = creditsUnconfigured ? "—" : formatCreditAmount(totalCredits);
   setDataBadge("dashboardDataBadge", hasErrorResult(results) ? { status: "error" } : hasSupabaseResult(results) ? { source: "supabase" } : { source: "mock" });
+  const workers = data.workers?.records || [];
+  const workersUnavailable = isUnconfiguredResult(data.workers) || isErrorResult(data.workers);
+  setText("dashboardWorkersCount", workersUnavailable ? "—" : formatNumber(workers.length));
   renderDashboardRecentActivity();
   const activeUsers = users.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
-  const rh = data.runninghubStatus || {};
-  const connection = !rh.configured ? "未配置 Key" : rh.connected ? "账户连接正常" : rh.checked ? "检测失败" : "已配置，尚未检测";
-  renderSettingRows("dashboardSystemRows", [
-    { label: "数据源", value: sourceLabel },
-    { label: "RunningHub 连接", value: connection },
-    { label: "在线语言模型", value: rh.configured ? `已配置 · ${rh.llmModel || "xai/grok-4.7"}` : "未配置" },
-    { label: "签名密钥", value: signingKeyStatusText || "读取中..." },
-    { label: "启用用户", value: usersUnconfigured ? "—" : `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
-  ], "暂无状态数据");
+  setText("dashboardUsersMeta", usersUnconfigured || isErrorResult(data.users) ? "启用人数暂不可用" : `启用 ${formatNumber(activeUsers)} / ${formatNumber(users.length)} 人`);
+  const pending = workers.filter(workerPendingApproval).length;
+  setText("dashboardWorkersMeta", workersUnavailable ? "机器状态暂不可用" : `待审批 ${formatNumber(pending)} 台 · 已分配 ${formatNumber(workers.filter((worker) => Boolean(worker.owner_id)).length)} 台`);
 }
 
 let dataDialogTrigger = null;
@@ -1391,6 +1377,125 @@ function computeHeartbeatText(value) {
   return formatDateTime(value);
 }
 
+function workerPolicyAvailable(worker) {
+  return ["enabled", "owner_enabled", "sharing_enabled"].every((key) => typeof worker[key] === "boolean")
+    && ["pool", "selected"].includes(worker.sharing_scope) && Array.isArray(worker.allowed_user_ids);
+}
+
+function workerPendingApproval(worker) {
+  return workerPolicyAvailable(worker) && !worker.owner_id && worker.enabled === false && worker.owner_enabled === false && worker.sharing_enabled === false;
+}
+
+function openComputeMachineSettings(worker) {
+  const trigger = document.activeElement;
+  const overlay = document.createElement("div"); overlay.className = "modalOverlay";
+  const panel = document.createElement("form"); panel.className = "modalPanel"; panel.id = "computeMachineSettings";
+  panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-labelledby", "computeMachineTitle");
+  const header = document.createElement("div"); header.className = "modalHeader";
+  const title = document.createElement("div"); title.className = "modalTitle"; title.id = "computeMachineTitle"; title.textContent = "算力机器设置 · " + (worker.worker_name || worker.id);
+  const close = document.createElement("button"); close.type = "button"; close.className = "iconButton"; close.textContent = "×"; close.setAttribute("aria-label", "关闭");
+  header.append(title, close);
+  const body = document.createElement("div"); body.className = "modalBody";
+  const hint = document.createElement("p"); hint.className = "hint"; hint.textContent = workerPendingApproval(worker)
+    ? "这台新机器尚未开通。请设置名称、选择本人账号，并勾选启用机器及所需使用权限后保存。"
+    : "本人使用和对外分享独立控制。停用后不再领取新任务，正在执行的任务继续完成。";
+  body.appendChild(hint);
+  const checkbox = (id, label, checked) => {
+    const field = document.createElement("label"); field.className = "modalField computeMachineToggle";
+    const input = document.createElement("input"); input.type = "checkbox"; input.id = id; input.checked = checked; input.style.width = "auto";
+    const text = document.createElement("span"); text.textContent = label; field.append(input, text); body.appendChild(field); return input;
+  };
+  const enabled = checkbox("computeMachineEnabled", "启用这台机器", worker.enabled);
+  const field = (label, input) => { const el = document.createElement("label"); el.className = "modalField"; const text = document.createElement("span"); text.textContent = label; el.append(text, input); body.appendChild(el); };
+  const workerName = document.createElement("input"); workerName.id = "computeMachineName"; workerName.type = "text"; workerName.maxLength = 80; workerName.value = worker.worker_name || ""; field("机器名称（由后台管理）", workerName);
+  const owner = document.createElement("select"); owner.id = "computeMachineOwner";
+  const emptyOwner = document.createElement("option"); emptyOwner.value = ""; emptyOwner.textContent = "未指定本人账号"; owner.appendChild(emptyOwner);
+  const users = computeState.users || [];
+  for (const user of users) { const option = document.createElement("option"); option.value = user.id; option.textContent = userAccountLabel(user) || user.display_name || user.id; owner.appendChild(option); }
+  if (worker.owner_id && !users.some((user) => user.id === worker.owner_id)) { const option = document.createElement("option"); option.value = worker.owner_id; option.textContent = "当前归属 · " + worker.owner_id; owner.appendChild(option); }
+  owner.value = worker.owner_id || ""; field("本人账号（设备归属）", owner);
+  const ownerEnabled = checkbox("computeMachineOwnerEnabled", "允许本人使用", worker.owner_enabled);
+  const sharing = checkbox("computeMachineSharing", "允许对外分享", worker.sharing_enabled);
+  const scope = document.createElement("select"); scope.id = "computeMachineSharingScope";
+  for (const [value, label] of [["pool", "共享算力池（按账号权限分配）"], ["selected", "仅指定账号"]]) { const option = document.createElement("option"); option.value = value; option.textContent = label; scope.appendChild(option); }
+  scope.value = worker.sharing_scope; field("分享范围", scope);
+  const selected = document.createElement("fieldset"); selected.id = "computeMachineAllowedUsers"; selected.style.cssText = "min-width:0;border:1px solid #ffffff20;padding:10px";
+  const legend = document.createElement("legend"); legend.textContent = "可使用此机器的账号"; selected.appendChild(legend);
+  const search = document.createElement("input"); search.type = "search"; search.id = "computeMachineUserSearch"; search.placeholder = "搜索用户名"; search.style.cssText = "width:100%;box-sizing:border-box"; search.setAttribute("aria-label", "搜索可使用此机器的用户名"); selected.appendChild(search);
+  const selectionBar = document.createElement("div"); selectionBar.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 5px";
+  const selectAllLabel = document.createElement("label"); selectAllLabel.style.cssText = "display:flex;align-items:center;gap:8px";
+  const selectAll = document.createElement("input"); selectAll.type = "checkbox"; selectAll.id = "computeMachineUsersSelectAll"; selectAll.style.width = "auto";
+  const selectAllText = document.createElement("span"); selectAllLabel.append(selectAll, selectAllText);
+  const selectionCount = document.createElement("span"); selectionCount.className = "hint"; selectionCount.id = "computeMachineUsersCount"; selectionCount.setAttribute("role", "status");
+  selectionBar.append(selectAllLabel, selectionCount); selected.appendChild(selectionBar);
+  const accountList = document.createElement("div"); accountList.style.cssText = "max-height:160px;overflow:auto"; selected.appendChild(accountList);
+  const noMatches = document.createElement("p"); noMatches.className = "hint"; noMatches.textContent = "没有匹配的账号"; selected.appendChild(noMatches);
+  const selectedIds = new Set(worker.allowed_user_ids || []);
+  const accountRows = [...users];
+  for (const id of selectedIds) if (!accountRows.some((user) => user.id === id)) accountRows.push({ id, display_name: "现有授权 · " + id });
+  const accountInputs = accountRows.map((user) => {
+    const label = document.createElement("label"); label.style.cssText = "display:flex;gap:8px;align-items:center;padding:5px";
+    const input = document.createElement("input"); input.type = "checkbox"; input.value = user.id; input.checked = selectedIds.has(user.id); input.style.width = "auto";
+    const text = document.createElement("span"); text.textContent = userAccountLabel(user) || user.display_name || user.id; label.append(input, text); accountList.appendChild(label);
+    const searchText = [text.textContent, user.account, user.username, user.display_name, user.email].filter(Boolean).join(" ").toLocaleLowerCase();
+    input.addEventListener("change", () => { if (input.checked) selectedIds.add(user.id); else selectedIds.delete(user.id); refreshAccounts(); });
+    return { label, input, searchText };
+  });
+  const refreshAccounts = () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    const visible = accountInputs.filter(({ label, searchText }) => { const matches = !query || searchText.includes(query); label.hidden = !matches; label.style.display = matches ? "flex" : "none"; return matches; });
+    const checkedCount = visible.filter(({ input }) => input.checked).length;
+    selectAllText.textContent = query ? "全选搜索结果" : "全选";
+    selectAll.checked = visible.length > 0 && checkedCount === visible.length;
+    selectAll.indeterminate = checkedCount > 0 && checkedCount < visible.length;
+    selectAll.disabled = visible.length === 0;
+    selectionCount.textContent = "已选 " + selectedIds.size + " / " + accountInputs.length + " 人" + (query ? " · 匹配 " + visible.length + " 人" : "");
+    noMatches.hidden = visible.length > 0;
+  };
+  search.addEventListener("input", refreshAccounts);
+  selectAll.addEventListener("change", () => {
+    for (const { label, input } of accountInputs) if (!label.hidden) { input.checked = selectAll.checked; if (input.checked) selectedIds.add(input.value); else selectedIds.delete(input.value); }
+    refreshAccounts();
+  });
+  refreshAccounts();
+  body.appendChild(selected);
+  const summary = document.createElement("p"); summary.className = "hint"; summary.id = "computeMachinePolicySummary"; body.appendChild(summary);
+  const sync = () => {
+    scope.disabled = !sharing.checked; selected.hidden = !sharing.checked || scope.value !== "selected";
+    summary.textContent = !enabled.checked ? "当前设置：机器未启用，不会执行任务。" : !ownerEnabled.checked && !sharing.checked ? "当前设置：本人和对外使用均关闭，不会执行任务。" : "当前设置：" + [ownerEnabled.checked ? "允许本人使用" : "本人使用关闭", sharing.checked ? "允许对外分享" : "对外分享关闭"].join("；");
+  };
+  for (const input of [scope, sharing, enabled, ownerEnabled]) input.addEventListener("change", sync); sync();
+  const status = document.createElement("div"); status.className = "modalStatus"; status.id = "computeMachineSaveStatus"; status.setAttribute("role", "status"); body.appendChild(status);
+  const actions = document.createElement("div"); actions.className = "modalActions";
+  const cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "btn secondary"; cancel.textContent = "取消";
+  const save = document.createElement("button"); save.type = "submit"; save.className = "btn primary"; save.textContent = "保存设置"; actions.append(cancel, save);
+  let saving = false;
+  const finish = () => { if (saving) return; document.removeEventListener("keydown", onKey, true); overlay.remove(); if (trigger?.isConnected) trigger.focus(); };
+  const onKey = (event) => {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finish(); }
+    if (event.key === "Tab") { const controls = [...panel.querySelectorAll("button,input,select")].filter((el) => !el.disabled && el.getClientRects().length); const first = controls[0], last = controls.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
+  };
+  cancel.addEventListener("click", finish); close.addEventListener("click", finish);
+  document.addEventListener("keydown", onKey, true);
+  panel.addEventListener("submit", async (event) => {
+    event.preventDefault(); if (saving) return;
+    const ids = [...selectedIds];
+    if (!workerName.value.trim() || workerName.value.trim().length > 80) { status.textContent = "请输入 1–80 个字符的机器名称"; workerName.focus(); return; }
+    if (!owner.value) { status.textContent = "请选择设备归属账号"; owner.focus(); return; }
+    if (sharing.checked && scope.value === "selected" && !ids.length) { status.textContent = "请至少选择一个可使用算力的账号"; return; }
+    saving = true; save.disabled = true; cancel.disabled = true; close.disabled = true; status.textContent = "正在保存…";
+    try {
+      const response = await window.adminAPI.setAdminGpuWorkerAccessPolicy({ id: worker.id, owner_id: owner.value || null,
+        worker_name: workerName.value.trim(),
+        enabled: enabled.checked, owner_enabled: ownerEnabled.checked, sharing_enabled: sharing.checked, sharing_scope: scope.value, allowed_user_ids: ids });
+      if (!response?.ok || response.result?.ok !== true) throw Error(response?.result?.error || response?.error || "保存失败");
+      saving = false; finish(); toast("算力机器设置已保存"); await loadComputeData();
+    } catch (error) { status.textContent = String(error?.message || error); }
+    finally { saving = false; save.disabled = false; cancel.disabled = false; close.disabled = false; }
+  });
+  panel.append(header, body, actions); overlay.appendChild(panel); document.body.appendChild(overlay); close.focus();
+}
+
 function renderComputeWorkers(workersResult) {
   const status = $("computeWorkerStatus");
   const writable = workersResult.source === "supabase" && workersResult.status !== "error";
@@ -1402,21 +1507,24 @@ function renderComputeWorkers(workersResult) {
 
   if (isUnconfiguredResult(workersResult)) {
     ["computeStatTotal", "computeStatIdle", "computeStatBusy", "computeStatOffline", "computeStatCompleted"].forEach((id) => setText(id, "—"));
-    replaceRows("computeWorkersTableBody", [], 9, UNCONFIGURED_TEXT);
+    replaceRows("computeWorkersTableBody", [], 11, UNCONFIGURED_TEXT);
     return;
   }
   const workers = workersResult.records || [];
-  const countByStatus = (value) => workers.filter((item) => String(item.status || "") === value).length;
+  const countByStatus = (value) => workers.filter((item) => item.enabled !== false && String(item.status || "") === value).length;
   const sumOf = (field) => workers.reduce((sum, item) => sum + (Number(item[field] || 0) || 0), 0);
   setText("computeStatTotal", formatNumber(workers.length));
   setText("computeStatIdle", formatNumber(countByStatus("idle")));
   setText("computeStatBusy", formatNumber(countByStatus("busy")));
-  setText("computeStatOffline", formatNumber(countByStatus("offline") + countByStatus("maintenance")));
+  setText("computeStatOffline", formatNumber(workers.filter((item) => item.enabled === false || ["offline", "maintenance"].includes(String(item.status || ""))).length));
   setText("computeStatCompleted", `${formatNumber(sumOf("total_completed"))} / ${formatNumber(sumOf("total_failed"))}`);
 
   const rows = workers.map((item) => {
+    const pending = workerPendingApproval(item);
     const tr = document.createElement("tr");
     tr.appendChild(textCell(item.worker_name || item.id));
+    const owner = computeState.users?.find((user) => user.id === item.owner_id);
+    tr.appendChild(textCell(owner ? userAccountLabel(owner) || owner.display_name || owner.id : item.owner_id || "待分配账号"));
     tr.appendChild(textCell(
       (item.gpu_name || "GPU 未知") + (item.vram_mb ? " · " + Math.round(Number(item.vram_mb) / 1024) + "GB" : "")
     ));
@@ -1440,7 +1548,7 @@ function renderComputeWorkers(workersResult) {
     badge.textContent = reachable ? "对外可达" : "仅本机";
     const address = nodeCell(badge);
     address.title = reachable
-      ? "已开隧道：任何人都能从这台机器取回结果" + (item.endpoint_url ? "\n" + item.endpoint_url : "")
+      ? "已开隧道：获授权的任务可从这台机器取回结果" + (item.endpoint_url ? "\n" + item.endpoint_url : "")
       : "没有对外地址：只有这台机器上的浏览器能取回结果。请确认 Worker 是 0.4.0 或更新，并且能连外网。";
     tr.appendChild(address);
 
@@ -1465,16 +1573,25 @@ function renderComputeWorkers(workersResult) {
     tr.appendChild(nodeCell(tierSelect));
 
     tr.appendChild(nodeCell(statusBadge(COMPUTE_WORKER_STATUS[item.status] || item.status)));
+    const policyReady = workerPolicyAvailable(item);
+    const access = !policyReady ? "权限设置需升级" : pending ? "待审批" : !item.enabled ? "已停用" : [item.owner_enabled ? "本人可用" : "本人禁用", item.sharing_enabled ? (item.sharing_scope === "selected" ? "指定用户 " + item.allowed_user_ids.length + " 人" : "共享池") : "未分享"].join(" · ");
+    tr.appendChild(textCell(access));
 
     const action = document.createElement("td");
     if (writable) {
       const actions = document.createElement("div");
       actions.className = "tableActions";
-      const stopped = item.status === "maintenance";
+      const settings = document.createElement("button"); settings.type = "button"; settings.className = "btn secondary"; settings.textContent = pending ? "分配并审批" : "机器设置";
+      settings.disabled = !policyReady || !computeState.writable;
+      settings.title = policyReady ? "配置本人账号、本人使用与对外分享" : "请先应用算力访问策略数据库迁移";
+      settings.addEventListener("click", () => openComputeMachineSettings(item)); actions.appendChild(settings);
+      const stopped = item.enabled === false;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "btn secondary";
       button.textContent = stopped ? "恢复" : "停用";
+      button.disabled = !policyReady || pending;
+      button.title = pending ? "请先分配本人账号，并在机器设置中开通所需权限" : policyReady ? "控制接收新任务，不改变节点心跳" : "请先应用算力访问策略数据库迁移";
       button.addEventListener("click", async () => {
         button.disabled = true;
         try {
@@ -1501,14 +1618,14 @@ function renderComputeWorkers(workersResult) {
       remove.type = "button";
       remove.className = "btn danger";
       remove.textContent = "删除";
-      remove.disabled = live;
-      remove.title = live ? "节点在线时不能删除：先停用，等它离线" : "删除这台节点的记录";
+      remove.disabled = live && !pending;
+      remove.title = pending ? "删除未分配账号、未开通任何权限的待审批机器" : live ? "节点在线时不能删除：请先在助手停止节点，等它离线" : "删除这台节点的记录";
       remove.addEventListener("click", async () => {
         const name = String(item.worker_name || item.id || "");
         const confirmed = await confirmByTyping({
           title: "删除算力节点",
           hint: name,
-          warning: "会删除这台节点的记录和它上报的模型清单；已完成任务的历史保留，只是不再关联到这台机器。要重新接入需要新的注册码。",
+          warning: "会删除这台节点和它上报的模型清单；使用历史及节点名称独立保留。再次接入需要重新登记并由后台审批。",
           label: "输入节点名称确认",
           expected: name,
           confirmText: "确认删除"
@@ -1539,158 +1656,9 @@ function renderComputeWorkers(workersResult) {
   replaceRows(
     "computeWorkersTableBody",
     rows,
-    9,
-    isErrorResult(workersResult) ? computeErrorText(workersResult) : "还没有算力节点，发一个注册码接入一台"
+    11,
+    isErrorResult(workersResult) ? computeErrorText(workersResult) : "还没有算力机器；对方启动助手后会自动登记，等待后台审批"
   );
-}
-
-function renderComputeCodes(codesResult) {
-  const status = $("computeCodesStatus");
-  const writable = codesResult.source === "supabase" && codesResult.status !== "error";
-  if (status) {
-    status.textContent = isErrorResult(codesResult)
-      ? computeErrorText(codesResult)
-      : (writable ? "" : "Supabase 未配置，不能写入");
-  }
-
-  const rows = (codesResult.records || []).map((item) => {
-    const expired = Date.parse(item.expires_at) <= Date.now();
-    const used = Number(item.used_count || 0);
-    const max = Number(item.max_uses || 1);
-    const spent = expired || used >= max;
-
-    const tr = document.createElement("tr");
-    tr.appendChild(textCell(item.label || "(无备注)"));
-    const tier = normalizeGpuWorkerTier(item.tier);
-    const tierBadge = document.createElement("span");
-    tierBadge.className = "badge " + (tier === "premium" ? "expired" : "");
-    tierBadge.textContent = GPU_WORKER_TIER_TEXT[tier];
-    tr.appendChild(nodeCell(tierBadge));
-    tr.appendChild(textCell(used + " / " + max));
-    tr.appendChild(textCell((expired ? "已失效 · " : "到期 ") + formatDateTime(item.expires_at)));
-
-    const action = document.createElement("td");
-    if (writable) {
-      const button = document.createElement("button");
-      button.type = "button";
-      // A live code is revoked (it stays in the list as spent); a spent one
-      // can be dropped from the list for good.
-      button.className = spent ? "btn danger" : "btn secondary";
-      button.textContent = spent ? "删除" : "吊销";
-      button.addEventListener("click", async () => {
-        if (spent && !confirm(`删除注册码「${item.label || "(无备注)"}」的记录？`)) return;
-        button.disabled = true;
-        try {
-          const res = spent
-            ? await window.adminAPI.deleteAdminWorkerCode({ codeHash: item.code_hash })
-            : await window.adminAPI.revokeAdminWorkerCode({ codeHash: item.code_hash });
-          if (!res?.ok || res.result?.ok === false) {
-            throw new Error(String(res?.error || res?.result?.error || (spent ? "删除失败" : "吊销失败")));
-          }
-          await loadComputeData();
-        } catch (err) {
-          if (status) status.textContent = String(err?.message || err);
-          button.disabled = false;
-        }
-      });
-      action.appendChild(button);
-    } else {
-      action.textContent = "-";
-    }
-    tr.appendChild(action);
-    return tr;
-  });
-
-  const purgeButton = $("computePurgeCodes");
-  if (purgeButton) {
-    const spentCount = (codesResult.records || []).filter((item) =>
-      Date.parse(item.expires_at) <= Date.now() || Number(item.used_count || 0) >= Number(item.max_uses || 1)).length;
-    purgeButton.disabled = !writable || !spentCount;
-    purgeButton.textContent = spentCount ? `清理失效注册码（${spentCount}）` : "清理失效注册码";
-  }
-
-  replaceRows(
-    "computeCodesTableBody",
-    rows,
-    5,
-    isUnconfiguredResult(codesResult) ? UNCONFIGURED_TEXT : isErrorResult(codesResult) ? computeErrorText(codesResult) : "还没有发出过注册码"
-  );
-}
-
-function renderComputeMintControls(usersResult) {
-  const select = $("computeCodeOwner");
-  const button = $("computeMintCode");
-  const status = $("computeMintStatus");
-  if (!select || !button || !status) return;
-
-  const users = usersResult.records || [];
-  const writable = usersResult.source === "supabase" && usersResult.status !== "error";
-  computeState = { users, writable };
-
-  const current = select.value;
-  select.replaceChildren();
-  if (!users.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = writable ? "暂无用户，请先在用户管理里创建" : "Supabase 未配置，不能写入";
-    select.appendChild(option);
-  } else {
-    users.forEach((user) => {
-      const option = document.createElement("option");
-      option.value = String(user.id || "");
-      option.textContent = userAccountLabel(user) || user.display_name || user.id;
-      select.appendChild(option);
-    });
-    if (current && users.some((user) => String(user.id || "") === current)) select.value = current;
-  }
-
-  button.disabled = !writable || !users.length;
-  status.textContent = writable ? (users.length ? "-" : "先创建一个用户") : "Supabase 未配置，不能写入";
-}
-
-async function mintComputeCode() {
-  const button = $("computeMintCode");
-  const status = $("computeMintStatus");
-  const result = $("computeCodeResult");
-  const value = $("computeCodeValue");
-  if (!button || !status) return;
-
-  const ownerId = $("computeCodeOwner")?.value || "";
-  if (!ownerId) {
-    status.textContent = "请选择归属用户";
-    return;
-  }
-
-  button.disabled = true;
-  status.textContent = "生成中…";
-  try {
-    const res = await window.adminAPI.createAdminWorkerCode({
-      ownerId,
-      label: $("computeCodeLabel")?.value || "",
-      tier: normalizeGpuWorkerTier($("computeCodeTier")?.value),
-      maxUses: Number($("computeCodeUses")?.value || 1),
-      validDays: Number($("computeCodeDays")?.value || 7)
-    });
-    if (!res?.ok) throw new Error(String(res.error || "生成失败"));
-    const payload = res.result || {};
-    if (payload.ok === false || !payload.registrationCode) {
-      throw new Error(String(payload.error || "生成失败"));
-    }
-    if (result) result.style.display = "";
-    if (value) {
-      value.value = payload.registrationCode;
-      value.select?.();
-    }
-    // loadComputeData re-renders the owner select and resets this status
-    // line, so the "generated" message has to be written after it.
-    await loadComputeData();
-    status.textContent = "已生成，" + formatDateTime(payload.expiresAt) + " 过期";
-  } catch (err) {
-    const text = String(err?.message || err);
-    status.textContent = computeErrorText({ error: text });
-  } finally {
-    button.disabled = false;
-  }
 }
 
 // Who generated, how much, and on whose machine.
@@ -1699,116 +1667,106 @@ async function mintComputeCode() {
 // them are not even selected. Seeing that a user ran 40 generations on a
 // given node is an operations question; reading what they made is not, and
 // an admin screen is the wrong place to answer it by accident.
-function renderComputeUsage(usageResult, usersResult, workersResult) {
-  const status = $("computeUsageStatus");
-  const tasks = usageResult?.records || [];
-  const userById = new Map((usersResult?.records || []).map((u) => [String(u.id || ""), u]));
-  const workerById = new Map((workersResult?.records || []).map((w) => [String(w.id || ""), w]));
-
-  if (status) {
-    status.textContent = isErrorResult(usageResult)
-      ? computeErrorText(usageResult)
-      : tasks.length
-        ? tasks.length + " 条任务"
-        : "";
-  }
-  const purgeButton = $("computePurgeUsage");
-  if (purgeButton) purgeButton.disabled = !(usageResult?.source === "supabase" && usageResult?.status !== "error") || !tasks.length;
-
-  const byUser = new Map();
-  for (const task of tasks) {
-    const key = String(task.user_id || "");
-    if (!byUser.has(key)) {
-      byUser.set(key, { total: 0, failed: 0, workers: new Map(), latest: "" });
-    }
-    const row = byUser.get(key);
-    row.total += 1;
-    if (String(task.status || "") === "failed") row.failed += 1;
-    const workerId = String(task.assigned_worker_id || "");
-    if (workerId) {
-      const worker = workerById.get(workerId);
-      const name = worker?.worker_name || workerId.slice(0, 8);
-      row.workers.set(workerId, (row.workers.get(workerId) || 0) + 1);
-      row.workerNames = row.workerNames || new Map();
-      row.workerNames.set(workerId, name);
-    }
-    const at = String(task.created_at || "");
-    if (at > row.latest) row.latest = at;
-  }
-
-  const rows = [...byUser.entries()]
-    .sort((a, b) => b[1].total - a[1].total)
-    .map(([userId, row]) => {
-      const user = userById.get(userId);
-      const tr = document.createElement("tr");
-      tr.appendChild(textCell(userAccountLabel(user) || user?.display_name || userId.slice(0, 8) || "(未知用户)"));
-      tr.appendChild(textCell(
-        row.failed ? `${row.total}（失败 ${row.failed}）` : String(row.total)
-      ));
-      const names = [...(row.workerNames || new Map()).entries()]
-        .map(([id, name]) => name + " ×" + row.workers.get(id));
-      tr.appendChild(textCell(names.length ? names.join("、") : "-"));
-      tr.appendChild(textCell(row.latest ? formatDateTime(row.latest) : "-"));
-      return tr;
+let computeUsageSnapshot = { records: [] }, computeUsageUsers = new Map();
+let computeUsageDetail = { userId:'', name:'', offset:0, total:0, loading:false, sequence:0 };
+const COMPUTE_USAGE_PAGE_SIZE = 50;
+let computeUsageDeleting=false;
+const computeUsageFinished=task=>['completed','failed','cancelled','expired'].includes(task.status);
+async function deleteComputeUsageRecords(userId,name,taskId=null) {
+  if(computeUsageDeleting)return;
+  computeUsageDeleting=true;
+  const before=new Date().toISOString();
+  try {
+    const confirmed=await confirmByTyping({title:taskId?'删除这条使用记录':'删除此用户的已结束记录',hint:name,
+      warning:taskId?'只删除这条使用记录，不修改积分流水、余额或生成文件。删除后不可恢复。':'删除本次确认之前提交的已结束记录；排队和执行中的任务保留。不修改积分流水、余额或生成文件。删除后不可恢复。',
+      label:'输入用户名确认',expected:name,confirmText:'确认删除'});
+    if(!confirmed)return;
+    const response=await window.adminAPI.deleteAdminComputeUsage({userId,taskId,before,confirmed:true});
+    if(!response?.ok||response.result?.ok!==true)throw Error(response?.error||response?.result?.error||'删除失败');
+    toast('已删除 '+response.result.deleted+' 条使用记录');
+    await Promise.all([loadComputeData(),loadAdminData()]);
+    if(!$('computeUsageDialog').hidden){computeUsageDetail.offset=0;await loadComputeUsageDetail();}
+  } catch(error){toast(String(error?.message||error));setText('computeUsageStatus','删除失败：'+String(error?.message||error));}
+  finally {computeUsageDeleting=false;}
+}
+function computeHistoryNode(task) {
+  return task.worker_name || (task.assigned_worker_id ? '历史节点 · ' + task.assigned_worker_id.slice(0,8) : '未分配节点');
+}
+function renderComputeUsage(usageResult, usersResult) {
+  if (usageResult) computeUsageSnapshot = usageResult;
+  if (usersResult) computeUsageUsers = new Map((usersResult.records || []).map(user=>[user.id,user]));
+  const result = computeUsageSnapshot, records = result.records || [];
+  const total = records.reduce((sum,row)=>sum+Number(row.total_tasks || 0),0);
+  setText('computeUsageStatus',isErrorResult(result) ? computeErrorText(result) : total+' 条任务');
+  const query = ($('computeUsageSearch')?.value || '').trim().toLocaleLowerCase();
+  const rows = records.filter(row=>{
+    const user=computeUsageUsers.get(row.user_id);
+    return !query || [userAccountLabel(user),user?.display_name,row.user_account,row.user_id].filter(Boolean).join(' ').toLocaleLowerCase().includes(query);
+  }).map(row=>{
+    const user=computeUsageUsers.get(row.user_id), name=userAccountLabel(user)||user?.display_name||row.user_account||row.user_id.slice(0,8);
+    const tr=document.createElement('tr');tr.appendChild(textCell(name));
+    tr.appendChild(textCell(String(row.total_tasks)+(Number(row.failed_tasks)>0?'（失败 '+row.failed_tasks+'）':'')));
+    tr.appendChild(textCell((row.workers || []).map(node=>(node.name || '历史节点 · '+node.id.slice(0,8))+' ×'+node.tasks).join('、') || '未分配节点'));
+    tr.appendChild(textCell(row.latest_at?formatDateTime(row.latest_at):'—'));
+    const detail=document.createElement('button');detail.type='button';detail.className='btn secondary small';detail.textContent='查看明细';
+    detail.addEventListener('click',()=>openComputeUsageDetail(row.user_id,name));
+    const actions=document.createElement('div');actions.className='tableActions';actions.appendChild(detail);
+    const remove=document.createElement('button');remove.type='button';remove.className='btn danger small';remove.textContent='删除已结束记录';
+    remove.addEventListener('click',()=>deleteComputeUsageRecords(row.user_id,name));actions.appendChild(remove);
+    tr.appendChild(nodeCell(actions));return tr;
+  });
+  replaceRows('computeUsageTableBody',rows,5,isErrorResult(result)?computeErrorText(result):query?'没有匹配的用户记录':'暂无使用记录');
+}
+function openComputeUsageDetail(userId,name) {
+  computeUsageDetail = {userId,name,offset:0,total:0,loading:false,sequence:computeUsageDetail.sequence+1};
+  $('computeUsageDetailStatus').value='';setText('computeUsageTitle',name+' · 算力使用明细');
+  openDataDialog('computeUsageDialog');void loadComputeUsageDetail();
+}
+async function loadComputeUsageDetail() {
+  const sequence=++computeUsageDetail.sequence;
+  const userId=computeUsageDetail.userId, offset=computeUsageDetail.offset;
+  computeUsageDetail.loading=true;
+  $('computeUsageDetailPrevious').disabled=true;$('computeUsageDetailNext').disabled=true;$('computeUsageDetailRefresh').disabled=true;
+  setText('computeUsageDetailCount','正在读取…');replaceRows('computeUsageDetailBody',[],7,'正在读取任务明细…');
+  try {
+    const response=await window.adminAPI.getAdminWebTaskUsage({userId,offset,limit:COMPUTE_USAGE_PAGE_SIZE,status:$('computeUsageDetailStatus').value});
+    if(sequence!==computeUsageDetail.sequence)return;
+    if(!response?.ok || isErrorResult(response.result))throw Error(response?.error || computeErrorText(response.result) || '读取失败');
+    const result=response.result || {}, tasks=result.records || [];
+    computeUsageDetail.total=Number(result.total || 0);
+    const rows=tasks.map(task=>{
+      const tr=document.createElement('tr');
+      const cell=(primary,secondary)=>{const td=document.createElement('td');td.appendChild(Object.assign(document.createElement('div'),{textContent:primary}));if(secondary)td.appendChild(Object.assign(document.createElement('div'),{className:'hint',textContent:secondary}));return td;};
+      tr.appendChild(cell(formatDateTime(task.created_at),task.id));
+      tr.appendChild(cell(({image:'图像生成',video:'视频生成',renderer_workflow:'工作流计算',matting:'抠图',prompt_assistant:'提示词助手'})[task.task_type]||task.task_type||'—',task.model_id||''));
+      tr.appendChild(textCell(computeHistoryNode(task)));
+      tr.appendChild(cell(WEB_TASK_STATUS_TEXT[task.status]||task.status,[task.error_code,task.error_message].filter(Boolean).join(' · ')));
+      const ended=task.completed_at||task.failed_at||task.cancelled_at;
+      const elapsed=ended&&task.started_at?Date.parse(ended)-Date.parse(task.started_at):NaN;
+      tr.appendChild(cell(Number.isFinite(elapsed)&&elapsed>=0?durationText(elapsed):'—',Number(task.attempt_count)>1?'尝试 '+task.attempt_count+' 次':''));
+      tr.appendChild(textCell(formatCreditAmount(task.charged_credit_cost),'num'));
+      const remove=document.createElement('button');remove.type='button';remove.className='btn danger small';remove.textContent='删除';remove.disabled=!computeUsageFinished(task);remove.title=remove.disabled?'排队或执行中的记录不能删除':'仅删除这条使用记录';
+      remove.addEventListener('click',()=>deleteComputeUsageRecords(userId,computeUsageDetail.name,task.id));tr.appendChild(nodeCell(remove));return tr;
     });
-
-  replaceRows(
-    "computeUsageTableBody",
-    rows,
-    4,
-    isUnconfiguredResult(usageResult) ? UNCONFIGURED_TEXT : isErrorResult(usageResult) ? computeErrorText(usageResult) : "还没有生成记录"
-  );
-}
-
-// The two "clean up" buttons on the 算力节点 page: spent registration codes,
-// and finished usage rows older than the chosen number of days.
-async function purgeComputeCodes() {
-  const button = $("computePurgeCodes");
-  const status = $("computeCodesStatus");
-  if (!confirm("删除所有已失效、已吊销或已用完的注册码记录？\n正在生效的注册码不受影响。")) return;
-  if (button) button.disabled = true;
-  try {
-    const res = await window.adminAPI.purgeAdminWorkerCodes();
-    if (!res?.ok || res.result?.ok === false) {
-      throw new Error(String(res?.error || res?.result?.error || "清理失败"));
-    }
-    toast(`已清理 ${formatNumber(res.result?.deleted || 0)} 条注册码记录`);
-    await loadComputeData();
-  } catch (err) {
-    if (status) status.textContent = String(err?.message || err);
-    if (button) button.disabled = false;
-  }
-}
-
-async function purgeComputeUsage() {
-  const button = $("computePurgeUsage");
-  const status = $("computeUsageStatus");
-  const days = Math.max(1, Number($("computeUsagePurgeDays")?.value || 30) || 30);
-  if (!confirm(`删除 ${days} 天前已完成、失败、取消或过期的生成记录？\n排队中和进行中的任务不会被删除。`)) return;
-  if (button) button.disabled = true;
-  try {
-    const res = await window.adminAPI.purgeAdminWebTasks({ olderThanDays: days });
-    if (!res?.ok || res.result?.ok === false) {
-      throw new Error(String(res?.error || res?.result?.error || "清理失败"));
-    }
-    toast(`已清理 ${formatNumber(res.result?.deleted || 0)} 条生成记录`);
-    await loadComputeData();
-    await loadAdminData();
-  } catch (err) {
-    if (status) status.textContent = String(err?.message || err);
-    if (button) button.disabled = false;
+    replaceRows('computeUsageDetailBody',rows,7,'该用户在此状态下暂无任务记录');
+    setText('computeUsageDetailCount','共 '+formatNumber(computeUsageDetail.total)+' 条 · 第 '+(Math.floor(offset/COMPUTE_USAGE_PAGE_SIZE)+1)+' 页');
+    $('computeUsageDetailPrevious').disabled=offset===0;
+    $('computeUsageDetailNext').disabled=!result.hasMore;
+  } catch(error) {
+    if(sequence!==computeUsageDetail.sequence)return;
+    replaceRows('computeUsageDetailBody',[],7,'读取失败：'+String(error?.message||error));setText('computeUsageDetailCount','读取失败，请重试');
+  } finally {
+    if(sequence===computeUsageDetail.sequence){computeUsageDetail.loading=false;$('computeUsageDetailRefresh').disabled=false;}
   }
 }
 
 async function loadComputeData() {
   try {
     const workers = await loadAdminDataset("getAdminGpuWorkers", "computeDataBadge");
-    const codes = await loadAdminDataset("getAdminWorkerCodes");
     const users = await loadAdminDataset("getAdminUsers");
-    const usage = await loadAdminDataset("getAdminWebTaskUsage");
+    const usage = await loadAdminDataset("getAdminComputeUsageSummary");
+    computeState = { users: users.records || [], writable: users.source === "supabase" && users.status !== "error" };
     renderComputeWorkers(workers);
-    renderComputeCodes(codes);
-    renderComputeMintControls(users);
     renderComputeUsage(usage, users, workers);
   } catch (err) {
     const status = $("computeWorkerStatus");
@@ -2349,146 +2307,6 @@ function stringifyPermissions(value) {
   }
 }
 
-function formatOnlineRecord(record) {
-  if (!record) return "-";
-  return JSON.stringify(record, null, 2);
-}
-
-function formatShortDate(value) {
-  const s = String(value || "").trim();
-  if (!s) return "-";
-  return s.replace("T", " ").replace(/\.\d+Z$/, "Z").replace(/\+00:00$/, "Z");
-}
-
-function setOnlineStatus(text) {
-  $("onlineActionStatus").textContent = String(text || "-");
-}
-
-function fillOnlineFormFromRecord(record) {
-  if (!record) return;
-  if (record.license_key) $("onlineLicenseKey").value = String(record.license_key);
-  if (record.machine_id) $("onlineMachineId").value = String(record.machine_id);
-  if (record.status) $("onlineStatus").value = String(record.status);
-  if (record.expire_at) $("onlineExpireAt").value = toDateInputValue(record.expire_at);
-  $("onlinePermissions").value = stringifyPermissions(record.permissions);
-}
-
-function renderOnlineRecords(records) {
-  const list = Array.isArray(records) ? records : [];
-  $("onlineResult").textContent = list.length ? JSON.stringify(list, null, 2) : "未找到记录";
-  renderOnlineList(list);
-  if (list[0]) fillOnlineFormFromRecord(list[0]);
-}
-
-function renderOnlineList(records, selectedLicenseKey) {
-  const list = Array.isArray(records) ? records : [];
-  const container = $("onlineList");
-  const status = $("onlineListStatus");
-  if (!container) return;
-  container.replaceChildren();
-  if (status) status.textContent = list.length ? `共 ${list.length} 条记录` : "暂无记录";
-
-  // Status summary above the table, and the dashboard's "有效授权" card, which
-  // used to show a hard-coded number.
-  const countStatus = (value) => list.filter((record) => String(record.status || "").toLowerCase() === value).length;
-  setText("licStatTotal", formatNumber(list.length));
-  setText("licStatActive", formatNumber(countStatus("active")));
-  setText("licStatExpired", formatNumber(countStatus("expired")));
-  setText("licStatBanned", formatNumber(countStatus("banned")));
-  setText("dashboardLicensesCount", formatNumber(countStatus("active")));
-
-  if (!list.length) {
-    replaceRows("onlineList", [], 6, "没有可显示的授权记录");
-    return;
-  }
-  const current = String(selectedLicenseKey || $("onlineLicenseKey")?.value || "").trim();
-  list.forEach((record) => {
-    // One table row per licence; click or Enter selects it into the form.
-    const item = document.createElement("tr");
-    item.tabIndex = 0;
-    item.className = "recordItem";
-    if (record.license_key && record.license_key === current) item.classList.add("active");
-
-    item.appendChild(textCell(record.license_key || "(空 license_key)", "recordKey"));
-    const badge = document.createElement("span");
-    badge.className = `badge ${String(record.status || "").toLowerCase()}`;
-    badge.textContent = record.status || "-";
-    item.appendChild(nodeCell(badge));
-    const machine = textCell(record.machine_id || "-", "recordMachine");
-    machine.title = record.machine_id || "";
-    item.appendChild(machine);
-    item.appendChild(textCell(formatShortDate(record.expire_at)));
-    item.appendChild(textCell(formatShortDate(record.created_at)));
-
-    const actions = document.createElement("div");
-    actions.className = "recordActions";
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "btn danger recordDeleteButton";
-    deleteButton.textContent = "删除";
-    deleteButton.title = "删除该授权记录";
-    deleteButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      await deleteOnlineLicense(record);
-    });
-
-    // The licence code is not stored on the record - it is made when the
-    // licence is issued and then only lives in the issue tab and the .nfl.
-    // Reading one back meant re-issuing and retyping the machine id, so this
-    // signs a fresh one from what the record already holds.
-    const copyButton = document.createElement("button");
-    copyButton.type = "button";
-    copyButton.className = "btn secondary recordCopyButton";
-    copyButton.textContent = "复制授权码";
-    copyButton.title = "为这条记录生成并复制一个授权码";
-    copyButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      const original = copyButton.textContent;
-      copyButton.disabled = true;
-      copyButton.textContent = "生成中...";
-      try {
-        const res = await window.adminAPI.licenseCodeFor({
-          licenseKey: record.license_key,
-          machineId: record.machine_id,
-          expiresAt: record.expire_at,
-          featuresText: record.permissions == null
-            ? ""
-            : typeof record.permissions === "string"
-              ? record.permissions
-              : JSON.stringify(record.permissions)
-        });
-        const text = res?.result?.licenseText;
-        if (!res?.ok || !text) throw new Error(String(res?.error || "生成授权码失败"));
-        await copyToClipboard(text, "已复制授权码");
-      } catch (err) {
-        alert(`生成授权码失败：${String(err?.message || err)}`);
-      } finally {
-        copyButton.disabled = false;
-        copyButton.textContent = original;
-      }
-    });
-
-    actions.appendChild(copyButton);
-    actions.appendChild(deleteButton);
-    item.appendChild(nodeCell(actions));
-
-    const selectRecord = () => {
-      fillOnlineFormFromRecord(record);
-      $("onlineResult").textContent = formatOnlineRecord(record);
-      renderOnlineList(list, record.license_key);
-      setOnlineStatus("已选择记录");
-    };
-    item.addEventListener("click", selectRecord);
-    item.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        selectRecord();
-      }
-    });
-    container.appendChild(item);
-  });
-}
-
 async function loadOnlineConfig() {
   const res = await window.adminAPI.getOnlineConfig();
   if (!res?.ok) {
@@ -2498,7 +2316,6 @@ async function loadOnlineConfig() {
   const cfg = res.config || {};
   $("onlineSupabaseUrl").value = cfg.supabaseUrl || "";
   $("onlineSecretKey").value = "";
-  $("issueSyncOnline").checked = Boolean(cfg.hasSecretKey);
   $("onlineConfigStatus").textContent = cfg.hasSecretKey
     ? `已保存：${cfg.secretPreview || "secret"}`
     : "未保存 Secret Key";
@@ -2517,12 +2334,13 @@ async function saveOnlineConfig() {
   }
   $("onlineSecretKey").value = "";
   const cfg = res.config || {};
-  $("issueSyncOnline").checked = Boolean(cfg.hasSecretKey);
   $("onlineConfigStatus").textContent = cfg.hasSecretKey
     ? `已保存：${cfg.secretPreview || "secret"}`
     : "未保存 Secret Key";
   setGlobalStatus(cfg.hasSecretKey ? "在线管理已配置" : "在线管理未配置");
-  toast("在线配置已保存");
+  toast("后台连接已保存");
+  await loadAdminData();
+  if (document.querySelector('.moduleNavButton.active[data-module="compute"]')) await loadComputeData();
 }
 
 async function testOnlineConfig() {
@@ -2535,173 +2353,6 @@ async function testOnlineConfig() {
   }
   $("onlineConfigStatus").textContent = "连接正常";
   toast("Supabase 连接正常");
-}
-
-function onlinePayload() {
-  return {
-    licenseKey: $("onlineLicenseKey").value.trim(),
-    machineId: $("onlineMachineId").value.trim(),
-    status: $("onlineStatus").value,
-    expireAt: $("onlineExpireAt").value.trim(),
-    permissionsText: $("onlinePermissions").value.trim(),
-    limit: 100
-  };
-}
-
-async function queryOnlineLicense() {
-  const payload = onlinePayload();
-  const hasFilter = Boolean(payload.licenseKey || payload.machineId);
-  setOnlineStatus(hasFilter ? "查询中..." : "刷新列表中...");
-  const res = await window.adminAPI.queryOnlineLicense(payload);
-  if (!res?.ok) {
-    setOnlineStatus("查询失败");
-    alert(`查询失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  renderOnlineRecords(res?.result?.records || []);
-  setOnlineStatus(hasFilter ? "查询完成" : "列表已刷新");
-}
-
-async function refreshOnlineList(options) {
-  const silent = Boolean(options?.silent);
-  if (!silent) setOnlineStatus("刷新列表中...");
-  const res = await window.adminAPI.queryOnlineLicense({ limit: 100 });
-  if (!res?.ok) {
-    if (!silent) {
-      setOnlineStatus("列表刷新失败");
-      alert(`刷新列表失败：${String(res?.error || "unknown")}`);
-    }
-    return;
-  }
-  const records = res?.result?.records || [];
-  renderOnlineList(records);
-  if (!silent) setOnlineStatus("列表已刷新");
-}
-
-async function upsertOnlineLicense() {
-  const payload = onlinePayload();
-  if (!payload.licenseKey) {
-    alert("请先从列表选择一条授权记录，或填写 License Key。");
-    return;
-  }
-
-  // This card edits an existing licence. A new one comes from 新建授权码,
-  // which signs the file and the record together - a record created here
-  // would have no licence file behind it and nothing could be issued from it.
-  setOnlineStatus("查询中...");
-  const existing = await window.adminAPI.queryOnlineLicense({ licenseKey: payload.licenseKey, limit: 1 });
-  if (!existing?.ok) {
-    setOnlineStatus("查询失败");
-    alert(`查询失败：${String(existing?.error || "unknown")}`);
-    return;
-  }
-  if (!(existing?.result?.records || []).length) {
-    setOnlineStatus("没有这条记录");
-    alert(`线上没有 ${payload.licenseKey} 这条授权记录。
-新建请到「新建授权码」页签，那里会连授权文件一起签发。`);
-    return;
-  }
-
-  setOnlineStatus("写入中...");
-  const res = await window.adminAPI.upsertOnlineLicense(payload);
-  if (!res?.ok) {
-    setOnlineStatus("更新失败");
-    alert(`更新失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const record = res?.result?.record;
-  $("onlineResult").textContent = formatOnlineRecord(record);
-  fillOnlineFormFromRecord(record);
-  await refreshOnlineList({ silent: true });
-  setOnlineStatus("已更新");
-  toast("线上授权已更新");
-}
-
-async function setOnlineLicenseStatus(status) {
-  const licenseKey = $("onlineLicenseKey").value.trim();
-  if (!licenseKey) {
-    alert("请先填写 License Key");
-    return;
-  }
-  setOnlineStatus("更新状态中...");
-  const res = await window.adminAPI.setOnlineLicenseStatus({ licenseKey, status });
-  if (!res?.ok) {
-    setOnlineStatus("状态更新失败");
-    alert(`状态更新失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const records = res?.result?.records || [];
-  renderOnlineRecords(records);
-  await refreshOnlineList({ silent: true });
-  setOnlineStatus(status === "active" ? "已启用" : status === "banned" ? "已关闭" : "已设为过期");
-  toast(status === "active" ? "授权已启用" : status === "banned" ? "授权已关闭" : "授权已设为过期");
-}
-
-async function verifyDeletedLicenseGone(target) {
-  const licenseKey = String(target?.licenseKey || "").trim();
-  const id = target?.id == null || target?.id === "" ? "" : String(target.id).trim();
-  if (!licenseKey) throw new Error("删除后校验缺少授权码");
-  const res = await window.adminAPI.queryOnlineLicense({ licenseKey, limit: 100 });
-  if (!res?.ok) throw new Error(String(res?.error || "授权删除后刷新失败"));
-  const records = res?.result?.records || [];
-  const stillExists = id
-    ? records.some((item) => String(item?.id || "") === id)
-    : records.some((item) => String(item?.license_key || "").trim() === licenseKey);
-  if (stillExists) {
-    throw new Error("删除请求已返回成功，但刷新后仍能看到该授权记录；请检查 Supabase Service Role 权限。");
-  }
-}
-
-async function deleteOnlineLicense(record) {
-  const licenseKey = String(record?.license_key || $("onlineLicenseKey")?.value || "").trim();
-  const id = record?.id == null ? "" : String(record.id);
-  if (!licenseKey) {
-    alert("请先选择或填写要删除的授权码");
-    return;
-  }
-
-  const scopeText = id
-    ? `将删除该条授权记录：ID ${id}`
-    : "将按 license_key 删除匹配记录；如果历史数据存在同名授权码，会一起删除。";
-  const confirmed = await confirmByTyping({
-    title: "删除授权码",
-    hint: licenseKey,
-    warning: scopeText + " 不可恢复。",
-    label: "输入授权码确认",
-    expected: licenseKey
-  });
-  if (!confirmed) return;
-
-  setOnlineStatus("删除中...");
-  const res = await window.adminAPI.deleteOnlineLicense({ id, licenseKey });
-  if (!res?.ok) {
-    setOnlineStatus("删除失败");
-    alert(`删除授权失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const deletedCount = Number(res?.result?.deletedCount || 0);
-  if (deletedCount <= 0) {
-    setOnlineStatus("删除失败");
-    alert("删除授权失败：Supabase 没有返回已删除记录");
-    return;
-  }
-  try {
-    await verifyDeletedLicenseGone({ id, licenseKey });
-  } catch (err) {
-    setOnlineStatus("删除校验失败");
-    alert(`删除授权校验失败：${String(err?.message || err)}`);
-    return;
-  }
-  $("onlineResult").textContent = formatOnlineRecord({
-    deletedCount,
-    records: res?.result?.records || []
-  });
-  if (String($("onlineLicenseKey")?.value || "").trim() === licenseKey) {
-    $("onlineLicenseKey").value = "";
-  }
-  setOnlineStatus(`已删除 ${deletedCount} 条授权记录`);
-  await refreshOnlineList({ silent: true });
-  toast("授权记录已删除");
 }
 
 async function copyToClipboard(text, okMsg) {
@@ -2720,128 +2371,8 @@ async function copyToClipboard(text, okMsg) {
   }
 }
 
-async function refresh() {
-  const pubPath = $("pubPath").value;
-  const privPath = $("privPath").value;
-  const res = await window.adminAPI.getStatus({ publicKeyPath: pubPath, privateKeyPath: privPath });
-  if (!res?.ok) {
-    signingKeyStatusText = "状态读取失败";
-    $("statusText").textContent = signingKeyStatusText;
-    $("fingerprint").textContent = "-";
-    $("pubPreview").textContent = "-";
-    return;
-  }
-  const st = res.status;
-  const ok = st.pubExists && st.privExists;
-  signingKeyStatusText = ok ? "密钥已存在" : st.pubExists || st.privExists ? "密钥不完整" : "未生成密钥";
-  $("statusText").textContent = signingKeyStatusText;
-  $("fingerprint").textContent = st.pubFingerprint || "-";
-  $("pubPreview").textContent = st.pubPreview || "-";
-  setGlobalStatus(ok ? "密钥正常" : "密钥未就绪");
-}
-
-async function issueLicense() {
-  const priv = $("privPath").value;
-  const machineId = $("issueMachineId").value.trim();
-  const licenseKey = $("issueLicenseKey").value.trim();
-  const expiresAt = $("issueExpiresAt").value.trim();
-  const featuresText = $("issueFeatures").value.trim();
-  const outPath = $("issueOutPath").value.trim();
-  const syncOnline = Boolean($("issueSyncOnline")?.checked);
-
-  if (!machineId) {
-    alert("请先填写机器码");
-    return;
-  }
-  if (!outPath) {
-    alert("请先选择输出文件路径");
-    return;
-  }
-
-  const res = await window.adminAPI.issueLicense({
-    machineId,
-    licenseKey,
-    privateKeyPath: priv,
-    expiresAt: expiresAt || "",
-    featuresText: featuresText || "",
-    outPath,
-    syncOnline,
-    remoteExpireAt: expiresAt || ""
-  });
-  if (!res?.ok) {
-    $("issueResult").textContent = "失败";
-    alert(`签发失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const p = res?.result?.outPath;
-  const t = res?.result?.licenseText;
-  const generatedLicenseKey = res?.result?.payload?.licenseKey;
-  const onlineResult = res?.result?.online;
-  const onlineRecord = res?.result?.online?.record;
-  if (typeof t === "string") $("issueLicenseText").value = t;
-  if (generatedLicenseKey) $("issueLicenseKey").value = String(generatedLicenseKey);
-  if (generatedLicenseKey) $("onlineLicenseKey").value = String(generatedLicenseKey);
-  if (machineId) $("onlineMachineId").value = machineId;
-  if (expiresAt) $("onlineExpireAt").value = expiresAt;
-  if (featuresText) $("onlinePermissions").value = featuresText;
-  if (onlineRecord) {
-    $("onlineResult").textContent = formatOnlineRecord(onlineRecord);
-    fillOnlineFormFromRecord(onlineRecord);
-  }
-  if (syncOnline && onlineResult && onlineResult.ok === false) {
-    $("issueResult").textContent = `已生成：${safePathText(p)} | license_key: ${String(generatedLicenseKey || "-")} | 线上同步失败`;
-    $("onlineResult").textContent = `线上同步失败：${String(onlineResult.error || "unknown")}`;
-    toast("授权文件已生成，线上同步失败");
-    return;
-  }
-  // Put it in the list. Issuing with 在线同步 writes the record and then said
-  // "已同步线上" while the 授权列表 tab still showed what it had loaded
-  // earlier - usually 暂无记录 - so a licence that had just been created
-  // looked as though it had not been.
-  if (syncOnline) await refreshOnlineList({ silent: true });
-
-  $("issueResult").textContent = `已生成：${safePathText(p)} | license_key: ${String(generatedLicenseKey || "-")}${syncOnline ? " | 已同步线上" : ""}`;
-  toast(syncOnline ? "已生成并同步线上授权" : "已生成授权文件");
-}
-
-async function verifyLicense() {
-  const pub = $("pubPath").value;
-  const licensePath = $("verifyLicensePath").value.trim();
-  const machineId = $("verifyMachineId").value.trim();
-  if (!licensePath) {
-    alert("请先选择或拖入授权文件");
-    return;
-  }
-  const res = await window.adminAPI.verifyLicense({
-    licensePath,
-    publicKeyPath: pub,
-    machineId: machineId || ""
-  });
-  if (!res?.ok) {
-    $("verifyResult").textContent = "失败";
-    alert(`校验失败：${String(res?.error || "unknown")}`);
-    return;
-  }
-  const r = res?.result;
-  $("verifyResult").textContent = r?.ok ? "OK" : String(r?.code || "NOT_OK");
-  toast(r?.ok ? "校验通过" : "校验不通过");
-}
-
 async function init() {
-  const def = await window.adminAPI.getDefaultPaths();
-  $("pubPath").value = def.publicKeyPath || "";
-  $("privPath").value = def.privateKeyPath || "";
-  $("issueOutPath").value = def.defaultLicenseOutPath || "";
-  await refresh();
-  const onlineConfig = await loadOnlineConfig();
-  if (onlineConfig?.hasSecretKey) await refreshOnlineList({ silent: true });
-  const bundledKeyMode = def.mode === "bundled";
-  if (bundledKeyMode) {
-    $("generate").disabled = true;
-    $("delete").disabled = true;
-    $("generate").title = "Bundled keys are read-only in the packaged NovaFlow 后台管理.";
-    $("delete").title = "Bundled keys are read-only in the packaged NovaFlow 后台管理.";
-  }
+  await loadOnlineConfig();
 
   $("userSearchInput").addEventListener("input", () => {
     renderUsers(
@@ -2868,9 +2399,11 @@ async function init() {
       void submitMemberAdjust();
     }
   });
-  $("computeMintCode")?.addEventListener("click", () => { void mintComputeCode(); });
-  $("computePurgeCodes")?.addEventListener("click", () => { void purgeComputeCodes(); });
-  $("computePurgeUsage")?.addEventListener("click", () => { void purgeComputeUsage(); });
+  $('computeUsageSearch').addEventListener('input',()=>renderComputeUsage());
+  $('computeUsageDetailStatus').addEventListener('change',()=>{computeUsageDetail.offset=0;void loadComputeUsageDetail();});
+  $('computeUsageDetailRefresh').addEventListener('click',()=>{void loadComputeUsageDetail();});
+  $('computeUsageDetailPrevious').addEventListener('click',()=>{if(computeUsageDetail.loading)return;computeUsageDetail.offset=Math.max(0,computeUsageDetail.offset-COMPUTE_USAGE_PAGE_SIZE);void loadComputeUsageDetail();});
+  $('computeUsageDetailNext').addEventListener('click',()=>{if(computeUsageDetail.loading)return;computeUsageDetail.offset+=COMPUTE_USAGE_PAGE_SIZE;void loadComputeUsageDetail();});
   $("saveRunninghubRuntimeConfig").addEventListener("click", async () => {
     await saveProviderRuntimeConfig("runninghub");
   });
@@ -2886,141 +2419,12 @@ async function init() {
     void checkRunningHubProvider();
   }, 5 * 60 * 1000);
 
-  $("pickPub").addEventListener("click", async () => {
-    const res = await window.adminAPI.pickPublicPath({ defaultPath: $("pubPath").value });
-    if (res?.canceled) return;
-    if (res?.filePath) $("pubPath").value = res.filePath;
-    await refresh();
-  });
-
-  $("pickPriv").addEventListener("click", async () => {
-    const res = await window.adminAPI.pickPrivatePath({ defaultPath: $("privPath").value });
-    if (res?.canceled) return;
-    if (res?.filePath) $("privPath").value = res.filePath;
-    await refresh();
-  });
-
-  $("refresh").addEventListener("click", async () => {
-    await refresh();
-    toast("已刷新");
-  });
-
   $("saveOnlineConfig").addEventListener("click", async () => {
     await saveOnlineConfig();
   });
 
   $("testOnlineConfig").addEventListener("click", async () => {
     await testOnlineConfig();
-  });
-
-  $("refreshOnlineList").addEventListener("click", async () => {
-    await refreshOnlineList();
-  });
-
-  $("queryOnlineLicense").addEventListener("click", async () => {
-    await queryOnlineLicense();
-  });
-
-  $("upsertOnlineLicense").addEventListener("click", async () => {
-    await upsertOnlineLicense();
-  });
-
-  $("activateOnlineLicense").addEventListener("click", async () => {
-    await setOnlineLicenseStatus("active");
-  });
-
-  $("expireOnlineLicense").addEventListener("click", async () => {
-    const confirmed = confirm("确定把该授权设为过期吗？\n用户重启 NovaFlow 后会被锁定。");
-    if (!confirmed) return;
-    await setOnlineLicenseStatus("expired");
-  });
-
-  $("openFolder").addEventListener("click", async () => {
-    const p = $("privPath").value || $("pubPath").value;
-    if (!p) return;
-    await window.adminAPI.openFolder({ path: p });
-  });
-
-  $("copyPubKey").addEventListener("click", async () => {
-    const pubPath = $("pubPath").value;
-    const res = await window.adminAPI.readPublicKey({ publicKeyPath: pubPath });
-    if (!res?.ok) {
-      alert(`读取公钥失败：${String(res?.error || "unknown")}`);
-      return;
-    }
-    await copyToClipboard(res?.text, "已复制公钥");
-  });
-
-  $("copyPrivKey").addEventListener("click", async () => {
-    const confirmed = confirm("确定复制私钥吗？\n私钥只能保存在管理员电脑，泄露会导致任何人都能签发授权。");
-    if (!confirmed) return;
-    const privPath = $("privPath").value;
-    const res = await window.adminAPI.readPrivateKey({ privateKeyPath: privPath });
-    if (!res?.ok) {
-      alert(`读取私钥失败：${String(res?.error || "unknown")}`);
-      return;
-    }
-    await copyToClipboard(res?.text, "已复制私钥");
-  });
-
-  $("generate").addEventListener("click", async () => {
-    if (bundledKeyMode) {
-      alert("打包版内置密钥只读，不能在这里重新生成。请直接签发授权文件。");
-      return;
-    }
-    const pub = $("pubPath").value;
-    const priv = $("privPath").value;
-    const confirmed = confirm("确定生成新的密钥对吗？\n如果你替换了旧密钥，旧授权文件将全部失效。");
-    if (!confirmed) return;
-    const res = await window.adminAPI.generate({ publicKeyPath: pub, privateKeyPath: priv });
-    if (!res?.ok) {
-      alert(`生成失败：${String(res?.error || "unknown")}`);
-      return;
-    }
-    await refresh();
-    toast(`已生成，指纹：${String(res?.result?.pubFingerprint || "")}`);
-  });
-
-  $("delete").addEventListener("click", async () => {
-    if (bundledKeyMode) {
-      alert("打包版内置密钥只读，不能在这里删除。");
-      return;
-    }
-    const pub = $("pubPath").value;
-    const priv = $("privPath").value;
-    const confirmed = confirm("确定删除密钥文件吗？\n删除后无法再签发/校验已有授权（除非你有备份）。");
-    if (!confirmed) return;
-    const res = await window.adminAPI.deleteKeys({ publicKeyPath: pub, privateKeyPath: priv });
-    if (!res?.ok) {
-      alert(`删除失败：${String(res?.error || "unknown")}`);
-      return;
-    }
-    await refresh();
-    toast("已删除");
-  });
-
-  $("pickIssueOut").addEventListener("click", async () => {
-    const res = await window.adminAPI.pickLicenseOutPath({ defaultPath: $("issueOutPath").value });
-    if (res?.canceled) return;
-    if (res?.filePath) $("issueOutPath").value = res.filePath;
-  });
-
-  $("issue").addEventListener("click", async () => {
-    await issueLicense();
-  });
-
-  $("copyIssueText").addEventListener("click", async () => {
-    await copyToClipboard($("issueLicenseText").value, "已复制授权码");
-  });
-
-  $("pickVerifyIn").addEventListener("click", async () => {
-    const res = await window.adminAPI.pickLicenseInPath();
-    if (res?.canceled) return;
-    if (res?.filePath) $("verifyLicensePath").value = res.filePath;
-  });
-
-  $("verify").addEventListener("click", async () => {
-    await verifyLicense();
   });
 
   $("passwordEditClose").addEventListener("click", closePasswordEditDialog);
@@ -3042,16 +2446,16 @@ async function init() {
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!$("passwordEditDialog").hidden) closePasswordEditDialog();
+    else if (!$("computeUsageDialog").hidden) closeDataDialog("computeUsageDialog");
     else if (!$("creditLedgerDialog").hidden) closeDataDialog("creditLedgerDialog");
     else if (!$("memberAdjustDialog").hidden) closeDataDialog("memberAdjustDialog");
     else closeOpenDrawers();
   });
 
-  $("openCreditLedger").addEventListener("click", () => openUserLedger());
   document.querySelectorAll("[data-dialog-close]").forEach((button) => {
     button.addEventListener("click", () => closeDataDialog(button.dataset.dialogClose));
   });
-  for (const id of ["creditLedgerDialog", "memberAdjustDialog"]) {
+  for (const id of ["creditLedgerDialog", "memberAdjustDialog", "computeUsageDialog"]) {
     $(id).addEventListener("click", (event) => { if (event.target === $(id)) closeDataDialog(id); });
     $(id).addEventListener("keydown", (event) => {
       if (event.key !== "Tab") return;
@@ -3082,8 +2486,6 @@ async function init() {
   document.querySelectorAll("[data-module-link]").forEach((el) => {
     el.addEventListener("click", () => {
       showModule(el.getAttribute("data-module-link") || "dashboard");
-      const tab = el.getAttribute("data-tab-after");
-      if (tab) showTab(tab);
       const drawer = el.getAttribute("data-drawer-after");
       if (drawer) openDrawer(drawer);
     });
@@ -3095,48 +2497,16 @@ async function init() {
     try {
       await loadAdminData();
       if (document.querySelector('.moduleNavButton.active[data-module="compute"]')) await loadComputeData();
-      await refreshOnlineList({ silent: true });
       toast("已刷新");
     } finally {
       button.disabled = false;
     }
   });
 
-  document.querySelectorAll(".tab[data-tab]").forEach((el) => {
-    el.addEventListener("click", () => showTab(el.getAttribute("data-tab") || "online"));
-  });
-
-  document.querySelectorAll(".moduleNavButton").forEach((el) => {
+  document.querySelectorAll(".moduleNavButton[data-module]").forEach((el) => {
     el.addEventListener("click", () => showModule(el.getAttribute("data-module") || "dashboard"));
   });
 
-  const dz = $("dropZone");
-  const stop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  dz.addEventListener("dragenter", (e) => {
-    stop(e);
-    dz.classList.add("drag");
-  });
-  dz.addEventListener("dragover", (e) => {
-    stop(e);
-    dz.classList.add("drag");
-  });
-  dz.addEventListener("dragleave", (e) => {
-    stop(e);
-    dz.classList.remove("drag");
-  });
-  dz.addEventListener("drop", async (e) => {
-    stop(e);
-    dz.classList.remove("drag");
-    const f = e.dataTransfer?.files?.[0];
-    const p = f?.path;
-    if (p) {
-      $("verifyLicensePath").value = p;
-      await verifyLicense();
-    }
-  });
   await loadAdminData();
 }
 

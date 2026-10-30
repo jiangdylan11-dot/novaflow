@@ -1,19 +1,21 @@
 {
   "name": "novaflow-worker",
-  "productName": "Foart",
+  "productName": "Foart 算力助手",
   "private": true,
-  "version": "2.0.178",
-  "description": "Foart",
+  "version": "2.0.194",
+  "description": "Foart 官网算力助手",
   "type": "commonjs",
-  "main": "electron/main.cjs",
+  "main": "electron/compute-main.cjs",
   "scripts": {
-    "dev": "electron .",
-    "headless": "node src/main-headless.mjs",
-    "build:win": "electron-builder --win nsis --x64 --publish never",
-    "build:win:dir": "electron-builder --win dir --x64"
+    "dev": "electron electron/compute-main.cjs",
+    "dev:compute": "electron electron/compute-main.cjs",
+    "headless": "node src/main-compute.mjs",
+    "build:win": "electron-builder --config electron-builder-compute.json --win nsis --x64 --publish never",
+    "build:win:dir": "electron-builder --config electron-builder-compute.json --win dir --x64"
   },
   "devDependencies": {
     "electron": "32.2.0",
     "electron-builder": "25.1.8"
-  }
+  },
+  "computeOnly": true
 }
