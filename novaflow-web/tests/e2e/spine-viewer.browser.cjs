@@ -36,6 +36,23 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     await page.getByRole('button', { name: '工具', exact: true }).click();
     const entry = page.locator('[data-novaflow-spine-viewer-entry="1"]');
     await entry.waitFor();
+    for (const [label, selector] of [
+      ['PNG 去黑', '.nf-prb-upload'], ['MP4 压缩', '.nf-mp4-upload'],
+      ['视频格式转换', '.nf-vfc-upload'], ['SPINE 图集转换', '.nf-saw-upload'],
+    ]) {
+      await page.getByRole('button', { name: label, exact: true }).click();
+      const upload = page.locator(selector);
+      await upload.waitFor({ state: 'visible' });
+      assert.deepEqual(await upload.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return [style.borderTopStyle, style.borderTopWidth, style.borderTopColor];
+      }), ['dashed', '1px', 'rgb(75, 75, 75)'], `${label} must retain its upload border`);
+      await upload.hover();
+      assert.equal(await upload.evaluate((node) => getComputedStyle(node).borderTopStyle), 'dashed');
+      assert.equal(await upload.evaluate((node) => window.FoartButtonTheme.isButton(node)), false);
+      await page.mouse.move(700, 20);
+    }
+    await page.getByRole('button', { name: 'PNG 压缩', exact: true }).click();
     let releaseViewerStyle, sawViewerStyle;
     const pendingViewerStyle = new Promise((resolve) => { releaseViewerStyle = resolve; });
     const viewerStyleRequested = new Promise((resolve) => { sawViewerStyle = resolve; });
@@ -44,12 +61,13 @@ const output = path.resolve(__dirname, '../../../work/spine-viewer');
     });
     await entry.click();
     await viewerStyleRequested;
-    const loadingState = await page.locator('#novaflow-spine-viewer-root').evaluate((root) => ({ background: getComputedStyle(root).backgroundColor, ready: root.dataset.viewerReady, frameVisibility: getComputedStyle(root.querySelector('iframe')).visibility }));
+    const loadingState = await page.locator('#novaflow-spine-viewer-root').evaluate((root) => ({ visibility: getComputedStyle(root).visibility, ready: root.dataset.viewerReady, frameVisibility: getComputedStyle(root.querySelector('iframe')).visibility, workspaceVisibility: getComputedStyle(document.querySelector('[data-novaflow-tools-workspace]')).visibility }));
     releaseViewerStyle();
-    assert.deepEqual(loadingState, { background: 'rgb(21, 21, 21)', ready: '0', frameVisibility: 'hidden' }, 'cold iframe loading must remain behind a neutral dark surface');
+    assert.deepEqual(loadingState, { visibility: 'hidden', ready: '0', frameVisibility: 'hidden', workspaceVisibility: 'visible' }, 'keep the previous workspace painted while the viewer loads');
     const frame = await page.locator('#novaflow-spine-viewer-root iframe').elementHandle().then((element) => element.contentFrame());
     await frame.waitForFunction(() => Boolean(window.NovaFlowSpineViewer));
     await page.locator('#novaflow-spine-viewer-root[data-viewer-ready="1"] iframe').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('[data-novaflow-tools-workspace]').evaluate((node) => getComputedStyle(node).visibility), 'hidden');
     await page.unroute('**/vendor/spine-viewer/foart-theme.css*');
     assert.equal(await frame.locator('#blendModeSelect').count(), 0);
     assert.equal(await frame.locator('#projectSelect').count(), 0);

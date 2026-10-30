@@ -38,12 +38,15 @@
     const workspace = document.querySelector('[data-novaflow-tools-workspace]')
     const root = document.getElementById(ROOT_ID)
     if (!(workspace instanceof HTMLElement) || !root) return
-    if (!workspaces.has(workspace)) {
-      workspaces.set(workspace, [workspace.style.getPropertyValue('visibility'), workspace.style.getPropertyPriority('visibility')])
+    if (frameReady) {
+      if (!workspaces.has(workspace)) {
+        workspaces.set(workspace, [workspace.style.getPropertyValue('visibility'), workspace.style.getPropertyPriority('visibility')])
+      }
+      workspace.style.setProperty('visibility', 'hidden', 'important')
     }
-    workspace.style.setProperty('visibility', 'hidden', 'important')
     const rect = workspace.getBoundingClientRect()
     Object.assign(root.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
+    root.style.visibility = frameReady ? 'visible' : 'hidden'
   }
 
   function deactivate() {
@@ -67,7 +70,7 @@
       root = document.createElement('section')
       root.id = ROOT_ID
       root.setAttribute('aria-label', 'SPINE 查看器')
-      Object.assign(root.style, { position: 'fixed', zIndex: '120', overflow: 'hidden', background: '#151515' })
+      Object.assign(root.style, { position: 'fixed', zIndex: '120', overflow: 'hidden', background: '#151515', visibility: 'hidden' })
       root.setAttribute('aria-busy', 'true')
       root.dataset.viewerReady = '0'
       frame = document.createElement('iframe')
@@ -75,13 +78,14 @@
       frame.src = viewerUrl
       Object.assign(frame.style, { display: 'block', border: '0', width: '100%', height: '100%', visibility: 'hidden', background: '#151515', colorScheme: 'dark' })
       frame.addEventListener('load', () => {
-        // Keep the opaque neutral surface through initial navigation and CSS loading.
+        // Keep the previous workspace painted until the styled viewer is ready.
         // The parent clock also runs if the user switches tools while it loads.
         window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
           frameReady = true
           frame.style.visibility = 'visible'
           root.dataset.viewerReady = '1'
           root.setAttribute('aria-busy', 'false')
+          syncBounds()
           notifyViewer()
         }))
       })

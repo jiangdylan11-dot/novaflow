@@ -8,7 +8,7 @@
     --foart-action-green: rgba(30,166,114,.24);
     --foart-action-green-hover: rgba(30,166,114,.32);
   }
-  :where(button, [role="button"]):not(:where([role="switch"], [aria-checked], [data-novaflow-ai-preview-bg-option], [data-novaflow-ai-state-toggle], [data-novaflow-art-generate-state-toggle], [data-novaflow-toggle-switch], .novaflow-art-generate-ref, [data-nf-upload-dropzone], .nf-upload-dropzone, [data-color], [data-color-value], [class*="swatch"], [class*="Swatch"])) {
+  :where(button, [role="button"]):not(:where([role="switch"], [aria-checked], [data-novaflow-ai-preview-bg-option], [data-novaflow-ai-state-toggle], [data-novaflow-art-generate-state-toggle], [data-novaflow-toggle-switch], .novaflow-art-generate-ref, [data-nf-upload-dropzone], .nf-upload-dropzone, .nf-prb-upload, .nf-mp4-upload, .nf-vfc-upload, .nf-saw-upload, [data-color], [data-color-value], [class*="swatch"], [class*="Swatch"])) {
     border: 0 !important;
     outline: none !important;
     box-shadow: none !important;
