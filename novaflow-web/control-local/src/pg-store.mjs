@@ -106,28 +106,15 @@ export function createPgStore(db) {
       return Number(row?.count || 0);
     },
 
-    async countCapableWorkers(modelId, minVramMb, heartbeatTimeoutSeconds, workerId = null, allowPremium = true) {
-      const row = await one(
-        `select count(*)::int as count
-           from public.gpu_workers w
-          where w.status in ('idle', 'busy')
-            and ($4::uuid is null or w.id = $4::uuid)
-            and ($5::boolean or w.tier <> 'premium')
-            and w.vram_mb >= $2
-            and w.last_heartbeat is not null
-            and w.last_heartbeat > now() - make_interval(secs => $3)
-            and exists (
-              select 1 from public.worker_models wm
-               where wm.worker_id = w.id and wm.model_id = $1 and wm.status = 'ready'
-            )`,
-        [modelId, minVramMb, heartbeatTimeoutSeconds, workerId || null, allowPremium !== false]
-      );
+    async countCapableWorkers(modelId, minVramMb, heartbeatTimeoutSeconds, workerId = null, allowPremium = true, userId = null, allowShared = true) {
+      const row = await one('select public.novaflow_web_count_capable_workers($1,$2,$3,$4,$5,$6,$7) as count',
+        [modelId,minVramMb,heartbeatTimeoutSeconds,workerId,allowPremium,userId,allowShared]);
       return Number(row?.count || 0);
     },
 
     async listPoolWorkers() {
       return await many(
-        'select id, worker_name, status, tier, gpu_name, vram_mb, last_heartbeat from public.gpu_workers order by worker_name'
+        'select id, owner_id, worker_name, status, tier, gpu_name, vram_mb, last_heartbeat, enabled, owner_enabled, sharing_enabled, sharing_scope, allowed_user_ids from public.gpu_workers order by worker_name'
       );
     },
 
@@ -138,10 +125,9 @@ export function createPgStore(db) {
       );
     },
 
-    async listCapableModelDetails(modelId, minVramMb, heartbeatTimeoutSeconds) {
-      return await many(`select wm.detail from public.worker_models wm join public.gpu_workers w on w.id=wm.worker_id
-        where wm.model_id=$1 and wm.status='ready' and w.status in ('idle','busy') and w.vram_mb >= $2
-        and w.last_heartbeat > now() - make_interval(secs => $3)`, [modelId, minVramMb, heartbeatTimeoutSeconds]);
+    async listCapableModelDetails(modelId, minVramMb, heartbeatTimeoutSeconds, userId = null, allowPremium = true, allowShared = true) {
+      return await many('select * from public.novaflow_web_capable_model_details($1,$2,$3,$4,$5,$6)',
+        [modelId,minVramMb,heartbeatTimeoutSeconds,userId,allowPremium,allowShared]);
     },
 
     async createTask({ userId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }) {

@@ -735,7 +735,7 @@
 
             <section class="panel tableCard">
               <div class="tableToolbar">
-                <div class="cardTitle">在线节点</div>
+                <div class="cardTitle">算力机器</div>
                 <span id="computeWorkerStatus" class="countPill">-</span>
                 <div class="spacer"></div>
                 <div class="hint">心跳、显卡、ComfyUI 版本和完成量由节点自己上报</div>
@@ -745,6 +745,7 @@
                   <thead>
                     <tr>
                       <th>名称</th>
+                      <th>本人账号</th>
                       <th>显卡 / 显存</th>
                       <th title="本机或共享池 Worker 上报的 Comfy 版本，不是在线出图">ComfyUI</th>
                       <th class="num">完成 / 失败</th>
@@ -752,11 +753,12 @@
                       <th>对外地址</th>
                       <th>等级</th>
                       <th>状态</th>
+                      <th>使用权限</th>
                       <th class="actionsCol">操作</th>
                     </tr>
                   </thead>
                   <tbody id="computeWorkersTableBody">
-                    <tr><td colspan="9"><div class="skeletonLine"></div></td></tr>
+                    <tr><td colspan="11"><div class="skeletonLine"></div></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1701,6 +1703,8 @@
       .modalBody { display: grid; gap: 14px; padding: 18px 22px; }
       .modalField { display: grid; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600; }
       .modalField input { width: 100%; }
+      #computeMachineSettings { width: min(560px, 100%); max-height: calc(100vh - 48px); overflow: auto; }
+      #computeMachineSettings .computeMachineToggle { display: flex; align-items: center; gap: 8px; }
       .modalStatus { min-height: 18px; font-size: 12px; color: var(--caption); line-height: 1.45; }
       .modalStatus.error { color: #fca5a5; }
       .modalStatus.success { color: #7ce8b5; }

@@ -1320,6 +1320,83 @@ function computeHeartbeatText(value) {
   return formatDateTime(value);
 }
 
+function workerPolicyAvailable(worker) {
+  return ["enabled", "owner_enabled", "sharing_enabled"].every((key) => typeof worker[key] === "boolean")
+    && ["pool", "selected"].includes(worker.sharing_scope) && Array.isArray(worker.allowed_user_ids);
+}
+
+function openComputeMachineSettings(worker) {
+  const trigger = document.activeElement;
+  const overlay = document.createElement("div"); overlay.className = "modalOverlay";
+  const panel = document.createElement("form"); panel.className = "modalPanel"; panel.id = "computeMachineSettings";
+  panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-labelledby", "computeMachineTitle");
+  const header = document.createElement("div"); header.className = "modalHeader";
+  const title = document.createElement("div"); title.className = "modalTitle"; title.id = "computeMachineTitle"; title.textContent = "算力机器设置 · " + (worker.worker_name || worker.id);
+  const close = document.createElement("button"); close.type = "button"; close.className = "iconButton"; close.textContent = "×"; close.setAttribute("aria-label", "关闭");
+  header.append(title, close);
+  const body = document.createElement("div"); body.className = "modalBody";
+  const hint = document.createElement("p"); hint.className = "hint"; hint.textContent = "本人使用和对外分享独立控制。停用后不再领取新任务，正在执行的任务继续完成。";
+  body.appendChild(hint);
+  const checkbox = (id, label, checked) => {
+    const field = document.createElement("label"); field.className = "modalField computeMachineToggle";
+    const input = document.createElement("input"); input.type = "checkbox"; input.id = id; input.checked = checked; input.style.width = "auto";
+    const text = document.createElement("span"); text.textContent = label; field.append(input, text); body.appendChild(field); return input;
+  };
+  const enabled = checkbox("computeMachineEnabled", "启用这台机器", worker.enabled);
+  const field = (label, input) => { const el = document.createElement("label"); el.className = "modalField"; const text = document.createElement("span"); text.textContent = label; el.append(text, input); body.appendChild(el); };
+  const owner = document.createElement("select"); owner.id = "computeMachineOwner";
+  const emptyOwner = document.createElement("option"); emptyOwner.value = ""; emptyOwner.textContent = "未指定本人账号"; owner.appendChild(emptyOwner);
+  const users = computeState.users || [];
+  for (const user of users) { const option = document.createElement("option"); option.value = user.id; option.textContent = userAccountLabel(user) || user.display_name || user.id; owner.appendChild(option); }
+  if (worker.owner_id && !users.some((user) => user.id === worker.owner_id)) { const option = document.createElement("option"); option.value = worker.owner_id; option.textContent = "当前归属 · " + worker.owner_id; owner.appendChild(option); }
+  owner.value = worker.owner_id || ""; field("本人账号（设备归属）", owner);
+  const ownerEnabled = checkbox("computeMachineOwnerEnabled", "允许本人使用", worker.owner_enabled);
+  const sharing = checkbox("computeMachineSharing", "允许对外分享", worker.sharing_enabled);
+  const scope = document.createElement("select"); scope.id = "computeMachineSharingScope";
+  for (const [value, label] of [["pool", "共享算力池（按账号权限分配）"], ["selected", "仅指定账号"]]) { const option = document.createElement("option"); option.value = value; option.textContent = label; scope.appendChild(option); }
+  scope.value = worker.sharing_scope; field("分享范围", scope);
+  const selected = document.createElement("fieldset"); selected.id = "computeMachineAllowedUsers"; selected.style.cssText = "max-height:180px;overflow:auto;border:1px solid #ffffff20;padding:10px";
+  const legend = document.createElement("legend"); legend.textContent = "可使用此机器的账号"; selected.appendChild(legend);
+  const selectedIds = new Set(worker.allowed_user_ids || []);
+  const accountRows = [...users];
+  for (const id of selectedIds) if (!accountRows.some((user) => user.id === id)) accountRows.push({ id, display_name: "现有授权 · " + id });
+  for (const user of accountRows) {
+    const label = document.createElement("label"); label.style.cssText = "display:flex;gap:8px;align-items:center;padding:5px";
+    const input = document.createElement("input"); input.type = "checkbox"; input.value = user.id; input.checked = selectedIds.has(user.id); input.style.width = "auto";
+    const text = document.createElement("span"); text.textContent = userAccountLabel(user) || user.display_name || user.id; label.append(input, text); selected.appendChild(label);
+  }
+  body.appendChild(selected);
+  const sync = () => { scope.disabled = !sharing.checked; selected.hidden = !sharing.checked || scope.value !== "selected"; };
+  scope.addEventListener("change", sync); sharing.addEventListener("change", sync); sync();
+  const status = document.createElement("div"); status.className = "modalStatus"; status.id = "computeMachineSaveStatus"; status.setAttribute("role", "status"); body.appendChild(status);
+  const actions = document.createElement("div"); actions.className = "modalActions";
+  const cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "btn secondary"; cancel.textContent = "取消";
+  const save = document.createElement("button"); save.type = "submit"; save.className = "btn primary"; save.textContent = "保存设置"; actions.append(cancel, save);
+  let saving = false;
+  const finish = () => { if (saving) return; document.removeEventListener("keydown", onKey, true); overlay.remove(); if (trigger?.isConnected) trigger.focus(); };
+  const onKey = (event) => {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finish(); }
+    if (event.key === "Tab") { const controls = [...panel.querySelectorAll("button,input,select")].filter((el) => !el.disabled && el.getClientRects().length); const first = controls[0], last = controls.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
+  };
+  cancel.addEventListener("click", finish); close.addEventListener("click", finish);
+  document.addEventListener("keydown", onKey, true);
+  panel.addEventListener("submit", async (event) => {
+    event.preventDefault(); if (saving) return;
+    const ids = [...selected.querySelectorAll("input:checked")].map((input) => input.value);
+    if (!owner.value) { status.textContent = "请选择设备归属账号"; owner.focus(); return; }
+    if (sharing.checked && scope.value === "selected" && !ids.length) { status.textContent = "请至少选择一个可使用算力的账号"; return; }
+    saving = true; save.disabled = true; cancel.disabled = true; close.disabled = true; status.textContent = "正在保存…";
+    try {
+      const response = await window.adminAPI.setAdminGpuWorkerAccessPolicy({ id: worker.id, owner_id: owner.value || null,
+        enabled: enabled.checked, owner_enabled: ownerEnabled.checked, sharing_enabled: sharing.checked, sharing_scope: scope.value, allowed_user_ids: ids });
+      if (!response?.ok || response.result?.ok !== true) throw Error(response?.result?.error || response?.error || "保存失败");
+      saving = false; finish(); toast("算力机器设置已保存"); await loadComputeData();
+    } catch (error) { status.textContent = String(error?.message || error); }
+    finally { saving = false; save.disabled = false; cancel.disabled = false; close.disabled = false; }
+  });
+  panel.append(header, body, actions); overlay.appendChild(panel); document.body.appendChild(overlay); close.focus();
+}
+
 function renderComputeWorkers(workersResult) {
   const status = $("computeWorkerStatus");
   const writable = workersResult.source === "supabase" && workersResult.status !== "error";
@@ -1331,21 +1408,23 @@ function renderComputeWorkers(workersResult) {
 
   if (isUnconfiguredResult(workersResult)) {
     ["computeStatTotal", "computeStatIdle", "computeStatBusy", "computeStatOffline", "computeStatCompleted"].forEach((id) => setText(id, "—"));
-    replaceRows("computeWorkersTableBody", [], 9, UNCONFIGURED_TEXT);
+    replaceRows("computeWorkersTableBody", [], 11, UNCONFIGURED_TEXT);
     return;
   }
   const workers = workersResult.records || [];
-  const countByStatus = (value) => workers.filter((item) => String(item.status || "") === value).length;
+  const countByStatus = (value) => workers.filter((item) => item.enabled !== false && String(item.status || "") === value).length;
   const sumOf = (field) => workers.reduce((sum, item) => sum + (Number(item[field] || 0) || 0), 0);
   setText("computeStatTotal", formatNumber(workers.length));
   setText("computeStatIdle", formatNumber(countByStatus("idle")));
   setText("computeStatBusy", formatNumber(countByStatus("busy")));
-  setText("computeStatOffline", formatNumber(countByStatus("offline") + countByStatus("maintenance")));
+  setText("computeStatOffline", formatNumber(workers.filter((item) => item.enabled === false || ["offline", "maintenance"].includes(String(item.status || ""))).length));
   setText("computeStatCompleted", `${formatNumber(sumOf("total_completed"))} / ${formatNumber(sumOf("total_failed"))}`);
 
   const rows = workers.map((item) => {
     const tr = document.createElement("tr");
     tr.appendChild(textCell(item.worker_name || item.id));
+    const owner = computeState.users?.find((user) => user.id === item.owner_id);
+    tr.appendChild(textCell(owner ? userAccountLabel(owner) || owner.display_name || owner.id : item.owner_id || "未指定"));
     tr.appendChild(textCell(
       (item.gpu_name || "GPU 未知") + (item.vram_mb ? " · " + Math.round(Number(item.vram_mb) / 1024) + "GB" : "")
     ));
@@ -1369,7 +1448,7 @@ function renderComputeWorkers(workersResult) {
     badge.textContent = reachable ? "对外可达" : "仅本机";
     const address = nodeCell(badge);
     address.title = reachable
-      ? "已开隧道：任何人都能从这台机器取回结果" + (item.endpoint_url ? "\n" + item.endpoint_url : "")
+      ? "已开隧道：获授权的任务可从这台机器取回结果" + (item.endpoint_url ? "\n" + item.endpoint_url : "")
       : "没有对外地址：只有这台机器上的浏览器能取回结果。请确认 Worker 是 0.4.0 或更新，并且能连外网。";
     tr.appendChild(address);
 
@@ -1394,16 +1473,25 @@ function renderComputeWorkers(workersResult) {
     tr.appendChild(nodeCell(tierSelect));
 
     tr.appendChild(nodeCell(statusBadge(COMPUTE_WORKER_STATUS[item.status] || item.status)));
+    const policyReady = workerPolicyAvailable(item);
+    const access = !policyReady ? "权限设置需升级" : !item.enabled ? "已停用" : [item.owner_enabled ? "本人可用" : "本人禁用", item.sharing_enabled ? (item.sharing_scope === "selected" ? "指定用户 " + item.allowed_user_ids.length + " 人" : "共享池") : "未分享"].join(" · ");
+    tr.appendChild(textCell(access));
 
     const action = document.createElement("td");
     if (writable) {
       const actions = document.createElement("div");
       actions.className = "tableActions";
-      const stopped = item.status === "maintenance";
+      const settings = document.createElement("button"); settings.type = "button"; settings.className = "btn secondary"; settings.textContent = "机器设置";
+      settings.disabled = !policyReady || !computeState.writable;
+      settings.title = policyReady ? "配置本人账号、本人使用与对外分享" : "请先应用算力访问策略数据库迁移";
+      settings.addEventListener("click", () => openComputeMachineSettings(item)); actions.appendChild(settings);
+      const stopped = item.enabled === false;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "btn secondary";
       button.textContent = stopped ? "恢复" : "停用";
+      button.disabled = !policyReady;
+      button.title = policyReady ? "控制接收新任务，不改变节点心跳" : "请先应用算力访问策略数据库迁移";
       button.addEventListener("click", async () => {
         button.disabled = true;
         try {
@@ -1431,7 +1519,7 @@ function renderComputeWorkers(workersResult) {
       remove.className = "btn danger";
       remove.textContent = "删除";
       remove.disabled = live;
-      remove.title = live ? "节点在线时不能删除：先停用，等它离线" : "删除这台节点的记录";
+      remove.title = live ? "节点在线时不能删除：请先在助手停止节点，等它离线" : "删除这台节点的记录";
       remove.addEventListener("click", async () => {
         const name = String(item.worker_name || item.id || "");
         const confirmed = await confirmByTyping({
@@ -1468,7 +1556,7 @@ function renderComputeWorkers(workersResult) {
   replaceRows(
     "computeWorkersTableBody",
     rows,
-    9,
+    11,
     isErrorResult(workersResult) ? computeErrorText(workersResult) : "还没有算力节点，发一个注册码接入一台"
   );
 }
@@ -1735,9 +1823,9 @@ async function loadComputeData() {
     const codes = await loadAdminDataset("getAdminWorkerCodes");
     const users = await loadAdminDataset("getAdminUsers");
     const usage = await loadAdminDataset("getAdminWebTaskUsage");
+    renderComputeMintControls(users);
     renderComputeWorkers(workers);
     renderComputeCodes(codes);
-    renderComputeMintControls(users);
     renderComputeUsage(usage, users, workers);
   } catch (err) {
     const status = $("computeWorkerStatus");

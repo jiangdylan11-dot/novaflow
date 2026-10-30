@@ -183,28 +183,18 @@ const supabaseStore = {
     return Number(data || 0);
   },
 
-  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null, allowPremium = true) {
-    const since = new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString();
-    let query = admin()
-      .from('worker_models')
-      .select('worker_id, gpu_workers!inner(id,status,tier,vram_mb,last_heartbeat)')
-      .eq('model_id', modelId)
-      .eq('status', 'ready')
-      .in('gpu_workers.status', ['idle', 'busy'])
-      .gte('gpu_workers.vram_mb', minVramMb)
-      .gt('gpu_workers.last_heartbeat', since);
-    if (workerId) query = query.eq('worker_id', workerId);
-    // A 中级账户 counts 普通 nodes alone.
-    if (allowPremium === false) query = query.neq('gpu_workers.tier', 'premium');
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data || []).length;
+  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null, allowPremium = true, userId: string | null = null, allowShared = true) {
+    const {data,error}=await admin().rpc('novaflow_web_count_capable_workers', {
+      p_model_id:modelId,p_min_vram:minVramMb,p_timeout:heartbeatTimeoutSeconds,p_worker_id:workerId,
+      p_allow_premium:allowPremium,p_user_id:userId,p_allow_shared:allowShared
+    });
+    if(error)throw error;return Number(data||0);
   },
 
   async listPoolWorkers() {
     const { data, error } = await admin()
       .from('gpu_workers')
-      .select('id,worker_name,status,tier,gpu_name,vram_mb,last_heartbeat')
+      .select('id,owner_id,worker_name,status,tier,gpu_name,vram_mb,last_heartbeat,enabled,owner_enabled,sharing_enabled,sharing_scope,allowed_user_ids')
       .order('worker_name');
     if (error) throw error;
     return data || [];
@@ -221,14 +211,12 @@ const supabaseStore = {
     return data;
   },
 
-  async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number) {
-    const { data, error } = await admin().from('worker_models')
-      .select('detail, gpu_workers!inner(status,vram_mb,last_heartbeat)')
-      .eq('model_id', modelId).eq('status', 'ready')
-      .in('gpu_workers.status', ['idle', 'busy']).gte('gpu_workers.vram_mb', minVramMb)
-      .gt('gpu_workers.last_heartbeat', new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString());
-    if (error) throw error;
-    return data || [];
+  async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, userId: string | null = null, allowPremium = true, allowShared = true) {
+    const {data,error}=await admin().rpc('novaflow_web_capable_model_details', {
+      p_model_id:modelId,p_min_vram:minVramMb,p_timeout:heartbeatTimeoutSeconds,p_user_id:userId,
+      p_allow_premium:allowPremium,p_allow_shared:allowShared
+    });
+    if(error)throw error;return data||[];
   },
 
   async createTask({ userId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }: any) {

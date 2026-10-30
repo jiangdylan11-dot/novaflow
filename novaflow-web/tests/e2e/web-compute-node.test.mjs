@@ -99,10 +99,10 @@ check(hosted.groups.map((g) => [g.tier, g.title, g.rows.map((r) => r.name)]), [
   ['standard', '普通算力节点', ['laptop-3060', 'old-box']],
   ['premium', '高级算力节点', ['studio-5090']]
 ]);
-check(picker.TIER_TEXT, { standard: '普通节点', premium: '高级节点' });
+check(picker.TIER_TEXT, { standard: '普通节点', premium: '高级节点', own: '本人设备' });
 
 const local = picker.buildRows(reply, null, true);
-check(local.rows[0], { id: null, name: '本机', hint: '启动NovaFlow 的这台电脑', status: 'local', locked: false, selected: true });
+check(local.rows[0], { id: null, name: '本机', hint: '启动Foart 的这台电脑', status: 'local', locked: false, selected: true });
 
 // A 中级账户: 普通 nodes open, 高级 nodes locked, auto-assign only reaches 普通 nodes.
 const mid = picker.buildRows({ ...reply, compute: { shared: true, premium: false } }, null, false);
@@ -121,5 +121,17 @@ check(basicHosted.rows.map((r) => r.locked), [true, true, true, true]);
 check(/联系管理员/.test(picker.CONTACT_ADMIN), true);
 check(picker.buildRows(null, null, false).rows.length, 1); // an unreadable pool still offers the default
 check(picker.buildRows(null, null, false).groups, []);
+
+// Hosted basic accounts can use their own node without public sharing or a
+// premium plan; another user's premium node remains locked.
+const personal = picker.buildRows({ compute: { shared: false }, nodes: [
+  { id: 'mine', name: 'my-computer', tier: 'premium', is_owner: true, can_use: true, status: 'idle' },
+  { id: 'revoked', name: 'revoked-computer', is_owner: true, can_use: false, status: 'idle' },
+  { id: 'other', name: 'other-computer', tier: 'premium', status: 'idle' }
+] }, { id: 'mine' }, false);
+check(personal.rows.map(row => [row.id, row.locked]), [[null, false], ['mine', false], ['revoked', true], ['other', true]]);
+check(personal.groups[0].title, '我的算力');
+check(personal.groups[0].rows.map(row => row.id), ['mine', 'revoked']);
+check(personal.rows[0].hint, '自动使用本人可用的算力');
 
 console.log(checks + ' passed, 0 failed: topbar 算力源 chip and picker rows');

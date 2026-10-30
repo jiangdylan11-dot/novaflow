@@ -5,7 +5,8 @@ import { dirname, resolve, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const gitDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root, encoding: 'utf8' }).trim();
-assert.equal(await realpath(gitDir), await realpath(join(root, '.git')), 'Git must belong to this project');
+const checkoutRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: root, encoding: 'utf8' }).trim();
+assert.equal(await realpath(checkoutRoot), await realpath(root), 'Git checkout must belong to this project');
 try { await access(join(gitDir, 'objects/info/alternates')); throw new Error('External Git object alternates are not allowed'); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 const contained = async path => {

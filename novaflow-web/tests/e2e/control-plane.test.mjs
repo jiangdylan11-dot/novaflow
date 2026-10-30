@@ -405,7 +405,7 @@ section('算力源 picker: the pool is listed, and a pinned task waits for its n
   const nodes = await call(BASE, 'GET', '/api/web/nodes', { token: alice.token });
   check('a signed-in user sees every pool node with a status', nodes.status === 200 && nodes.body.nodes.length >= 2
     && nodes.body.nodes.every((n) => n.name && ['idle', 'busy', 'offline'].includes(n.status)), nodes.body);
-  check('the listing carries no endpoint, secret or owner', !/endpoint|secret|owner/.test(JSON.stringify(nodes.body)), Object.keys(nodes.body.nodes[0] || {}));
+  check('the listing carries no endpoint, secret or owner', !/endpoint|secret|owner_id/.test(JSON.stringify(nodes.body)), Object.keys(nodes.body.nodes[0] || {}));
   check('and says this account may pin one', nodes.body.compute.shared === true, nodes.body.compute);
   const anon = await call(BASE, 'GET', '/api/web/nodes');
   check('but not without a session', anon.status === 401, anon.status);

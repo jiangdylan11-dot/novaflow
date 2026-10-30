@@ -72,7 +72,7 @@ const adminQueries = {
     limit: 500
   },
   gpu_workers: {
-    select: "id,owner_id,worker_name,status,tier,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
+    select: "id,owner_id,worker_name,status,tier,enabled,owner_enabled,sharing_enabled,sharing_scope,allowed_user_ids,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
     // Until 20260925010000_novaflow_web_node_tiers.sql is applied there is no
     // tier column; the page still has to list the nodes.
     fallbackSelect: "id,owner_id,worker_name,status,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
@@ -1205,12 +1205,13 @@ async function setAdminGpuWorkerStatus(payload) {
   try {
     const { data, error } = await clientState.client
       .from("gpu_workers")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ enabled: status === "idle", updated_at: new Date().toISOString() })
       .eq("id", id)
       .select(adminQueries.gpu_workers.select)
       .maybeSingle();
-    if (error) throw error;
-    logAdminData("info", "set gpu worker status", { source: "supabase", status: "connected", id, workerStatus: status });
+    if (error) throw workerPolicyError(error);
+    if (!data) throw new Error("算力节点不存在，设置未保存");
+    logAdminData("info", "set gpu worker status", { source: "supabase", status: "connected", id, enabled: status === "idle" });
     return {
       source: "supabase",
       status: "connected",
@@ -1223,6 +1224,47 @@ async function setAdminGpuWorkerStatus(payload) {
   } catch (err) {
     return adminWriteErrorResult(operation, err, Date.now() - startedAt);
   }
+}
+
+function workerPolicyError(error) {
+  const message = String(error?.message || error || "");
+  if (/enabled|sharing_scope|allowed_user_ids|schema cache|does not exist|could not find/i.test(message)) {
+    return new Error("算力机器权限设置尚未迁移，请先应用算力访问策略数据库迁移后重试；本次未保存。");
+  }
+  return error;
+}
+
+async function setAdminGpuWorkerAccessPolicy(payload) {
+  const startedAt = Date.now();
+  const operation = "gpu_workers.set_access_policy";
+  const fail = (error) => adminWriteErrorResult(operation, error, Date.now() - startedAt);
+  const id = String(payload?.id || "").trim();
+  if (!id) return fail("缺少算力节点 id");
+  const fields = ["enabled", "owner_enabled", "sharing_enabled"];
+  if (fields.some((field) => typeof payload?.[field] !== "boolean")) return fail("启用、本人使用和对外分享必须分别设置");
+  const scope = payload?.sharing_scope;
+  if (!["pool", "selected"].includes(scope)) return fail("请选择共享池或指定用户");
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ownerId = String(payload?.owner_id || "").trim();
+  if (ownerId && !uuid.test(ownerId)) return fail("本人账号无效");
+  if (!ownerId) return fail("请选择设备归属账号；关闭本人使用也需保留节点归属");
+  if (!Array.isArray(payload.allowed_user_ids) || payload.allowed_user_ids.some((value) => typeof value !== "string" || !uuid.test(value))) return fail("指定用户列表无效");
+  const users = [...new Set(payload.allowed_user_ids)];
+  if (users.length > 200) return fail("指定用户不能超过 200 人");
+  if (payload.sharing_enabled && scope === "selected" && !users.length) return fail("请至少选择一个可使用算力的账号");
+  const clientState = getAdminClient();
+  if (!clientState.client) return fail(clientState.error || "Supabase 未配置，不能写入");
+  try {
+    const { data, error } = await clientState.client.from("gpu_workers").update({
+      owner_id: ownerId || null, enabled: payload.enabled, owner_enabled: payload.owner_enabled,
+      sharing_enabled: payload.sharing_enabled, sharing_scope: scope,
+      allowed_user_ids: users, updated_at: new Date().toISOString()
+    }).eq("id", id).select(adminQueries.gpu_workers.select).maybeSingle();
+    if (error) throw workerPolicyError(error);
+    if (!data) throw new Error("算力节点不存在，设置未保存");
+    logAdminData("info", "set gpu worker access policy", { id, enabled: payload.enabled, sharingEnabled: payload.sharing_enabled });
+    return { source: "supabase", status: "connected", configured: true, ok: true, operation, durationMs: Date.now() - startedAt, record: data };
+  } catch (error) { return fail(error); }
 }
 
 // Node tiers. 普通 (standard) nodes serve 中级 and 高级 accounts, 高级
@@ -3764,6 +3806,7 @@ module.exports = {
   purgeAdminWorkerRegistrationCodes,
   purgeAdminWebTasks,
   setAdminGpuWorkerStatus,
+  setAdminGpuWorkerAccessPolicy,
   setAdminGpuWorkerTier,
   deleteAdminGpuWorker,
   hashWorkerRegistrationCode,

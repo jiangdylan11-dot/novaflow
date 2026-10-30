@@ -1,0 +1,68 @@
+// Real renderer and preload; IPC fixtures never contact production.
+const { app, BrowserWindow, ipcMain } = require('electron');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+app.commandLine.appendSwitch('disable-gpu');
+const root = path.resolve(__dirname, '../license-admin-gui');
+const owner = '11111111-1111-4111-8111-111111111111';
+const guest = '22222222-2222-4222-8222-222222222222';
+const users = [{ id: owner, account: 'machine-owner', plan: 'trial', status: 'active' }, { id: guest, account: 'approved-guest', plan: 'pro', status: 'active' }];
+const worker = { id: 'node-one', owner_id: owner, worker_name: '合作方测试机器', status: 'idle', tier: 'standard',
+  enabled: true, owner_enabled: true, sharing_enabled: false, sharing_scope: 'pool', allowed_user_ids: [], transport: 'tunnel', last_heartbeat: new Date().toISOString() };
+const writes = [], errors = [];
+let failSave = false;
+const result = (records) => ({ ok: true, result: { source: 'supabase', status: 'connected', records } });
+for (const channel of new Set([...fs.readFileSync(path.join(root, 'preload.js'), 'utf8').matchAll(/ipcRenderer\.invoke\("([^"]+)"/g)].map((m) => m[1]))) {
+  ipcMain.handle(channel, async (_event, payload) => {
+    if (channel === 'admin-default-paths') return {};
+    if (channel === 'admin-status') return { ok: true, status: {} };
+    if (channel === 'admin-online-config') return { ok: true, config: {} };
+    if (channel === 'admin:data:users:list') return result(users);
+    if (channel === 'admin:data:gpu_workers:list') return result([{ ...worker }]);
+    if (channel === 'admin:data:gpu_workers:set-access-policy') {
+      if (failSave) return { ok: true, result: { status: 'error', error: 'fixture migration required' } };
+      writes.push(payload); Object.assign(worker, payload); return { ok: true, result: { ok: true, record: worker } };
+    }
+    if (channel === 'admin:data:gpu_workers:set-status') { worker.enabled = payload.status === 'idle'; return { ok: true, result: { ok: true } }; }
+    return result([]);
+  });
+}
+app.whenReady().then(async () => {
+  const win = new BrowserWindow({ show: false, width: 1440, height: 900, webPreferences: { preload: path.join(root, 'preload.js'), contextIsolation: true, nodeIntegration: false, offscreen: true, backgroundThrottling: false } });
+  win.webContents.on('console-message', (_event, level, message) => { if (level >= 3) errors.push(message); });
+  await win.loadFile(path.join(root, 'index.html'));
+  const run = (code) => win.webContents.executeJavaScript(code);
+  const wait = (condition) => run(`new Promise((resolve,reject)=>{const started=Date.now();const timer=setInterval(()=>{if(${condition}){clearInterval(timer);resolve();}else if(Date.now()-started>10000){clearInterval(timer);reject(Error(${JSON.stringify(condition)}));}},25);})`);
+  await run(`showModule('compute')`);
+  await wait(`document.querySelector('#computeWorkersTableBody')?.textContent.includes('本人可用')`);
+  assert.equal(await run(`document.querySelectorAll('.workerTable th').length`), 11);
+  assert.equal(await run(`document.querySelectorAll('#computeWorkersTableBody tr:first-child td').length`), 11);
+  await run(`[...document.querySelectorAll('#computeWorkersTableBody button')].find(el=>el.textContent==='机器设置').click()`);
+  await wait(`!!document.querySelector('#computeMachineSettings')`);
+  assert.equal(await run(`$('computeMachineOwner').value`), owner);
+  assert.equal(await run(`$('computeMachineSharing').checked`), false);
+  await run(`$('computeMachineSharing').click();$('computeMachineSharingScope').value='selected';$('computeMachineSharingScope').dispatchEvent(new Event('change'));$('computeMachineSettings').requestSubmit()`);
+  assert.match(await run(`$('computeMachineSaveStatus').textContent`), /至少选择/);
+  assert.equal(writes.length, 0);
+  await run(`$('computeMachineAllowedUsers').querySelector('input[value="${guest}"]').click();$('computeMachineSettings').requestSubmit()`);
+  await wait(`!document.querySelector('#computeMachineSettings')`);
+  assert.equal(writes.length, 1); assert.equal(writes[0].sharing_enabled, true); assert.equal(writes[0].owner_enabled, true); assert.deepEqual(writes[0].allowed_user_ids, [guest]);
+  await wait(`document.querySelector('#computeWorkersTableBody').textContent.includes('指定用户 1 人')`);
+  failSave = true;
+  await run(`[...document.querySelectorAll('#computeWorkersTableBody button')].find(el=>el.textContent==='机器设置').click();$('computeMachineSettings').requestSubmit()`);
+  await wait(`$('computeMachineSaveStatus')?.textContent.includes('fixture migration required')`);
+  assert.equal(await run(`$('computeMachineSettings').querySelector('button[type=submit]').disabled`), false);
+  if (process.env.NOVAFLOW_TEST_SCREENSHOT_DIR) {
+    await run(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    await new Promise(resolve => { win.webContents.once('paint', resolve); win.webContents.invalidate(); });
+    fs.mkdirSync(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, { recursive: true });
+    fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, 'compute-machine-settings.png'), (await win.webContents.capturePage()).toPNG());
+  }
+  await run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+  assert.equal(await run(`document.querySelector('#computeMachineSettings')`), null);
+  assert.deepEqual(errors, []);
+  fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR || app.getPath('temp'), 'compute-machine-ui-receipt.json'), JSON.stringify({ passed: true, writes, errors }, null, 2));
+  console.log('compute machine UI passed: private owner, selected sharing, validation and failed-save recovery');
+  win.destroy(); app.exit(0);
+}).catch((error) => { console.error(error); app.exit(1); });

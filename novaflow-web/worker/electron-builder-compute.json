@@ -1,0 +1,43 @@
+{
+  "appId": "com.novaflow.compute",
+  "productName": "Foart 算力助手",
+  "executableName": "FoartCompute",
+  "copyright": "Foart",
+  "directories": { "output": "dist-compute", "buildResources": "build" },
+  "extraMetadata": { "main": "electron/compute-main.cjs", "computeOnly": true },
+  "files": [
+    "electron/compute-main.cjs", "electron/compute-preload.cjs", "electron/compute-ui.html", "electron/compute-ui.js", "electron/assets/**/*",
+    "src/**/*", "workflows/**/*", "package.json",
+    "!src/local-assistant.mjs", "!src/local-license.mjs", "!src/local-server.mjs", "!src/local-tasks.mjs", "!src/main-local.mjs", "!src/main-headless.mjs",
+    "!src/art-knowledge-cache.mjs", "!src/art-learning.mjs", "!src/art-task-identity.mjs",
+    "!**/*.map", "!data/**/*"
+  ],
+  "extraResources": [
+    { "from": "src/matting", "to": "matting", "filter": ["*.py"] },
+    { "from": "../../particle-editor-desktop", "to": "desktop-license", "filter": [
+      "main/birefnet-runner.py", "prompt-assistant-service.py", "prompt_assistant/*.py", "prompt_assistant/*.json",
+      "prompt_assistant/ui_catalog/**/*.py", "prompt_assistant/ui_catalog/**/*.json", "prompt_assistant/ui_native/**/*.py", "prompt_assistant/ui_native/**/*.json"
+    ] },
+    { "from": "../packages/shared/src", "to": "packages/shared/src", "filter": [
+      "tokens.mjs", "protocol.mjs", "model-manifest.mjs", "workflow-modules.mjs", "art-prompt-language.mjs",
+      "xiaotao-role-policy.mjs", "xiaotao-upload-guard.mjs", "release.mjs"
+    ] },
+    { "from": "../compute-renderer", "to": "compute-renderer", "filter": ["*.js", "compute-manifest.json"] },
+    { "from": "vendor", "to": "vendor", "filter": ["**/*"] },
+    { "from": "../../particle-editor-desktop/main/qwen-lora-catalog.js", "to": "lora-catalogs/qwen-lora-catalog.cjs" },
+    { "from": "../../particle-editor-desktop/main/minimax-h3-lora-catalog.js", "to": "lora-catalogs/minimax-h3-lora-catalog.cjs" }
+  ],
+  "asar": false,
+  "win": {
+    "icon": "electron/assets/foart-brush.ico",
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "artifactName": "FoartComputeSetup-${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "Foart 算力助手", "deleteAppDataOnUninstall": false,
+    "installerLanguages": ["zh_CN", "en_US"], "language": 2052,
+    "installerIcon": "electron/assets/foart-brush.ico", "uninstallerIcon": "electron/assets/foart-brush.ico", "installerHeaderIcon": "electron/assets/foart-brush.ico"
+  },
+  "compression": "normal", "npmRebuild": false, "buildDependenciesFromSource": false
+}

@@ -437,7 +437,8 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
         worker_version: sanitizeText(hardware.worker_version, 40),
         comfy_version: sanitizeText(hardware.comfy_version, 40),
         endpoint_url: sanitizeText(hardware.endpoint_url, 500),
-        transport: hardware.transport === 'tunnel' ? 'tunnel' : 'direct'
+        transport: hardware.transport === 'tunnel' ? 'tunnel' : 'direct',
+        registration_profile: body.profile === 'compute-only' ? 'compute-only' : 'legacy'
       }
     });
 
@@ -693,16 +694,20 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
 
   async function handleCreateTask(body, headers) {
     const user = await requireUser(headers);
-    // Every task created here runs on somebody else's node. A 普通账户 keeps
-    // to its own machine (the local assistant never calls this endpoint).
-    if (!canUseSharedCompute(user.plan)) {
+    // Website users may use their own authorized machines independently of
+    // pool membership; shared nodes still require the existing account tier.
+    const requestedTarget = sanitizeText(body.target_worker_id || body.targetWorkerId, 80);
+    const ownTarget = UUID_RE.test(requestedTarget) ? await store.getWorkerById(requestedTarget) : null;
+    const hasOwnCompute = !canUseSharedCompute(user.plan) && !requestedTarget
+      && (await store.listWorkers(user.id)).some(worker => workerAllowsUser(worker, user));
+    if (!canUseSharedCompute(user.plan) && !hasOwnCompute && !(ownTarget && String(ownTarget.owner_id) === String(user.id) && workerAllowsUser(ownTarget, user))) {
       throw new HttpError(403, ERROR_CODE.PLAN_REQUIRED,
-        '普通账户只能使用本机算力：请在本地助手点击“启动NovaFlow”后生成。使用其他算力节点需要中级或高级账户。',
+        '此账号没有获准使用的本人算力机器，请先接入助手并联系管理员设置机器归属和本人使用权限。使用其他算力节点需要中级或高级账户。',
         { plan: String(user.plan || 'trial') });
     }
     // A 中级账户 may use 普通 nodes only; the scheduler reads this flag off the
     // task so a 高级 node never picks its work up, pinned or not.
-    const allowPremiumNodes = canUsePremiumNodes(user.plan);
+    const allowPremiumNodes = canUsePremiumNodes(user.plan) || Boolean(ownTarget && String(ownTarget.owner_id) === String(user.id));
     const taskType = sanitizeText(body.task_type || body.taskType, 80);
 
     // Two ways in. A fixed task type is the simple API. A renderer workflow
@@ -757,9 +762,10 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
       if (!UUID_RE.test(targetId)) throw bad('invalid compute node id');
       target = await store.getWorkerById(targetId);
       if (!target) throw new HttpError(404, ERROR_CODE.NOT_FOUND, '所选算力节点不存在或已移除，请重新选择算力源');
-      if (!planAllowsNode(user.plan, target.tier)) {
-        throw new HttpError(403, ERROR_CODE.NODE_TIER_REQUIRED,
-          '中级账户只能使用普通算力节点；使用高级算力节点需要高级账户。',
+      if (!workerAllowsUser(target, user)) {
+        const tierDenied = String(target.owner_id) !== String(user.id) && !planAllowsNode(user.plan, target.tier);
+        throw new HttpError(403, tierDenied ? ERROR_CODE.NODE_TIER_REQUIRED : ERROR_CODE.FORBIDDEN,
+          tierDenied ? '中级账户只能使用普通算力节点；使用高级算力节点需要高级账户。' : '此账号没有使用该算力机器的权限，请联系管理员。',
           { plan: String(user.plan || 'trial'), node_tier: normalizeNodeTier(target.tier) });
       }
     }
@@ -768,7 +774,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
     // a queue nobody drains. Pinned work counts its node alone; a 中级账户
     // counts 普通 nodes alone.
     const capable = await store.countCapableWorkers(req.modelId, req.minVramMb, HEARTBEAT_TIMEOUT_SECONDS,
-      target ? target.id : null, allowPremiumNodes);
+      target ? target.id : null, allowPremiumNodes, user.id, canUseSharedCompute(user.plan));
     const inputManifest = {
       parameters,
       min_vram_mb: req.minVramMb,
@@ -828,13 +834,13 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
     try {
       const manifest = task.input_manifest || {};
       const target = manifest.target_worker_id || null;
-      const key = [task.model_id, target || '', manifest.allow_premium_nodes === false ? 'n' : 'p'].join('|');
+      const key = [task.user_id, task.model_id, target || '', manifest.allow_premium_nodes === false ? 'n' : 'p'].join('|');
       let stats = queueStatsCache.get(key);
       if (!stats || Date.now() - stats.at > QUEUE_STATS_TTL_MS) {
         const [recent, workers] = await Promise.all([
           store.queueStats({ modelId: task.model_id }),
           store.countCapableWorkers(task.model_id, Number(manifest.min_vram_mb) || 0, HEARTBEAT_TIMEOUT_SECONDS,
-            target, manifest.allow_premium_nodes !== false)
+            target, manifest.allow_premium_nodes !== false, task.user_id, true)
         ]);
         const runs = (recent.recentRuns || [])
           .map((run) => (Date.parse(run.completed_at) - Date.parse(run.started_at)) / 1000)
@@ -1033,7 +1039,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
     const rows = await store.listPoolWorkers();
     const since = Date.now() - HEARTBEAT_TIMEOUT_SECONDS * 1000;
     const rank = { idle: 0, busy: 1, offline: 2 };
-    const nodes = rows.map((w) => {
+    const nodes = rows.filter(w => workerAllowsUser(w, user)).map((w) => {
       const beat = w.last_heartbeat ? new Date(w.last_heartbeat).getTime() : 0;
       const online = beat > since && ['idle', 'busy'].includes(String(w.status));
       return {
@@ -1042,6 +1048,9 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
         gpu_name: w.gpu_name || '',
         vram_mb: Number(w.vram_mb) || 0,
         tier: normalizeNodeTier(w.tier),
+        is_owner: String(w.owner_id) === String(user.id),
+        can_use: true,
+        policy: workerPolicy(w, String(w.owner_id) === String(user.id)),
         status: online ? String(w.status) : 'offline',
         online,
         last_heartbeat: w.last_heartbeat || null
@@ -1072,19 +1081,22 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
   // Public on purpose. The app has to be able to say "算力可用" before anyone
   // logs in, and a COUNT is all it needs: no names, no GPUs, no endpoints, no
   // owners. Whose machines they are stays behind a session.
-  async function handleCapabilities(query) {
+  async function handleCapabilities(query, headers = {}) {
+    const user = (headers.authorization || headers.Authorization) ? await requireUser(headers) : null;
     // ?worker=<id> narrows every count to one node, for a page that pinned its
     // work there: 「AI 已连接」 then speaks for that node, not for the pool.
     const workerId = UUID_RE.test(String(query && query.worker || '')) ? String(query.worker) : null;
     const entries = Object.entries(TASK_TYPE_REQUIREMENTS);
     const counts = await Promise.all(entries.map(([, value]) =>
-      store.countCapableWorkers(value.modelId, value.minVramMb, HEARTBEAT_TIMEOUT_SECONDS, workerId)
+      store.countCapableWorkers(value.modelId, value.minVramMb, HEARTBEAT_TIMEOUT_SECONDS, workerId,
+        user ? canUsePremiumNodes(user.plan) : true, user?.id || null, user ? canUseSharedCompute(user.plan) : true)
         .catch(() => 0)
     ));
     // The drawing and UI-design panels use Qwen-Image-2.1 while a node that can build it is online;
     // their runs then queue for that model (workflowModelId), so only such a node takes them.
     const qwen21 = await store.countCapableWorkers(QWEN21_MODEL_ID, findModel(QWEN21_MODEL_ID).min_vram_mb,
-      HEARTBEAT_TIMEOUT_SECONDS, workerId).catch(() => 0);
+      HEARTBEAT_TIMEOUT_SECONDS, workerId, user ? canUsePremiumNodes(user.plan) : true, user?.id || null,
+      user ? canUseSharedCompute(user.plan) : true).catch(() => 0);
     const taskTypes = entries.map(([key, value], i) => ({
       task_type: key,
       model_id: value.modelId,
@@ -1109,7 +1121,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
   }
 
   async function handleLoraCatalog(kind, query, headers, selection) {
-    await requireUser(headers);
+    const user = await requireUser(headers);
     if (!['qwen', 'h3'].includes(kind)) throw bad('invalid LoRA kind');
     const mode = String(query.mode || 'i2v');
     const steps = Number(query.steps || 4);
@@ -1117,7 +1129,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
     // A 2.1 run takes the LoRAs every 2.1 node can load, checked against its own 2.1 model.
     const engine = kind === 'qwen' && query.engine === 'qwen-2.1' ? 'qwen-2.1' : '';
     const modelId = kind === 'h3' ? 'minimax-h3' : engine ? QWEN21_MODEL_ID : 'qwen-image-2511';
-    const rows = await store.listCapableModelDetails(modelId, kind === 'h3' ? 15000 : 16000, HEARTBEAT_TIMEOUT_SECONDS);
+    const rows = await store.listCapableModelDetails(modelId, kind === 'h3' ? 15000 : 16000, HEARTBEAT_TIMEOUT_SECONDS, user.id, canUsePremiumNodes(user.plan), canUseSharedCompute(user.plan));
     let items;
     try { items = commonLoraCatalog(rows, { kind, mode, steps, engine, nsfw: query.nsfw === 'true' || query.nsfw === true }); }
     catch (error) { throw new HttpError(503, 'lora_catalog_unavailable', error.message); }
@@ -1168,7 +1180,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });
       }
-      if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities(query));
+      if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities(query, headers));
       if (method === 'GET' && path === '/api/web/me') return ok(await handleMe(headers));
       if (method === 'GET' && path === '/api/web/loras/qwen') return ok(await handleLoraCatalog('qwen', query, headers));
       if (method === 'GET' && path === '/api/web/loras/h3') return ok(await handleLoraCatalog('h3', query, headers));
@@ -1253,6 +1265,24 @@ function resultTtlSeconds(taskType) {
 }
 
 // The secret hash never leaves the server.
+export function workerPolicy(worker, includeAllowed = true) {
+  return {
+    enabled: worker.enabled !== false,
+    owner_enabled: worker.owner_enabled !== false,
+    sharing_enabled: worker.sharing_enabled !== false,
+    sharing_scope: worker.sharing_scope === 'selected' ? 'selected' : 'pool',
+    ...(includeAllowed ? { allowed_user_ids: Array.isArray(worker.allowed_user_ids) ? worker.allowed_user_ids : [] } : {})
+  };
+}
+
+export function workerAllowsUser(worker, user) {
+  const policy = workerPolicy(worker);
+  if (!policy.enabled) return false;
+  if (user && String(worker.owner_id) === String(user.id)) return policy.owner_enabled;
+  return Boolean(user && canUseSharedCompute(user.plan) && planAllowsNode(user.plan, worker.tier)
+    && policy.sharing_enabled && (policy.sharing_scope === 'pool' || policy.allowed_user_ids.includes(String(user.id))));
+}
+
 function publicWorker(worker) {
   if (!worker) return null;
   return {
@@ -1260,6 +1290,7 @@ function publicWorker(worker) {
     worker_name: worker.worker_name,
     status: worker.status,
     tier: normalizeNodeTier(worker.tier),
+    policy: workerPolicy(worker),
     gpu_name: worker.gpu_name,
     vram_mb: worker.vram_mb,
     ram_mb: worker.ram_mb,

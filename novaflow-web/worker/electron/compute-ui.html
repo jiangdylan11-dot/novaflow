@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
+<title>Foart 算力助手</title><style>
+*{box-sizing:border-box}body{margin:0;background:#202020;color:#ddd;font:13px/1.6 'Segoe UI','Microsoft YaHei',sans-serif}main{max-width:720px;margin:auto;padding:25px 30px}h1{font-size:21px;margin:0}p{color:#aaa;margin:7px 0 18px}.card{padding:16px;background:#262626;border:1px solid #3a3a3a;border-radius:8px;margin:14px 0}.row{display:flex;gap:10px;align-items:center;justify-content:space-between}button{font:inherit;color:#ddd;background:#353535;border:1px solid #505050;border-radius:6px;padding:8px 15px;cursor:pointer}button.primary{background:#b84a40;color:#fff;border-color:#b84a40}button:disabled{opacity:.5;cursor:wait}label{display:block;color:#bbb;margin:10px 0 4px}input{width:100%;padding:8px 10px;background:#1c1c1c;border:1px solid #484848;border-radius:5px;color:#eee;font:inherit}.folder{display:flex;gap:8px}.folder input{flex:1;min-width:0}small{color:#aaa}#status{font-size:16px;color:#dedede}#error{color:#f2a49b;white-space:pre-wrap;overflow-wrap:anywhere}#policy{white-space:pre-line;color:#aaa}.footer{display:flex;gap:8px;justify-content:flex-end}#version{color:#888}progress{width:100%;accent-color:#bd5144}#progressText{color:#bbb}
+</style></head><body><main>
+<div class="row"><h1>Foart 算力助手</h1><span id="version"></span></div>
+<p>在官网使用 Foart；此助手连接本机模型和算力。</p>
+<button class="primary" id="website">打开 Foart 官网 ↗</button>
+<section class="card" aria-live="polite"><div class="row"><strong id="status">正在读取状态…</strong><button id="connection">连接节点</button></div>
+<div id="hardware"></div><div id="policy"></div><div id="activity"></div>
+<div id="progress" hidden><progress max="100" value="0"></progress><div id="progressText"></div></div>
+<div id="error" role="alert"></div></section>
+<section class="card"><strong>节点设置</strong>
+<label for="workerName">设备名称</label><input id="workerName" maxlength="80" autocomplete="off">
+<label for="modelsRoot">模型目录</label><div class="folder"><input id="modelsRoot" placeholder="自动读取已安装环境的模型目录"><button id="folder">选择</button></div>
+<label for="registrationCode">首次接入码</label><input id="registrationCode" placeholder="管理员提供的 NFW-… 接入码" autocomplete="off">
+<small>首次接入后自动保存节点身份。本人使用和对外分享权限由后台设置；以后启动自动连接。</small>
+<div class="footer"><button id="logs">查看日志</button><button id="save">保存并连接</button></div>
+</section></main><script src="compute-ui.js"></script></body></html>

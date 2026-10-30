@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("adminAPI", {
   createAdminWorkerCode: (payload) => ipcRenderer.invoke("admin:data:worker_codes:create", payload),
   revokeAdminWorkerCode: (payload) => ipcRenderer.invoke("admin:data:worker_codes:revoke", payload),
   setAdminGpuWorkerStatus: (payload) => ipcRenderer.invoke("admin:data:gpu_workers:set-status", payload),
+  setAdminGpuWorkerAccessPolicy: (payload) => ipcRenderer.invoke("admin:data:gpu_workers:set-access-policy", payload),
   setAdminGpuWorkerTier: (payload) => ipcRenderer.invoke("admin:data:gpu_workers:set-tier", payload),
   deleteAdminGpuWorker: (payload) => ipcRenderer.invoke("admin:data:gpu_workers:delete", payload),
   deleteAdminWorkerCode: (payload) => ipcRenderer.invoke("admin:data:worker_codes:delete", payload),

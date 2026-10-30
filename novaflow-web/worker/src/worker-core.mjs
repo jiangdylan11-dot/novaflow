@@ -208,6 +208,7 @@ export function createWorker(options) {
     workerName = 'novaflow-worker',
     rendererDir = '',
     registrationCode = '',
+    registrationProfile = '',
     ownerSessionToken = '',
     pollIntervalMs = 2000,
     localTasks = null,
@@ -217,6 +218,13 @@ export function createWorker(options) {
     logger
   } = options;
   const promptAssistantRef = () => (typeof promptAssistant === 'function' ? promptAssistant() : promptAssistant) || null;
+  const hasComputePolicy = policy => policy && ['enabled', 'owner_enabled', 'sharing_enabled'].every(key => typeof policy[key] === 'boolean')
+    && ['pool', 'selected'].includes(policy.sharing_scope) && Array.isArray(policy.allowed_user_ids);
+  function requireComputePolicy(policy) {
+    if (registrationProfile === 'compute-only' && !hasComputePolicy(policy)) {
+      throw new Error('平台算力机器权限服务需要升级；本节点尚未开始接收任务，请联系管理员');
+    }
+  }
   // Video (MiniMax H3) runs on the image runtime since 2026-09-26; see videoRuntimeUrl.
   const comfyVideoUrl = videoRuntimeUrl(configuredVideoUrl, comfyImageUrl);
 
@@ -256,6 +264,7 @@ export function createWorker(options) {
     transport: 'direct',
     lastError: '',
     lastHeartbeatAt: null,
+    platformOnline: false,
     startedAt: nowIso(),
     comfy: { image: false, video: false },
     features: { qwenImage21: false },
@@ -289,7 +298,9 @@ export function createWorker(options) {
       stats: { ...state.stats },
       version: WORKER_VERSION,
       boundAccount: state.boundAccount || null,
-      localRunning, sharing, draining, queuedLocal: localTasks?.pendingCount() || 0
+      policy: state.policy ? structuredClone(state.policy) : null,
+      localRunning, sharing, draining, queuedLocal: localTasks?.pendingCount() || 0,
+      connected: sharing && state.platformOnline && Boolean(state.endpointUrl)
     };
   }
 
@@ -441,6 +452,7 @@ export function createWorker(options) {
       worker_id: state.workerId,
       worker_name: workerName,
       worker_secret: state.workerSecret,
+      ...(registrationProfile ? { profile: registrationProfile } : {}),
       hardware
     };
     if (activeRegistrationCode && !sessionToken) body.registration_code = activeRegistrationCode;
@@ -451,6 +463,9 @@ export function createWorker(options) {
     });
     state.workerToken = res.workerToken;
     state.grantKey = res.grantKey;
+    state.policy = res.policy || res.worker?.policy || null;
+    requireComputePolicy(state.policy);
+    state.platformOnline = true;
     state.status = 'idle';
     log('registered', { workerId: state.workerId, gpu: state.gpu.name, vramMb: state.gpu.vramMb });
     emit();
@@ -546,7 +561,7 @@ export function createWorker(options) {
       state.comfy.image = await comfyImage.isUp();
       state.comfy.video = await comfyVideo.isUp();
       if (previous.image !== state.comfy.image || previous.video !== state.comfy.video || Date.now() - lastModelReportAt > 120000) await reportModels();
-      await callControl('POST', '/api/worker/heartbeat', {
+      const reply = await callControl('POST', '/api/worker/heartbeat', {
         token: state.workerToken,
         body: {
             status: sharing && (!tunnel || tunnel.url) && !localTasks?.has(state.currentTaskId) ? state.status : 'maintenance',
@@ -559,9 +574,15 @@ export function createWorker(options) {
           }
         }
       });
+      if (registrationProfile === 'compute-only') {
+        state.policy = reply.policy || reply.worker?.policy || null;
+        requireComputePolicy(state.policy);
+      } else if (reply.policy || reply.worker?.policy) state.policy = reply.policy || reply.worker.policy;
+      state.platformOnline = true;
       state.lastHeartbeatAt = nowIso();
       state.lastError = '';
     } catch (error) {
+      state.platformOnline = false;
       // A 401 means our token aged out; re-register rather than going quiet.
       if (error.status === 401) {
         log('worker token rejected, re-registering');
@@ -1012,9 +1033,15 @@ export function createWorker(options) {
     const local = localRunning && localTasks?.next();
     if (local) claim = { task: local };
     else if (!sharing || !running || (tunnel && !tunnel.url)) return false;
+    if (!local && registrationProfile === 'compute-only' && (!hasComputePolicy(state.policy) || !state.policy.enabled)) return false;
     try {
       if (!claim) claim = await callControl('POST', '/api/worker/claim', { token: state.workerToken });
     } catch (error) {
+      if (registrationProfile === 'compute-only') {
+        state.platformOnline = false;
+        state.lastError = String(error.message || error);
+        emit();
+      }
       if (error.status === 401) await register().catch(() => {});
       return false;
     }
