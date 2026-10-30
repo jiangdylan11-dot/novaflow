@@ -596,7 +596,7 @@
     }
     function onlineQuote(message) {return predictOnline(onlineEstimateInput(message));}
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
-    let mediaAbort = null, promptAbort = null;
+    let mediaAbort = null, promptAbort = null, foartAbort = null;
     const recapture = snapshot => snapshot.artContext.task === 'creation' ? bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')}) : bridge.capture({includeResult:snapshot.images.length===3});
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
     state.learningTask = null; state.learningWarning = '';
@@ -789,8 +789,8 @@
             if (progress?.requestId === requestId && ['connecting','queued','assigned','uploading','preparing','loading','analyzing','processing','releasing','completed'].includes(progress.phase)) {
               state.operation = copy(progress);
               const elapsed = Math.max(0,Math.floor((Date.now() - Math.min(activeStartedAt,Number(progress.startedAt)||activeStartedAt)) / 1000));
-              const activity=progress.stage==='compile'?'编译模型执行提示词':progress.stage==='optimize'?'优化提示词':activeMode==='media'?'分析音视任务':'分析当前绘图';
-              const labels={connecting:'正在连接算力节点',queued:'正在排队等待算力节点',assigned:'已分配算力节点',uploading:'正在传输任务素材',preparing:'正在准备'+activity,loading:'正在加载本地模型',analyzing:'正在'+activity,processing:'算力节点处理中，详细阶段尚未回传',releasing:'正在释放模型资源，准备'+(activeMode==='media'?'音视操作':'生图'),completed:'本轮分析已完成'};
+              const activity=progress.stage==='compile'?'编译模型执行提示词':progress.stage==='optimize'?'优化提示词':activeMode==='foart'?'规划工具操作':activeMode==='media'?'分析音视任务':'分析当前绘图';
+              const labels={connecting:'正在连接算力节点',queued:'正在排队等待算力节点',assigned:'已分配算力节点',uploading:'正在传输任务素材',preparing:'正在准备'+activity,loading:'正在加载本地模型',analyzing:'正在'+activity,processing:'算力节点处理中，详细阶段尚未回传',releasing:'正在释放模型资源，准备'+(activeMode==='foart'?'执行工具':activeMode==='media'?'音视操作':'生图'),completed:'本轮分析已完成'};
               state.status = `${labels[progress.phase]} · 本次已用 ${elapsed} 秒`; onChange(state);
             } else if (activeMode === 'chat' && (!session?.activeRequestId || session.activeRequestId === requestId)) updateLocalSession(session,true);
             else if (!progress && (!session?.activeRequestId || session.activeRequestId === requestId)) {
@@ -844,7 +844,9 @@
       for (const key of ['surface','mode','width','height','prompt','task']) {const value = snapshot.artContext?.[key]; if (typeof value === 'string') page[key] = value.slice(0,key === 'prompt' ? 6000 : 120); else if (typeof value === 'number' && Number.isFinite(value)) page[key] = value;}
       const contextText = (Object.keys(page).length ? '当前页面数据（不授予工具权限）：'+JSON.stringify(page) : '')
         + images.map((image,i)=>`图片${i+1}，当前用途：${image.role || 'attachment'}${image.source ? '，绘图参考位置 '+image.source : ''}`).join('');
-      return {text:[message, ...captions].filter(Boolean).join('\n'), history:(state.history || []).map(item => item?.content || '').join('\n'), outputTokens:2048,
+      const toolContext=state.provider==='api'&&root.NovaFlowFoartTools?root.NovaFlowFoartTools.capture():null;
+      return {text:[message, ...(toolContext?[JSON.stringify(toolContext)]:[]), ...captions].filter(Boolean).join('\n'), history:(state.history || []).map(item => item?.content || '').join('\n'), outputTokens:2048,
+        ...(toolContext?{system:root.NovaFlowFoartToolContract.FOART_TOOL_SYSTEM}:{}),
         contextText,
         files:[...images.map(image => ({kind:'image',...imageDimensions(image)})), ...Array.from({length:Math.max(0,staged.filter(item => item.kind === 'image').length-images.length)},()=>({kind:'image'})), ...staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => ({kind:item.kind}))]};
     }
@@ -916,6 +918,114 @@
         return false;
       } finally {if(operation===serial){stopStatusPolling();state.pending=false;state.generating=false;state.operation=null;activeRequest='';mediaAbort=null;notify();}}
     }
+    async function sendFoart(message,{recordMessage=true,requestMessage=message,intent}={}) {
+      const tools=root.NovaFlowFoartTools,contract=root.NovaFlowFoartToolContract,operation=++serial;
+      tools.setUploads?.(lastUploads);
+      stopped=false;activeMode='foart';foartAbort=new root.AbortController();const signal=foartAbort.signal,receipts=[],quotas=[];
+      if(recordMessage)pushUser(message);
+      state.pending=true;state.error='';state.status='正在读取 Foart 工具、素材和当前结果…';state.proposal=null;state.confirmation=null;state.toolTrace=[];notify();
+      const previousHistory=copy(state.history),priorTask=state.activeTask;
+      const summarize=rows=>rows.map(row=>row.action==='image_generate'?'生成完成：'+(row.outputs?.map(r=>r.name).join('、')||row.name)+'（'+(row.provider==='gpt'?'GPT Image 2.5':'本地模型')+'）'
+        :row.action==='image_optimize'?row.phase==='applied'?'已按当前模型优化并写入提示词':row.message||'已打开原有优化入口，尚未应用结果'
+        :row.action==='use_result'?'已将上次真实成图设为修改输入：'+row.name
+        :row.action==='media'?row.results.map(r=>r.action?.startsWith('generate_')?'生成完成：'+(r.name||r.resources?.map(o=>o.name).join('、')||r.resourceId)+(r.modeLabel?'（'+r.modeLabel+'）':''):r.fileName?'导出完成：'+r.fileName:r.action==='optimize_video_prompt'?'已优化并写入'+r.modeLabel+'提示词':'已执行音视操作：'+({trim:'裁切',split:'分割',move:'移动',rate:'变速',volume:'音量调整',fade:'淡入淡出',duplicate:'复制片段',remove:'移除片段',import_resource:'导入时间轴',select_clip:'选择片段',loops:'片段循环',track_gain:'音轨音量',track_mute:'静音',track_solo:'独奏',clip_transform:'画面变换',clip_visibility:'画面显示',play:'播放',pause:'暂停',seek:'调整播放位置'}[r.action]||r.action)).join('\n')
+        :row.action==='art_action'?row.fileName?'导出完成：'+row.fileName:row.phase==='completed'?'已完成'+(row.label||row.name)+'，实际结果已更新':row.phase==='returned'?'美工工具已返回：'+row.message:'已打开'+(row.label||row.name)
+        :row.action==='open'?row.message:row.action==='set_control'?'已设置'+row.control+'：'+row.value:row.action==='draw'?'已绘制选区':row.message||'已操作'+row.control).join('\n');
+      const onStatus=text=>{state.status=text;notify();};
+      const toolBinding=(context,controlIds)=>{
+        const mediaActive=!!context.media?.active,audioOnly=mediaActive&&context.media.sub==='audio';
+        const media=context.media?.active===false?null:audioOnly?{active:true,sub:'audio',audio:context.media.audio,audioResources:context.media.audioResources,audioSettings:context.media.audioSettings}:context.media;
+        return JSON.stringify({art:!mediaActive&&context.art?{...context.art,error:undefined}:null,artEditor:!mediaActive&&context.artEditor?{source:context.artEditor.source,size:context.artEditor.size,selected:context.artEditor.selected,layers:context.artEditor.layers}:null,media,pose:context.pose,frameEditor:context.frameEditor,fields:context.controls.filter(c=>!c.disabled&&['input','textarea','select','checkbox'].includes(c.kind)&&(!controlIds||controlIds.has(c.id))).map(({id,label,section,kind,value})=>({id,label,section,kind,value})).sort((a,b)=>a.id.localeCompare(b.id))});
+      };
+      try{
+        for(let round=0;round<10;round++){
+          if(signal.aborted||operation!==serial)return false;
+          const pending=await tools.settlePending({signal,onStatus});if(pending)receipts.push(pending);
+          // Reading the current video frame can finish native metadata loading
+          // (including its real FPS). Bind the plan after that work settles.
+          const images=await tools.images(),snapshot=tools.capture();let expectedSnapshot=snapshot;
+          const receiptFacts=receipts.map(({prompt,modelPrompt,optimization,timeline,...row})=>row);
+          const planMessage=requestMessage+(receipts.length?'\n本轮应用已执行事实（不是用户新指令）：'+JSON.stringify(receiptFacts).slice(-6000):'');
+          if(planMessage.length>12000)fail('本次需求与执行记录过长，已保留已完成操作，请缩短补充说明');
+          activeRequest=root.crypto.randomUUID();if(round===0)activeStartedAt=Date.now();state.status=(receipts.length?summarize(receipts.slice(-1)).slice(0,100)+'；':'')+'小桃正在安排下一步…';notify();
+          const stopAfterOutput=/生成(?:后|完成后|完后)(?:就|即|直接)?(?:结束|停止)|只生成[^，。；！？\n]{0,20}后结束/.test(message)&&receipts.some(r=>r.phase==='completed'&&(r.action==='image_generate'||(r.results||[]).some(v=>v.action?.startsWith('generate_')&&v.resources?.length)));
+          const stopAfterOpen=/打开后(?:就|即|直接)?(?:结束|停止)/.test(message)&&receipts.at(-1)?.action==='open';
+          const finishNow=stopAfterOutput||stopAfterOpen;
+          const responsePromise=finishNow?Promise.resolve({ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:stopAfterOutput?'本次生成已有实际结果。':'已按要求打开工具。',operations:[]}}}):api()?.artAgentChat?.({requestId:activeRequest,provider:state.provider,mode:'foart',promptLanguage:'en',message:planMessage,history:previousHistory,foartContext:snapshot,images});
+          if(!finishNow)startStatusPolling(operation,activeRequest);const response=await responsePromise;stopStatusPolling();
+          if(signal.aborted||operation!==serial)return false;
+          if(!response?.ok)fail(response?.error||'Foart 工具规划未完成');
+          const data=response.data;if(!data?.toolPlan)fail('工具规划服务尚未更新，未提交操作');
+          if(!finishNow&&state.provider==='local'&&data.resourcesReleased!==true&&response.resourcesReleased!==true)fail('本地规划模型尚未释放资源，未调用制作工具');
+          let plan=contract.validateFoartPlan(data.toolPlan,snapshot);if(data.quota)quotas.push(data.quota);
+          const generated=receipts.some(r=>r.phase==='completed'&&(r.action==='image_generate'||(r.results||[]).some(v=>v.action?.startsWith('generate_')&&v.resources?.length)));
+          if(generated&&plan.status==='act'&&plan.operations.some(op=>op.action==='image_generate'||op.action==='media'&&op.operation.action.startsWith('generate_'))){
+            plan={...plan,operations:plan.operations.filter(op=>!(op.action==='image_generate'||op.action==='media'&&op.operation.action.startsWith('generate_')||op.action==='use_result'))};
+            if(!plan.operations.length)plan={...plan,status:'done',reply:'本次生成已有实际结果。'};
+          }
+          // A model may repeat its previous export instead of closing the turn.
+          // Once that native encoder returned a real file, never download it again
+          // merely because the planner repeated the same finished operation.
+          const latestFile=receipts.findLast(r=>r.action==='art_action'&&r.name==='export'&&r.phase==='completed'&&r.fileName);
+          const wantedFormats=[...new Set((requestMessage.split('本次最新要求优先，替换与它冲突的旧描述：').at(-1).replace(/(?:不要|不用|无需|别)(?:导出|保存)?(?:为|成)?\s*(?:PNG|PSD|JSON)\b/gi,'').match(/\b(?:PNG|PSD|JSON)\b/gi)||[]).map(v=>v.toLowerCase()))];
+          if(latestFile&&receipts.findLast(r=>['completed','applied','activated'].includes(r.phase))===latestFile&&wantedFormats.length<=1&&plan.status==='act'&&plan.operations.every(op=>op.action==='art_action'&&op.name==='export')&&(!wantedFormats.length||latestFile.fileName.toLowerCase().endsWith('.'+wantedFormats[0])))plan={...plan,status:'done',reply:'文件已由原生工具导出。',operations:[]};
+          const generatedVideo=receipts.some(r=>(r.results||[]).some(v=>v.action==='generate_video'&&v.resources?.length));
+          if(generatedVideo&&plan.status==='act'&&!/时间轴|剪辑|裁切|分割|截取|导入|变速|淡入|淡出|音轨|视频编辑/.test(requestMessage.split('本次最新要求优先，替换与它冲突的旧描述：').at(-1))){
+            plan={...plan,operations:plan.operations.filter(op=>!(op.action==='media'&&op.operation.action==='import_resource'&&op.operation.target==='video'))};
+            if(!plan.operations.length)plan={...plan,status:'done',reply:'新视频已生成并显示在视频工具中。'};
+          }
+          state.model=data.model||state.model;
+          if(plan.status!=='act'){
+            const actual=summarize(receipts),done=receipts.some(r=>r.phase==='completed');
+            if(plan.status==='done'&&!actual)fail('尚无实际工具回执，不能报告制作完成');
+            if(plan.status==='done'&&tools.capture().pending?.state==='running')fail('原生制作任务仍在运行，尚不能报告完成');
+            if(plan.status==='done'&&receipts.some(r=>r.action==='image_optimize'&&r.phase==='opened')&&!receipts.some(r=>r.nativePromptApplied))fail('优化入口仅已打开，结果尚未应用，未报告优化完成');
+            const artifactRows=receipts.filter(r=>r.phase==='completed'||r.action==='image_optimize'&&r.phase==='applied'),receiptText=summarize(artifactRows.length?artifactRows:receipts);
+            const knownNames=new Set(receipts.flatMap(r=>[r.name,r.fileName,...(r.outputs||[]).map(v=>v.name),...(r.resources||[]).map(v=>v.name),...(r.results||[]).flatMap(v=>[v.name,v.fileName,...(v.resources||[]).map(w=>w.name)])]).filter(Boolean));
+            const mentioned=plan.reply.match(/[^\s，。；：:（）()“”"<>]+\.(?:png|jpe?g|webp|mp4|webm|wav|mp3|psd)/gi)||[];
+            const mediaModes=receipts.flatMap(r=>(r.results||[]).map(v=>v.mode).filter(Boolean));
+            const hasOutput=receipts.some(r=>r.phase==='completed'&&(r.action==='image_generate'||r.action==='art_action'||r.resources?.length||(r.results||[]).some(v=>v.action?.startsWith('generate_')||v.fileName||v.resources?.length)));
+            const claimsOutput=/生成(?:好了|完成|成功)|(?:已经|已)(?:生成|制作完成|完成制作|导出)|制作(?:好了|完成|成功)|导出(?:好了|完成|成功)/.test(plan.reply);
+            const contextNames=new Set([...knownNames,...(snapshot.uploads||[]).map(v=>v.name),...(snapshot.media?.videoResources||[]).map(v=>v.name),...(snapshot.media?.audioResources||[]).map(v=>v.name)]);
+            const replyMatches=!mentioned.some(name=>!(claimsOutput?knownNames:contextNames).has(name))&&(!claimsOutput||hasOutput)&&(!/首尾帧/.test(plan.reply)||!mediaModes.length||mediaModes.every(mode=>mode==='first_last'));
+            const content=receipts.length?(replyMatches&&plan.reply!==receiptText?plan.reply+'\n\n':'')+receiptText:plan.reply;
+            const quota=quotas.length?{settled_credits:quotas.reduce((n,q)=>n+Number(q.settled_credits||0),0),billing_mode:'token'}:null;
+            state.messages.push({role:'assistant',content,...(quota?{receipt:creditReceipt(quota)}:{})});
+            state.history=[...previousHistory,{role:'user',content:message},{role:'assistant',content:content+'\n实际工具回执：'+JSON.stringify(receipts).slice(-8000)}].slice(-12);state.conversationId='';
+            const mediaFacts=receipts.flatMap(r=>r.results||[]),lastMedia=mediaFacts.at(-1),generatedMedia=mediaFacts.findLast(r=>r.action?.startsWith('generate_'));
+            const nativeVideoResult=receipts.some(r=>r.resources?.some(v=>/\.(mp4|webm)$/i.test(v.name||'')));
+            const actualSurface=lastMedia?(lastMedia.target||(/^generate_(music|sfx)$/.test(lastMedia.action)?'audio':lastMedia.action==='generate_video'?'video':null)):nativeVideoResult?'video':receipts.some(r=>['image_generate','image_optimize','art_action','use_result'].includes(r.action)||r.layers?.length)?'image':null;
+            const actualMode=generatedMedia?.mode||(generatedMedia?.action==='generate_music'?'music':generatedMedia?.action==='generate_sfx'?'sfx':'')||(actualSurface==='image'?receipts.findLast(r=>r.action==='image_generate')?.mode:priorTask?.surface===actualSurface?priorTask?.mode:actualSurface==='audio'?'audio_edit':actualSurface==='video'?'video_edit':'')||'';
+            if(receipts.length)state.activeTask={...(intent?.revision?priorTask:{}),executor:'foart',surface:actualSurface||intent?.surface||priorTask?.surface||'image',mode:actualMode,baseRequest:intent?.revision?priorTask?.baseRequest||message:message,revisions:intent?.revision?[...(priorTask?.revisions||[]),message].slice(-8):[],status:done?'completed':'applied',outputs:receipts.flatMap(r=>r.outputs?.length?r.outputs:r.resources?.length?r.resources:r.result?.resources?.length?r.result.resources:r.id?[{id:r.id,name:r.name}]:r.results?.flatMap(v=>v.resources||[])||[])};
+            state.status=plan.status==='clarify'?'等待补充需求':done?'工具执行已完成':receipts.length?'已按实际回执更新':'已回复';state.operation=null;return true;
+          }
+          if(/(?:只|仅).{0,8}(?:讨论|方案|建议|分析)|(?:不要|不用|别|先不|暂不).{0,6}(?:执行|修改|处理)/.test(message))fail('本次仅讨论，未授权工具修改');
+          if(!/(?:请|帮我|给我|把|将|做|画|让|换|改|生成|制作|开始|执行|设置|优化|调整|导入|导出|分割|复制|删除|移除|播放|暂停|继续|确认|应用|打开|切换|进入|选择|选中|闭合|合并|填充|放大|扩|提取|抠图|拆图|凶悍|需要)|\b(?:make|generate|create|set|change|edit|apply|export|import|play|pause|open|select|merge|fill)\b/i.test(message))fail('本次没有明确的工具操作要求，未执行修改');
+          if(/(?:不要|不用|别|先不|暂不).{0,6}(?:生成|生图|出图)|只优化|只修改提示词/.test(message)&&plan.operations.some(op=>op.action==='image_generate'||op.action==='media'&&op.operation?.action?.startsWith('generate_')))fail('本次未授权生成，未提交任务');
+          for(const op of plan.operations){
+            if(signal.aborted)fail('Foart 操作已停止');
+            const current=tools.capture(),currentIds=new Set(current.controls.filter(c=>!c.disabled).map(c=>c.id)),stableIds=new Set(expectedSnapshot.controls.filter(c=>!c.disabled&&currentIds.has(c.id)).map(c=>c.id));
+            if(toolBinding(current,stableIds)!==toolBinding(expectedSnapshot,stableIds)){
+              const before=JSON.parse(toolBinding(expectedSnapshot,stableIds)),after=JSON.parse(toolBinding(current,stableIds));
+              const changed=(a,b,path='')=>JSON.stringify(a)===JSON.stringify(b)?[]:a&&b&&typeof a==='object'&&typeof b==='object'?[...new Set([...Object.keys(a),...Object.keys(b)])].flatMap(k=>changed(a[k],b[k],path?path+'.'+k:k)).slice(0,12):[path];
+              root.console?.warn?.('[Foart tools] changed binding fields:',changed(before,after).join(', '));
+              fail('Foart 参数、素材或选区在规划期间变化，未应用旧方案');
+            }
+            if(op.controlId&&!current.controls.some(c=>c.id===op.controlId))break;
+            contract.validateFoartPlan({...plan,operations:[op]},current);
+            const receipt=await tools.execute(op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider});receipts.push(receipt);
+            expectedSnapshot=tools.capture();
+            state.toolTrace.push({name:'foart_'+op.action,result:copy(receipt)});state.status=summarize([receipt]);notify();
+            if(op.action==='art_action'||op.action==='assign_upload'||op.action==='media'&&op.operation.action==='import_resource')break;
+          }
+        }
+        fail('本轮已到工具规划步数上限，已完成的操作已保留，请继续说明下一步');
+      }catch(error){
+        if(operation===serial){state.error=String(error?.message||error);state.status=signal.aborted?'已停止等待；请按工具当前状态确认未结束任务':'工具操作未全部完成';
+          if(receipts.length){const facts=summarize(receipts);state.messages.push({role:'assistant',content:facts});state.history=[...previousHistory,{role:'user',content:message},{role:'assistant',content:'实际执行事实：'+JSON.stringify(receipts).slice(-8000)+'\n未完成：'+state.error}].slice(-12);}
+        }return false;
+      }finally{if(operation===serial){stopStatusPolling();foartAbort=null;activeRequest='';state.pending=false;state.generating=false;state.operation=null;notify();}}
+    }
     async function send(message, {includeResult = false, confirmed = false, recordMessage = true} = {}) {
       if(state.uploading)return false;
       if (state.pending || state.generating || state.applying) return false;
@@ -937,7 +1047,7 @@
       let stagedReady = false;
       async function ensureStaged() {
         if (stagedReady) return true;stagedReady=true;
-        if(!state.staged.length && lastUploads.length && task && task.surface!=='chat' && lastPreparedTask!==task.surface+':'+task.mode)
+        if(!state.staged.length && lastUploads.length && task && task.surface!=='chat' && !(task.revision&&['audio','image'].includes(task.surface)&&state.activeTask?.executor==='foart'&&state.activeTask?.surface===task.surface) && lastPreparedTask!==task.surface+':'+task.mode)
           state.staged=lastUploads.map(item=>({...item,id:'up-'+(++stagedSeq),previewUrl:item.dataUrl||'',status:'ready'}));
         return consumeStaged(requestMessage);
       }
@@ -958,6 +1068,9 @@
         state.confirmation = null;
       }
       if (!(await ensureStaged())) return false;
+      if(root.NovaFlowFoartTools && !confirmed && (state.provider==='api' || state.activeTask?.executor==='foart'
+        || root.NovaFlowUiDesignDrawing?.isActive?.() || task?.surface==='audio' || task?.surface==='image'&&(root.__NovaFlowArtGenerate?.state?.provider==='gpt'||root.__NovaFlowArtGenerate?.state?.nsfw===true||root.__NovaFlowArtGenerate?.state?.count>1||/批量|[2-9两三四五六七八九十]\s*张/.test(message))
+        || /抠图|拆图|扩图|放大|画布|蒙版|选区|去除物体|擦除|图层|角度|UI|界面|剪辑|时间轴|裁切|淡入|淡出|音量|变速|帧编辑|颜色校正|色键|音轨|独奏|静音|跨轨|选择.{0,8}片段|移动|复制/.test(message)))return sendFoart(message,{recordMessage,requestMessage,intent:task});
       const mediaTask=task ? ['video','audio'].includes(task.surface) : root.NovaFlowMediaAgent?.wantsMedia(message);
       if(mediaTask && root.NovaFlowMediaAgent) {
         if(state.provider==='local')root.NovaFlowAudioStudio?.open(task?.surface==='audio'?'audio':'video');
@@ -1087,6 +1200,7 @@
       finally {if (operation === serial) {stopStatusPolling();promptAbort=null; state.pending = false; state.operation = null; activeRequest = ''; activeSnapshot = null; notify();}}
     }
     async function stop() {
+      if(foartAbort){foartAbort.abort();state.status='正在停止本次工具等待…';const requestId=activeRequest;if(requestId)await api()?.artAgentStop?.({requestId,provider:state.provider});notify();return;}
       if(promptAbort) {state.status='正在停止本次提示词优化…';promptAbort.abort();notify();return;}
       if(mediaAbort) {state.status='正在停止本次音视任务…';mediaAbort.abort();notify();return;}
       if (state.confirmation && !state.pending && !state.generating) return cancelConfirmation();
@@ -1267,9 +1381,14 @@
     fab.onclick = event => {if (robotDrag.consumeClick()) {event.preventDefault(); return;} setOpen(!open);}; close.onclick = () => setOpen(false); stop.onclick = () => void controller.stop(); applyButton.onclick = () => void controller.apply(); generateButton.onclick = () => void controller.apply({generate:true});
     newConversation.onclick = () => {if (controller.reset()) {input.value = ''; input.focus();}};
     for (const [button, value] of [[localBrain,'local'],[onlineBrain,'api']]) button.onclick = () => {if (controller.setProvider(value)) {contextStamp = ''; tick(); if (value === 'local') void controller.calibrateLocalStatus(); input.focus();}};
-    footer.onsubmit = event => {event.preventDefault(); const text = input.value; if (text.trim()) {input.value = ''; void controller.send(text);}};
+    footer.onsubmit = async event => {
+      event.preventDefault();const text=input.value;if(!text.trim())return;
+      const before=controller.state.messages.length;input.value='';
+      try{await controller.send(text);}catch(failure){controller.state.error='本次操作未能提交：'+String(failure?.message||failure);controller.state.status='未提交操作';render(controller.state);}
+      if(!input.value&&!controller.state.messages.slice(before).some(row=>row.role==='user'&&row.content===text)){input.value=text;input.focus();}
+    };
     input.onkeydown = event => {if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {event.preventDefault(); footer.requestSubmit();}};
-    input.oninput = () => paintEstimate();
+    input.oninput = () => {try{paintEstimate();}catch{estimateLabel.textContent='用量暂无法预估';}};
     function tick() {
       if (drag.dragging() || robotDrag.dragging()) return;
       closeOnNavigation();

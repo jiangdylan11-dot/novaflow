@@ -964,8 +964,8 @@
       insp.appendChild(rowEl);
       return { input, paint, set(v) { input.value = String(v); paint(); }, range(lo, hi) { input.min = String(lo); input.max = String(hi); paint(); } };
     };
-    ui.inspFadeIn = slider('淡入', 0, 30, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, v, undefined));
-    ui.inspFadeOut = slider('淡出', 0, 30, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, undefined, v));
+    ui.inspFadeIn = slider('淡入', 0, 30, 0.01, (v) => v.toFixed(2) + ' s', (clip, v) => editor.setFade(clip.id, v, undefined));
+    ui.inspFadeOut = slider('淡出', 0, 30, 0.01, (v) => v.toFixed(2) + ' s', (clip, v) => editor.setFade(clip.id, undefined, v));
     const delRow = el('div', 'nf-as-tools');
     const delClip = el('button', null, '删除'); delClip.type = 'button'; delClip.title = '删除选中片段 (Delete)'; delClip.classList.add('nf-as-tool-wide');
     delClip.addEventListener('click', () => editor.deleteSelected());
@@ -1334,8 +1334,8 @@
     // A fade can cover the whole clip, so each slider runs to the clip's length.
     const whole = Math.max(0.1, Math.round(clip.length * 10) / 10);
     ui.inspFadeIn.range(0, whole); ui.inspFadeOut.range(0, whole);
-    ui.inspFadeIn.set(Math.round(clip.fadeIn * 10) / 10);
-    ui.inspFadeOut.set(Math.round(clip.fadeOut * 10) / 10);
+    ui.inspFadeIn.set(clip.fadeIn);
+    ui.inspFadeOut.set(clip.fadeOut);
     if (document.activeElement !== ui.inspGain) ui.inspGain.value = String(Math.round(clip.gain * 100));
   }
   function syncTime() {
@@ -2016,12 +2016,22 @@
       const seconds = op.seconds ?? state[kind].seconds;
       if (!Number.isFinite(seconds) || seconds < (music ? 8 : 1) || seconds > (music ? 300 : 30)) throw new Error('音频生成时长超出范围');
       const bpm = op.bpm ?? state.music.bpm;
-      if (music && (!Number.isInteger(bpm) || bpm < 0 || bpm > 300)) throw new Error('音乐节拍超出范围');
+      if (music && (!Number.isInteger(bpm) || bpm < 40 || bpm > 220)) throw new Error('音乐节拍超出范围');
+      const count=music?1:op.count??state.sfx.count;
+      if(!Number.isInteger(count)||count<1||count>4)throw new Error('音效数量超出原有范围');
       activate('audio');setMode(kind);
-      Object.assign(state[kind],{text:op.prompt,optimized:op.prompt,seconds,...(music?{bpm,loop:op.loop ?? state.music.loop}:{})});
+      Object.assign(state[kind],{text:op.prompt,optimized:'',seconds,...(music?{bpm,loop:op.loop ?? state.music.loop}:{})});
       syncDockValues();
-      return submit(music ? 'audio_music' : 'audio_sfx',kind,op.prompt,{prompt:op.prompt,duration_seconds:seconds,reprompt:false,
-        ...(music ? {bpm,loop:state.music.loop,crossfade_ms:800} : {})},{strict:true,signal});
+      const receipts=[];
+      for(let i=0;i<count;i++){
+        if(signal?.aborted)throw new Error('已停止剩余音效任务，已完成的结果保留');
+        const receipt = await submit(music ? 'audio_music' : 'audio_sfx',kind,op.prompt,{prompt:music?musicCaption():sfxCaption(),duration_seconds:seconds,reprompt:state[kind].rewrite===true,
+          ...(music ? {bpm,loop:state.music.loop,crossfade_ms:800} : {})},{strict:true,signal});
+        if (!receipt?.ok || !receipt.resourceId || !receipt.taskId) throw new Error('音频工具没有返回新生成结果');
+        receipts.push(receipt);
+      }
+      const resources=receipts.map(receipt=>({id:receipt.resourceId,name:receipt.name+'.wav',taskId:receipt.taskId,seconds:receipt.seconds,kind:'audio'}));
+      return {...receipts[0],action:op.action,target:'audio',name:resources.map(r=>r.name).join('、'),...(count===1?{fileName:resources[0].name}:{}),resources};
     },
     async agentExport() {
       const {blob,name} = await mixdown();

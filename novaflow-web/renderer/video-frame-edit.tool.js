@@ -868,6 +868,14 @@
     close,
     toggle,
     apply,
+    canOpen: () => Boolean(findStageVideo(findViewport())),
+    agentContext: () => state.open && state.model ? {frames:state.model.length,order:state.model.order,fps:state.fps,width:state.width,height:state.height,selected:state.model.selection,dirty:state.model.dirty,busy:state.busy} : null,
+    agentSelectRange(start, end) {
+      if (!state.open || !state.model || state.busy) throw new Error('请先打开可编辑的视频帧');
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end >= state.model.length) throw new Error('帧选择超出当前视频范围');
+      stopPlayback();state.model.selectRange(start,end);state.current=start;renderAll();
+      return {startFrame:start,endFrame:end,selected:state.model.selection,frames:state.model.length};
+    },
     get model() { return state.model }
   })
 })()

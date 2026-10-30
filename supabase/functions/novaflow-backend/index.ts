@@ -12,6 +12,7 @@ import {
 import { readRunningHubLlmConfig, postRunningHubResponses, uiCatalogResponsesRequest, responsesOutputText, DEFAULT_RUNNINGHUB_LLM_MODEL } from "../_art-shared/runninghub-llm.mjs";
 import { createOnlineAiCharge } from "../_art-shared/online-ai-charge.mjs";
 import { createFeatureCreditPorts, normalizeCreditConfig, publicCreditError } from "../_art-shared/feature-credits.mjs";
+import {readRunningHubImageConfig,quoteGptImage,formatCreditButtonLabel,formatCreditButtonTitle,runChargedGptImage,readImagePoolAccount} from "../_art-shared/runninghub-gpt-image.mjs";
 import { RELEASE_VERSION } from "../_art-shared/release.mjs";
 import { createRunningHubServerConfig } from "../_art-shared/runninghub-server-config.mjs";
 import {
@@ -1180,7 +1181,7 @@ async function callGrok(payload: AnyRecord): Promise<AnyRecord> {
   const { body, inputMeta } = normalizeGrokPayload(payload);
   const startedAt = Date.now();
   try {
-    const posted = await postRunningHubResponses({ body, config, timeoutMs: 45000 });
+    const posted = await postRunningHubResponses({ body:{...body,reasoning:{effort:'low'}}, config, timeoutMs: 45000, maxRetries: 0 });
     return {
       ok: true,
       statusCode: posted.status,
@@ -1213,7 +1214,9 @@ async function callGrokResponseAttempt(body: AnyRecord, inputMeta: AnyRecord, re
   const startedAt = Date.now();
   let attemptUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   try {
-    const posted = await postRunningHubResponses({ body, config, timeoutMs: 60000 });
+    // Interactive optimizers cannot spend three provider timeout windows
+    // inside one Edge request; report/release the failed attempt promptly.
+    const posted = await postRunningHubResponses({ body:{...body,reasoning:{effort:'low'}}, config, timeoutMs: 45000, maxRetries: 0 });
     const data = posted.data;
     attemptUsage = normalizeGrokResponseUsage(data);
     const result = grokResponsesPublicResult(data, {
@@ -1344,14 +1347,16 @@ async function handleGrokPromptOptimize(
     const statusCode = Number(tracked.statusCode || 502);
     const h3Failure = resultOptions.minimaxH3Prompt === true ? miniMaxH3FailureEnvelope(error) : null;
     const ordinaryArtPatchFailure = (resultOptions.ordinaryArtPromptPatch === true || resultOptions.ordinaryArtStructuredPrompt === true) && /^Grok ordinary Art\b/.test(sanitizeError(error));
+    const artFusionFailure = (error as AnyRecord)?.artSemanticFusionFailed === true;
+    const modelTimeout = /^在线模型响应超时/.test(sanitizeError(error));
     return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: statusCode === 402 ? publicCreditError(tracked.message) : h3Failure?.message || (ordinaryArtPatchFailure
+      error: statusCode === 402 ? publicCreditError(tracked.message) : h3Failure?.message || (artFusionFailure ? sanitizeError(error) : modelTimeout ? '在线提示词优化超时，未写入提示词或提交生成' : ordinaryArtPatchFailure
         ? "提示词优化未落实你的修改要求，原提示词保持不变；请重试或把修改要求写得更具体"
         : "生成失败，请稍后重试"),
       provider: "grok",
       ...(h3Failure || {}),
-      ...(ordinaryArtPatchFailure ? { errorCode: "art-prompt-edit-not-applied", failureClass: "application" } : {}),
+      ...(ordinaryArtPatchFailure || artFusionFailure ? { errorCode: "art-prompt-edit-not-applied", failureClass: "application" } : {}),
       quota: creditQuotaPayload(failureQuota)
     });
   }
@@ -1386,6 +1391,28 @@ async function handleGrokPromptOptimize(
       h3ContractRepairUsed: Boolean(grok.h3ContractRepairUsed)
     }
   });
+}
+
+async function handleRunningHubGptImage(req:Request, session:{user:PublicUser}, quoteOnly=false):Promise<Response> {
+  try {
+    const payload=await parseJsonBody(req,24*1024*1024) as AnyRecord;
+    const creditConfig=normalizeCreditConfig(await readFeatureCreditConfig());
+    const provider=runningHubLlm();
+    const base=readRunningHubImageConfig((name:string)=>name==='NOVAFLOW_RUNNINGHUB_API_KEY'?provider.apiKey:env(name),creditConfig);
+    const config={...base,creditConfig,pricePreview:true};
+    const quote=quoteGptImage({endpoint:config.gptImageEndpoint,imageEndpoint:config.gptImageI2iEndpoint,mode:payload.mode,count:payload.count||1,prices:config.prices,creditConfig,settings:payload.settings,width:payload.width,height:payload.height});
+    if(quoteOnly)return jsonResponse(req,200,{ok:true,...quote,buttonLabel:formatCreditButtonLabel(quote.credits,quote),buttonTitle:formatCreditButtonTitle(quote.credits,quote)});
+    if(!config.configured)return jsonResponse(req,503,{ok:false,error:'RunningHub 出图尚未配置'});
+    const poolAccount=await readImagePoolAccount(config);
+    const charge=createOnlineAiCharge({...createFeatureCreditPorts(creditRpc),prices:creditConfig});
+    const outcome=await runChargedGptImage({charge,config,poolAccount,request:{userId:session.user.id,usageKey:'gptimg_'+crypto.randomUUID(),mode:payload.mode,prompt:payload.prompt,settings:payload.settings,images:payload.images,count:payload.count||1,width:payload.width,height:payload.height}});
+    const rejected=outcome.results?.find((item:AnyRecord)=>item.success===false);
+    if(rejected)return jsonResponse(req,400,{ok:false,error:rejected.message||'提示内容未通过审核，请修改后再试',moderation:true,charged:outcome.charged||0,remaining:outcome.remaining,billing:outcome.billing});
+    return jsonResponse(req,200,{ok:true,charged:outcome.charged,remaining:outcome.remaining,quote:outcome.quote,billing:outcome.billing,images:(outcome.results||[]).map((item:AnyRecord)=>item.image).filter(Boolean)});
+  }catch(error){
+    const failed=error as AnyRecord,status=Number(failed.statusCode)||502;
+    return jsonResponse(req,status>=400&&status<600?status:502,{ok:false,error:status===402?'积分不足或云服务余额不足，本次未生成':/出图|审核|参考图|提示词|积分|RunningHub|云服务/.test(sanitizeError(error))?sanitizeError(error):'云端出图未完成',charged:0});
+  }
 }
 
 async function handleGrokImageReverse(
@@ -1732,6 +1759,8 @@ Deno.serve(async (req: Request) => {
       "/api/client/grok/prompt-optimize",
       "/api/client/grok/image-reverse",
       "/api/client/runninghub/ui-catalog",
+      "/api/client/runninghub/gpt-image/quote",
+      "/api/client/runninghub/gpt-image",
       "/api/provider/grok/chat"
     ]);
     if (sessionRoutes.has(path)) {
@@ -1764,6 +1793,8 @@ Deno.serve(async (req: Request) => {
       if (req.method === "POST" && path === "/api/client/grok/image-reverse") return await handleGrokImageReverse(req, session);
       if (req.method === "POST" && path === "/api/provider/grok/chat") return await handleGrokChat(req, session);
       if (req.method === "POST" && path === "/api/client/runninghub/ui-catalog") return await handleRunningHubUiCatalog(req, session);
+      if (req.method === "POST" && path === "/api/client/runninghub/gpt-image/quote") return await handleRunningHubGptImage(req,session,true);
+      if (req.method === "POST" && path === "/api/client/runninghub/gpt-image") return await handleRunningHubGptImage(req,session);
     }
 
     return jsonResponse(req, 404, { ok: false, error: "route not found", path });

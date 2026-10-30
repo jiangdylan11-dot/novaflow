@@ -1,0 +1,122 @@
+{
+  "release": "2.0.178",
+  "environment": "Authenticated local Foart workbench, real production companion and existing GPU worker; no mocked generation",
+  "video": [
+    {
+      "name": "video-text.mp4",
+      "width": 352,
+      "height": 352,
+      "frames": 56,
+      "fps": 24.0,
+      "seconds": 2.3333333333333335,
+      "bytes": 102436,
+      "meanAdjacentPixelDifference": 1.5515720870899075,
+      "sha256": "17291fc60ab76e40e540c299c062c82b3db95b2e319f5b7d2d02f75a899db5c9"
+    },
+    {
+      "name": "video-image.mp4",
+      "width": 352,
+      "height": 352,
+      "frames": 56,
+      "fps": 24.0,
+      "seconds": 2.3333333333333335,
+      "bytes": 104164,
+      "meanAdjacentPixelDifference": 1.5866489501158276,
+      "sha256": "4612b310987c1fb0b4f4dd058ef6837ee467676e28e8f6a5295c25346705a5f4"
+    },
+    {
+      "name": "video-first-last.mp4",
+      "width": 352,
+      "height": 352,
+      "frames": 56,
+      "fps": 24.0,
+      "seconds": 2.3333333333333335,
+      "bytes": 106505,
+      "meanAdjacentPixelDifference": 1.7937815004382667,
+      "sha256": "aaf9e111831b2e6ee30151307016474ed2f36623d7e6a82d0a9ba246f88404ae"
+    },
+    {
+      "name": "video-multi.mp4",
+      "width": 352,
+      "height": 352,
+      "frames": 56,
+      "fps": 24.0,
+      "seconds": 2.3333333333333335,
+      "bytes": 106462,
+      "meanAdjacentPixelDifference": 1.4792661082675935,
+      "sha256": "95b22e4d0f1ce149fc0e83db09c0f3734ee49c6415e0fd3c62d161b5b9f35c7b"
+    }
+  ],
+  "taskIds": {
+    "text": "9010c496-6e36-4beb-909d-9015b52295b9",
+    "image": "6be157a5-e236-4424-8820-0386556e96c2",
+    "first_last": "9d49ddc1-3183-4bff-aa79-2d60eb51704f",
+    "multi": "bf4e256d-c8b1-47c8-a05b-319553f41ed0",
+    "music": "8d818772-2f92-4a3f-b439-f5f487ea8942",
+    "sfx_batch": [
+      "16d43408-4bcd-4f0a-88ac-648dbb1cc121",
+      "24b5d95d-1a23-4d04-8a01-f30292a1f2b6"
+    ],
+    "gpt_image": [
+      "2116169486131879938",
+      "2116169905833156609"
+    ]
+  },
+  "multiActiveResourceId": "bf4e256d-c8b1-47c8-a05b-319553f41ed0:output::Video_00007_-bf4e256d-1.mp4",
+  "nativeVideoEdit": {
+    "name": "novaflow_video_edit.mp4",
+    "seconds": 2.5,
+    "width": 352,
+    "height": 352,
+    "sourceRetained": true
+  },
+  "nativeFrameMirror": {
+    "name": "video-image_edit.mp4",
+    "sourceFrames": 56,
+    "outputFrames": 111,
+    "fps": 24,
+    "uiSeconds": 4.6,
+    "resourceId": "local-1793377258739-0-067675a3271d4",
+    "sourceRetained": true
+  },
+  "nativeArt": {
+    "cutout": true,
+    "canvasContinuation": {
+      "before": [
+        1024,
+        1024
+      ],
+      "after": [
+        1200,
+        1200
+      ],
+      "subjectOffsetDelta": [
+        88,
+        88
+      ],
+      "alphaCorners": 0
+    },
+    "poseHeadRotationX": 15
+  },
+  "audioContinuation": {
+    "gainBefore": 0.5,
+    "gainAfter": 0.25,
+    "loopsBefore": 3,
+    "loopsAfter": 2,
+    "outputSecondsBefore": 3.343628,
+    "outputSecondsAfter": 2.229093,
+    "trackGain": 0.6,
+    "trackSolo": true
+  },
+  "limitations": [
+    "No exhaustive visual acceptance of every art enhancement, UI layout, video cutout/color/mask parameter combination.",
+    "Native browser video export produced real resource/encoder receipts; filesystem landing of its blob download was not independently verified.",
+    "Requested video duration 2 seconds aligns to H3 native 56 frames at 24 FPS (2.3333 seconds).",
+    "Music loop bar alignment yielded 7.2 seconds for an 8-second request at 100 BPM.",
+    "Local optimizer cold startup remains material; no claim that all optimization is fast or cloud-based."
+  ],
+  "concurrentChangesRetained": [
+    "01798286",
+    "4f9a8867"
+  ]
+}

@@ -4569,6 +4569,7 @@
       } else if (isOptimizeRequest && useGrok) {
         result = await api.smartAiPromptOptimize?.({
           token,
+          ...(isArtTextRequest && window.__NovaFlowArtGenerate?.state?.provider === "gpt" ? {targetEngine:"gpt-image-2.5"} : {}),
           prompt: promptMentionProtection.text,
           ...(isArtTextRequest ? { currentPrompt: promptMentionProtection.text } : {}),
           ...(usesStructuredArtPromptContract ? { promptSchema: ORDINARY_ART_PROMPT_SCHEMA } : {}),

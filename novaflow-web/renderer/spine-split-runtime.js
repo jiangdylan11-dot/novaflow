@@ -13525,6 +13525,16 @@
     render()
   }
 
+  async function exportForAgent(format='psd') {
+    if(!['psd','png','layer','json'].includes(format))throw new Error('不支持的导出格式')
+    const result=await getUiLayerExport(format),blob=await dataUrlToBlob(result.dataUrl)
+    const fileName=format==='psd'?`${String(state.source?.fileName||'spine_layers').replace(/\.[^/.]+$/g,'')}_layers.psd`:result.name
+    if(!blob.size)throw new Error('文件为空，未导出')
+    const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),10000)
+    setMessage('已导出文件：'+fileName);render();syncSplitWorkspace()
+    return {fileName,bytes:blob.size}
+  }
+
   async function exportPsd() {
     if (!state.source) return setMessage('没有导入图片', true)
     if (state.busy) return
@@ -36085,6 +36095,20 @@
   }
 
   window.NovaFlowSpineSplitBridge = {
+    async agentAction(action, options={}) {
+      const allowed=['split','canvasResize','imageUpscale','imageOutpaint','imageAngleAdjust','objectTransfer','cutout','generativeSplit','inpaintCompletion','inpaintEdit','inpaintRepair','penCutout','penFill','merge','mask','export','poseReference']
+      if (!allowed.includes(action)) throw new Error('不支持的美工工具')
+      if (state.busy || window.__NovaFlowArtGenerate?.state.running) throw new Error('已有制作任务运行中，未重复提交')
+      const source=state.source?.dataUrl, parts=(state.parts || []).map(p=>p.id+':'+p.dataUrl), resourceIds=getSourceResources().map(r=>r.id)
+      if(action==='export')await exportForAgent(options.format||'psd')
+      else await runSplitControlAction(action)
+      if (state.messageError) throw new Error(state.message || '美工工具未完成')
+      const sourceChanged=source!==state.source?.dataUrl, layersChanged=parts.length!==(state.parts || []).length || parts.some((p,i)=>p!==state.parts[i]?.id+':'+state.parts[i]?.dataUrl)
+      const addedResources=getSourceResources().filter(r=>!resourceIds.includes(r.id)).map(r=>({id:r.id,name:r.fileName || r.name || ''}))
+      const exported=action==='export'&&/^已导出(?: PSD|文件)[：:]/.test(String(state.message || ''))
+      const fileName=exported?String(state.message).replace(/^已导出(?: PSD|文件)[：:]\s*/,'').split(/[\\/]/).pop():''
+      return {ok:true,action,sourceChanged,layersChanged,resources:addedResources,...(fileName?{fileName}:{}),message:state.message || '',phase:sourceChanged || layersChanged || addedResources.length || exported?'completed':'returned'}
+    },
     supportsSilentSourceResourceRegistration: true,
     getUiLayerEditingSnapshot, subscribeUiLayerState, getUiLayerToolbarHost, addUiLayer, patchUiLayer, removeUiLayer, moveUiLayer, exportUiLayerProject, getUiLayerExport, regenerateUiLayer, cancelUiLayerGeneration,
     undoUiLayerEdit: undoSplitLayerEdit, redoUiLayerEdit: redoSplitLayerEdit,

@@ -10,6 +10,94 @@ import {estimateXiaotaoOnlineCredits} from '../../packages/shared/src/feature-cr
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => {let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve};};
 
+function foartFixture(e,execute=async()=>({action:'image_generate',phase:'completed',provider:'gpt',id:'native-output-1',name:'actual-new.png'})){
+  runInContext(readFileSync(new URL('../../renderer/foart-tool-contract.js',import.meta.url),'utf8'),createContext(e.sandbox));
+  e.sandbox.NovaFlowFoartTools={capture:()=>({schema:'nf.foart.tool-plan.v1',controls:[],art:{provider:'gpt',mode:'txt2img',prompt:e.state.prompt||''},media:null}),images:async()=>[],settlePending:async()=>null,setUploads(){},execute};
+}
+test('clarification can name an existing input without being stripped as a fabricated output',async()=>{
+  const e=env();let calls=0;foartFixture(e,async()=>({action:'open',phase:'opened',surface:'video',message:'已打开视频工具'}));
+  const originalCapture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...originalCapture(),uploads:[{id:'input-1',name:'video-image.mp4',kind:'video'}]});
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'clarify',reply:calls===1?'准备操作':'video-image.mp4 已加载；当前帧工具提供镜像补齐，可以按这个方式继续吗？',operations:calls===1?[{action:'open',surface:'video'}]:[]}}})})});
+  controller.setProvider('api');assert.equal(await controller.send('请用帧编辑处理这个视频'),true);
+  assert.match(controller.state.messages.at(-1).content,/镜像补齐/);assert.equal(controller.state.status,'等待补充需求');
+});
+test('online brain executes a native tool and replies only with its real output receipt',async()=>{
+  const e=env();let calls=0,executed=0;foartFixture(e,async()=>{executed++;return {action:'image_generate',phase:'completed',provider:'gpt',id:'native-output-1',name:'actual-new.png'};});
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async payload=>{
+    calls++;assert.equal(payload.mode,'foart');assert.equal(payload.provider,'api');
+    return {ok:true,data:{model:'fixture-online',quota:{settled_credits:2},toolPlan:{schema:'nf.foart.tool-plan.v1',status:calls===1?'act':'done',reply:calls===1?'准备制作':'模型不能伪造的文件名.png 已完成',operations:calls===1?[{action:'image_generate',prompt:'红色机器人',generationMode:'txt2img',useResult:false}]:[]}}};
+  }})});controller.setProvider('api');
+  assert.equal(await controller.send('生成一张红色机器人'),true,controller.state.error);assert.equal(executed,1);assert.equal(calls,2);
+  assert.match(controller.state.messages.at(-1).content,/actual-new.png/);assert.doesNotMatch(controller.state.messages.at(-1).content,/模型不能伪造/);
+  assert.equal(controller.state.activeTask.outputs[0].id,'native-output-1');assert.match(controller.state.history.at(-1).content,/native-output-1/);assert.match(controller.state.messages.at(-1).receipt,/4/);
+});
+test('model done without execution, discussion-only generation, and stale workspace changes cannot run a tool',async()=>{
+  for(const kind of ['fake-done','discussion','stale']){
+    const e=env();let executed=0;foartFixture(e,async()=>{executed++;return {};});
+    const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{
+      if(kind==='stale')e.state.prompt='用户在规划期间改动';
+      return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:kind==='fake-done'?'done':'act',reply:'模型回复',operations:kind==='fake-done'?[]:[{action:'image_generate',prompt:'机器人',generationMode:'txt2img',useResult:false}]}}};
+    }})});controller.setProvider('api');
+    assert.equal(await controller.send(kind==='discussion'?'请只讨论方案，不生成':'请生成机器人'),false);assert.equal(executed,0);
+    assert.match(controller.state.error,kind==='fake-done'?/实际工具回执/:kind==='discussion'?/仅讨论/:/规划期间变化/);
+  }
+});
+
+test('opening a native dialog cannot become a generated-output claim, and batch receipts retain every actual output',async()=>{
+  for(const batch of [false,true]){
+    const e=env();let calls=0;
+    foartFixture(e,async()=>batch?{action:'image_generate',phase:'completed',provider:'gpt',id:'output-2',name:'two.png',outputs:[{id:'output-1',name:'one.png'},{id:'output-2',name:'two.png'}]}:{action:'open',phase:'opened',surface:'drawing',message:'已打开绘图工具'});
+    const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply:'已经生成好了，制作完成',operations:calls===1?[batch?{action:'image_generate',prompt:'机器人',generationMode:'txt2img',useResult:false,count:2}:{action:'open',surface:'drawing'}]:[]}}})})});
+    controller.setProvider('api');assert.equal(await controller.send(batch?'生成两张机器人':'打开绘图工具'),true,controller.state.error);
+    if(batch)assert.deepEqual(plain(controller.state.activeTask.outputs),[{id:'output-1',name:'one.png'},{id:'output-2',name:'two.png'}]);
+    else {assert.equal(controller.state.messages.at(-1).content,'已打开绘图工具');assert.equal(controller.state.activeTask.status,'applied');}
+  }
+});
+
+test('audio edits retain audio context rather than the unrelated drawing mode',async()=>{
+  const e=env();let calls=0;foartFixture(e,async()=>({action:'media',phase:'completed',results:[{action:'volume',target:'audio',clipId:'actual-clip',timeline:{tracks:[]}}]}));
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply:'已调整当前音频片段音量',operations:calls===1?[{action:'media',operation:{action:'volume',target:'audio',clipId:'actual-clip',value:.5}}]:[]}}})})});
+  controller.setProvider('api');assert.equal(await controller.send('请把音频片段音量改成50%'),true,controller.state.error);
+  assert.equal(controller.state.activeTask.surface,'audio');assert.equal(controller.state.activeTask.mode,'audio_edit');
+});
+
+test('a completed native PNG export ends repeated planner exports without downloading again',async()=>{
+  const e=env();let calls=0,exports=0,finished=false;foartFixture(e,async()=>{exports++;finished=true;return {action:'art_action',name:'export',phase:'started'};});
+  e.sandbox.NovaFlowFoartTools.settlePending=async()=>finished?(finished=false,{action:'art_action',name:'export',phase:'completed',fileName:'actual-transparent.png'}):null;
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'导出PNG',operations:[{action:'art_action',name:'export',format:'png'}]}}};}})});
+  controller.setProvider('api');assert.equal(await controller.send('请导出透明PNG'),true,controller.state.error);assert.equal(calls,2);assert.equal(exports,1);assert.match(controller.state.messages.at(-1).content,/actual-transparent.png/);
+});
+
+test('a repeated planner generation cannot produce a second unrequested image after a real output',async()=>{
+  const e=env();let calls=0,generated=0;foartFixture(e,async()=>{generated++;return {action:'image_generate',phase:'completed',provider:'gpt',id:'actual-output',name:'only-once.png'};});
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'生成机器人',operations:[{action:'image_generate',generationMode:'txt2img',useResult:false,prompt:'机器人'}]}}};}})});
+  controller.setProvider('api');assert.equal(await controller.send('生成一张机器人'),true,controller.state.error);assert.equal(calls,2);assert.equal(generated,1);assert.match(controller.state.messages.at(-1).content,/only-once.png/);
+});
+
+test('an explicit finish-after-generation request closes from its real receipt without another model call',async()=>{
+  const e=env();let calls=0;foartFixture(e);
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'准备生成',operations:[{action:'image_generate',generationMode:'txt2img',useResult:false,prompt:'机器人'}]}}};}})});
+  controller.setProvider('api');assert.equal(await controller.send('只生成1张机器人后结束'),true,controller.state.error);assert.equal(calls,1);assert.match(controller.state.messages.at(-1).content,/actual-new.png/);
+});
+test('an explicit open-and-finish request needs only one planner call on either brain',async()=>{
+  for(const provider of ['api','local']){
+    const e=env();let calls=0;foartFixture(e,async()=>({action:'open',phase:'opened',surface:'audio',message:'已打开音频工具'}));
+    e.sandbox.NovaFlowXiaotaoUpload={inferTask:()=>({surface:'audio'})};
+    const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{resourcesReleased:true,toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'准备打开',operations:[{action:'open',surface:'audio'}]}}};}})});
+    controller.setProvider(provider);assert.equal(await controller.send('打开音频工具，打开后结束'),true,controller.state.error);assert.equal(calls,1);assert.match(controller.state.messages.at(-1).content,/已打开音频工具/);assert.doesNotMatch(controller.state.messages.at(-1).content,/生成完成/);
+  }
+});
+
+test('native background loading does not invalidate a plan, while an edited active value still does',async()=>{
+  for(const manual of [false,true]){
+    const e=env();let ready=manual,value='old',calls=0,executed=0;foartFixture(e,async()=>{executed++;return {action:'open',phase:'opened',surface:'video',message:'已打开视频工具'};});
+    e.sandbox.NovaFlowFoartTools.capture=()=>({schema:'nf.foart.tool-plan.v1',controls:[{id:'control-1',kind:'input',label:'原生参数',disabled:!ready,value}],art:{prompt:'hidden art'},media:{active:true,sub:'video',generation:{prompt:'视频原提示词'}}});
+    const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;if(calls===1){ready=true;value='new';}return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:calls===1?'act':'done',reply:'已打开视频工具',operations:calls===1?[{action:'open',surface:'video'}]:[]}}};}})});
+    controller.setProvider('api');assert.equal(await controller.send('打开视频工具'),!manual,controller.state.error);assert.equal(executed,manual?0:1);
+    if(manual)assert.match(controller.state.error,/规划期间变化/);
+  }
+});
+
 test('natural result feedback is silent, result-bound and never starts an extra inference or generation',async()=>{
   const e=env({cfg:3}),commands=[];let inference=0;
   const api={artAgentChat:async()=>{inference++;return {ok:false};}};
@@ -79,10 +167,13 @@ test('online predicted fee matches its inline receipt and learns only server-app
       billingSample:{eligible,model,pricingSource:'token_usage',inputTokens:1600,outputTokens:600,totalTokens:2200,usdCost:0.022,creditsPerUsd:211,markup:2,policy}}};
   }})});
   controller.setProvider('api');
-  const before=controller.onlineQuote(message); assert.equal(before.reservedCredits,estimateXiaotaoOnlineCredits(controller.onlineEstimateInput(message)).credits);
+  const before=controller.onlineQuote(message); assert.equal(before.reservedCredits,estimateXiaotaoOnlineCredits({...controller.onlineEstimateInput(message),model:'xai/grok-4.7'}).credits);
   for(let i=0;i<4;i++)assert.equal(await controller.send(message),true);
   const after=controller.onlineQuote(message);
-  assert.equal(after.sampleCount,4); assert.ok(after.credits<before.credits);
+  assert.equal(after.sampleCount,4);assert.equal(after.confidence,'calibrated');
+  // Server-approved prices can raise or lower the initial estimate. Calibration
+  // should approach the real settled cost rather than always make it cheaper.
+  assert.ok(Math.abs(after.credits-10)<Math.abs(before.credits-10),JSON.stringify({before,after}));
   assert.equal(seen[0].images[0].width,96); assert.equal(seen[0].images[0].height,96);
   const first=controller.state.messages.find(m=>m.receipt);
   assert.ok(first.receipt.includes(`预估 ${before.credits}`));
@@ -305,6 +396,8 @@ test('drawer layer clears actual workspace resource panels while staying below s
   const layer = Number(css.match(/#nf-xiaotao-art-root\s*\{[^}]*z-index:\s*(\d+)/)[1]);
   const side = readFileSync(new URL('../../renderer/spine-split-runtime.js',import.meta.url),'utf8');
   assert(side.includes("zIndex: '2147483201'")); assert(layer > 2147483201);
+  const audio = readFileSync(new URL('../../renderer/audio-studio.tool.js',import.meta.url),'utf8');
+  const audioLayer=Number(audio.match(/#\$\{ROOT_ID\}\{[^}]*z-index:(\d+)/)[1]);assert(layer>audioLayer);
   const brand = readFileSync(new URL('../../renderer/novaflow-brand-runtime.js',import.meta.url),'utf8');
   assert(brand.includes('z-index: 2147483646')); assert(layer < 2147483646);
 });

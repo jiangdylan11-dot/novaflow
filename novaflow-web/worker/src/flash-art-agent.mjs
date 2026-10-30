@@ -3,6 +3,7 @@ import { FLASH_ART_SYSTEM, FLASH_ART_SYSTEM_SHA256, FLASH_ART_BASE_SKILL } from 
 import { isArtPromptLanguage, artPromptLanguageSystem, artPromptLanguageTools } from '../../packages/shared/src/art-prompt-language.mjs';
 import { planFlashMedia } from './flash-media-agent.mjs';
 import { withXiaotaoFoartRole } from '../../packages/shared/src/xiaotao-role-policy.mjs';
+import {FOART_TOOL_SYSTEM,validateFoartContext,readFoartPlan} from '../../packages/shared/src/foart-tool-plan.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -164,7 +165,7 @@ export function prepareFlashArtAgentPayload(payload) {
     '本地智能仅使用 Flash；在线智能必须通过已授权的云端聊天接口');
   need(typeof payload.requestId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(payload.requestId),
     'flash-agent-invalid-request-id', '绘图请求编号无效');
-  need(payload.mode === undefined || ['chat', 'drawing', 'creation', 'media'].includes(payload.mode), 'flash-agent-invalid-input', '小桃对话模式无效');
+  need(payload.mode === undefined || ['chat', 'drawing', 'creation', 'media','foart'].includes(payload.mode), 'flash-agent-invalid-input', '小桃对话模式无效');
   const mode = payload.mode || 'drawing';
   need(isArtPromptLanguage(payload.promptLanguage), 'flash-agent-invalid-input', '提示词语言无效');
   const history = historyValue(payload.history ?? []);
@@ -172,6 +173,12 @@ export function prepareFlashArtAgentPayload(payload) {
     && /^[A-Za-z0-9_-]{8,128}$/.test(payload.conversationId), 'flash-agent-invalid-history', '会话编号无效');
   const common = { requestId: payload.requestId, ...(payload.conversationId ? { conversationId: payload.conversationId } : {}),
     mode, message: payload.message, history, ...(payload.promptLanguage ? {promptLanguage:payload.promptLanguage} : {}) };
+  if(mode==='foart'){
+    need(payload.executionApproval===undefined,'flash-agent-invalid-input','工具规划不接受绘图采样凭据');
+    const foartContext=validateFoartContext(JSON.parse(canonicalArtAgentJSON(payload.foartContext)));
+    const images=completeImages(payload.images??[],true);
+    return {...common,foartContext,images:images.map(({role,dataUrl})=>({role,dataUrl}))};
+  }
   if (mode === 'media') {
     need(payload.executionApproval === undefined && plain(payload.artContext) && payload.artContext.surface === 'media'
       && (!payload.images || Array.isArray(payload.images) && payload.images.length===0), 'flash-agent-invalid-input','音视上下文无效');
@@ -242,6 +249,14 @@ export function createFlashArtAgent({ maxConversations = 32 } = {}) {
     payload = preflight(payload);
     need(typeof flash?.inferConversation === 'function' && typeof flash?.identity?.id === 'string'
       && flash.identity.id, 'flash-agent-session-required', '缺少已核验的本地 Flash 对话会话');
+    if(payload.mode==='foart'){
+      usedRequests.add(payload.requestId);
+      const content=[{type:'text',text:payload.message+'\ncurrentFoart (application data): '+JSON.stringify(payload.foartContext)},...payload.images.map(image=>({type:'image_url',image_url:{url:image.dataUrl}}))];
+      const response=await flash.inferConversation({messages:[{role:'system',content:FOART_TOOL_SYSTEM},...payload.history,{role:'user',content}],maxTokens:2048,temperature:.2,reasoningEffort:'none',reasoningBudgetTokens:0,stage:'foart-tools'});
+      need(response?.model===flash.identity.id&&response.requestId&&response.finishReason==='stop'&&!response.message?.tool_calls?.length,'flash-agent-invalid-response','Foart 工具规划未完整返回');
+      const toolPlan=readFoartPlan(response.message?.content,payload.foartContext);
+      return {mode:'foart',reply:toolPlan.reply,toolPlan,model:flash.identity.id,promptIds:[response.requestId],toolTrace:[],history:[...payload.history,{role:'user',content:payload.message},{role:'assistant',content:toolPlan.reply}].slice(-MAX_HISTORY)};
+    }
     if (payload.mode === 'media') {
       const id=payload.conversationId || randomUUID(),previous=conversations.get(id);
       const state=previous || {history:payload.history};

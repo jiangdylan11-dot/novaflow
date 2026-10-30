@@ -56,4 +56,9 @@ if(!source.includes('listResources:()=>')) {
   if(source.split(assetAnchor).length!==2)throw new Error('AI sequence asset closure changed');
   source=source.replace(assetAnchor,`window.NovaFlowAiSequenceAssetBridge={listResources:()=>(et.current||[]).map(r=>({id:String(r.id),name:String(r.filename||r.file?.name||''),kind:r.sourceKind||'video'})),version:`);
 }
+if(!source.includes('loadResource:async id=>')) {
+  const anchor='window.NovaFlowAiSequenceAssetBridge={';
+  if(source.split(anchor).length!==2)throw new Error('Native video asset load anchor changed');
+  source=source.replace(anchor,anchor+`loadResource:async id=>{const resource=(et.current||[]).find(r=>String(r.id)===String(id));if(!resource)throw Error('视频资源已不存在');Ze(String(resource.id));await dn(resource);return {id:String(resource.id),name:String(resource.filename||resource.file?.name||'')};},`);
+}
 await writeFile(file,source);

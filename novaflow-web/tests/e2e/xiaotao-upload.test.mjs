@@ -112,6 +112,9 @@ await test('uploads follow the requested deliverable; analysis never asks for a 
   assert.equal(rejected.place.length, 0);
   assert.match(rejected.reject[0].message, /多参视频/);
   assert.equal(api.planRoutes('这个视频能放图生视频吗？', [video]).place.length, 0);
+  assert.equal(api.inferTask('把音效放入时间轴，音量50%，循环3次，然后导出WAV，不要重新生成',[audio]).surface,'audio');
+  assert.equal(api.planRoutes('把音效放入时间轴，音量50%，循环3次，然后导出WAV，不要重新生成',[audio]).place[0].destination.id,'audio_resource');
+  assert.equal(api.planRoutes('请剪辑这个视频并导出',[video]).place[0].destination.id,'video_edit_resource');
 });
 
 function controllerFor(env, host) {
@@ -666,6 +669,27 @@ await test('a semantic clarification pauses execution and its answer continues t
   const controller=env.agent.createController({bridge:{},api:()=>({artAgentChat:async request=>{requests.push(request);return {ok:true,data:requests.length===1?{reply:'你希望小球怎样运动？',needsInput:true}:{reply:'将制作两秒循环。',resourcesReleased:true,generationReady:true,analysisBackend:'strata',mediaPlan:{operations:[]}}};}})});
   assert.equal(await controller.send('做一个2秒的循环动画'),true);assert.equal(executions,0);assert.equal(controller.state.status,'等待补充需求');
   assert.equal(await controller.send('让小球原地转一圈'),true);assert.equal(executions,1);assert.equal(requests[1].mode,'media');assert.match(requests[1].message,/2秒/);assert.match(requests[1].message,/原地转一圈/);
+});
+await test('explicit video mode changes override continuation mode and carried attachment kinds',()=>{
+  const env=load(),previous={surface:'video',mode:'image_video',baseRequest:'做循环视频',loop:true};
+  assert.equal(env.api.inferTask('继续修改，改用首尾帧视频',[{kind:'image'}],previous).mode,'first_last');
+  assert.equal(env.api.inferTask('继续修改，改用文生视频，不引用素材',[{kind:'audio'}],previous).mode,'text_video');
+  assert.equal(env.api.inferTask('继续把动作改得更明显',[{kind:'audio'}],previous).mode,'image_video');
+  const both=env.api.planRoutes('首尾帧视频，首帧和尾帧都用这张蓝色机器人图，2秒无缝循环',[{kind:'image',name:'robot.png'}],previous);
+  assert.deepEqual(Array.from(both.place,p=>p.destination.id),['first_frame','last_frame']);
+  assert.equal(env.api.inferTask('把刚才的动作做成音效',[],previous).surface,'audio');
+  assert.equal(env.api.inferTask('打开姿势参考，调整头部角度',[],{surface:'audio',mode:'music'}).surface,'image');
+  const frames=env.api.planRoutes('请用帧编辑倒放上传视频，不要重新生成。不要导入剪辑时间轴',[{kind:'video',name:'clip.mp4'}]);
+  assert.equal(frames.place[0].destination.id,'video_edit_resource');
+});
+await test('video editing imports without racing the native asynchronous board loader',async()=>{
+  const env=load(),rows=[];let loaded=0;
+  env.sandbox.NovaFlowAudioStudio={open:()=>{}};
+  env.sandbox.NovaFlowAiSequenceAssetBridge={listResources:()=>rows,addLocalVideoFiles:async files=>{rows.push({id:'video-new',name:files[0].name});},loadResource:async()=>{loaded++;}};
+  env.sandbox.document={getElementById:()=>{throw Error('must use native resource-only import');}};
+  const destination=env.api.planRoutes('请用帧编辑倒放上传的视频',[{kind:'video',name:'clip.mp4'}]).place[0].destination;
+  await env.api.createUploadHost(env.sandbox).place({destination,file:new File([magic('mp4')],'clip.mp4',{type:'video/mp4'}),kind:'video',name:'clip.mp4'});
+  assert.equal(rows.length,1);assert.equal(loaded,0);
 });
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

@@ -11,6 +11,7 @@
 // price; the 2.5 hold is released. With no retry left, 1001 and an empty
 // taskId become Chinese errors and the hold is released.
 
+import { Buffer } from 'node:buffer';
 import { describeRunningHubFailure } from './runninghub-llm.mjs';
 import {
   DEFAULT_GPT_IMAGE_ROUTES,
@@ -428,6 +429,17 @@ export function poolBlocksNewTask(account, threshold = DEFAULT_BALANCE_BLOCK_USD
   const value = Number(money);
   if (!Number.isFinite(value)) return false;
   return value < Number(threshold);
+}
+
+export async function readImagePoolAccount(config, fetchImpl = fetch) {
+  const response = await fetchImpl(config.baseUrl + '/uc/openapi/accountStatus', {
+    method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
+    headers:authHeaders(config.apiKey,{'Content-Type':'application/json'}),body:JSON.stringify({apikey:config.apiKey})
+  });
+  const result = await response.json();
+  if (!response.ok || result?.code !== 0 || !result?.data || Array.isArray(result.data)) throw Object.assign(new Error('无法核对云服务账户，请检查后台 RunningHub 配置'),{statusCode:503});
+  const raw=result.data.remainMoney;
+  return {balance:{money:raw!==null&&raw!==undefined&&raw!==''&&Number.isFinite(Number(raw))?Number(raw):null}};
 }
 
 export async function uploadReferenceImage({ fetchImpl, config, bytes, mime = 'image/png', filename = 'reference.png' }) {

@@ -529,7 +529,7 @@
     if (root.document.getElementById('nf-pose-style')) return;
     root.document.head.append(element('style', { id: 'nf-pose-style', text: `
       .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 12px;border-bottom:1px solid #303030}.nf-pose-modebar,.nf-pose-camera-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.nf-pose-dialog .nf-pose-camera-tools button{padding:5px 8px;white-space:nowrap}.nf-pose-outputbar{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:8px 12px;border-top:1px solid #303030;color:#aaa;font-size:11px}.nf-pose-outputbar label{display:flex;align-items:center;gap:7px;white-space:nowrap}.nf-pose-dialog .nf-pose-outputbar input[type=number]{width:64px;min-height:30px;padding:4px 6px;text-align:center;appearance:textfield}.nf-pose-outputbar input[type=number]::-webkit-inner-spin-button,.nf-pose-outputbar input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}.nf-pose-outputbar input[type=color]{width:44px;height:28px;padding:2px;border:1px solid #454545;border-radius:5px;background:#2a2a2a}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#1e493d;border-color:#337c66}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}
-      .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#000000b8;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
+      .nf-pose-overlay{position:fixed;inset:0;z-index:2147483625;background:#000000b8;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
       .nf-pose-dialog{width:min(1440px,100%);height:min(940px,100%);display:flex;flex-direction:column;background:#181818;border:1px solid #373737;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
       .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2a2a2a;color:#ddd;border:1px solid #3b3b3b;border-radius:7px;min-height:32px;padding:5px 10px;font:12px system-ui}
       .nf-pose-dialog button{cursor:pointer;transition:background .12s,border-color .12s}.nf-pose-dialog button:hover{background:#333;border-color:#555}.nf-pose-dialog button:disabled{opacity:.35;cursor:default}.nf-pose-dialog :focus-visible{outline:2px solid #56bc9b;outline-offset:2px}
@@ -627,7 +627,7 @@
     overlay.append(dialog); root.document.body.append(overlay);
     editor = { close, closeButton, snapshot, capture, get viewer() { return viewer; } };
     root.document.addEventListener('keydown', event => {
-      if (!editor) return;
+      if (!editor || event.target?.closest?.('#nf-xiaotao-art-root')) return;
       event.stopImmediatePropagation();
       if (event.key === 'Escape') { event.preventDefault(); if (importPanel) dismissImport(); else if (!savePanel.hidden) savePanel.hidden = true; else if (library && !library.hidden) { library.hidden = true; libraryButton.focus(); } else close(); }
       else if (event.key === 'Tab') {
@@ -1024,7 +1024,18 @@
     }
   }
 
-  root.NovaFlowPoseReferenceTool = Object.freeze({ open, close: () => editor?.close(), normalizeDocument, referenceSlot, applyReference, configureNavigation, createCharacters, configureRootTranslation, createPoseLibraryStore, getEditor: () => editor });
+  function agentContext(){
+    const viewer=editor?.viewer;if(!viewer?.boneList?.length)return null;
+    let hash=2166136261;for(const char of JSON.stringify(editor.snapshot()))hash=Math.imul(hash^char.charCodeAt(0),16777619);
+    return {revision:(hash>>>0).toString(16),selectedBone:viewer.selectedBone?.name||'',bones:viewer.boneList.slice(0,200).map(b=>({name:b.name,label:jointLabel(b.name)}))};
+  }
+  function agentSelectBone(name){
+    const viewer=editor?.viewer,bone=viewer?.boneList?.find(b=>b.name===name);
+    if(!bone)throw new Error('当前姿势人偶中不存在该关节');
+    viewer.selectBone(bone);if(viewer.selectedBone!==bone)throw new Error('未选中姿势关节');
+    return {boneName:bone.name,label:jointLabel(bone.name)};
+  }
+  root.NovaFlowPoseReferenceTool = Object.freeze({ open, close: () => editor?.close(), normalizeDocument, referenceSlot, applyReference, configureNavigation, createCharacters, configureRootTranslation, createPoseLibraryStore, getEditor: () => editor,agentContext,agentSelectBone });
   if (root.document && typeof root.MutationObserver === 'function') {
     let queued = false;
     new root.MutationObserver(() => {

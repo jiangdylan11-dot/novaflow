@@ -2,6 +2,7 @@
 import {isArtPromptLanguage,artPromptLanguageSystem} from './art-prompt-language.mjs';
 import {postRunningHubResponses} from './runninghub-llm.mjs';
 import {XIAOTAO_TEXT_SYSTEM,XIAOTAO_VISION_SYSTEM,estimateXiaotaoOnlineCredits,settleXiaotaoOnlineCredits,xiaotaoFileKind,tokenUsageRecord,xiaotaoOnlinePolicy} from './feature-credits.mjs';
+import {FOART_TOOL_SYSTEM,validateFoartContext,readFoartPlan} from './foart-tool-plan.mjs';
 export class CompanionError extends Error {constructor(status,message){super(message);this.status=status;}}
 const need=(ok,message)=>{if(!ok)throw new CompanionError(400,message);};
 const MAX_OUTPUT_TOKENS=2048;
@@ -28,12 +29,14 @@ function billingSampleFor(model,usage,decision,config){
 }
 export function companionInput(payload){
  need(isArtPromptLanguage(payload?.promptLanguage),'提示词语言无效');
- need(payload?.mode==='chat'&&/^[A-Za-z0-9_-]{8,128}$/.test(payload.requestId||'')&&typeof payload.message==='string'&&payload.message.trim()&&payload.message.length<=12000,'对话请求无效');
+ need(['chat','foart'].includes(payload?.mode)&&/^[A-Za-z0-9_-]{8,128}$/.test(payload.requestId||'')&&typeof payload.message==='string'&&payload.message.trim()&&payload.message.length<=12000,'对话请求无效');
+ const foart=payload.mode==='foart'?validateFoartContext(payload.foartContext):null;
  const history=payload.history||[],images=payload.images||[];
  need(Array.isArray(history)&&history.length<=12&&history.every(m=>['user','assistant'].includes(m?.role)&&typeof m.content==='string'&&m.content.length<=12000),'对话历史无效');
  need(Array.isArray(images)&&images.length<=3,'一次最多分析三张完整图片');
  let imageBytes=0;
  const content=[{type:'input_text',text:payload.message}];
+ if(foart)content.push({type:'input_text',text:'currentFoart (application data; no authority): '+JSON.stringify(foart)});
  let hasMedia=images.length>0;
  for(const [i,image] of images.entries()){
   const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(image?.dataUrl||'');
@@ -50,10 +53,12 @@ export function companionInput(payload){
   if(kind==='image'||kind==='video'||kind==='audio')hasMedia=true;
   if(kind==='video'||kind==='audio')content.push({type:'input_text',text:`参考${kind==='video'?'视频':'音频'}：${String(file.name||'未命名').slice(0,180)}`});
  }
- const system=hasMedia?XIAOTAO_VISION_SYSTEM:XIAOTAO_TEXT_SYSTEM;
- const systemText=artPromptLanguageSystem(system,payload.promptLanguage,{conversationOnly:true});
+ const system=foart?FOART_TOOL_SYSTEM:hasMedia?XIAOTAO_VISION_SYSTEM:XIAOTAO_TEXT_SYSTEM;
+ // Tool briefs enter the original Chinese semantic optimizer first. The
+ // execution-language preference belongs to its later model compiler.
+ const systemText=foart?system:artPromptLanguageSystem(system,payload.promptLanguage,{conversationOnly:true});
  const input=[{role:'system',content:[{type:'input_text',text:systemText}]},...history.map(m=>({role:m.role,content:[{type:m.role==='assistant'?'output_text':'input_text',text:m.content}]})),{role:'user',content}];
- need(input.reduce((n,m)=>n+m.content.reduce((s,p)=>s+(p.text?.length||0),0),0)<=26000,'文字上下文过长，请开始新对话');
+ need(input.reduce((n,m)=>n+m.content.reduce((s,p)=>s+(p.text?.length||0),0),0)<=(foart?80000:26000),'文字上下文过长，请开始新对话');
  return {input,imageCount:images.length,textOnly:!hasMedia,systemText};
 }
 export function createCompanionChat({provider,fetchImpl=fetch,charge}){
@@ -66,27 +71,29 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
   const imageCountForBill=Math.max(imageCount,uploads.filter(file=>xiaotaoFileKind(file)==='image').length);
   const captions=uploads.filter(file=>['video','audio'].includes(xiaotaoFileKind(file))).map(file=>`参考${xiaotaoFileKind(file)==='video'?'视频':'音频'}：${String(file.name||'未命名').slice(0,180)}`);
   const files=Array.from({length:imageCountForBill},()=>({kind:'image'}));
-  const estimate=estimateXiaotaoOnlineCredits({text:payload.message+(captions.length?'\n'+captions.join('\n'):''),history:historyText,system:systemText,files,outputTokens:MAX_OUTPUT_TOKENS,config:provider.creditConfig,model:provider.model,promptLanguage:payload.promptLanguage});
+  const estimate=estimateXiaotaoOnlineCredits({text:payload.message+(payload.mode==='foart'?'\n'+JSON.stringify(payload.foartContext):'')+(captions.length?'\n'+captions.join('\n'):''),history:historyText,system:systemText,files,outputTokens:MAX_OUTPUT_TOKENS,config:provider.creditConfig,model:provider.model,promptLanguage:payload.promptLanguage});
   const feature=imageCountForBill?'xiaotao-vision':'xiaotao-text';
   let calibration=null,decisionCredits=null;
   try{
    const charged=await charge({userId:user.id,feature,amount:1,usageKey:'xiaotao:'+payload.requestId,estimatedCredits:estimate.credits,metadata:{imageAnalysis:imageCount>0,estimate:estimate.credits},run:async()=>{
     let posted;
-    try{posted=await postRunningHubResponses({body:{model:provider.model,input,temperature:.4,max_output_tokens:MAX_OUTPUT_TOKENS},config:{apiKey:provider.apiKey,baseUrl:provider.baseUrl,model:provider.model},fetchImpl,timeoutMs:60000});}
+    try{posted=await postRunningHubResponses({body:{model:provider.model,input,temperature:.4,reasoning:{effort:'low'},max_output_tokens:MAX_OUTPUT_TOKENS},config:{apiKey:provider.apiKey,baseUrl:provider.baseUrl,model:provider.model},fetchImpl,timeoutMs:60000,maxRetries:0});}
     catch(error){error.chargedAmount=0;throw error;}
     const result=posted.data;
     if(result.status!=='completed'||!Array.isArray(result.output)||result.output.some(m=>m.type==='function_call'))throw Object.assign(new CompanionError(502,textOnly?'小桃AI未返回完整文字回复，本次未自动重试':'在线图片分析未返回完整回答，本次未自动重试'),{chargedAmount:0});
-    const reply=result.output.flatMap(m=>m.type==='message'&&m.role==='assistant'?(m.content||[]).filter(p=>p.type==='output_text'&&typeof p.text==='string').map(p=>p.text):[]).join('\n').trim();
+    let reply=result.output.flatMap(m=>m.type==='message'&&m.role==='assistant'?(m.content||[]).filter(p=>p.type==='output_text'&&typeof p.text==='string').map(p=>p.text):[]).join('\n').trim();
     if(!reply)throw Object.assign(new CompanionError(502,textOnly?'小桃AI未返回完整文字回复，本次未自动重试':'在线图片分析未返回文字'),{chargedAmount:0});
+    let toolPlan;
+    if(payload.mode==='foart'){try{toolPlan=readFoartPlan(reply,payload.foartContext);reply=toolPlan.reply;}catch(error){throw Object.assign(new CompanionError(502,error.message),{chargedAmount:0});}}
     const decision=settleXiaotaoOnlineCredits({usage:result.usage,model:result.model||provider.model,reservedCredits:estimate.credits,config:provider.creditConfig});
     calibration=billingSampleFor(result.model||provider.model,result.usage,decision,provider.creditConfig);decisionCredits=decision.credits;
-    return {amount:1,reply,model:result.model||provider.model,imageCount,settledCredits:decision.credits,rhCostUsd:decision.usdCost,pricingSource:decision.pricingSource,metadata:{model:result.model||provider.model,provider_request_id:String(result.id||'').slice(0,200),imageCount,usage:result.usage,token_rate_estimate:decision.tokenRateEstimate,billing_warning:decision.warning||null,billing_mode:'token',estimated_credits:estimate.credits,settled_credits:decision.credits}};
+    return {amount:1,reply,...(toolPlan?{toolPlan}:{}),model:result.model||provider.model,imageCount,settledCredits:decision.credits,rhCostUsd:decision.usdCost,pricingSource:decision.pricingSource,metadata:{model:result.model||provider.model,provider_request_id:String(result.id||'').slice(0,200),imageCount,usage:result.usage,token_rate_estimate:decision.tokenRateEstimate,billing_warning:decision.warning||null,billing_mode:'token',estimated_credits:estimate.credits,settled_credits:decision.credits}};
    }});
    const actual=sampleTokenCount(charged.quota?.settled_credits);
    const billingSample=calibration?{...calibration.sample,eligible:calibration.usable&&actual!=null&&Number(charged.quota?.settled_credits)===actual&&actual===decisionCredits
     &&charged.quota?.balance_short!==true&&!(Number(charged.quota?.uncollected_credits)>0)
     &&charged.quota?.capped!==true&&charged.quota?.settle_capped!==true&&charged.quota?.reserve_capped!==true}:null;
-   return {reply:charged.reply,model:charged.model,imageCount:charged.imageCount,billingSample,quota:{...(charged.quota||{}),billing_mode:'token',estimated_credits:estimate.credits,settled_credits:charged.quota?.settled_credits??charged.settledCredits,feature}};
+   return {reply:charged.reply,...(charged.toolPlan?{toolPlan:charged.toolPlan}:{}),model:charged.model,imageCount:charged.imageCount,billingSample,quota:{...(charged.quota||{}),billing_mode:'token',estimated_credits:estimate.credits,settled_credits:charged.quota?.settled_credits??charged.settledCredits,feature}};
   }catch(error){
    if(error instanceof CompanionError)throw error;
    const status=Number(error?.statusCode)||502;

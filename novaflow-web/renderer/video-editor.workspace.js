@@ -648,7 +648,7 @@
       if (!maskEdit) return
       const target = event.target instanceof Element ? event.target : null
       if (!target) return
-      if (target.closest('#ve-mask-box, .nf-vm-stage, [data-novaflow-primary-entry="1"], #novaflow-primary-audio-cell, [data-nf-mask-label]')) return
+      if (target.closest('#ve-mask-box, .nf-vm-stage, #nf-xiaotao-art-root, [data-novaflow-primary-entry="1"], #novaflow-primary-audio-cell, [data-nf-mask-label]')) return
       event.preventDefault(); event.stopImmediatePropagation()
     }
     function endMask(apply) {

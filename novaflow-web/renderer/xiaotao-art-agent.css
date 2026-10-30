@@ -1,4 +1,4 @@
-#nf-xiaotao-art-root { position:fixed; right:22px; bottom:22px; z-index:2147483615; color:#eeeeee; font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
+#nf-xiaotao-art-root { position:fixed; right:22px; bottom:22px; z-index:2147483626; color:#eeeeee; font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
 #nf-xiaotao-art-root[hidden], #nf-xiaotao-art-root [hidden] { display:none !important; }
 #nf-xiaotao-art-root button, #nf-xiaotao-art-root textarea { font:inherit; }
 #nf-xiaotao-art-root button { border:1px solid #555555; border-radius:8px; color:#eeeeee; background:#343434; padding:7px 11px; cursor:pointer; }

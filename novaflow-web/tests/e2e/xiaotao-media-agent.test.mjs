@@ -162,6 +162,17 @@ test('actual timeline edit adapter changes trims, movement and rate; rejects ove
   assert.equal(JSON.stringify(clip),before);assert.equal(commits,3);
   assert.throws(()=>edit(editor,{action:'volume',target:'video',clipId:'clip-1',value:.5}),/音频编辑器/);
 });
+
+test('native clip selection and cross-track movement use real track IDs and reject overlap atomically',()=>{
+  const ctx=vm.createContext({console,setTimeout});vm.runInContext(source,ctx);
+  const clip={id:'clip',trackId:'music',kind:'import',start:0,offset:0,end:2,length:2,rate:1,source:{durationSec:2}},a={id:'music',kind:'music',clips:[clip]},b={id:'sfx',kind:'sfx',clips:[]};let selected=null;
+  const editor={state:{tracks:[a,b]},pause(){},selectedClip:()=>selected,select:id=>selected=id===clip.id?clip:null,commitEdit(){},syncLength:c=>c.length=(c.end-c.offset)/c.rate};
+  const edit=ctx.NovaFlowMediaAgent.edit;
+  edit(editor,{action:'select_clip',target:'audio',clipId:'clip'});assert.equal(selected,clip);
+  edit(editor,{action:'move',target:'audio',clipId:'clip',trackId:'sfx',at:1});assert.equal(a.clips.length,0);assert.equal(b.clips[0],clip);assert.equal(clip.trackId,'sfx');assert.equal(clip.start,1);
+  a.clips.push({id:'other',start:0,length:5});const before=JSON.stringify(editor.state);
+  assert.throws(()=>edit(editor,{action:'move',target:'audio',clipId:'clip',trackId:'music',at:1}),/重叠/);assert.equal(JSON.stringify(editor.state),before);
+});
 test('controller routes media before drawing consent and reports the actual execution receipt',async()=>{
   const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,console,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
   vm.runInContext(source,ctx);vm.runInContext(agentSource,ctx);

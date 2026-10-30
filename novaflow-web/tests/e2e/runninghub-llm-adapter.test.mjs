@@ -57,6 +57,7 @@ test('Responses multimodal input becomes one chat completion without tools or th
       { role: 'user', content: [{ type: 'input_text', text: '看图' }, { type: 'function_call', name: 'generate' }, { type: 'input_image', image_url: PNG }] }
     ],
     temperature: 0.4,
+    reasoning: {effort:'low'},
     max_output_tokens: 2048,
     text: { format: { type: 'json_schema', name: 'novaflow_ui_qwen21_v1', strict: true, schema: { type: 'object', additionalProperties: false, properties: { prompt: { type: 'string' } }, required: ['prompt'] } } }
   }, 'xai/grok-4.7');
@@ -64,6 +65,7 @@ test('Responses multimodal input becomes one chat completion without tools or th
   assert.equal(chat.store, undefined);
   assert.equal(chat.tools, undefined);
   assert.equal(chat.max_tokens, 2048);
+  assert.equal(chat.reasoning_effort,'low');
   assert.equal(chat.messages[0].content, '只分析');
   assert.equal(chat.messages[1].content, '上一句');
   assert.equal(chat.messages[2].content.find(part => part.type === 'image_url').image_url.url, PNG);

@@ -216,3 +216,19 @@ test('entering 音视 from another module activates without throw; reload does n
   assert.equal(first.sub(), 'video');
   assert.doesNotThrow(() => first.close());
 });
+
+test('agent track edits synchronize the native header controls with rendered audio state',async()=>{
+  const sandbox=createDomSandbox({}),context=createContext(sandbox);
+  const create=sandbox.document.createElement.bind(sandbox.document);
+  sandbox.document.createElement=tag=>{const el=create(tag);el.appendChild=child=>{el.children.push(child);return child;};el.replaceChildren=(...children)=>{el.children=children;};return el;};
+  runInContext(await readFile(ROOT+'renderer/audio-timeline.editor.js','utf8'),context);
+  runInContext(await readFile(ROOT+'renderer/xiaotao-media-agent.js','utf8'),context);
+  const host=sandbox.document.createElement('div');sandbox.document.body.appendChild(host);
+  const editor=sandbox.NovaFlowAudioTimeline.create({host}),track=editor.state.tracks[0];
+  sandbox.NovaFlowMediaAgent.edit(editor,{action:'track_gain',target:'audio',trackId:track.id,value:.6});
+  sandbox.NovaFlowMediaAgent.edit(editor,{action:'track_solo',target:'audio',trackId:track.id,enabled:true});
+  assert.equal(track.gain,.6);assert.equal(track.solo,true);
+  const descendants=node=>[node,...node.children.flatMap(descendants)],headers=descendants(host).find(n=>n.className==='nf-tl-header-list');
+  assert.equal(Number(descendants(headers).find(n=>n.className==='nf-tl-track-gain').value),.6);
+  assert.equal(descendants(headers).find(n=>n.title==='独奏').getAttribute('aria-pressed'),'true');
+});

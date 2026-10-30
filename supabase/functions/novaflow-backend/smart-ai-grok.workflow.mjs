@@ -8248,7 +8248,7 @@ function grokResponsesPublicResult(data, options = {}) {
   }
   if (options.artSemanticFusion === true) {
     parsed.prompt = finalizeArtSemanticFusion(parsed.prompt, options.requirements);
-    const failure = artSemanticFusionFailure(options.originalPrompt, options.requirements, parsed.prompt);
+    const failure = artSemanticFusionFailure(options.originalPrompt, options.requirements, parsed.prompt, {freeform:options.targetEngine === "gpt-image-2.5"});
     if (failure) {
       const fusionError = new Error("提示词融合未完成：" + failure + "；原提示词未修改");
       fusionError.artSemanticFusionFailed = true;
@@ -8676,7 +8676,7 @@ function finalizeArtSemanticFusion(candidate, instruction) {
   return candidate.replace(/背景(?:完全|彻底|全部)虚化(?:浅景深)?/gu, "背景适度虚化，保留室外环境与空间层次");
 }
 
-function artSemanticFusionFailure(source, instruction, candidate) {
+function artSemanticFusionFailure(source, instruction, candidate, options = {}) {
   if (!candidate) return "未返回完整提示词";
   if (ordinaryArtPromptPatchCompact(source) === ordinaryArtPromptPatchCompact(candidate)) {
     // No instruction means "enrich the draft", not "return it"; an echo is a failure.
@@ -8685,7 +8685,7 @@ function artSemanticFusionFailure(source, instruction, candidate) {
   }
   if (/用户补充要求（只作为最终提示词约束|\[用户附加要求\]|不作为图片可见事实/u.test(candidate)) return "仍在照搬补充要求";
   // A draft that carries no layout of its own is normalized to the五段 layout.
-  if (!artPromptUsesOwnSections(source)) {
+  if (!options.freeform && !artPromptUsesOwnSections(source)) {
     const layoutFailure = artFiveSectionFailure(candidate);
     if (layoutFailure) return layoutFailure;
   }
@@ -8717,6 +8717,7 @@ function artSemanticFusionFailure(source, instruction, candidate) {
 function buildArtSemanticFusionRequest(payload, model) {
   const { source, instruction } = artSemanticFusionInput(smartAiCurrentPrompt(payload, 20000), payload.requirements || payload.requirement || payload.instructions);
   const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
+  const gptImage = payload.targetEngine === "gpt-image-2.5";
   const preserve = [...new Set(source.match(/成年|女性|男性|站立|坐姿|跪姿|俯卧|仰卧|右手|左手|全身|仰视/g) || [])].filter(word => {
     if (instruction.includes(word)) return false;
     if (/男|女|性别/u.test(instruction) && /女性|男性/u.test(word)) return false;
@@ -8734,18 +8735,20 @@ function buildArtSemanticFusionRequest(payload, model) {
     + (payload.requirements && payload.requirements !== instruction ? "\n其他调用约束（以用户补充要求为优先，不要照抄约束文字）：\n" + payload.requirements : "")
     + (supportsNegativePrompt ? "\n原负向提示词：" + (payload.negativePrompt || payload.negative_prompt || "无") : "")
     + (preserve.length ? "\n输出前逐字核对这些未要求修改的原设定，每项都必须出现在最终正文中，不能遗漏：" + preserve.join("、") : "")
-    + (artPromptUsesOwnSections(source) ? "" : "\n\n" + ART_FIVE_SECTION_OUTPUT_RULE)
+    + (gptImage || artPromptUsesOwnSections(source) ? "" : "\n\n" + ART_FIVE_SECTION_OUTPUT_RULE)
     // A draft in a layout of its own keeps it; the brief names the five sections.
-    + (artPromptUsesOwnSections(source) && !ART_FIVE_SECTIONS.every((title) => source.includes(title)) ? "" : "\n" + ART_PROMPT_CRAFT_RULE);
+    + (gptImage || artPromptUsesOwnSections(source) && !ART_FIVE_SECTIONS.every((title) => source.includes(title)) ? "" : "\n" + ART_PROMPT_CRAFT_RULE);
+  const system = gptImage ? ART_SEMANTIC_FUSION_RULES.replace("底稿没有标题时，必须按 [风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 五段重新组织，不保持自然段，也不得自创段名。", "底稿没有标题时，保持清晰紧凑的自然语言。")
+    + "\n目标是 GPT Image 2.5。完整落实数量、配色、主体、文字、构图与参考图职责，以约120至220字中文说明实际画面或编辑动作；简单需求可更短。纯色背景不添加场景或地面。局部修改只展开本次改动，其余内容明确保留。不要添加未要求的镜头参数、反向提示词或冗余质量口号。" : ART_SEMANTIC_FUSION_RULES;
   return {
-    body: { model, store: false, temperature: 0.4, max_output_tokens: 4096,
+    body: { model, store: false, temperature: 0.4, max_output_tokens: gptImage ? 1536 : 4096,
       text: { format: { type: "json_schema", name: "novaflow_art_semantic_fusion_v1", strict: true,
         schema: { type: "object", additionalProperties: false,
-          properties: { prompt: artPromptUsesOwnSections(source) ? { type: "string" } : ART_PROMPT_FIELD, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}) },
+          properties: { prompt: gptImage || artPromptUsesOwnSections(source) ? { type: "string" } : ART_PROMPT_FIELD, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}) },
           required: supportsNegativePrompt ? ["prompt", "negative_prompt"] : ["prompt"] } } },
-      input: [ { role: "system", content: [smartAiInputText(ART_SEMANTIC_FUSION_RULES)] }, { role: "user", content: [smartAiInputText(userText)] } ] },
+      input: [ { role: "system", content: [smartAiInputText(system)] }, { role: "user", content: [smartAiInputText(userText)] } ] },
     inputMeta: { mode: "prompt_optimize", scenario: "prompt_optimize", charCount: source.length + instruction.length, imageCount: 0, supportsNegativePrompt, hasNegativePrompt: Boolean(payload.negativePrompt || payload.negative_prompt) },
-    resultOptions: { artSemanticFusion: true, artFiveSectionPrompt: !artPromptUsesOwnSections(source), originalPrompt: source, requirements: instruction, supportsNegativePrompt, nsfw: payload.nsfw === true,
+    resultOptions: { artSemanticFusion: true, artFiveSectionPrompt: !gptImage && !artPromptUsesOwnSections(source), ...(gptImage?{targetEngine:"gpt-image-2.5"}:{}), originalPrompt: source, requirements: instruction, supportsNegativePrompt, nsfw: payload.nsfw === true,
       ...(supportsNegativePrompt && (payload.negativePrompt || payload.negative_prompt) ? { artUserText: String(payload.negativePrompt || payload.negative_prompt) } : {}) }
   };
 }

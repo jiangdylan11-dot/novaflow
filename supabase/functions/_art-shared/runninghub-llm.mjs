@@ -180,6 +180,8 @@ export function responsesToChatCompletions(body, model) {
   if (Number.isFinite(temperature)) chat.temperature = Math.max(0, Math.min(2, temperature));
   const maxTokens = Number(body?.max_output_tokens ?? body?.max_tokens);
   if (Number.isFinite(maxTokens) && maxTokens > 0) chat.max_tokens = Math.min(8192, Math.round(maxTokens));
+  const effort = body?.reasoning?.effort ?? body?.reasoning_effort;
+  if (['low','medium','high','xhigh'].includes(effort)) chat.reasoning_effort = effort;
   const format = responseFormat(body);
   if (format) chat.response_format = format;
   return chat;
@@ -213,8 +215,12 @@ export function chatCompletionToResponses(data) {
   if (text) output.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] });
   const completed = output.length > 0 && (finish === 'stop' || finish === 'length' || toolCalls.length > 0);
   const usage = data.usage && typeof data.usage === 'object' ? data.usage : {};
-  const inputTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0) || 0;
-  const outputTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? 0) || 0;
+  const inputRaw = usage.prompt_tokens ?? usage.input_tokens;
+  const outputRaw = usage.completion_tokens ?? usage.output_tokens;
+  const inputTokens = inputRaw == null ? null : Number(inputRaw);
+  const outputTokens = outputRaw == null ? null : Number(outputRaw);
+  const details = usage.prompt_tokens_details ?? usage.input_tokens_details;
+  const cachedTokens = details && typeof details === 'object' ? details.cached_tokens : undefined;
   return {
     id: String(data.id || ''),
     model: String(data.model || ''),
@@ -224,9 +230,10 @@ export function chatCompletionToResponses(data) {
     usage: {
       input_tokens: inputTokens,
       output_tokens: outputTokens,
-      total_tokens: Number(usage.total_tokens ?? inputTokens + outputTokens) || 0,
+      total_tokens: usage.total_tokens == null ? (inputTokens != null && outputTokens != null ? inputTokens + outputTokens : null) : Number(usage.total_tokens),
       prompt_tokens: inputTokens,
       completion_tokens: outputTokens,
+      ...(cachedTokens == null ? {} : { prompt_tokens_details: { cached_tokens: cachedTokens } }),
       thirdPartyConsumeMoney: usage.thirdPartyConsumeMoney ?? null,
       consumeMoney: usage.consumeMoney ?? null
     }

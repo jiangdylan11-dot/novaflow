@@ -162,7 +162,7 @@
     let parsed = {};
     try { parsed = text ? JSON.parse(text) : {}; } catch (_) { parsed = { error: text.slice(0, 300) }; }
     if (!res.ok) {
-      const error = new Error(String(parsed.error || ('request failed ' + res.status)));
+      const error = new Error(String(parsed.error || (res.status === 546 ? '在线服务达到运行限制，本次未完成，请稍后重试' : res.status === 504 ? '在线服务响应超时，本次未完成' : 'request failed ' + res.status)));
       error.status = res.status;
       error.code = parsed.code;
       throw error;
@@ -627,7 +627,7 @@
   const companionCloudUsed = new Set();
   async function companionCloudChat(payload = {}) {
     const id = payload.requestId;
-    if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(id) || payload.mode !== 'chat'
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(id) || !['chat','foart'].includes(payload.mode)
       || typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12000)
       return { ok: false, error: '小桃AI对话请求格式无效' };
     if (companionCloudRequests.size) return { ok: false, error: '小桃AI正在回复，请等待当前对话完成' };
@@ -654,17 +654,18 @@
     try {
       const base = CONFIG.companionUrl || CONFIG.authUrl.replace(/\/novaflow-backend\/?$/, '/novaflow-companion');
       const result = await api(base, 'POST', '/api/web/companion/chat', {
-        requestId: id, mode: 'chat', promptLanguage: payload.promptLanguage, message: payload.message,
-        history, images: payload.images || [], uploads, artContext: context
+        requestId: id, mode: payload.mode, promptLanguage: payload.promptLanguage, message: payload.message,
+        history, images: payload.images || [], uploads, artContext: context,
+        ...(payload.mode==='foart'?{foartContext:payload.foartContext}:{})
       }, 65000, controller.signal);
       if (result?.ok !== true || typeof result.reply !== 'string' || !result.reply.trim()) throw Error('在线回复未完成，本次未自动重试');
       const hasMedia = Boolean(payload.images?.length || uploads.length);
-      return { ok: true, data: { mode: 'chat', provider: 'api', reply: result.reply,
+      return { ok: true, data: { mode: payload.mode, provider: 'api', reply: result.reply,...(result.toolPlan?{toolPlan:result.toolPlan}:{}),
         conversationId: typeof payload.conversationId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(payload.conversationId) ? payload.conversationId : root.crypto.randomUUID(),
         history: [...history, { role: 'user', content: payload.message }, { role: 'assistant', content: result.reply }].slice(-12),
-        model: result.model || '云端API', toolTrace: [], capabilities: { textOnly: !hasMedia, vision: hasMedia, tools: false },
+        model: result.model || '云端API', toolTrace: [], capabilities: { textOnly: !hasMedia, vision: hasMedia, tools: payload.mode==='foart' },
         quota: result.quota } };
-    } catch (error) { return { ok: false, error: controller.signal.aborted ? '已停止等待本次云端回复；未完成的在线请求不扣积分' : String(error.message || error) }; }
+    } catch (error) { return { ok: false, error: controller.signal.aborted ? '本次在线回复等待已结束；用量以服务器实际结算为准' : String(error.message || error) }; }
     finally { clearTimeout(timer); companionCloudRequests.delete(id); }
   }
   function stopCompanionCloud(payload = {}) {
@@ -1329,6 +1330,11 @@
       const checkedSession = currentSession();
       if (!checkedSession) return { ok: true, result: { authenticated: false } };
       try {
+        // A missing control address must not send this bearer token to a
+        // loopback pairing endpoint, whose 401 is unrelated to account login.
+        if (!/^https?:\/\//i.test(String(CONFIG.controlUrl || '').trim())) {
+          throw new Error('账号校验服务地址未配置');
+        }
         const me = await control('GET', '/api/web/me');
         return {
           ok: true,

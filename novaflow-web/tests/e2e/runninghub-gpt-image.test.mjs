@@ -18,11 +18,20 @@ import {
   quoteGptImage,
   readRunningHubImageConfig,
   runChargedGptImage,
+  readImagePoolAccount,
   uploadReferenceImage,
   poolBlocksNewTask
 } from '../../packages/shared/src/runninghub-gpt-image.mjs';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+test('the server image route checks live pool balance and never falls back to a stale or rejected account',async()=>{
+  let url,body;
+  const config={baseUrl:'https://www.runninghub.ai',apiKey:'fixture'};
+  const account=await readImagePoolAccount(config,async(u,init)=>{url=u;body=JSON.parse(init.body);return Response.json({code:0,data:{remainMoney:'12.34'}});});
+  assert.equal(url,'https://www.runninghub.ai/uc/openapi/accountStatus');assert.equal(body.apikey,'fixture');assert.equal(account.balance.money,12.34);assert.doesNotMatch(JSON.stringify(account),/fixture/);
+  await assert.rejects(readImagePoolAccount(config,async()=>Response.json({code:806,data:null})),/无法核对云服务账户/);
+});
 
 function chargeProbe() {
   const events = [];

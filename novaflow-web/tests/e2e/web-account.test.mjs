@@ -69,6 +69,26 @@ controlStatus = 401;
 check((await recovering.electronAPI.clientAuthStatus()).result.authenticated, false);
 check(recovering.localStorage.getItem('novaflow.client.auth.session.v1'), null);
 check(recovering.localStorage.getItem('novaflow_web_session_v1'), null);
+// A local assistant's missing control-plane address is a configuration error,
+// not an expired account. Never send the account probe to its paired API.
+const missingControlRequests = [];
+const missingControl = createDomSandbox({
+  Response, Request, Blob, FormData,
+  NOVAFLOW_WEB_CONFIG: { controlUrl: '', localAssistant: true },
+  fetch: async (url) => {
+    missingControlRequests.push(String(url));
+    return new Response(JSON.stringify({ error: 'local pairing required' }), { status: 401 });
+  }
+});
+missingControl.localStorage.setItem('novaflow.client.auth.session.v1', JSON.stringify({
+  session: { token: 'still-valid-account-token' }, user: { display_name: 'Dylan' }
+}));
+runInContext(source, createContext(missingControl));
+const missingStatus = await missingControl.electronAPI.clientAuthStatus();
+check(missingStatus.result.authenticated, true);
+check(missingStatus.result.temporarilyUnavailable, true);
+check(missingControlRequests.some(url => url.endsWith('/api/web/me')), false);
+check(!!missingControl.localStorage.getItem('novaflow.client.auth.session.v1'), true);
 // A tab that was open before login must pick up the token written by a second tab.
 recovering.localStorage.setItem('novaflow.client.auth.session.v1', JSON.stringify({
   session: { token: 'new-tab-token' }, user: { display_name: 'Dylan' }

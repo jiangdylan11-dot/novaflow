@@ -26,14 +26,14 @@
   }
   const allClips=editor => editor?.state?.tracks?.flatMap(t=>t.clips || []) || [];
   function timeline(editor) {
-    return {selected:editor?.selectedClip?.()?.id || '',canvas:editor?.state?.canvas?clone(editor.state.canvas):null,tracks:(editor?.state?.tracks || []).map(t=>({id:t.id,kind:t.kind,gain:t.gain ?? 1,mute:!!t.mute,solo:!!t.solo,visible:t.visible!==false,
+    return {selected:editor?.selectedClip?.()?.id || '',canvas:editor?.state?.canvas?clone(editor.state.canvas):null,tracks:(editor?.state?.tracks || []).map(t=>({id:t.id,name:t.name||'',kind:t.kind,gain:t.gain ?? 1,mute:!!t.mute,solo:!!t.solo,visible:t.visible!==false,
       clips:(t.clips || []).map(c=>({id:c.id,name:c.name,kind:c.kind || '',start:c.start,offset:c.offset,end:c.end,length:c.length,
         rate:c.rate || 1,gain:c.gain ?? 1,loops:c.loops || 1,fadeIn:c.fadeIn || 0,fadeOut:c.fadeOut || 0,visible:c.visible!==false,audioDetached:!!c.audioDetached,
         transform:c.transform?clone(c.transform):null,maskRevision:c.maskRevision || 0,sourceIdentity:referenceStamp(c.source || c.buffer),sourceName:c.source?.fileName || '',sourceSeconds:c.source?.durationSec || c.buffer?.duration || 0}))}))};
   }
   function capture() {
     const audio=root.NovaFlowAudioStudio, video=root.NovaFlowAiSequenceVideoMergeWorkspace, gen=root.NovaFlowAiSequenceGeneration;
-    return {artContext:{surface:'media',sub:audio?.sub?.() || 'video',
+    return {artContext:{surface:'media',active:audio?.isOpen?.()===true,sub:audio?.sub?.() || 'video',
       generation:gen?.capture?.() || null,
       video:timeline(video?.editor?.()),audio:timeline(audio?.editor?.()),
       videoResources:root.NovaFlowAiSequenceAssetBridge?.listResources?.() || [],
@@ -85,10 +85,28 @@
   }
   const numeric=(v,min,max,label)=>{if(typeof v!=='number' || !Number.isFinite(v) || v<min || v>max)fail(label+'超出允许范围');return v;};
   function edit(editor,op) {
+    if(['play','pause','seek'].includes(op.action)){
+      if(op.action==='seek')editor.seek(numeric(op.at,0,editor.projectEnd(),'播放位置'));
+      else editor[op.action]();
+      return {ok:true,action:op.action,target:op.target,timeline:timeline(editor)};
+    }
+    if(['track_gain','track_mute','track_solo'].includes(op.action)){
+      const track=editor.state.tracks.find(t=>t.id===op.trackId);if(!track)fail('未找到当前音轨');
+      editor.pause();if(op.action==='track_gain')track.gain=numeric(op.value,0,1.5,'音轨音量');else {if(typeof op.enabled!=='boolean')fail('音轨开关无效');track[op.action==='track_mute'?'mute':'solo']=op.enabled;}
+      refresh(editor,{tracksChanged:true});return {ok:true,action:op.action,target:op.target,trackId:track.id,timeline:timeline(editor)};
+    }
     const clips=allClips(editor),clip=op.clipId ? clips.find(c=>c.id===op.clipId) : editor.selectedClip?.();
     if(!clip)fail('未找到要编辑的片段，请先选择片段或指定当前片段编号');
     editor.pause();
-    if(op.action==='split') {
+    if(op.action==='select_clip'){editor.select(clip.id);return {ok:true,action:op.action,target:op.target,clipId:clip.id,timeline:timeline(editor)};}
+    if(op.action==='loops'){
+      if(!editor.setLoops||!Number.isInteger(op.value))fail('该时间轴不支持片段循环');editor.setLoops(clip.id,numeric(op.value,1,op.target==='audio'?50:100,'循环次数'));
+    } else if(op.action==='clip_transform'){
+      if(!editor.setTransform||!clip.transform)fail('该片段不支持视频变换');
+      const patch=op.transform;if(!patch||Object.keys(patch).some(k=>!['centerX','centerY','scale'].includes(k)||!Number.isFinite(patch[k])))fail('视频变换参数无效');editor.setTransform(clip.id,patch);refresh(editor);
+    } else if(op.action==='clip_visibility'){
+      if(!editor.setClipVisible||typeof op.enabled!=='boolean')fail('该片段不支持显示开关');editor.setClipVisible(clip.id,op.enabled);
+    } else if(op.action==='split') {
       const at=numeric(op.at,clip.start+.021,clip.start+clip.length-.021,'分割位置');
       if((clip.loops || 1)>1)fail('循环片段请先取消循环再分割');
       editor.select(clip.id);editor.seek(at);if(!editor.splitAtPlayhead())fail('片段未分割');
@@ -109,13 +127,17 @@
       const end=op.action==='trim'?numeric(op.end,offset+.05,maxSource,'裁切终点'):clip.end;
       const start=op.action==='move'?numeric(op.at,0,86400,'片段位置'):clip.start;
       const length=(end-offset)*(clip.loops || 1)/rate;
-      const track=editor.state.tracks.find(t=>t.id===clip.trackId) || editor.state.tracks.find(t=>t.clips.includes(clip));
+      const fromTrack=editor.state.tracks.find(t=>t.id===clip.trackId) || editor.state.tracks.find(t=>t.clips.includes(clip));
+      const track=op.action==='move'&&op.trackId?editor.state.tracks.find(t=>t.id===op.trackId):fromTrack;
+      if(!track)fail('未找到目标音轨');
+      if(op.target==='video'&&track.kind!==fromTrack.kind)fail('视频和音频片段必须放入对应类型轨道');
       if(track.clips.some(c=>c!==clip && start<c.start+c.length-1e-6 && start+length>c.start+1e-6))fail('调整会与同轨片段重叠，请先移动到空闲位置');
+      if(track!==fromTrack){fromTrack.clips.splice(fromTrack.clips.indexOf(clip),1);track.clips.push(clip);clip.trackId=track.id;}
       Object.assign(clip,{start,offset,end,rate});editor.syncLength(clip);refresh(editor);
     } else fail('不支持的时间轴操作');
     return {ok:true,action:op.action,target:op.target,clipId:clip.id,timeline:timeline(editor)};
   }
-  function refresh(editor) {editor.commitEdit();editor.select(editor.selectedClip?.()?.id || null);root.NovaFlowAiSequenceVideoMergeWorkspace?.refresh?.();}
+  function refresh(editor,options) {editor.commitEdit(options);editor.select(editor.selectedClip?.()?.id || null);root.NovaFlowAiSequenceVideoMergeWorkspace?.refresh?.();}
   async function generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus,onOptimizationRequest,reuseOptimizedPrompt}={}) {
     root.NovaFlowAudioStudio?.open('video');
     let gen=root.NovaFlowAiSequenceGeneration;
