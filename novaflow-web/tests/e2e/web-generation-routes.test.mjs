@@ -331,13 +331,13 @@ assert.equal(upscale['6'].inputs.filename_prefix, 'novaflow_upscale_1');
 await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'buildSeedVr2ImageUpscaleWorkflow', options: { __args: [{}, 'task-up.png', 'p', {}] } }), /高清放大组件/);
 // SAM: the page sends the point prompts it read off the stroke; the node picks a model size it has.
 const samHost = await createWorkflowHost({ rendererDir, objectInfo: {
-  ...catalogueOf('LoadImage', 'SAM Parameters', 'SAM Image Mask', 'JoinImageWithAlpha', 'SaveImage'),
+  ...catalogueOf('LoadImage', 'SAM Parameters', 'SAM Image Mask', 'InvertMask', 'JoinImageWithAlpha', 'SaveImage'),
   'SAM Model Loader': { input: { required: { model_size: [['ViT-B', 'ViT-L']] } } }
 } });
 const sam = await samHost.buildGraph({ module: 'spine-split-runtime', method: 'samPointWorkflowFromPrompts', options: { __args: [{}, 'task-sam.png', 'novaflow_sam_1', { points: [[10, 20], [30, 40]], labels: [1, 1] }, { modelSize: 'ViT-H' }] } });
 assert.equal(sam['1'].inputs.image, 'task-sam.png');
 assert.equal(sam['2'].inputs.model_size, 'ViT-L');
-assert.deepEqual(sam['3'].inputs.points, [[10, 20], [30, 40]]);
+assert.equal(sam['3'].inputs.points, '[10,20]; [30,40]');
 assert.equal(sam['5'].class_type, 'JoinImageWithAlpha');
 // 万物迁移: the runtime the page "resolved" is a marker string here; the node resolves against its own
 // catalogue, and both uploads are renamed inside the object argument.

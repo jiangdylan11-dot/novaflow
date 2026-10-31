@@ -531,6 +531,7 @@ Write-Host "Copying ComfyUI engine from $SourceComfyRoot"
 Invoke-RobocopyChecked -Source $SourceComfyRoot -Destination $comfyDest -ExcludeDirs $comfyExcludeDirs -ExcludeFiles $excludeFiles
 
 New-Item -ItemType Directory -Force -Path (Join-Path $comfyDest "custom_nodes") | Out-Null
+Copy-Item -LiteralPath (Join-Path $scriptRoot "custom_nodes/novaflow_sam_point.py") -Destination (Join-Path $assetsPackageRoot "custom_nodes/novaflow_sam_point.py") -Force
 
 Write-Host "Copying Python runtime from $SourcePythonRoot"
 Invoke-RobocopyChecked -Source $SourcePythonRoot -Destination $pythonDest -ExcludeDirs $pythonExcludeDirs -ExcludeFiles $excludeFiles

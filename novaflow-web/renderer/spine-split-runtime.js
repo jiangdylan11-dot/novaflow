@@ -8460,7 +8460,13 @@
     if (!info || !info['SAM Model Loader'] || !info['SAM Parameters'] || !info['SAM Image Mask']) {
       throw new Error('算力节点缺少点选抠图组件')
     }
-    if (!prompts || !Array.isArray(prompts.points) || !prompts.points.length) throw new Error('笔触区域太小，无法识别目标')
+    // Canvas prompts use WAS's semicolon strings; web callers may send arrays.
+    const points = typeof prompts?.points === 'string'
+      ? prompts.points.split(';').filter(p => p.trim()).map(p => JSON.parse(p)) : prompts?.points
+    const labels = typeof prompts?.labels === 'string' ? JSON.parse(prompts.labels) : prompts?.labels
+    if (!Array.isArray(points) || !points.length || !Array.isArray(labels) || points.length !== labels.length ||
+      points.some(p => !Array.isArray(p) || p.length !== 2 || p.some(v => !Number.isFinite(v))) ||
+      labels.some(v => v !== 0 && v !== 1) || !labels.includes(1)) throw new Error('笔触区域太小或提示点无效，无法识别目标')
     const requestedSize = options && options.modelSize
     const modelSize = requestedSize && optionIncludes(info['SAM Model Loader'].input.required.model_size, requestedSize)
       ? requestedSize
@@ -8472,12 +8478,15 @@
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
       '2': { class_type: 'SAM Model Loader', inputs: { model_size: modelSize } },
-      '3': { class_type: 'SAM Parameters', inputs: { points: prompts.points, labels: prompts.labels } },
+      '3': { class_type: 'SAM Parameters', inputs: { points: points.map(p => JSON.stringify(p)).join('; '), labels: JSON.stringify(labels) } },
       '4': { class_type: 'SAM Image Mask', inputs: { sam_model: ['2', 0], sam_parameters: ['3', 0], image: ['1', 0] } }
     }
     let outputMode = 'rgba'
     if (info.JoinImageWithAlpha) {
-      workflow['5'] = { class_type: 'JoinImageWithAlpha', inputs: { image: ['1', 0], alpha: ['4', 1] } }
+      if (!info.InvertMask) throw new Error('Foart AI Runtime 缺少 InvertMask 节点')
+      // JoinImageWithAlpha interprets 1 as transparent; SAM emits foreground=1.
+      workflow['7'] = { class_type: 'InvertMask', inputs: { mask: ['4', 1] } }
+      workflow['5'] = { class_type: 'JoinImageWithAlpha', inputs: { image: ['1', 0], alpha: ['7', 0] } }
       workflow['6'] = { class_type: 'SaveImage', inputs: { images: ['5', 0], filename_prefix: prefix } }
     } else if (info['LayerUtility: ImageCombineAlpha']) {
       workflow['5'] = { class_type: 'LayerUtility: ImageCombineAlpha', inputs: { RGB_image: ['1', 0], mask: ['4', 1] } }
