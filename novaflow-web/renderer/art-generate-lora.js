@@ -42,7 +42,7 @@
     try { const store = readStore(); store[context] = entry; globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(store)) } catch { /* no storage */ }
   }
   const MAX_LORAS = 8
-  const managed = /lightning|turbo|(?:^|[\\/_-])(?:4|8)steps?/i
+  const managed = /lightning|(?:^|[\\/_-])(?:4|8)steps?|(?:^|[\\/])(?:qwen[-_ ]?image[-_ ]?2\.1[-_ ])?(?:viggle[-_ ])?turbo(?:[-_ .]|$)/i
   const key = (name) => String(name || '').replace(/\\/g, '/').toLowerCase()
   // What the page shows for a LoRA: its own file name, never the folder (it names the model) or the
   // extension. The full name stays the value that is sent.
@@ -95,7 +95,7 @@
   // A Qwen-Image-2.1 drawing graph; the worker builds it without the page's features, so the graph
   // itself says so.
   function isQwen21Graph(workflow) {
-    return Object.values(workflow || {}).some(node => ['UnetLoaderGGUF', 'UNETLoader'].includes(node?.class_type) &&
+    return Object.values(workflow || {}).some(node => ['UnetLoaderGGUF', 'NovaFlowGGUFBF16Loader', 'UNETLoader'].includes(node?.class_type) &&
       /qwen[-_ ]?image[-_ ]?2\.1/i.test(String(node.inputs?.unet_name || '')))
   }
 
@@ -106,7 +106,7 @@
     const selected = selection(state.loras)
     if (!selected.length) return workflow
     const bases = Object.entries(workflow).filter(([, node]) =>
-      ['UNETLoader', 'UnetLoaderGGUF', 'CheckpointLoaderSimple'].includes(node?.class_type) &&
+      ['UNETLoader', 'UnetLoaderGGUF', 'NovaFlowGGUFBF16Loader', 'CheckpointLoaderSimple'].includes(node?.class_type) &&
       /qwen/i.test(String(node.inputs?.unet_name || node.inputs?.ckpt_name || '')))
     if (bases.length !== 1) throw new Error('当前生成流程无法添加 LoRA')
     const [baseId] = bases[0]

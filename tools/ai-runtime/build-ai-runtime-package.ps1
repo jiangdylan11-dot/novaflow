@@ -546,6 +546,8 @@ Copy-StrataRuntime -Layout $strataLayout -Destination (Join-Path $engineRoot "st
 # manifest (version, commit, pip changes) goes into the package with it.
 $comfyVersion = Get-ComfyVersion $SourceComfyRoot
 if ($comfyVersion -and $comfyVersion -ge [version] "0.37.0") {
+  & (Join-Path $pythonDest "python.exe") (Join-Path $scriptRoot "patch-qwen21-lora.py") $comfyDest
+  if ($LASTEXITCODE -ne 0) { throw "Qwen 2.1 LoRA key-map patch failed" }
   Write-Host "ComfyUI $comfyVersion carries INT8 TensorWise natively; the 0.24.1 Runtime patches are not applied."
 } else {
   $runtimePatcher = Join-Path $scriptRoot "apply-runtime-patches.ps1"

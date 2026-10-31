@@ -44,11 +44,12 @@ export function createWorkerLoraCatalog({ modelsRoot, image, video }) {
       const nsfw = nodes.some(([, n]) => /Qwen-Rapid/i.test(String(n.inputs?.ckpt_name || '')));
       // A Qwen-Image-2.1 graph (its GGUF / safetensors loader) takes only LoRAs made for 2.1.
       const qwen21 = nodes.some(([, n]) => /^(?:UnetLoaderGGUF|NovaFlowGGUFBF16Loader|UNETLoader)$/.test(String(n.class_type || '')) && /qwen[-_ ]?image[-_ ]?2\.1/i.test(String(n.inputs?.unet_name || '')));
-      const { items } = await read('qwen', qwen21 ? { engine: 'qwen-2.1' } : { nsfw });
+      const modelName = qwen21 ? nodes.find(([, n]) => /^(?:UnetLoaderGGUF|NovaFlowGGUFBF16Loader|UNETLoader)$/.test(String(n.class_type || '')) && /qwen[-_ ]?image[-_ ]?2\.1/i.test(String(n.inputs?.unet_name || '')))?.[1].inputs.unet_name : '';
+      const { items } = await read('qwen', qwen21 ? { engine: 'qwen-2.1', modelName } : { nsfw });
       const names = new Set(items.map(item => item.name));
       for (const [, node] of userQwen) if (!names.has(node.inputs?.lora_name)) throw new Error('Qwen LoRA 已变化或不兼容，请刷新列表重新选择');
       // A 2.1 LoRA trained on the fused MLP runs from its split copy on a split 2.1 build.
-      if (qwen21) for (const [, node] of userQwen) node.inputs.lora_name = qwen.runtimeName21(node.inputs.lora_name);
+      if (qwen21) for (const [, node] of userQwen) node.inputs.lora_name = qwen.runtimeName21(node.inputs.lora_name, modelName);
     }
     for (const item of parameters.loras || []) {
       if (item.enabled === false) continue;

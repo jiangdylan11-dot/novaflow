@@ -15,7 +15,8 @@ const QWEN21_DIRS = ['diffusion_models', 'unet'];
 const widths = { BOOL: 1, U8: 1, I8: 1, F8_E4M3: 1, F8_E5M2: 1, F8_E4M3FN: 1, F16: 2, BF16: 2, I16: 2, U16: 2, F32: 4, I32: 4, U32: 4, F64: 8, I64: 8, U64: 8 };
 const normalize = name => String(name).replace(/\\/g, '/').toLowerCase();
 const inside = (root, file) => { const rel = path.relative(root, file); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); };
-const managed = /lightning|turbo|(?:^|[\\/_-])(?:4|8)steps?/i;
+// A style trained on Turbo (e.g. fusal-...-turbo-...) is not a speed adapter.
+const managed = /lightning|(?:^|[\\/_-])(?:4|8)steps?|(?:^|[\\/])(?:qwen[-_ ]?image[-_ ]?2\.1[-_ ])?(?:viggle[-_ ])?turbo(?:[-_ .]|$)/i;
 
 function readHeader(file) {
   const fd = fs.openSync(file, 'r');
@@ -128,12 +129,19 @@ function loraTargets(base) {
   // A checkpoint carries the text encoder and VAE too; only its diffusion model takes these LoRAs.
   const checkpoint = entries.some(([k]) => k.startsWith('model.diffusion_model.'));
   const targets = new Map();
+  function register(name, shape, regions = [name]) {
+    const target = { name, shape, regions };
+    const flat = name.replace(/\./g, '_');
+    for (const alias of [name, 'diffusion_model.' + name, 'transformer.' + name, 'lora_unet_' + flat, 'lycoris_' + flat]) targets.set(alias, target);
+  }
   for (const [key, value] of entries) {
     if (checkpoint && !key.startsWith('model.diffusion_model.')) continue;
     const name = key.replace(/^(?:model\.)?diffusion_model\./, '').slice(0, -'.weight'.length);
-    const target = { name, shape: value.shape };
-    const flat = name.replace(/\./g, '_');
-    for (const alias of [name, 'diffusion_model.' + name, 'transformer.' + name, 'lora_unet_' + flat, 'lycoris_' + flat]) targets.set(alias, target);
+    if (FUSED_MLP.test(name) && value.shape[0] % 2 === 0) {
+      const halves = ['gate_layer', 'proj'].map(part => name.replace(/gate_up$/, part));
+      register(name, value.shape, halves);
+      for (const half of halves) register(half, [value.shape[0] / 2, value.shape[1]]);
+    } else register(name, value.shape);
   }
   return targets;
 }
@@ -181,11 +189,11 @@ function compatible(lora, base) {
       const upName = prefix + suffix[1];
       const down = lora[name], up = lora[upName];
       const parts = targets.has(prefix) ? [targets.get(prefix)] : splitTargets(prefix, targets);
-      if (!up || !parts || parts.some(target => hit.has(target.name))) return false;
+      if (!up || !parts || parts.some(target => target.regions.some(region => hit.has(region)))) return false;
       const out = parts.reduce((sum, target) => sum + target.shape[0], 0), inner = parts[0].shape[1];
       if (down.shape?.length !== 2 || up.shape?.length !== 2 || down.shape[0] < 1 || down.shape[0] !== up.shape[1] || down.shape[1] !== inner || up.shape[0] !== out) return false;
       if (!loraDtype(down) || !loraDtype(up)) return false;
-      for (const target of parts) hit.add(target.name);
+      for (const target of parts) for (const region of target.regions) hit.add(region);
       consumed.add(name); consumed.add(upName);
       if (!alphaOk(prefix)) return false;
       modules++;
@@ -195,12 +203,12 @@ function compatible(lora, base) {
     if (!lokr) continue;
     const prefix = name.slice(0, -lokr[0].length);
     const target = targets.get(prefix);
-    if (!target || hit.has(target.name) || lora[prefix + '.lokr_t2'] || lora[prefix + '.dora_scale']) return false;
+    if (!target || target.regions.some(region => hit.has(region)) || lora[prefix + '.lokr_t2'] || lora[prefix + '.dora_scale']) return false;
     const w1 = lokrFactor(lora, prefix, 1), w2 = lokrFactor(lora, prefix, 2);
     if (!w1 || !w2) return false;
     const [out, inner] = target.shape;
     if (w1.shape[0] * w2.shape[0] !== out || w1.shape[1] * w2.shape[1] !== inner) return false;
-    hit.add(target.name);
+    for (const region of target.regions) hit.add(region);
     for (const key of [...w1.keys, ...w2.keys]) consumed.add(key);
     if (!alphaOk(prefix)) return false;
     modules++;
@@ -263,24 +271,28 @@ function createQwenLoraCatalog(options = {}) {
     cache.set(file, { stamp, data });
     return data;
   }
-  function qwen21Model() {
+  function qwen21Models(modelName = '') {
+    const found = [];
     for (const dir of QWEN21_DIRS) {
       const folder = path.join(models, dir);
       if (!fs.existsSync(folder)) continue;
-      const name = fs.readdirSync(folder).filter(file => QWEN21_MODEL.test(file)).sort()[0];
-      if (name) return path.join(folder, name);
+      for (const name of fs.readdirSync(folder).filter(file => QWEN21_MODEL.test(file)).sort()) {
+        if (!modelName || normalize(name) === normalize(modelName)) found.push(path.join(folder, name));
+      }
     }
+    if (found.length) return found;
     throw new Error('算力节点没有 Qwen-Image-2.1 模型，无法检查 2.1 LoRA');
   }
   // engine 'qwen-2.1' checks against the Qwen-Image-2.1 model and NSFW against Rapid AIO. Anything else
   // names a route that no longer exists (the 2511 edit model is retired), so it has no LoRAs.
-  async function catalog({ nsfw = false, engine = '' } = {}) {
+  async function catalog({ nsfw = false, engine = '', modelName = '' } = {}) {
     if (engine !== 'qwen-2.1' && !nsfw) return [];
     if (!fs.existsSync(root)) return [];
     // Reject a junction replacing the requested directory, and links escaping it.
     const realRoot = fs.realpathSync(root);
     if (normalize(realRoot) !== normalize(root)) throw new Error('Qwen LoRA 目录不能指向其他目录');
-    const base = header(engine === 'qwen-2.1' ? qwen21Model() : path.join(models, BASE_MODELS.rapid));
+    // The shared list must fit both standard and Turbo. Task validation names its actual model.
+    const bases = (engine === 'qwen-2.1' ? qwen21Models(modelName) : [path.join(models, BASE_MODELS.rapid)]).map(header);
     const info = await options.listRuntimeLoraNames();
     const field = info?.LoraLoaderModelOnly?.input?.required?.lora_name;
     const names = Array.isArray(field?.[0]) ? field[0] : field?.[1]?.options;
@@ -292,7 +304,7 @@ function createQwenLoraCatalog(options = {}) {
       if (relative.some(part => !part || part === '.' || part === '..' || part.includes(':'))) continue;
       const file = path.resolve(root, ...relative);
       try {
-        if (!inside(realRoot, fs.realpathSync(file)) || !fs.statSync(file).isFile() || !compatible(header(file), base)) continue;
+        if (!inside(realRoot, fs.realpathSync(file)) || !fs.statSync(file).isFile() || !bases.every(base => compatible(header(file), base))) continue;
         if (!seen.has(normalize(name))) items.push({ name });
         seen.add(normalize(name));
       } catch { /* Missing, partial, corrupt, and unsupported files are not selectable. */ }
@@ -301,12 +313,12 @@ function createQwenLoraCatalog(options = {}) {
   }
   // The Runtime name for a listed 2.1 LoRA: itself, or a copy under loras/qwen21-split with its fused
   // MLP split when the node's 2.1 model is a split build. The copy is rewritten when the source changes.
-  function runtimeName21(name) {
+  function runtimeName21(name, modelName = '') {
     const relative = String(name).split(/[\\/]/).slice(1);
     const file = path.resolve(root, ...relative);
     if (!inside(fs.realpathSync(root), fs.realpathSync(file))) throw new Error('Qwen LoRA 路径无效');
-    const targets = loraTargets(header(qwen21Model()));
-    if (!Object.keys(header(file)).some(key => { const pair = pairOf(key); return pair && splitTargets(pair.prefix, targets); })) return name;
+    const targets = loraTargets(header(qwen21Models(modelName)[0]));
+    if (!Object.keys(header(file)).some(key => { const pair = pairOf(key); return pair && FUSED_MLP.test(pair.prefix) && (targets.has(pair.prefix) || splitTargets(pair.prefix, targets)); })) return name;
     const dest = path.join(path.dirname(root), SPLIT_DIR, ...relative);
     if (!fs.existsSync(dest) || fs.statSync(dest).mtimeMs < fs.statSync(file).mtimeMs) splitFusedMlp(file, dest);
     return [SPLIT_DIR, ...relative].join(String(name).includes('\\') ? '\\' : '/');
