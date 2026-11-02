@@ -26,8 +26,6 @@
     "check:seethrough": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/repair-seethrough-env.ps1",
     "repair:seethrough": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/repair-seethrough-env.ps1 -Repair",
     "diagnose:entry": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/diagnose-runtime-entry.ps1",
-    "deploy:program-files": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-to-program-files.ps1",
-    "deploy:program-files:confirm": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-to-program-files.ps1 -ConfirmDeploy",
     "watch:auto-commit": "chokidar \"src/**/*\" \"renderer/**/*\" \"main/**/*\" \"public/**/*\" \"package.json\" \"package-lock.json\" \"vite.config.*\" \"electron.*\" -i \"**/node_modules/**\" -i \"**/dist/**\" -i \"**/build/**\" -i \"**/.git/**\" -i \"**/logs/**\" -i \"**/*.log\" -i \"**/.vite/**\" -i \"**/coverage/**\" -c \"npm run auto-commit\" --debounce 2500",
     "auto-commit": "node scripts/auto-commit.js",
     "prepare": "husky",

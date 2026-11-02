@@ -161,7 +161,7 @@ if ($runningTargetProcesses.Count -gt 0) {
 if (-not $ConfirmDeploy) {
   Write-Host ""
   Write-Host "Dry-run complete. No files were copied."
-  Write-Host "Run npm run deploy:program-files:confirm to copy repo dist into Program Files."
+  Write-Host "This legacy desktop helper is not a supported Foart release or installation entry."
   exit 0
 }
 
