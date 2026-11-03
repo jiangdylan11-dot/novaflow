@@ -180,7 +180,10 @@ export function responsesToChatCompletions(body, model) {
   const maxTokens = Number(body?.max_output_tokens ?? body?.max_tokens);
   if (Number.isFinite(maxTokens) && maxTokens > 0) chat.max_tokens = Math.min(8192, Math.round(maxTokens));
   const effort = body?.reasoning?.effort ?? body?.reasoning_effort;
-  if (['low','medium','high','xhigh'].includes(effort)) chat.reasoning_effort = effort;
+  // Keep ordinary chat and prompt rewriting within the final-answer budget.
+  // DeepSeek counts thinking toward max_tokens, even at low effort.
+  if (chat.model === 'deepseek/deepseek-v4.1-flash' && (effort == null || effort === 'low' || effort === 'none')) chat.thinking = {type:'disabled'};
+  else if (['low','medium','high','xhigh'].includes(effort)) chat.reasoning_effort = effort;
   const format = responseFormat(body);
   if (format) chat.response_format = format;
   return chat;

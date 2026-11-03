@@ -5784,7 +5784,7 @@ function ordinaryArtStructuredPromptValidateTypedSlots(
     ORDINARY_ART_STRUCTURED_MEDIUM_SEMANTIC_PATTERN,
     { generic: ["art", "image", "绘画", "艺术"] });
   requireTyped("style.render_language", style.render_language,
-    /(?:厚涂|半写实|写实|二次元|动漫|赛璐璐|笔触|线条|渲染|造型|设计|性感|造型语言|体积塑造|明暗塑造|游戏cg|角色原画|painterly|semi[-\s]*realistic|photorealistic|anime|manga|cel[-\s]*shad(?:ed|ing)|brushwork|linework|render(?:ed|ing)?|painting|character\s+design|styling|sensual|game\s+cg|concept\s+art|splash\s+art)/iu,
+    /(?:水彩|油画|水墨|素描|速写|版画|木刻|剪纸|拼贴|像素|低多边形|湿画法|干笔|晕染|点染|勾勒|排线|watercolou?r|gouache|ink\s+wash|charcoal|pencil|sketch|woodcut|collage|pixel|low[-\s]+poly|wet[-\s]+on[-\s]+wet|dry[-\s]+brush|厚涂|半写实|写实|二次元|动漫|赛璐璐|笔触|线条|渲染|造型|设计|性感|造型语言|体积塑造|明暗塑造|游戏cg|角色原画|painterly|semi[-\s]*realistic|photorealistic|anime|manga|cel[-\s]*shad(?:ed|ing)|brushwork|linework|render(?:ed|ing)?|painting|character\s+design|styling|sensual|game\s+cg|concept\s+art|splash\s+art)/iu,
     { generic: ["chinese", "english", "japanese", "中文", "英文", "日文", "中国", "东方", "style"] });
   requireTyped("style.atmosphere", style.atmosphere,
     /(?:氛围|气氛|意境|情绪|调性|审美|浪漫|亲密|成熟|性感|成人向|温暖|暖色|冷峻|神秘|史诗|宁静|梦幻|清透|romantic|intimate|mature|sensual|adult[-\s]*oriented|warm|cool|mood|atmosphere|ambience|ambiance|tone|aesthetic|dreamlike|epic)/iu,
