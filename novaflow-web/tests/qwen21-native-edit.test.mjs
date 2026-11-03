@@ -15,6 +15,25 @@ test('multiple image roles retain their exact order and English edits stay Engli
  const result=compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,validateQwen21NativePreservation);assert.equal(result.modelPrompt,rewritten_prompt);
  assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:rewritten_prompt.replace('<image2>','another image')})},p,validateQwen21NativePreservation),/reference/);
 });
+test('native edit accepts only in-range output references and ignores them for English language detection',()=>{
+ const p=buildQwen21NativeRewrite({...input,currentPrompt:'Add flowers.'},model,['subject']);
+ assert.equal(p.referenceCount,1);
+ const compile=(rewritten_prompt)=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,()=>true);
+ for(const value of ['Add flowers to @参考图1.','Add flowers to <image1>.','Add flowers to the image.'])assert.equal(compile(value).modelPrompt,value);
+ for(const value of ['Add flowers to @参考图2.','Add flowers to <image2>.','Add flowers to @参考图0.','Add flowers to <image0>.'])assert.throws(()=>compile(value),/reference out of range/);
+ assert.throws(()=>compile('Add flowers to @参考图1 and 添加花朵.'),/English/);
+ const three=buildQwen21NativeRewrite({...input,currentPrompt:'Add flowers.'},model,['subject','style','reference']);
+ assert.equal(three.referenceCount,3);
+ assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'Add flowers to @参考图3.'})},three,()=>true));
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'Add flowers to <image4>.'})},three,()=>true),/reference out of range/);
+});
+test('native edit retains explicit original image references',()=>{
+ for(const ref of ['@参考图1','<image1>']){
+  const p=buildQwen21NativeRewrite({...input,currentPrompt:`Add flowers to ${ref}.`},model,['subject']);
+  assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:`Add flowers to ${ref}, keeping the rest unchanged.`})},p,()=>true));
+  assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'Add flowers, keeping the rest unchanged.'})},p,()=>true),/reference/);
+ }
+});
 test('legacy v2 edit quotes retain their original paired English contract',()=>{
  const p=buildQwen21NativeRewrite({...input,promptContract:'qwen21-native-rewrite-v2'},model,['subject']);assert.equal(p.nativeEdit,undefined);assert.deepEqual(p.body.text.format.schema.required,['display_prompt','model_prompt']);
 });
@@ -35,6 +54,53 @@ test('English instruction with Chinese image text stays English',()=>{
  const p=buildQwen21NativeRewrite({...input,currentPrompt:'Change the headline to “春日计划”, keeping the mug and background unchanged.'},model,['subject']);assert.equal(p.modelPromptLanguage,'en');
  const rewritten_prompt='Change the headline to “春日计划”, while keeping the mug and the background unchanged.';
  assert.equal(compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,()=>true).modelPromptLanguage,'en');
+});
+test('a concise complete English edit is accepted without padding',()=>{
+ const p=buildQwen21NativeRewrite({...input,currentPrompt:'Make the cup red.'},model,['subject']);
+ const rewritten_prompt='Make it red; keep everything else unchanged.';
+ assert.equal(compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,()=>true).modelPrompt,rewritten_prompt);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:''})},p,()=>true),/incomplete/);
+ for(const source of ['Add fog.','变为红色。']){
+  const minimal=buildQwen21NativeRewrite({...input,currentPrompt:source},model,['subject']);
+  assert.equal(compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:source})},minimal,()=>true).modelPrompt,source);
+ }
+});
+test('ASCII quoted lettering preserves its script and can be deliberately replaced',()=>{
+ const english=buildQwen21NativeRewrite({...input,currentPrompt:"Don't change the cup; change the title to '春日计划'."},model,['subject']);
+ assert.equal(english.modelPromptLanguage,'en');
+ assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:"Change the title to '春日计划'; keep the cup unchanged."})},english,()=>true));
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'Change the title to Spring Plan; keep the cup unchanged.'})},english,()=>true),/lettering/);
+ for(const source of ["把标题从'旧标题'改成'新标题'，保持其他内容不变。","把'旧标题'换成'新标题'，保持其他内容不变。","Change the title from 'old' to 'new', keeping the rest unchanged.","Replace 'old' with 'new' on the sign.","Change the title 'old' to 'new'."]){
+  const p=buildQwen21NativeRewrite({...input,currentPrompt:source},model,['subject']);
+  const rewritten_prompt=p.modelPromptLanguage==='zh'?"把标题改成'新标题'，保持其他内容不变。":"Change the title to 'new', keeping the rest unchanged.";
+  assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,()=>true));
+ }
+});
+test('changing a title does not discard text belonging to another object',()=>{
+ const unrelated=buildQwen21NativeRewrite({...input,currentPrompt:'一只猫戴着印有“Foart”的项链。',requirements:'将背景标题文字改为“春日”。'},model,['subject']);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'将背景标题文字改为“春日”，保持其他内容不变。'})},unrelated,()=>true),/lettering/);
+ assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'将背景标题文字改为“春日”，保持项链文字“Foart”和其他内容不变。'})},unrelated,()=>true));
+ assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'将背景标题文字改为“春日”，保持项链文字“Foart”和其他内容不变。'})},unrelated,validateQwen21NativePreservation));
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'将背景标题文字改为“春日”，保持其他内容不变。'})},unrelated,validateQwen21NativePreservation),/lettering/);
+ const title=buildQwen21NativeRewrite({...input,currentPrompt:'标题“旧标题”，保持画面不变。',requirements:'把标题改为“新标题”。'},model,['subject']);
+ assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'把标题改为“新标题”，保持画面不变。'})},title,()=>true));
+ const ambiguous=buildQwen21NativeRewrite({...input,currentPrompt:'标题“旧标题”，副标题“副标题”，保持画面不变。',requirements:'把标题改为“新标题”。'},model,['subject']);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'把标题改为“新标题”，保持画面不变。'})},ambiguous,()=>true),/lettering/);
+});
+test('native edits allow semantic paraphrases without claiming to prove their meaning',()=>{
+ const examples=[
+  ['保持构图。','把杯子改为蓝色。','把杯子改为蓝色，构图原封不动。'],
+  ['保持光照。','把杯子改为蓝色。','把杯子改为蓝色，沿用同一光源。'],
+  ['不要添加物体。','把杯子改为蓝色。','把杯子改为蓝色，别添加杂物。'],
+  // Structure and literals alone cannot establish that this is equivalent.
+  ['不要添加文字。','把杯子改为蓝色。','把杯子改为蓝色，无需禁止添加文字。']
+ ];
+ for(const [currentPrompt,requirements,rewritten_prompt] of examples){
+  const p=buildQwen21NativeRewrite({...input,currentPrompt,requirements},model,['subject']);
+  const request=JSON.parse(p.body.input[1].content[0].text);
+  assert.equal(request.current_instruction,currentPrompt);assert.equal(request.requested_changes,requirements);
+  assert.equal(compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,validateQwen21NativePreservation).modelPrompt,rewritten_prompt);
+ }
 });
 test('explicitly swapping the left and right edit target is rejected',()=>{
  const p=buildQwen21NativeRewrite({...input,currentPrompt:'把左边的杯子改成红色，保持右边杯子不变'},model,['subject']);

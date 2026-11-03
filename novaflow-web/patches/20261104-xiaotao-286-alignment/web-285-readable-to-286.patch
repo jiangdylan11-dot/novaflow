@@ -1,0 +1,601 @@
+--- a/novaflow-web/renderer/novaflow-brand-runtime.js
++++ b/novaflow-web/renderer/novaflow-brand-runtime.js
+@@ -83687,6 +83687,9 @@
+     return Math.max(1, Math.min(ART_GENERATE_MAX_REFERENCES, limit));
+   }
+ 
++  // Monotonic reference changes invalidate in-flight single-image requests,
++  // including changing a reference and then restoring the original image.
++  let ART_GENERATE_REFERENCE_REVISION = 0;
+   function artGenerateReferences() {
+     const refs = Array.isArray(ART_GENERATE_STATE.references) ? ART_GENERATE_STATE.references.slice() : [];
+     while (refs.length < ART_GENERATE_BASE_REFERENCE_SLOTS) refs.push(null);
+@@ -83718,6 +83721,7 @@
+   }
+ 
+   function setArtGenerateReference(index, value) {
++    ART_GENERATE_REFERENCE_REVISION += 1;
+     const refs = artGenerateReferences();
+     const target = Math.max(0, Math.min(ART_GENERATE_MAX_REFERENCES - 1, Number(index) || 0));
+     while (refs.length <= target) refs.push(null);
+@@ -84093,6 +84097,7 @@
+         }, "\u00d7"),
+         renderArtGenerateReferenceSizeBadge(index, current),
+         !window.NovaFlowUiDesignDrawing?.isActive?.() && window.NovaFlowArtDirection?.referenceControl?.(createArtEl, current, index + 1, role => {
++          ART_GENERATE_REFERENCE_REVISION += 1;
+           current.drawingRole = role;
+           renderArtGenerateSurfaces({ forceBottom: true });
+         })
+@@ -87478,7 +87483,7 @@
+       setReference: setArtGenerateReference,
+       refreshReferences: refreshArtGenerateReferences,
+       capturePrompt: captureArtGeneratePromptSnapshot,
+-      captureContext: () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(), routeRevision: PRIMARY_SWITCH_TOKEN,
++      captureContext: () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(), routeRevision: PRIMARY_SWITCH_TOKEN, referenceRevision: ART_GENERATE_REFERENCE_REVISION,
+         generationSurface: document.body?.classList.contains('novaflow-primary-target-art') ? window.NovaFlowUiDesignDrawing?.isActive?.() ? 'ui' : 'drawing' : 'other' }),
+       // Capture before a prompt-source question. Never read or upload image bytes here.
+       capturePromptSourceGuard() {
+--- a/novaflow-web/renderer/novaflow-smart-ai.js
++++ b/novaflow-web/renderer/novaflow-smart-ai.js
+@@ -5262,6 +5262,29 @@
+     // while the explicitly selected Qwen business capability is unavailable.
+     if(qwenBusiness && api.qwenBusinessAvailableSync?.()!==true)
+       throw new Error('\u5f53\u524d Qwen \u8282\u70b9\u7684\u63d0\u793a\u8bcd\u529f\u80fd\u6682\u4e0d\u53ef\u7528\uff1b\u672c\u6b21\u672a\u63d0\u4ea4\uff0c\u4e5f\u672a\u5207\u6362\u6a21\u578b\u3002');
++    if(qwenBusiness && options.surface==='art' && options.generationMode==='img2img') {
++      if(api.qwen21LocalImageEditAvailableSync?.()!==true)throw new Error('当前本人节点尚未确认支持参考图优化，请更新算力助手后重试。');
++      const roles=['subject','style','pose','background','material','color','composition','lighting','object','result','output','attachment','reference'];
++      if(!Array.isArray(options.images)||options.images.length<1||options.images.length>3||options.images.some(image=>!image||!roles.includes(image.role)||typeof image.dataUrl!=='string')||
++        typeof options.isImageInputCurrent!=='function'||typeof options.selectionStillCurrent!=='function')throw new Error('请在绘图页面确认 1–3 张参考图及其用途。');
++      const originals=options.images.map(image=>({role:image.role,dataUrl:image.dataUrl})),source=String(options.prompt||'').trim(),requirements=String(options.requirements||'').trim(),negativePrompt=String(options.negativePrompt||'');
++      const current=()=>!signal?.aborted&&options.isImageInputCurrent()===true&&options.selectionStillCurrent()===true&&options.images.length===originals.length&&originals.every((image,index)=>options.images[index]?.role===image.role&&options.images[index]?.dataUrl===image.dataUrl);
++      if(!source||!current())throw new Error('图片、提示词或模型已变化，未提交。');
++      const requestId=window.crypto.randomUUID();options.onRequest?.(requestId);options.onProgress?.('正在根据参考图优化提示词…');
++      const response=await api.promptAssistantOptimizePrompt({requestId,assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch,
++        localImageEdit:true,surface:'art',purpose:'optimize',targetEngine:'qwen-2.1',qwenPromptMode:'img2img',nsfw:false,currentPrompt:source,requirements,negativePrompt,
++        images:originals,isImageInputCurrent:current,selectionStillCurrent:current,signal});
++      if(!current())throw new Error('图片或模型已变化，未应用结果。');
++      if(response?.ok!==true)throw new Error(response?.error||'参考图提示词优化未完成。');
++      const data=response.data;
++      const descriptive=(requirements||source).replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|(?<![A-Za-z0-9])'[^'\r\n]+'(?![A-Za-z0-9])|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/gu,'');
++      const language=/[\u3400-\u9fff]/u.test(descriptive)?'zh':'en';
++      if(!verifiedAgentPromptHandoff(data,null,true)||data?.promptContract!=='qwen21-native-rewrite-v3'||data?.modelPromptPolicy!=='qwen21-native-rewrite-v3'||data?.translationValidation!=='native-edit-and-literals'||data?.modelPromptLanguage!==language||
++        typeof data.displayPrompt!=='string'||data.displayPrompt.trim().length<2||data.modelPrompt!==data.displayPrompt||data.negativePrompt!==negativePrompt)
++        throw new Error('参考图优化结果合同不完整，未应用。');
++      return {prompt:data.modelPrompt,displayPrompt:data.displayPrompt,negativePrompt,resourcesReleased:true,modelIdentity:data.modelIdentity,generationReady:true,analysisBackend:'qwen-cpu',
++        optimization:{schema:'nf.agent.prompt-optimization.v1',requestId,analysisProvider:'local',modelIdentity:data.modelIdentity,framework:'qwen21-native-rewrite',modelPromptPolicy:'qwen21-native-rewrite-v3',modelPromptLanguage:language}};
++    }
+     const online=!qwenBusiness && options.analysisProvider==='api'&&options.surface!=='art';
+     const optimize=payload=>online?api.smartAiPromptOptimize(payload):api.promptAssistantOptimizePrompt(qwenBusiness?{...payload,assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch}:payload);
+     let requestId = window.crypto.randomUUID();
+@@ -5275,21 +5298,28 @@
+       if (!source) throw new Error("缺少要优化的完整提示词");
+       let request, prepared, current, protectedPrompt, protectedNegative;
+       const art = options.surface === "art", h3 = !art && options.videoContext?.modelId === MINIMAX_H3_MODEL_ID;
+-      const structured = art && shouldUseStructuredArtPromptContract(source);
++      // This feature can only be enabled when the selected node's v3 support
++      // is verified and the scheduler binds the request to that capability.
++      // Older deployed runtimes expose no such proof, so keep their v1 path.
++      const nativeQwenText=art && qwenBusiness && options.generationMode!=='img2img' && api.qwen21NativeRewriteV3AvailableSync?.()===true;
++      const structured = art && !nativeQwenText && shouldUseStructuredArtPromptContract(source);
+       if (art) {
+         protectedPrompt = protectSmartAiResourceMentions(source.replace(/<image(\d+)>/g, "@参考图$1"));
+         protectedNegative = protectSmartAiResourceMentions(String(options.negativePrompt || ""));
+         request = {surface:"art", purpose:"optimize", prompt:protectedPrompt.text, currentPrompt:protectedPrompt.text,
+           targetEngine:"qwen-2.1",qwenPromptMode:options.generationMode==='img2img'?'img2img':'txt2img',agentModelLanguage:"en",
+           negativePrompt:protectedNegative.text, supportsNegativePrompt:options.supportsNegativePrompt !== false, nsfw:false,
++          ...(nativeQwenText ? {promptContract:'qwen21-native-rewrite-v3'} : {}),
+           ...(structured ? {promptSchema:ORDINARY_ART_PROMPT_SCHEMA} : {}),
+-          requirements:buildSmartAiRequirements({context:{surface:"art"},mode:"optimize",purpose:"optimize",requirements:user,starterPreset:"",userIntentFirst:true})};
++          requirements:nativeQwenText ? user : buildSmartAiRequirements({context:{surface:"art"},mode:"optimize",purpose:"optimize",requirements:user,starterPreset:"",userIntentFirst:true})};
+       } else if (h3) {
++        if(qwenBusiness && /(?:识别|分析|观察|看清|看一下|看一看|读取|理解).{0,12}(?:参考图|图片|图像|画面|首帧|尾帧|视频)|(?:根据|按照|结合).{0,8}(?:参考图|图片|图像|画面|首帧|尾帧|视频).{0,8}(?:内容|细节|外观|样子|动作)/u.test(source+'\n'+user))
++          throw new Error('本地视频优化目前只处理文字，不能读取参考素材；请直接描述画面内容。');
+         const workflow = getMiniMaxH3PromptWorkflow();
+         current = {...options.videoContext,prompt:source,requirements:user};
+         prepared = workflow.prepareRequest(current);
+         const modelUser=workflow.toModelReferences(user,prepared.protocol.references);
+-        const h3ReferenceFrames = await captureH3ReferenceFrames(current,prepared);
++        const h3ReferenceFrames = qwenBusiness ? [] : await captureH3ReferenceFrames(current,prepared);
+         request = {surface:"animation",purpose:MINIMAX_H3_PROMPT_PURPOSE,prompt:prepared.prompt,negativePrompt:"",supportsNegativePrompt:false,
+           requirements:[prepared.requirements,modelUser ? "用户本次要求（最高优先级）："+modelUser : ""].filter(Boolean).join("\n\n"),
+           h3Mode:current.mode,durationSeconds:current.durationSeconds,visualSchema:MINIMAX_H3_VISUAL_SCHEMA,agentCompileForGeneration:true,
+@@ -5306,10 +5336,12 @@
+       if (!online&&!verifiedAgentPromptHandoff(handoff,null,qwenBusiness)) throw new Error("提示词优化模型尚未确认释放，未写入或生成");
+       const parsed = readSmartAiResult(response);
+       const modelPromptPolicy=response.modelPromptPolicy || response.result?.modelPromptPolicy || response.data?.modelPromptPolicy || "";
+-      if(art && modelPromptPolicy!=="qwen21-task-policy-v1")throw new Error("本机生图优化服务需要更新，未使用缺少模型适配的旧结果");
++      if(art && modelPromptPolicy!==(nativeQwenText?'qwen21-native-rewrite-v3':'qwen21-task-policy-v1'))throw new Error("本机生图优化服务需要更新，未使用缺少模型适配的旧结果");
+       if (!parsed.prompt) throw new Error("原有优化框架未返回完整提示词");
+       let prompt = parsed.prompt, negativePrompt = String(options.negativePrompt || ""), displayPrompt = prompt;
+       if (art) {
++      if(nativeQwenText&&(released.promptContract!=='qwen21-native-rewrite-v3'||released.translationValidation!=='paired-prose-and-literals'||
++        typeof released.displayPrompt!=='string'||released.displayPrompt.trim()!==parsed.prompt))throw new Error('本机优化结果合同不匹配，请更新算力节点后重试。');
+         if (structured && (parsed.editContract !== ORDINARY_ART_EDIT_CONTRACT || parsed.promptSchema !== ORDINARY_ART_PROMPT_SCHEMA)) throw smartAiStructuredPromptError({code:"prompt_contract_mismatch"});
+         const restored = restoreSmartAiResourceMentions(prompt,protectedPrompt);
+         if (!restored.ok) throw smartAiResourceMentionError(restored.error);
+@@ -5324,8 +5356,12 @@
+           const restoredNegative=restoreSmartAiResourceMentions(parsed.negativePrompt,protectedNegative);
+           if(!restoredNegative.ok)throw smartAiResourceMentionError(restoredNegative.error);
+           negativePrompt=restoredNegative.text;
+-          const guard=artHighQualityCgNegativeGuardInstruction({textOnly:true,prompt,starterPreset:""}).split("，").filter(term=>!/人体|手指|手脚|肢体|五官|爪子|骨骼|比例/u.test(term)||!/手部|手指|手掌|手臂|肢|五官|人体|爪|骨骼/u.test(negativePrompt)).join("，");
+-          negativePrompt=mergeSmartAiNegativePrompt(negativePrompt,guard);
++          if(nativeQwenText){
++            if(negativePrompt!==String(options.negativePrompt||''))throw new Error('本机优化修改了原负向提示词，未应用。');
++          }else{
++            const guard=artHighQualityCgNegativeGuardInstruction({textOnly:true,prompt,starterPreset:""}).split("，").filter(term=>!/人体|手指|手脚|肢体|五官|爪子|骨骼|比例/u.test(term)||!/手部|手指|手掌|手臂|肢|五官|人体|爪|骨骼/u.test(negativePrompt)).join("，");
++            negativePrompt=mergeSmartAiNegativePrompt(negativePrompt,guard);
++          }
+         }
+         displayPrompt=prompt.replace(/@参考图\s*(\d+)/g,(_,n)=>`<image${n}>`);
+         const modelPrompt=String(released.modelPrompt || "").trim();
+@@ -5341,7 +5377,7 @@
+         const compiled=await getMiniMaxH3PromptWorkflow().compileForGeneration({...current,prompt:displayPrompt},async compileRequest=>{
+           check();requestId=window.crypto.randomUUID();options.onRequest?.(requestId);options.onProgress?.("正在将中文视频提示词编译为模型英文…");
+           const translateOnly=/^H3 compile: translate-only$/m.test(String(compileRequest.requirements || ""));
+-          const h3ReferenceFrames=translateOnly ? [] : await captureH3ReferenceFrames(current);check();
++          const h3ReferenceFrames=qwenBusiness || translateOnly ? [] : await captureH3ReferenceFrames(current);check();
+           const translated=await optimize({...compileRequest,h3ReferenceFrames,requestId});check();
+           const releasedTranslation={...translated,...translated?.data};
+           if(!translated || translated.ok===false)throw new Error(translated?.error || "视频执行提示词翻译失败");
+@@ -5353,7 +5389,7 @@
+       }
+       check();
+       return {prompt,negativePrompt,displayPrompt,...(!online?{resourcesReleased:true,modelIdentity:handoff.modelIdentity}:{}),generationReady:true,analysisBackend:online?"grok":handoff.analysisBackend,
+-        optimization:{schema:"nf.agent.prompt-optimization.v1",requestId,analysisProvider:online?'api':'local',modelIdentity:handoff.modelIdentity,framework:art ? (structured ? "ordinary-art-structured" : "ordinary-art-semantic-fusion") : h3 ? "minimax-h3" : "animation",engine:options.engine || options.videoContext?.modelId || "",modelPromptPolicy,sourcePrompt:source,userRequirements:user,prompt,negativePrompt,displayPrompt,
++        optimization:{schema:"nf.agent.prompt-optimization.v1",requestId,analysisProvider:online?'api':'local',modelIdentity:handoff.modelIdentity,framework:art ? (nativeQwenText ? "qwen21-native-rewrite" : structured ? "ordinary-art-structured" : "ordinary-art-semantic-fusion") : h3 ? "minimax-h3" : "animation",engine:options.engine || options.videoContext?.modelId || "",modelPromptPolicy,sourcePrompt:source,userRequirements:user,prompt,negativePrompt,displayPrompt,
+           ...(h3?{mode:current.mode,protocol:prepared.protocol.protocolName,fields:prepared.protocol.fieldOrder,
+             references:prepared.protocol.references.references.map(ref=>({kind:ref.kind,slot:ref.slotKey,modelToken:ref.modelToken,sourceId:ref.sourceId || ""})),
+             durationSeconds:current.durationSeconds,referenceFrames:request.h3ReferenceFrames.length}:{}),timing:handoff.timing || null}};
+--- a/novaflow-web/renderer/novaflow-web-runtime.js
++++ b/novaflow-web/renderer/novaflow-web-runtime.js
+@@ -74,6 +74,14 @@
+   const QWEN_ROTATION_REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+   const QWEN_PLAN_SCOPE = 'qwen-foart-plan-v1';
+   const QWEN_PLAN_REQUEST_FILE = 'qwen-foart-plan-request.json';
++  const QWEN_IMAGE_EDIT_SCOPE = 'qwen21-local-image-edit-v1';
++  const QWEN_IMAGE_EDIT_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-local-image-edit-v1';
++  const QWEN_IMAGE_EDIT_REQUEST_FILE = 'qwen21-local-image-edit-request.json';
++  function qwenImageEditLanguage(prompt,requirements){
++    const instruction=String(requirements||'').trim()||String(prompt||'');
++    const descriptive=instruction.replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|(?<![A-Za-z0-9])'[^'\r\n]+'(?![A-Za-z0-9])|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/gu,'');
++    return /[\u3400-\u9fff]/u.test(descriptive)?'zh':'en';
++  }
+   // Result objects can only acquire this binding after a server-authenticated
+   // task roundtrip; model-provided fields are never treated as task identity.
+   const qwenPlanBindings = new WeakMap();
+@@ -437,17 +445,24 @@
+     if ((payload.assistantProvider !== undefined && payload.assistantProvider !== selected.provider)
+       || (payload.assistantModelId !== undefined && payload.assistantModelId !== selected.modelId))
+       return {ok:false,errorCode:'assistant-selection-mismatch',error:'模型选择已变化，请重新发起。'};
++    if(action==='optimize-prompt' && payload.localImageEdit===true)
++      return selectedQwenImageEdit(payload,selected,controller);
+     // The installed Qwen business trial currently supports only two text
+     // tasks. Reject media before creating or uploading a task, not after the
+     // node receives private inputs.
+-    const textOnlyFailure={ok:false,errorCode:'qwen-business-text-only',error:'当前 Qwen 业务试用仅支持纯文字绘图提示词优化和音频文字改写；图片、视频及其他分析尚未开放，本次未提交。'};
++    const textOnlyFailure={ok:false,errorCode:'qwen-business-text-only',error:'当前 Qwen 仅支持纯文字绘图、视频提示词优化和音频文字改写；图片或音视频素材分析尚未开放，本次未提交。'};
+     if (!['optimize-prompt','rewrite-audio-prompt'].includes(action)) return textOnlyFailure;
+-    if (action==='optimize-prompt' && !(payload.surface==='art' && payload.purpose==='optimize' && payload.targetEngine==='qwen-2.1' && payload.qwenPromptMode==='txt2img')) return textOnlyFailure;
++    const artText=payload.surface==='art' && payload.purpose==='optimize' && payload.targetEngine==='qwen-2.1' && payload.qwenPromptMode==='txt2img';
++    const h3Text=payload.surface==='animation' && payload.purpose==='minimax-h3-prompt-enhance' &&
++      ['text_video','image_video','first_last','multi_reference'].includes(payload.h3Mode);
++    if (action==='optimize-prompt' && !artText && !h3Text) return textOnlyFailure;
++    if (action==='optimize-prompt' && h3Text && !qwen21NativeRewriteV3Available())
++      return {ok:false,errorCode:'qwen-h3-node-unavailable',error:'当前本人节点尚未确认支持视频文字优化，请更新算力助手后重试。'};
+     const mediaKeys=new Set(['uploads','attachments','files','images','image','imageurl','imageurls','imagedata','imagedataurl','imagedataurls','photo','photos','picture','pictures','references','referenceimages','referenceimage','referenceimageurl','referenceimageurls','referenceframes','h3referenceframes','videoframes','audio','video','audiodataurl','videodataurl','media','mediadataurl']);
+     const stack=[[payload,0]],seen=new Set();let nodes=0;
+     while(stack.length){
+       const [value,depth]=stack.pop();if(++nodes>1000 || depth>16)return textOnlyFailure;
+-      if(typeof value==='string'){if(/data:(?:image|audio|video)\//i.test(value)||/<image\s*\d+>|@(?:参考图|reference\s*image)\s*\d+/i.test(value))return textOnlyFailure;continue;}
++      if(typeof value==='string'){if(/data:(?:image|audio|video)\//i.test(value)||/<image\s*\d+>|@(?:参考图|reference\s*image)\s*\d+|__NOVAFLOW_RESOURCE_MENTION_[A-Z0-9_:-]+__/i.test(value))return textOnlyFailure;continue;}
+       if(!value || typeof value!=='object')continue;
+       if(seen.has(value))return textOnlyFailure;seen.add(value);
+       if(Array.isArray(value)){for(const item of value)stack.push([item,depth+1]);continue;}
+@@ -499,6 +514,58 @@
+       root.removeEventListener('novaflow:compute-node',onChange);
+       if(sessionGuard)foartSessionObservers.delete(onSessionChange);
+     }}
++  }
++  async function selectedQwenImageEdit(payload,selected,controller) {
++    const fail=message=>({ok:false,errorCode:'qwen-image-edit-unavailable',error:message});
++    if(!qwen21LocalImageEditAvailable() || selected.provider!=='local' || selected.modelId!=='qwen3.5-9b-heretic')
++      return fail('当前本人节点尚未确认支持参考图优化，请更新算力助手后重试。');
++    const images=payload.images,roles=['subject','style','pose','background','material','color','composition','lighting','object','result','output','attachment','reference'];
++    if(payload.surface!=='art'||payload.purpose!=='optimize'||payload.targetEngine!=='qwen-2.1'||payload.qwenPromptMode!=='img2img'||payload.nsfw===true||
++      !Array.isArray(images)||images.length<1||images.length>3||images.some(image=>!image||!roles.includes(image.role)||typeof image.dataUrl!=='string'||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image.dataUrl))||
++      typeof payload.currentPrompt!=='string'||!payload.currentPrompt.trim()||payload.currentPrompt.length>4000||
++      typeof payload.requirements!=='string'||payload.requirements.length>2000||typeof payload.negativePrompt!=='string'||payload.negativePrompt.length>12000||
++      typeof payload.isImageInputCurrent!=='function'||typeof payload.selectionStillCurrent!=='function'||!QWEN_ROTATION_REQUEST_ID.test(String(payload.requestId||'')))
++      return fail('参考图优化输入无效，请检查 1–3 张图片和提示词。');
++    const originals=images.map(image=>({role:image.role,dataUrl:image.dataUrl}));
++    const epoch=computeNodeEpoch,session=captureFoartSessionGuard(),node=computeNode?.id;
++    if(typeof session!=='function'||session()!==true||!node||typeof controller?.subscribeBusinessModel!=='function')return fail('当前账号或节点无法确认。');
++    const current=()=>{try {const now=controller.businessModelSnapshot();return !payload.signal?.aborted && session()===true && computeNodeEpoch===epoch && computeNode?.id===node &&
++      qwen21LocalImageEditAvailable() && root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller && now?.provider===selected.provider && now?.modelId===selected.modelId && now?.epoch===selected.epoch &&
++      payload.isImageInputCurrent()===true && payload.selectionStillCurrent()===true && images.length===originals.length && originals.every((image,index)=>images[index]?.role===image.role&&images[index]?.dataUrl===image.dataUrl);}catch{return false;}};
++    if(!current())return fail('图片、模型或节点已变化，请重试。');
++    const request={requestId:payload.requestId,mode:'image-edit',images:originals,currentPrompt:payload.currentPrompt,
++      requirements:payload.requirements,negativePrompt:payload.negativePrompt,promptContract:'qwen21-native-rewrite-v3'};
++    if(new TextEncoder().encode(JSON.stringify(request)).byteLength>16*1024*1024)
++      return fail('参考图片和文字合计超过 16 MiB，请缩小图片后重试。');
++    if(typeof root.Image!=='function')return fail('无法读取参考图尺寸，请刷新页面后重试。');
++    let cancelled=false,notifyChanged,timer=null;
++    const changed=new Promise(resolve=>{notifyChanged=resolve;});
++    const cancel=()=>{if(!cancelled){cancelled=true;void Promise.resolve(cancelPromptAssistantRequest({requestId:request.requestId})).catch(()=>{});notifyChanged();}};
++    const sessionChanged=()=>{if(session()!==true)cancel();};
++    const watchExpiry=()=>{if(session()!==true){cancel();return;}timer=root.setTimeout(watchExpiry,Math.min(2_147_483_647,Math.max(1,session.expiresAtMs-Date.now())));timer?.unref?.();};
++    if(typeof root.addEventListener!=='function'||typeof root.removeEventListener!=='function'||typeof root.setTimeout!=='function'||typeof root.clearTimeout!=='function'||!Number.isSafeInteger(session.expiresAtMs))
++      return fail('当前会话无法持续核验，未提交。');
++    const unsubscribe=controller.subscribeBusinessModel(cancel);
++    root.addEventListener('novaflow:compute-node',cancel);foartSessionObservers.add(sessionChanged);watchExpiry();
++    payload.signal?.addEventListener('abort',cancel,{once:true});
++    try {
++      const work=(async()=>{
++        for(const image of originals){
++          const size=await new Promise((resolve,reject)=>{const decoded=new root.Image();
++            decoded.onload=()=>resolve({width:decoded.naturalWidth,height:decoded.naturalHeight});
++            decoded.onerror=()=>reject(new Error('参考图无法解码，请重新选择。'));decoded.src=image.dataUrl;});
++          if(!current())throw new Error('图片、模型或节点已变化，请重试。');
++          if(!Number.isSafeInteger(size.width)||!Number.isSafeInteger(size.height)||size.width<1||size.height<1||size.width>8192||size.height>8192||size.width*size.height>24000000)
++            throw new Error('单张参考图不得超过 8192×8192 或 2400 万像素。');
++        }
++        return pooledPromptAssistant('optimize-prompt',request,{qwenImageEdit:true,isCurrent:current});
++      })();
++      const result=await Promise.race([work,changed.then(()=>null)]);
++      if(cancelled||!current())return fail('图片、模型、节点或会话已变化，正在尝试取消旧任务；资源释放尚未确认。');
++      return result;
++    }
++    catch(error){return fail(String(error?.message||error));}
++    finally {if(timer!==null)root.clearTimeout(timer);unsubscribe?.();root.removeEventListener('novaflow:compute-node',cancel);foartSessionObservers.delete(sessionChanged);payload.signal?.removeEventListener('abort',cancel);}
+   }
+ 
+   // Standalone text rewrite only. Never call this inside a multi-step tool operation.
+@@ -1107,6 +1174,10 @@
+     return Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
+   }
+   async function pooledPromptAssistant(action, payload, guard={}) {
++    const qwenImageEdit=guard.qwenImageEdit===true;
++    const qwenNativeV3=!qwenImageEdit && payload?.promptContract==='qwen21-native-rewrite-v3';
++    const qwenH3Text=action==='optimize-prompt'&&payload?.surface==='animation'&&payload?.purpose==='minimax-h3-prompt-enhance';
++    const qwenBoundBusiness=qwenNativeV3||qwenH3Text;
+     const rotationStage=payload?.foartAnimationStage==='rotation_candidate';
+     const qwenPlan=action==='art-agent-chat' && rotationStage && guard.qwenPlan===true;
+     const qwenRotationCandidate=action==='art-agent-chat' && rotationStage && !qwenPlan;
+@@ -1116,9 +1187,9 @@
+         !Array.isArray(payload.images) || payload.images.length!==0 ||
+         typeof guard.isCurrent!=='function' || guard.isCurrent()!==true))
+       throw new Error('Qwen 动画候选尚未安全开放，未提交或修改作品。');
+-    if(qwenRotationCandidate || qwenPlan)candidateSecureBase(CONFIG.controlUrl);
+-    const candidateSession=qwenRotationCandidate || qwenPlan?captureFoartSessionGuard():null;
+-    if((qwenRotationCandidate || qwenPlan) && (typeof candidateSession!=='function' || candidateSession()!==true || !computeNode?.id))
++    if(qwenRotationCandidate || qwenPlan || qwenImageEdit)candidateSecureBase(CONFIG.controlUrl);
++    const candidateSession=qwenRotationCandidate || qwenPlan || qwenImageEdit?captureFoartSessionGuard():null;
++    if((qwenRotationCandidate || qwenPlan || qwenImageEdit) && (typeof candidateSession!=='function' || candidateSession()!==true || !computeNode?.id))
+       throw new Error('候选任务需要当前登录会话和已选本人节点，未提交。');
+     const requestId = typeof payload.requestId === 'string' ? payload.requestId : '';
+     const owned = { taskId:'', cancelled:false,startedAt:Date.now(),candidate:qwenRotationCandidate,qwenPlan,candidateSession,stage:action==='art-agent-chat'?'analysis':/H3 compile: translate-only/.test(payload.requirements || '')?'compile':'optimize' };
+@@ -1126,7 +1197,7 @@
+     const taskNodeEpoch=computeNodeEpoch;
+     if (requestId && guard.isCurrent && pooledPromptRequests.has(requestId)) throw new Error('请求编号正在使用，请重新发起。');
+     if (requestId) pooledPromptRequests.set(requestId, owned);
+-    const check = () => { if (owned.cancelled) throw new Error('本次提示词分析已取消'); if (guard.isCurrent && (computeNodeEpoch!==taskNodeEpoch || !guard.isCurrent() || ((qwenRotationCandidate || qwenPlan) && !candidateSession()))) throw new Error('模型、节点或会话已变化，任务未继续。'); };
++    const check = () => { if (owned.cancelled) throw new Error('本次提示词分析已取消'); if ((qwenBoundBusiness && !qwen21NativeRewriteV3Available()) || (qwenImageEdit&&!qwen21LocalImageEditAvailable()) || (guard.isCurrent && (computeNodeEpoch!==taskNodeEpoch || !guard.isCurrent() || ((qwenRotationCandidate || qwenPlan || qwenImageEdit) && !candidateSession())))) throw new Error('模型、节点或会话已变化，任务未继续。'); };
+     try {
+     const selectedNode=computeNode?.id || '';
+     const conversationNode=action==='art-agent-chat' && !selectedNode ? pooledConversationNodes.get(payload.conversationId) : '';
+@@ -1134,7 +1205,7 @@
+     // control() here would implicitly append the current picker value; use the
+     // same authenticated API directly so a later node change cannot silently
+     // change the query or add a duplicate worker parameter.
+-    const caps = qwenPlan
++    const caps = qwenPlan || qwenBoundBusiness || qwenImageEdit
+       ? await api(CONFIG.controlUrl,'GET','/api/web/capabilities?worker='+encodeURIComponent(selectedNode))
+       : await control('GET', '/api/web/capabilities'+(conversationNode?'?worker='+encodeURIComponent(conversationNode):''));
+     check();
+@@ -1143,6 +1214,13 @@
+     const qwenStyle=action==='describe-art-style'&&payload.mode==='style-analysis';
+     if(qwenStyle && (!selectedNode || caps?.features?.qwen35StyleAnalysisKinds?.[payload.kind]!==true || caps?.features?.qwen35StyleOwnerLeaseBound!==true)) throw new Error('Qwen style analysis is not enabled for this owned node.');
+     const qwenBusiness = !qwenStyle && ['optimize-prompt','reverse-image-prompt','describe-art-style','rewrite-audio-prompt'].includes(action) && payload.assistantProvider === 'local' && payload.assistantModelId === 'qwen3.5-9b-heretic';
++    if(qwenNativeV3 && (action!=='optimize-prompt' || !qwenBusiness || payload.surface!=='art' || payload.targetEngine!=='qwen-2.1' || payload.qwenPromptMode!=='txt2img' || typeof guard.isCurrent!=='function' || !selectedNode || !qwen21NativeRewriteV3Available() || caps?.features?.qwen21NativeRewriteV3!==true))
++      throw new Error('当前节点未确认支持绘图优化，请重新选择节点后重试。');
++    if(qwenH3Text && (!qwenBusiness || !['text_video','image_video','first_last','multi_reference'].includes(payload.h3Mode) || typeof guard.isCurrent!=='function' || !selectedNode || !qwen21NativeRewriteV3Available() || caps?.features?.qwen21NativeRewriteV3!==true))
++      throw new Error('当前本人节点未确认支持视频文字优化，请更新算力助手后重试。');
++    if(qwenImageEdit && (action!=='optimize-prompt'||payload.mode!=='image-edit'||typeof guard.isCurrent!=='function'||!selectedNode||
++      caps?.features?.qwen21LocalImageEdit!==true||caps?.features?.qwen21LocalImageEditOwnerLeaseBound!==true))
++      throw new Error('当前本人节点未确认支持参考图优化，请更新算力助手后重试。');
+     const qwenTrial = action === 'art-agent-chat' && payload.modelId === 'qwen3.5-9b-heretic';
+     if(qwenRotationCandidate && (!selectedNode || caps?.features?.qwen35FoartRotationCandidate!==true ||
+         caps?.features?.qwen35FoartRotationOwnerLeaseBound!==true))
+@@ -1154,11 +1232,11 @@
+     if(qwenUi && (!selectedNode || caps?.features?.qwen35UiDraft!==true || caps?.features?.qwen35UiOwnerLeaseBound!==true)) throw new Error('Qwen UI draft is not enabled for this owned node.');
+     if (qwenBusiness && caps?.features?.qwen35BusinessTrial !== true) throw new Error('当前没有支持该功能的 Qwen 节点，任务未提交。');
+     if (qwenTrial && !qwenPlan && caps?.features?.qwen35CpuTrial !== true) throw new Error('当前算力节点没有可用的 Qwen3.5 9B 本地服务，未提交任务');
+-    if (!qwenTrial && !qwenBusiness && !qwenStyle && !qwenUi && !uiCpu && (!type || !(type.available_workers > 0))) throw new Error(action==='art-agent-chat'
++    if (!qwenImageEdit && !qwenTrial && !qwenBusiness && !qwenStyle && !qwenUi && !uiCpu && (!type || !(type.available_workers > 0))) throw new Error(action==='art-agent-chat'
+       ? '当前算力节点没有就绪的小桃模型服务，请检查节点助手的模型状态；机器开机不代表模型服务已就绪'
+       : PROMPT_ASSISTANT_REFUSAL + '：当前算力池没有带本地模型的节点');
+     const bytes = new TextEncoder().encode(JSON.stringify(payload));
+-    let created,qwenPlanDigest=null;
++    let created,qwenPlanDigest=null,qwenImageDigest=null;
+     if(qwenRotationCandidate){
+       if(!QWEN_ROTATION_REQUEST_ID.test(requestId) || bytes.byteLength<1 || bytes.byteLength>262144 ||
+         typeof AbortSignal==='undefined' || typeof AbortSignal.any!=='function' || typeof AbortSignal.timeout!=='function')
+@@ -1190,9 +1268,21 @@
+         !['created','queued','assigned','uploading'].includes(created.task.status) || !Number.isSafeInteger(created.task.attempt_count) ||
+         created.task.attempt_count<0 || (created.task.assigned_worker_id!=null && created.task.assigned_worker_id!==selectedNode))
+         throw new Error('动画规划任务创建结果不匹配，请核对任务状态后再试。');
++    } else if(qwenImageEdit){
++      if(bytes.byteLength>16*1024*1024)throw new Error('参考图片和文字合计超过 16 MiB，请缩小图片后重试。');
++      if(!QWEN_ROTATION_REQUEST_ID.test(requestId)||bytes.byteLength<1||
++        typeof AbortSignal==='undefined'||typeof AbortSignal.any!=='function'||typeof AbortSignal.timeout!=='function')
++        throw new Error('参考图优化请求编号或大小无效，未提交。');
++      qwenImageDigest=await qwenCandidatePayloadDigest(bytes);check();
++      created=await control('POST','/api/web/tasks',{task_type:'prompt_assistant',target_worker_id:selectedNode,
++        parameters:{action,model_id:'qwen3.5-9b-heretic',assistant_tool_scope:QWEN_IMAGE_EDIT_SCOPE,request_id:requestId,
++          request_sha256:qwenImageDigest,request_bytes:bytes.byteLength},references:[{name:QWEN_IMAGE_EDIT_REQUEST_FILE,kind:'json',bytes:bytes.byteLength}]});
++      if(created?.ok!==true||!NODE_ID.test(String(created?.task?.id||''))||QWEN_ROTATION_CANDIDATE_ID.test(String(created.task.id).toLowerCase())||
++        !['created','queued','assigned','uploading'].includes(created.task.status)||!Number.isSafeInteger(created.task.attempt_count)||created.task.attempt_count<0||
++        (created.task.assigned_worker_id!=null&&created.task.assigned_worker_id!==selectedNode))throw new Error('参考图任务创建结果不匹配，请核对任务状态。');
+     } else created = await control('POST', '/api/web/tasks', {
+       task_type: 'prompt_assistant',
+-      ...(conversationNode ? {target_worker_id:conversationNode} : {}),
++      ...(qwenBoundBusiness ? {target_worker_id:selectedNode} : conversationNode ? {target_worker_id:conversationNode} : {}),
+       parameters: { action, ...(uiCpu ? {ui_scope:'cpu-v1'} : {}), ...(qwenUi ? {ui_scope:'qwen-ui-draft-v1',model_id:'qwen3.5-9b-heretic'} : {}), ...(qwenStyle ? {style_scope:'qwen-style-analysis-v1',style_kind:payload.kind,model_id:'qwen3.5-9b-heretic',...(payload.kind!=='aifx-supplement'?{image_upload_confirmed:true}:{})} : {}), ...(qwenTrial ? {model_id:'qwen3.5-9b-heretic'} : {}), ...(qwenRotationCandidate ? {assistant_tool_scope:'qwen-foart-rotation-candidate-v1'} : {}), ...(qwenBusiness ? {assistant_selection_scope:'xiaotao',assistant_model_id:payload.assistantModelId} : {}) },
+       references: [{ name: 'request.json', kind: 'json', bytes: bytes.length }]
+     });
+@@ -1203,9 +1293,9 @@
+     let assignedPlanAttempt=null;
+     try {
+       check();
+-      const assigned=await putTaskInput(created.task.id, qwenPlan?QWEN_PLAN_REQUEST_FILE:'request.json', bytes, undefined, guard.isCurrent ? {assertCurrent:check,signal:owned.inputAbort.signal,
+-        ...(qwenRotationCandidate?{candidate:true,expectedNodeId:selectedNode}:qwenPlan?{qwenPlan:true,expectedNodeId:selectedNode}:{})} : undefined);
+-      if(qwenPlan){
++      const assigned=await putTaskInput(created.task.id, qwenImageEdit?QWEN_IMAGE_EDIT_REQUEST_FILE:qwenPlan?QWEN_PLAN_REQUEST_FILE:'request.json', bytes, undefined, guard.isCurrent ? {assertCurrent:check,signal:owned.inputAbort.signal,
++        ...(qwenRotationCandidate?{candidate:true,expectedNodeId:selectedNode}:qwenPlan||qwenImageEdit?{qwenPlan:true,expectedNodeId:selectedNode}:qwenBoundBusiness?{expectedNodeId:selectedNode}:{})} : undefined);
++      if(qwenPlan||qwenImageEdit){
+         if(assigned?.id!==created.task.id || assigned.assigned_worker_id!==selectedNode || !Number.isSafeInteger(assigned.attempt_count) || assigned.attempt_count<1 || assigned.attempt_count>20)
+           throw new Error('动画规划任务节点或尝试次数不匹配，未修改作品。');
+         assignedPlanAttempt=assigned.attempt_count;
+@@ -1219,7 +1309,8 @@
+       } else await control('POST', '/api/web/tasks/' + created.task.id + '/cancel').catch(() => {});
+       throw error;
+     }
+-    const finished = await waitForTaskEnd(created.task.id, PROMPT_ASSISTANT_TIMEOUT_MS,qwenRotationCandidate||qwenPlan?check:undefined);
++    const finished = await waitForTaskEnd(created.task.id, PROMPT_ASSISTANT_TIMEOUT_MS,qwenRotationCandidate||qwenPlan||qwenBoundBusiness||qwenImageEdit?check:undefined);
++    if(qwenBoundBusiness && finished?.assigned_worker_id!==selectedNode)throw new Error('优化结果所属节点已变化，未应用。');
+     if(qwenPlan){
+       const files=finished?.output_manifest?.files,expected='qwen-foart-plan-result-'+assignedPlanAttempt+'.json';
+       if(finished.id!==created.task.id || finished.assigned_worker_id!==selectedNode || finished.attempt_count!==assignedPlanAttempt ||
+@@ -1227,9 +1318,32 @@
+         !Number.isSafeInteger(files[0]?.bytes) || files[0].bytes<1 || files[0].bytes>262144)
+         throw new Error('动画规划结果所属节点、尝试或文件已变化，未修改作品。');
+     }
+-    const reply = await fetchTaskOutput(finished, qwenPlan?'qwen-foart-plan-result-'+assignedPlanAttempt+'.json':'result.json',qwenRotationCandidate?{candidate:true,expectedNodeId:selectedNode,assertCurrent:check,signal:owned.inputAbort.signal}:qwenPlan?{qwenPlan:true,expectedNodeId:selectedNode,assertCurrent:check,signal:owned.inputAbort.signal}:undefined);
++    if(qwenImageEdit){
++      const files=finished?.output_manifest?.files,expected='qwen21-local-image-edit-result-'+assignedPlanAttempt+'.json';
++      if(finished.id!==created.task.id||finished.assigned_worker_id!==selectedNode||finished.attempt_count!==assignedPlanAttempt||finished.result_expired!==false||
++        !Array.isArray(files)||files.length!==1||files[0]?.name!==expected||files[0]?.kind!=='json'||!Number.isSafeInteger(files[0]?.bytes)||files[0].bytes<1||files[0].bytes>262144)
++        throw new Error('参考图结果的节点、尝试或文件已变化，未应用。');
++    }
++    const reply = await fetchTaskOutput(finished, qwenImageEdit?'qwen21-local-image-edit-result-'+assignedPlanAttempt+'.json':qwenPlan?'qwen-foart-plan-result-'+assignedPlanAttempt+'.json':'result.json',qwenRotationCandidate?{candidate:true,expectedNodeId:selectedNode,assertCurrent:check,signal:owned.inputAbort.signal}:qwenPlan||qwenImageEdit?{qwenPlan:true,expectedNodeId:selectedNode,assertCurrent:check,signal:owned.inputAbort.signal}:undefined);
+     check();
++    if(qwenImageEdit && reply.byteLength!==finished.output_manifest.files[0].bytes)throw new Error('参考图结果文件大小不匹配，未应用。');
+     const result=JSON.parse(new TextDecoder().decode(reply));
++    if(qwenImageEdit){
++      const proof=result?.imageEditBinding,data=result?.data;
++      if(result?.ok!==true||!proof||Object.keys(proof).sort().join(',')!=='attempt,requestId,requestSha256,taskId,workerId'||
++        proof.taskId!==created.task.id||proof.workerId!==selectedNode||proof.attempt!==assignedPlanAttempt||proof.requestId!==requestId||proof.requestSha256!==qwenImageDigest||
++        !data||data.analysisBackend!=='qwen-cpu'||data.modelIdentity?.id!=='qwen35-heretic'||!['server-model-id','server-weight-path'].includes(data.modelIdentity?.verification)||
++        data.resourcesReleased!==true||data.generationReady!==true||data.promptContract!=='qwen21-native-rewrite-v3'||data.modelPromptPolicy!=='qwen21-native-rewrite-v3'||
++        data.translationValidation!=='native-edit-and-literals'||data.modelPromptLanguage!==qwenImageEditLanguage(payload.currentPrompt,payload.requirements)||
++        typeof data.displayPrompt!=='string'||data.displayPrompt.trim().length<2||data.modelPrompt!==data.displayPrompt||data.negativePrompt!==payload.negativePrompt)
++        throw new Error('参考图优化结果与请求或模型不匹配，未应用。');
++      const latest=(await control('GET','/api/web/tasks/'+encodeURIComponent(created.task.id)))?.task;check();
++      const files=latest?.output_manifest?.files,expected='qwen21-local-image-edit-result-'+assignedPlanAttempt+'.json';
++      if(latest?.id!==created.task.id||latest.model_id!==QWEN_IMAGE_EDIT_CAPABILITY||latest.status!=='completed'||latest.assigned_worker_id!==selectedNode||latest.attempt_count!==assignedPlanAttempt||
++        latest.parameters?.assistant_tool_scope!==QWEN_IMAGE_EDIT_SCOPE||latest.parameters?.request_id!==requestId||latest.parameters?.request_sha256!==qwenImageDigest||latest.parameters?.request_bytes!==bytes.byteLength||
++        latest.result_expired!==false||!Array.isArray(files)||files.length!==1||files[0]?.name!==expected||files[0]?.kind!=='json'||files[0]?.bytes!==reply.byteLength)
++        throw new Error('参考图任务已变化或结果已过期，未应用。');
++    }
+     if(qwenPlan){
+       if(!result || typeof result!=='object' || Array.isArray(result))throw new Error('动画规划结果无效，未修改作品。');
+       const proof=result.planBinding;
+@@ -2358,6 +2472,7 @@
+     if(options.candidate===true || options.qwenPlan===true)candidateSecureBase(CONFIG.controlUrl);
+     const task = await waitForAssignment(taskId, { onWait: onWait });
+     check();
++    if(options.expectedNodeId && task?.assigned_worker_id!==options.expectedNodeId)throw new Error('任务分配节点不匹配，未上传。');
+     const attempts = options.candidate===true || options.qwenPlan===true ? 1 : options.retryConnection ? 3 : 1;
+     for (let attempt = 0; attempt < attempts; attempt++) {
+       try {
+@@ -2580,8 +2695,16 @@
+   // empty pool says nothing about the node that will take the run. Only a
+   // drawing node that lacks 2.1 switches it to the 2511 layout.
+   let runtimeFeatureCache = taskMode() === 'shared' ? { qwenImage21: true } : {};
+-  let runtimeFeatureSequence = 0, qwenBusinessVerified = false;
++  let runtimeFeatureSequence = 0, qwenBusinessVerified = false, qwenNativeV3Binding = null, qwenImageEditBinding = null;
+   function qwenBusinessAvailable(){return CONFIG.xiaotaoQwenBusinessEnabled===true && qwenBusinessVerified;}
++  function qwen21NativeRewriteV3Available(){
++    const binding=qwenNativeV3Binding;
++    return !!binding && taskMode()==='shared' && computeNodeEpoch===binding.epoch && (computeNode?.id||'')===binding.nodeId && binding.sessionGuard()===true && qwenBusinessAvailable();
++  }
++  function qwen21LocalImageEditAvailable(){
++    const binding=qwenImageEditBinding;
++    return !!binding && taskMode()==='shared' && computeNodeEpoch===binding.epoch && (computeNode?.id||'')===binding.nodeId && binding.sessionGuard()===true && qwenBusinessAvailable();
++  }
+   function setRuntimeFeatureCache(next){
+     const changed=JSON.stringify(next)!==JSON.stringify(runtimeFeatureCache);runtimeFeatureCache=next;
+     if(changed && typeof root.dispatchEvent==='function' && typeof root.CustomEvent==='function')root.dispatchEvent(new root.CustomEvent('novaflow:runtime-features',{detail:{...next}}));
+@@ -2944,13 +3067,20 @@
+     async runtimeFeatures() {
+       runtimeFeatureCheckedAt = Date.now();
+       const epoch=computeNodeEpoch,nodeId=computeNode?.id || '',mode=taskMode(),sequence=++runtimeFeatureSequence;
++      const sessionGuard=captureFoartSessionGuard();
+       const current=()=>epoch===computeNodeEpoch && nodeId===(computeNode?.id || '') && mode===taskMode() && sequence===runtimeFeatureSequence;
+       let answered = false;
+       try {
+         const caps = await control('GET', '/api/web/capabilities');
+         const next = caps && caps.features && typeof caps.features === 'object' ? { ...caps.features } : {};
+         const hasBusiness=Object.hasOwn(next,'qwen35BusinessTrial');
+-        if(current())qwenBusinessVerified=next.qwen35BusinessTrial===true;
++        if(current()){
++          qwenBusinessVerified=next.qwen35BusinessTrial===true;
++          qwenNativeV3Binding=mode==='shared' && !!nodeId && typeof sessionGuard==='function' && sessionGuard() && next.qwen21NativeRewriteV3===true ? {nodeId,epoch,sessionGuard} : null;
++          qwenImageEditBinding=mode==='shared' && !!nodeId && typeof sessionGuard==='function' && sessionGuard() && next.qwen21LocalImageEdit===true && next.qwen21LocalImageEditOwnerLeaseBound===true ? {nodeId,epoch,sessionGuard} : null;
++        }
++        delete next.qwen21NativeRewriteV3;
++        delete next.qwen21LocalImageEdit; delete next.qwen21LocalImageEditOwnerLeaseBound;
+         // Only the new business field gets strict source/sequence ordering.
+         // Existing capability fields retain their previous response semantics.
+         delete next.qwen35BusinessTrial;
+@@ -2961,6 +3091,8 @@
+       } catch (_) {
+         if(current()){
+           qwenBusinessVerified=false;
++          qwenNativeV3Binding=null;
++          qwenImageEditBinding=null;
+           const next={...runtimeFeatureCache};delete next.qwen35BusinessTrial;setRuntimeFeatureCache(next);
+         }
+       }
+@@ -2972,6 +3104,8 @@
+       return { ...runtimeFeatureCache };
+     },
+     qwenBusinessAvailableSync(){return qwenBusinessAvailable();},
++    qwen21NativeRewriteV3AvailableSync(){return qwen21NativeRewriteV3Available();},
++    qwen21LocalImageEditAvailableSync(){return qwen21LocalImageEditAvailable();},
+     onlineBusinessAvailableSync(){return XIAOTAO_ONLINE_ART_RELEASE_ENABLED;},
+     onlineTextArtAvailableSync(){return XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED;},
+     onlineVisionArtAvailableSync(){return XIAOTAO_ONLINE_VISION_ART_RELEASE_ENABLED;},
+@@ -3385,6 +3519,7 @@
+       capsCache = { at: 0, byTaskType: {} };
+       runtimeFeatureCache = taskMode() === 'shared' ? { qwenImage21: true } : {};
+       qwenBusinessVerified=false;
++      qwenNativeV3Binding=null;
+       runtimeFeatureRetries = 0;
+       electronAPI.runtimeFeatures();
+       if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') {
+--- a/novaflow-web/renderer/xiaotao-foart-tools.js
++++ b/novaflow-web/renderer/xiaotao-foart-tools.js
+@@ -483,9 +483,17 @@
+         inferredLocalRoles=new Map(resolved.map(ref=>[ref.source,ref.roles[0]]));
+     }
+     const localPair=Boolean(inferredLocalRoles);
+-    if(localPair&&!QWEN_STYLE_PAIR_RELEASE_ENABLED)fail('Qwen 双图风格分析尚未通过实际模型验证，未提交或切换模型。');
+-    if(selectedLocalArt && (ui||op.action!=='image_optimize'||!(op.generationMode==='txt2img'&&!localReferences.length||localPair)))
+-      fail('Qwen 9B 当前支持纯文字或一张主体图加一张风格图的提示词草稿；请明确参考图角色，不会自动生成。');
++    const localImageEdit=selectedLocalArt&&op.generationMode==='img2img'&&localReferences.length>=1&&localReferences.length<=3&&root.electronAPI?.qwen21LocalImageEditAvailableSync?.()===true;
++    if(localImageEdit){
++      const selectedCurrent=selectionStillCurrent,context=rt.captureContext?.(),route=context?.routeRevision,revision=context?.referenceRevision;
++      if(rt.state.nsfw===true||typeof selectedCurrent!=='function'||!Number.isSafeInteger(route)||!Number.isSafeInteger(revision)||context?.generationSurface!=='drawing'||context.state!==rt.state||rt.state.active!==true)
++        fail('当前绘图页面、参考图或内容状态无法核验，未提交。');
++      selectionStillCurrent=()=>{try{const now=rt.captureContext();return selectedCurrent()===true&&root.__NovaFlowArtGenerate===rt&&now.state===rt.state&&rt.state.active===true&&now.generationSurface==='drawing'&&now.routeRevision===route&&now.referenceRevision===revision;}catch{return false;}};
++      if(!selectionStillCurrent())fail('绘图页面或参考图已变化，未提交。');
++    }
++    if(localPair&&!localImageEdit&&!QWEN_STYLE_PAIR_RELEASE_ENABLED)fail('Qwen 双图风格分析尚未通过实际模型验证，未提交或切换模型。');
++    if(selectedLocalArt && (ui||op.action!=='image_optimize'||!(op.generationMode==='txt2img'&&!localReferences.length||localPair||localImageEdit)))
++      fail('本地节点仅在能力就绪时支持 1–3 张参考图优化；请检查图片数量和节点版本。');
+     if(ui && provider==='api' && modelId!=='xai/grok-4.7')fail('\u6240\u9009\u5728\u7ebf\u6a21\u578b\u7684 UI \u4f18\u5316\u5c1a\u672a\u5f00\u653e\uff0c\u672a\u63d0\u4ea4\u3002');
+     if(!ui&&(selectedOnlineArt||selectedLocalArt)){
+       if((selectedOnlineArt&&!onlineBusiness)||typeof selectionStillCurrent!=='function')fail('\u6240\u9009\u6a21\u578b\u7684\u786e\u8ba4\u7ec4\u4ef6\u4e0d\u53ef\u7528\uff0c\u672a\u63d0\u4ea4\u3002');
+@@ -546,7 +554,8 @@
+         const normalizeRole=value=>value==='auto'?'reference':value;
+         if(drawingRole!==null&&genericRole!==null&&normalizeRole(drawingRole)!==normalizeRole(genericRole))
+           fail('参考图角色信息冲突，请重新选择用途；未提交优化。');
+-        let role=localPair?inferredLocalRoles.get(refIndex+1):normalizeRole(drawingRole??genericRole??'auto');
++        let role=localPair&&!localImageEdit?inferredLocalRoles.get(refIndex+1):normalizeRole(drawingRole??genericRole??'auto');
++        if(localImageEdit&&localPair&&(!drawingRole||drawingRole==='auto')&&(!genericRole||genericRole==='auto'))role=inferredLocalRoles.get(refIndex+1);
+         if(scopedVision){
+           const choice=roleMap[refIndex],prior=drawingRole??genericRole??'auto';
+           if(!choice||choice.index!==refIndex+1||choice.identity!==imageIdentity(ref)||typeof choice.role!=='string'||
+@@ -566,7 +575,7 @@
+         if(op.generationMode==='img2img'&&subjects!==1)fail('请明确指定一张主体图，未提交或扣费。');
+       }
+       onStatus('正在按所选模型优化提示词。');
+-      if(localPair){
++      if(localPair&&!localImageEdit){
+         if(rt.state.nsfw===true||!['auto','style',undefined,''].includes(rt.state.drawingTask))fail('当前双图分析只支持普通主体与风格参考，未提交。');
+         const direction=root.NovaFlowArtDirection;
+         if(typeof direction?.prepare!=='function')fail('双图专业分析框架尚未就绪，未提交。');
+@@ -593,9 +602,11 @@
+         selectionStillCurrent,isImageInputCurrent:()=>imageBinding(rt)===beforeBinding&&(!scopedUploads||attachmentStillCurrent()),...(scopedText?{currentDrawingTextOnly:true}:{}),...(scopedVision?{currentDrawingVisionOnly:true}:{})});
+       if(signal?.aborted||!selectionStillCurrent()||!sessionStillCurrent()||(scopedUploads&&!attachmentStillCurrent())||imageBinding(rt)!==beforeBinding)fail('绘图内容或模型选择已变化，未写入。');
+       const prompt=optimized.displayPrompt||optimized.prompt,modelPrompt=optimized.prompt,negativePrompt=optimized.negativePrompt;
+-      if(selectedLocalArt&&(optimized.analysisBackend!=='qwen-cpu'||optimized.optimization?.modelIdentity?.id!=='qwen35-heretic'||optimized.optimization?.modelPromptPolicy!=='qwen21-task-policy-v1'))fail('本地优化模型或专业规则未确认，未写入。');
++      const localPolicy=optimized.optimization?.modelPromptPolicy;
++      const validLocalPolicy=localPolicy==='qwen21-task-policy-v1'||((op.generationMode==='txt2img'||localImageEdit)&&localPolicy==='qwen21-native-rewrite-v3');
++      if(selectedLocalArt&&(optimized.analysisBackend!=='qwen-cpu'||optimized.optimization?.modelIdentity?.id!=='qwen35-heretic'||!validLocalPolicy))fail('本地优化模型或专业规则未确认，未写入。');
+       if(selectedLocalArt&&(typeof prompt!=='string'||!prompt.trim()||typeof modelPrompt!=='string'||!modelPrompt.trim()))fail('审核草稿不完整，未写入。');
+-      const optimization=selectedLocalArt?{...optimized.optimization,reviewRequired:true,modelPromptLanguage:'en'}:optimized.optimization;
++      const optimization=selectedLocalArt?{...optimized.optimization,reviewRequired:true,modelPromptLanguage:localImageEdit?optimized.optimization.modelPromptLanguage:'en'}:optimized.optimization;
+       if(optimization?.reviewRequired!==true||typeof prompt!=='string'||typeof modelPrompt!=='string'||typeof negativePrompt!=='string'||typeof root.crypto?.randomUUID!=='function')
+         fail('审核草稿不完整，未写入。');
+       let generationBinding=null;
+@@ -612,7 +623,7 @@
+       }
+       const generationAvailable=!!generationBinding&&root.electronAPI?.confirmedArtImageAvailableSync?.()===true;
+       const reviewId=root.crypto.randomUUID();
+-      pendingImageReview={generationBinding,reviewId,rt,beforeBinding,preparedSnapshot,prompt,modelPrompt,negativePrompt,referenceRoles:(gptDrawing||scopedVision)?images.map(image=>image.role):null,op:copy(op),count,selectionStillCurrent,sessionStillCurrent,...(scopedUploads?{uploadTransaction,attachmentStillCurrent,markUploadCommitted:()=>{uploadCommitted=true}}:{})};
++      pendingImageReview={generationBinding,reviewId,rt,beforeBinding,preparedSnapshot,prompt,modelPrompt,negativePrompt,referenceRoles:(gptDrawing||scopedVision||localImageEdit)?images.map(image=>image.role):null,op:copy(op),count,selectionStillCurrent,sessionStillCurrent,...(scopedUploads?{uploadTransaction,attachmentStillCurrent,markUploadCommitted:()=>{uploadCommitted=true}}:{})};
+       return {action:op.action,phase:'review',provider:rt.state.provider,prompt,modelPrompt,negativePrompt,optimization,reviewId,generationAvailable};
+     }
+     // The legacy online optimizer can finish after the model or account changes.
+--- a/novaflow-web/renderer/xiaotao-art-agent.js
++++ b/novaflow-web/renderer/xiaotao-art-agent.js
+@@ -2763,28 +2763,41 @@
+     // pair; confirmation and undo reuse the existing image review path.
+     async function prepareSelectedH3TextDraft(message,{recordMessage=true,source}={}) {
+       if(pendingMediaPromptReview){state.error='请先应用或取消上一次提示词草稿。';notify();return false;}
+-      if(state.provider!=='api'||currentPricingPolicy()?.config?.xiaotao_online?.operation_video_rewrite_v3!==true||!policyAllowsOnline(state.modelId)) {
++      const local=state.provider==='local'&&state.modelId==='qwen3.5-9b-heretic';
++      if(local&&api()?.qwenBusinessAvailableSync?.()!==true){state.error='当前本地节点的视频文字优化尚未就绪，未提交。';state.status='未提交';notify();return false;}
++      if(local&&api()?.qwen21NativeRewriteV3AvailableSync?.()!==true){state.error='当前本人节点尚未确认支持视频文字优化，请更新算力助手后重试。';state.status='未提交';notify();return false;}
++      if(!local&&(state.provider!=='api'||currentPricingPolicy()?.config?.xiaotao_online?.operation_video_rewrite_v3!==true||!policyAllowsOnline(state.modelId))) {
+         state.error='当前所选大脑的视频文字草稿尚未开放，未提交或扣费。';state.status='未提交';notify();return false;
+       }
+       if((state.staged||[]).length||(communityUploads()||[]).length) {state.error='视频草稿仅处理文字，请先移除小桃附件；参考槽仅记录角色，不读取素材。';notify();return false;}
+       const capture=root.NovaFlowMediaAgent?.captureH3TextDraft,method=api()?.promptAssistantVideoDraft;
+       const selected=businessModelSnapshot(),requestId=root.crypto?.randomUUID?.();
+-      if(typeof capture!=='function'||typeof method!=='function'||!requestId) {state.error='视频文字草稿接口不可用，未提交或扣费。';notify();return false;}
+-      const owner=api()?.captureFoartBillingOwner?.(),sessionGuard=api()?.captureFoartSessionGuard?.();
+-      if(owner?.current?.()!==true || typeof sessionGuard!=='function' || sessionGuard()!==true) {state.error='无法确认当前账号，未提交或扣费。';notify();return false;}
+-      const policyVersion=currentPricingPolicy()?.version;
++      if(typeof capture!=='function'||(!local&&typeof method!=='function')||(local&&typeof root.__NovaFlowSmartAI?.optimizeForAgent!=='function')||!requestId) {state.error='视频文字草稿接口不可用，未提交或扣费。';notify();return false;}
++      const owner=local?null:api()?.captureFoartBillingOwner?.(),sessionGuard=api()?.captureFoartSessionGuard?.();
++      if((!local&&owner?.current?.()!==true) || typeof sessionGuard!=='function' || sessionGuard()!==true) {state.error='无法确认当前账号，未提交或扣费。';notify();return false;}
++      const policyVersion=local?null:currentPricingPolicy()?.version;
+       const abort=new root.AbortController();promptAbort=abort;state.pending=true;state.error='';state.status='正在优化视频提示词…';
+       if(recordMessage)pushUser(message);notify();
+       let snapshot;
+       const bindingCurrent=()=>!abort.signal.aborted&&state.provider===selected.provider&&state.modelId===selected.modelId&&businessModelEpoch===selected.epoch&&
+-        sessionGuard()===true&&owner.current()===true&&pricingBindingCurrent(policyVersion);
++        sessionGuard()===true&&(local||owner.current()===true&&pricingBindingCurrent(policyVersion));
+       const current=()=>promptAbort===abort&&bindingCurrent()&&(!source?.workspaceGuard||source.workspaceGuard()===true)&&(!source?.attachmentStillCurrent||source.attachmentStillCurrent()===true)&&(!snapshot||snapshot.isCurrent()===true);
+       try {
+         const video=root.NovaFlowAiSequenceGeneration?.capture?.(),textOnly=/(?:只|仅).{0,6}(?:文字|文本)|(?:不要|不用|无需|别).{0,6}(?:看|分析).{0,6}(?:图片|首尾帧|参考图)/.test(message);
+-        const includeReferenceImages=video?.genType==='first_last'&&!textOnly;
++        const includeReferenceImages=!local&&video?.genType==='first_last'&&!textOnly;
+         if(includeReferenceImages&&api()?.onlineVideoVisionAvailableSync?.()!==true)throw Error('首尾帧图片分析尚未通过验收，未上传或扣费；可明确要求只优化文字。');
+         snapshot=await capture({requestId,requirements:source?.requirements??message,...(source?{sourcePrompt:source.prompt}:{}),includeReferenceImages});
+         if(!current())throw Error('模型或视频上下文已变化，未提交。');
++        if(local){
++          const context=await root.NovaFlowAiSequenceGeneration?.optimizationContext?.();
++          if(!current()||!context||context.mode!==snapshot.request.h3Mode||context.durationSeconds!==snapshot.request.durationSeconds)throw Error('视频模式或页面已变化，未提交。');
++          const optimized=await root.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',analysisProvider:'local',assistantSelectionScope:'xiaotao',selectionStillCurrent:current,
++            videoContext:context,prompt:snapshot.request.prompt,requirements:snapshot.request.requirements,signal:abort.signal});
++          if(!current()||optimized?.analysisBackend!=='qwen-cpu'||optimized?.modelIdentity?.id!=='qwen35-heretic'||optimized.resourcesReleased!==true||optimized.generationReady!==true||typeof optimized.displayPrompt!=='string'||!optimized.displayPrompt.trim())throw Error('本地视频优化结果或资源释放未确认，未应用。');
++          await applyOptimizedMediaPrompt({surface:'video',prompt:optimized.displayPrompt,snapshot,bindingCurrent});
++          state.messages.push({role:'assistant',content:'视频提示词已优化并更新到输入框。本次依据文字和参考槽信息，未读取素材内容。'});
++          state.status='视频提示词已优化并更新。';return true;
++        }
+         const {onPricingQuote,confirmPricingQuote,confirmImageUpload}=onlineBusinessUi(selected.modelId,includeReferenceImages?()=>typeof root.confirm==='function'&&root.confirm('将上传当前首帧和尾帧图片用于本次视频提示词分析，确认继续？')===true:null,current);
+         const result=await method({request:snapshot.request,assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch,signal:abort.signal,isInputCurrent:current,onPricingQuote,confirmPricingQuote,...(includeReferenceImages?{confirmImageUpload}:{}),
+           onBillingNotice:notice=>notice?.requestId===requestId && recordBusinessBillingNotice(notice,{selection:selected,owner,sessionGuard})});
+@@ -2972,7 +2985,7 @@
+       const selectionCurrent=()=>!abort.signal.aborted&&state.provider===selected.provider&&state.modelId===selected.modelId&&businessModelEpoch===selected.epoch&&(!source?.workspaceGuard||source.workspaceGuard()===true);
+       const current=()=>promptAbort===abort&&selectionCurrent();
+       const mode=rt.state.mode==='img2img'?'img2img':'txt2img';
+-      state.pending=true;state.error='';state.status=mode==='img2img'?'正在用本地 Qwen 分析主体图与风格图，不会生成图片。':'正在用本地 Qwen 优化当前绘图文字，不会生成图片。';if(recordMessage)pushUser(message);notify();
++      state.pending=true;state.error='';state.status=mode==='img2img'?'正在用本地 Qwen 根据参考图优化提示词。':'正在用本地 Qwen 优化当前绘图文字。';if(recordMessage)pushUser(message);notify();
+       try {
+         const receipt=await tools.execute({action:'image_optimize',prompt:selectedPrompt,generationMode:mode},
+           {provider:selected.provider,modelId:selected.modelId,requirements:source?.requirements??message,signal:abort.signal,selectionStillCurrent:selectionCurrent,onStatus:text=>{if(current()){state.status=text;notify();}}});

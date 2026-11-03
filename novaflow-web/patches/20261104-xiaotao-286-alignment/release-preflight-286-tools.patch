@@ -1,0 +1,102 @@
+--- a/novaflow-web/tools/package-site.mjs
++++ b/novaflow-web/tools/package-site.mjs
+@@ -23,6 +23,15 @@
+ import {linkFullAssets,assertFullDestinations} from './isolated-full-site-policy.mjs';
+ import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
+ 
++// 286 frozen candidate: strictly read-only prepare-only verification.
++if(process.argv.slice(2).includes('--local-qwen-286')){
++  const helper=new URL('../../work/local-qwen-aligned-286-20261104/release-preflight-286.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  if(createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!=='5ef2a1e2eceafdb14c497ce4abb2a58512926df637dbb425dac73a8d1086a6a6')throw Error('286 preflight helper changed');
++  const frozen=await import(helper);
++  console.log(JSON.stringify(await (process.argv.includes('--package-only')?frozen.package286(process.argv.slice(2)):frozen.verify286(process.argv.slice(2),{site:true}))));
++  process.exit(0);
++}
+ const HERE = dirname(fileURLToPath(import.meta.url));
+ const ROOT = resolve(HERE, '..');
+ if(process.argv.includes('--qwen21-edit-285')){
+--- a/novaflow-web/tools/deploy-control-plane.mjs
++++ b/novaflow-web/tools/deploy-control-plane.mjs
+@@ -10,6 +10,18 @@
+ import {syncEdgeFunction} from './sync-edge-function.mjs';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
+ 
++// 286 frozen candidate: strictly read-only prepare-only verification.
++if(process.argv.slice(2).includes('--local-qwen-286')){
++  const helper=new URL('../../work/local-qwen-aligned-286-20261104/release-preflight-286.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  if(createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!=='5ef2a1e2eceafdb14c497ce4abb2a58512926df637dbb425dac73a8d1086a6a6')throw Error('286 preflight helper changed');
++  if(process.argv.includes('--execute')){
++    const execution=new URL('../../work/local-qwen-aligned-286-20261104/release-execute-286.mjs',import.meta.url);
++    if(createFrozenHash('sha256').update(await readFrozen(execution)).digest('hex')!=='b2b590a3cf1a9f4314a0970ee5b6771225453fe6ae63c42a4282fa392be0941c')throw Error('286 execution helper changed');
++    console.log(JSON.stringify(await (await import(execution)).execute286('control',process.argv.slice(2))));
++  }else console.log(JSON.stringify(await (await import(helper)).verify286(process.argv.slice(2),{site:false})));
++  process.exit(0);
++}
+ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+ const project='cjakoblszlmbmotchzva';
+ const args=process.argv.slice(2);
+--- a/novaflow-web/tools/deploy-companion.mjs
++++ b/novaflow-web/tools/deploy-companion.mjs
+@@ -5,6 +5,18 @@
+ import {dirname,resolve,join} from 'node:path';
+ import {setTimeout as delay} from 'node:timers/promises';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++// 286 frozen candidate: strictly read-only prepare-only verification.
++if(process.argv.slice(2).includes('--local-qwen-286')){
++  const helper=new URL('../../work/local-qwen-aligned-286-20261104/release-preflight-286.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  if(createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!=='5ef2a1e2eceafdb14c497ce4abb2a58512926df637dbb425dac73a8d1086a6a6')throw Error('286 preflight helper changed');
++  if(process.argv.includes('--execute')){
++    const execution=new URL('../../work/local-qwen-aligned-286-20261104/release-execute-286.mjs',import.meta.url);
++    if(createFrozenHash('sha256').update(await readFrozen(execution)).digest('hex')!=='b2b590a3cf1a9f4314a0970ee5b6771225453fe6ae63c42a4282fa392be0941c')throw Error('286 execution helper changed');
++    console.log(JSON.stringify(await (await import(execution)).execute286('companion',process.argv.slice(2))));
++  }else console.log(JSON.stringify(await (await import(helper)).verify286(process.argv.slice(2),{site:false})));
++  process.exit(0);
++}
+ const frozenArgs=process.argv.slice(2);
+ if(frozenArgs.length===1&&frozenArgs[0]==='--qwen21-edit-285'){
+   const {deployHotfixCompanion}=await import('../../work/qwen21-edit-285-20261104/release.mjs');
+--- a/novaflow-web/tools/deploy-backend.mjs
++++ b/novaflow-web/tools/deploy-backend.mjs
+@@ -5,6 +5,18 @@
+ import {dirname,resolve,join} from 'node:path';
+ import {setTimeout as delay} from 'node:timers/promises';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++// 286 frozen candidate: strictly read-only prepare-only verification.
++if(process.argv.slice(2).includes('--local-qwen-286')){
++  const helper=new URL('../../work/local-qwen-aligned-286-20261104/release-preflight-286.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  if(createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!=='5ef2a1e2eceafdb14c497ce4abb2a58512926df637dbb425dac73a8d1086a6a6')throw Error('286 preflight helper changed');
++  if(process.argv.includes('--execute')){
++    const execution=new URL('../../work/local-qwen-aligned-286-20261104/release-execute-286.mjs',import.meta.url);
++    if(createFrozenHash('sha256').update(await readFrozen(execution)).digest('hex')!=='b2b590a3cf1a9f4314a0970ee5b6771225453fe6ae63c42a4282fa392be0941c')throw Error('286 execution helper changed');
++    console.log(JSON.stringify(await (await import(execution)).execute286('backend',process.argv.slice(2))));
++  }else console.log(JSON.stringify(await (await import(helper)).verify286(process.argv.slice(2),{site:false})));
++  process.exit(0);
++}
+ const frozenArgs=process.argv.slice(2);
+ if(frozenArgs.length){
+   const {deployFrozen}=await import('./frozen-edge-deploy.mjs');
+--- a/novaflow-web/tools/deploy-site.mjs
++++ b/novaflow-web/tools/deploy-site.mjs
+@@ -7,6 +7,18 @@
+ import {readConfig} from './set-web-config.mjs';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
+ 
++// 286 frozen candidate: strictly read-only prepare-only verification.
++if(process.argv.slice(2).includes('--local-qwen-286')){
++  const helper=new URL('../../work/local-qwen-aligned-286-20261104/release-preflight-286.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  if(createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!=='5ef2a1e2eceafdb14c497ce4abb2a58512926df637dbb425dac73a8d1086a6a6')throw Error('286 preflight helper changed');
++  if(process.argv.includes('--execute')){
++    const execution=new URL('../../work/local-qwen-aligned-286-20261104/release-execute-286.mjs',import.meta.url);
++    if(createFrozenHash('sha256').update(await readFrozen(execution)).digest('hex')!=='b2b590a3cf1a9f4314a0970ee5b6771225453fe6ae63c42a4282fa392be0941c')throw Error('286 execution helper changed');
++    console.log(JSON.stringify(await (await import(execution)).execute286('site',process.argv.slice(2))));
++  }else console.log(JSON.stringify(await (await import(helper)).verify286(process.argv.slice(2),{site:false})));
++  process.exit(0);
++}
+ const frozen265=Object.freeze({
+   version:'2.0.265',
+   zip:'../work/xiaotao-online-265-20261102/foart-site-2.0.265.zip',
