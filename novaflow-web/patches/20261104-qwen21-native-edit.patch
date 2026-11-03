@@ -1,0 +1,256 @@
+--- a/novaflow-web/renderer/novaflow-web-runtime.js
++++ b/novaflow-web/renderer/novaflow-web-runtime.js
+@@ -909,7 +909,8 @@
+     let v3Submitted=false,v3FinalSettled=false,lastFailure=null,englishSubmitted=false,parentRequestId='';
+     const no=(errorCode,error,extra={})=>(lastFailure={ok:false,errorCode,error,...(v3Submitted&&!v3FinalSettled?{billingUnknown:true}:{}),...extra});
+     const gptImage=payload.targetEngine==='gpt-image-2.5';
+-    const nativeQwen=payload.targetEngine==='qwen-2.1'&&payload.promptContract==='qwen21-native-rewrite-v2';
++    const nativeQwen=payload.targetEngine==='qwen-2.1'&&['qwen21-native-rewrite-v2','qwen21-native-rewrite-v3'].includes(payload.promptContract);
++    const nativeEdit=nativeQwen&&payload.promptContract==='qwen21-native-rewrite-v3'&&payload.qwenPromptMode==='img2img';
+     const allowed=['requestId','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','currentDrawingTextOnly','currentDrawingVisionOnly',
+       'onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isImageInputCurrent','images','signal','surface','purpose','prompt','currentPrompt',
+       'negativePrompt','requirements','targetEngine','qwenPromptMode','agentModelLanguage','supportsNegativePrompt','promptSchema','promptContract','nsfw'];
+@@ -999,7 +1000,7 @@
+           !/^[A-Za-z0-9_-]{8,100}$/.test(quote?.requestId||'')||
+           !/^sha256:[a-f0-9]{64}$/.test(quote?.pricingVersion||'')||quote.pricingVersion!==policy.version||
+           !validOperationQuote(quote?.estimatedCredits,operationTerms)||
+-          (stage==='structure'&&quote.maxOutputTokens!==(gptImage?1536:nativeQwen?4096:6144))||
++          (stage==='structure'&&quote.maxOutputTokens!==(gptImage?1536:nativeEdit?2048:nativeQwen?4096:6144))||
+           typeof quote?.quoteToken!=='string'||quote.quoteToken.length>180000||
+           (stage==='structure'&&images.length&&quote.imageCount!==images.length))
+           return no('assistant-business-quote-unavailable','本阶段报价不可用，未提交。',{...(lastQuota?{quota:lastQuota}:{})});
+@@ -1047,7 +1048,7 @@
+         if(stage==='structure'){
+           if(nativeQwen){
+             if(result.releaseEligible!==true||result.reviewRequired!==true||result.targetEngine!=='qwen-2.1'||result.promptContract!==payload.promptContract||
+-              result.modelPromptPolicy!==payload.promptContract||result.modelPromptLanguage!=='en'||result.translationValidation!=='paired-prose-and-literals'||
++              result.modelPromptPolicy!==payload.promptContract||(nativeEdit?!['zh','en'].includes(result.modelPromptLanguage):result.modelPromptLanguage!=='en')||result.translationValidation!==(nativeEdit?'native-edit-and-literals':'paired-prose-and-literals')||
+               typeof result.displayPrompt!=='string'||!result.displayPrompt.trim()||typeof result.modelPrompt!=='string'||!result.modelPrompt.trim())
+               return no('assistant-business-invalid-result','绘图提示词未通过验证，请查看实际扣费。',{quota});
+             console.info('[NovaFlow] Qwen 2.1 rewrite timing',JSON.stringify(result.timings||{}));
+--- a/novaflow-web/renderer/novaflow-smart-ai.js
++++ b/novaflow-web/renderer/novaflow-smart-ai.js
+@@ -5199,7 +5199,7 @@
+       const response=await api.promptAssistantOptimizePrompt({requestId,assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch,...(currentDrawingTextOnly?{currentDrawingTextOnly:true}:{}),...(currentDrawingVisionOnly?{currentDrawingVisionOnly:true}:{}),
+         surface:'art',purpose:'optimize',prompt:protectedPrompt.text,currentPrompt:protectedPrompt.text,requirements,targetEngine:gpt?'gpt-image-2.5':'qwen-2.1',qwenPromptMode:options.generationMode==='img2img'?'img2img':'txt2img',
+         negativePrompt:gpt?'':protectedNegative.text,supportsNegativePrompt:gpt?false:options.supportsNegativePrompt!==false,nsfw:false,
+-        ...(gpt?{}:{agentModelLanguage:'en',promptContract:'qwen21-native-rewrite-v2'}),
++        ...(gpt?{}:{agentModelLanguage:'en',promptContract:'qwen21-native-rewrite-v3'}),
+         onPricingQuote:options.onPricingQuote,confirmPricingQuote:options.confirmPricingQuote,onBillingNotice:options.onBillingNotice,
+         confirmImageUpload:options.confirmImageUpload,isImageInputCurrent:options.isImageInputCurrent,...(Array.isArray(proofRequestImages)?{images:proofRequestImages}:{}),signal});
+       if(!current())throw new Error('模型选择或会话已变化，请核对本次账单。');
+@@ -5226,7 +5226,7 @@
+         typeof response.displayPrompt!=='string'||!response.displayPrompt.trim()||typeof response.modelPrompt!=='string'||!response.modelPrompt.trim())
+         throw new Error('所选模型的优化回执不完整，未应用结果，请核对账单。');
+       if(gpt ? response.targetEngine!=='gpt-image-2.5'||response.promptContract!=='gpt-image-semantic-fusion-v1'||response.modelPrompt!==response.displayPrompt
+-        : response.modelPromptLanguage!=='en'||response.modelPromptPolicy!=='qwen21-native-rewrite-v2'||response.translationValidation!=='paired-prose-and-literals'||response.promptContract!=='qwen21-native-rewrite-v2')
++        : (options.generationMode==='img2img'?!['zh','en'].includes(response.modelPromptLanguage):response.modelPromptLanguage!=='en')||response.modelPromptPolicy!=='qwen21-native-rewrite-v3'||response.translationValidation!==(options.generationMode==='img2img'?'native-edit-and-literals':'paired-prose-and-literals')||response.promptContract!=='qwen21-native-rewrite-v3')
+         throw new Error('绘图优化合同不匹配，未应用结果，请核对账单。');
+       const display=restoreSmartAiResourceMentions(response.displayPrompt,protectedPrompt),model=restoreSmartAiResourceMentions(response.modelPrompt,protectedPrompt);
+       if(!display.ok||!model.ok)throw smartAiResourceMentionError(display.error||model.error);
+@@ -5253,7 +5253,7 @@
+         else compilerBinding=Object.freeze({proof:response.compilerProof,modelPrompt:response.modelPrompt,modelId:selected.modelId,epoch:selected.epoch,images:Object.freeze(proofOriginalImages)});
+       }
+       return {prompt:proofExecutionPrompt,...(compilerBinding?{compilerBinding}:{}),...(compilerBindingInvalidReason?{compilerBindingInvalidReason}:{}),displayPrompt:display.text.replace(/@参考图\s*(\d+)/g,(_,n)=>`<image${n}>`),negativePrompt:negative,analysisBackend:'runninghub',generationReady:true,
+-        optimization:{schema:'nf.agent.prompt-optimization.v1',framework:gpt?'gpt-image-semantic-fusion':'qwen21-native-rewrite',analysisProvider:'api',modelIdentity:response.modelIdentity,reviewRequired:true,translationValidation:response.translationValidation,...(!gpt?{modelPromptLanguage:'en'}:{}),quota:response.quota}};
++        optimization:{schema:'nf.agent.prompt-optimization.v1',framework:gpt?'gpt-image-semantic-fusion':'qwen21-native-rewrite',analysisProvider:'api',modelIdentity:response.modelIdentity,reviewRequired:true,translationValidation:response.translationValidation,...(!gpt?{modelPromptLanguage:response.modelPromptLanguage}:{}),quota:response.quota}};
+     }
+     if(scoped && (!selected || selected.provider!=='local' || selected.modelId!=='qwen3.5-9b-heretic' || !Number.isSafeInteger(selected.epoch) || (options.analysisProvider && options.analysisProvider!==selected.provider)))
+       throw new Error('\u5f53\u524d\u6240\u9009\u6a21\u578b\u7684\u89c6\u9891\u4f18\u5316\u5c1a\u672a\u5f00\u901a\uff1b\u672a\u5207\u6362\u6a21\u578b\u3001\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
+--- a/novaflow-web/renderer/xiaotao-art-agent.js
++++ b/novaflow-web/renderer/xiaotao-art-agent.js
+@@ -3035,7 +3035,7 @@
+         referenceRoles=[];
+         for(const ref of before){
+           const original=ref.drawingRole??ref.role??'',known=original&&original!=='auto'?original:'';
+-          let role=known;
++          let role=known||((expectedCount===1)?'subject':'');
+           if(!role){if(typeof root.prompt!=='function'){state.error='请先明确每张参考图的用途；未上传或扣费。';notify();return false;}
+             const answer=root.prompt('请选择图 '+ref.index+' 的用途：主体、风格、姿势、背景、材质、色彩、构图、光线、物件或参考。取消则不提交。','');
+             if(answer===null){state.status='已取消；未上传或扣费。';notify();return false;}
+@@ -3059,7 +3059,7 @@
+           // The exact intent is an operation request, not a visual edit brief.
+           {provider:selected.provider,modelId:selected.modelId,requirements:source?.requirements??'',signal:abort.signal,selectionStillCurrent:bindingCurrent,
+             ...(visual?{currentDrawingVisionOnly:true,referenceSource,projectStillCurrent:source.workspaceGuard,referenceRoles,...(referenceSource==='uploads'?{uploadReferences:staged.map(({id,previewUrl,name,mimeType,size})=>({id,previewUrl,name,mimeType,size})),attachmentStillCurrent:source.attachmentStillCurrent,...(replacePageReferencesConfirmed?{replacePageReferencesConfirmed:true}:{})}:{})}:{currentDrawingTextOnly:true}),
+-            onlineBusiness:onlineBusinessUi(selected.modelId,null,current),onStatus:text=>{if(current()){state.status=text;notify();}}});
++            onlineBusiness:onlineBusinessUi(selected.modelId,visual?info=>current()&&info?.count===referenceRoles.length:null,current),onStatus:text=>{if(current()){state.status=text;notify();}}});
+         const quota=receipt?.optimization?.quota;
+         if(!current()||receipt?.phase!=='review'||receipt.optimization?.reviewRequired!==true||typeof receipt.reviewId!=='string'||typeof receipt.prompt!=='string'||typeof receipt.modelPrompt!=='string'||
+           quota?.status!=='settled'||creditUnits(quota.settled_credits)===null||(quota.uncollected_credits!==undefined&&quota.uncollected_credits!==0)) {
+--- a/novaflow-web/renderer/xiaotao-foart-tools.js
++++ b/novaflow-web/renderer/xiaotao-foart-tools.js
+@@ -612,7 +612,7 @@
+       }
+       const generationAvailable=!!generationBinding&&root.electronAPI?.confirmedArtImageAvailableSync?.()===true;
+       const reviewId=root.crypto.randomUUID();
+-      pendingImageReview={generationBinding,reviewId,rt,beforeBinding,preparedSnapshot,prompt,modelPrompt,negativePrompt,referenceRoles:(gptDrawing||scopedUploads)?images.map(image=>image.role):null,op:copy(op),count,selectionStillCurrent,sessionStillCurrent,...(scopedUploads?{uploadTransaction,attachmentStillCurrent,markUploadCommitted:()=>{uploadCommitted=true}}:{})};
++      pendingImageReview={generationBinding,reviewId,rt,beforeBinding,preparedSnapshot,prompt,modelPrompt,negativePrompt,referenceRoles:(gptDrawing||scopedVision)?images.map(image=>image.role):null,op:copy(op),count,selectionStillCurrent,sessionStillCurrent,...(scopedUploads?{uploadTransaction,attachmentStillCurrent,markUploadCommitted:()=>{uploadCommitted=true}}:{})};
+       return {action:op.action,phase:'review',provider:rt.state.provider,prompt,modelPrompt,negativePrompt,optimization,reviewId,generationAvailable};
+     }
+     // The legacy online optimizer can finish after the model or account changes.
+--- a/novaflow-web/packages/shared/src/companion-art-business.mjs
++++ b/novaflow-web/packages/shared/src/companion-art-business.mjs
+@@ -6,7 +6,7 @@
+ import {companionPricingPolicy} from './companion-pricing.mjs';
+ import {postRunningHubResponses} from './runninghub-llm.mjs';
+ import {hasXiaotaoDecimalV1,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
+-import {QWEN21_NATIVE_REWRITE,buildQwen21NativeRewrite,compileQwen21NativeRewrite} from './qwen21-native-rewrite.mjs';
++import {QWEN21_NATIVE_REWRITE,QWEN21_NATIVE_CONTRACTS,buildQwen21NativeRewrite,compileQwen21NativeRewrite} from './qwen21-native-rewrite.mjs';
+
+ const VERSION='foart-art-phases-prototype-v1';
+ const ENGLISH_SYSTEM='Translate the supplied validated image prompt into English for Qwen Image 2.1. Translate only; do not optimize again, summarize, add or remove facts. Preserve every object count, color, relative position, negative statement, material, lighting and camera constraint. Translate quoted descriptive field values too. Keep artwork lettering verbatim, including its original language, spelling and punctuation. Preserve reference placeholders and program identifiers exactly. Return all six sections in this order with these exact headings: [Style], [Subjects], [Environment], [Lighting], [Camera], [Requirements]. Return only the complete English prompt.';
+@@ -69,7 +69,7 @@
+     }
+   };
+ }
+-function structureBody(input,model,policy,compiler) {
++function structureBody(input,model,policy,compiler,images=[]) {
+   if(!input||typeof input!=='object'||Array.isArray(input))fail('invalid-input');
+   const allowed=['currentPrompt','requirements','negativePrompt','supportsNegativePrompt','nsfw','qwenPromptMode','targetEngine','promptContract'];
+   if(Object.keys(input).some(k=>!allowed.includes(k)))fail('invalid-input');
+@@ -81,8 +81,8 @@
+   if(!['txt2img','img2img'].includes(qwenPromptMode))fail('invalid-input');
+   if(input.targetEngine!==undefined&&input.targetEngine!=='qwen-2.1'&&input.targetEngine!=='gpt-image-2.5')fail('invalid-input');
+   if(input.promptContract!==undefined){
+-    if(input.promptContract!==QWEN21_NATIVE_REWRITE||input.targetEngine!=='qwen-2.1')fail('invalid-input');
+-    return buildQwen21NativeRewrite({...input,currentPrompt,requirements,negativePrompt,qwenPromptMode},model);
++    if(!QWEN21_NATIVE_CONTRACTS.includes(input.promptContract)||input.targetEngine!=='qwen-2.1')fail('invalid-input');
++    return buildQwen21NativeRewrite({...input,currentPrompt,requirements,negativePrompt,qwenPromptMode},model,images.map(image=>image.manifest.role));
+   }
+   if(input.targetEngine==='gpt-image-2.5'){
+     if(input.supportsNegativePrompt===true||input.nsfw===true||negativePrompt)fail('invalid-input');
+@@ -203,8 +203,9 @@
+     async quoteStructure({actor,model,input,intentId,images}) {
+       if(typeof intentId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(intentId))fail('invalid-intent');
+       const parsed=readImages(images);
++      if(input?.promptContract===QWEN21_NATIVE_REWRITE&&input?.qwenPromptMode==='img2img'&&!parsed.length)fail('invalid-images');
+       if(parsed.length&&!vision.has(model))fail('model-vision-unavailable');
+-      return makeQuote(actor,model,'structure',structureBody(input,model,policyFor,compiler),null,intentId,parsed);
++      return makeQuote(actor,model,'structure',structureBody(input,model,policyFor,compiler,parsed),null,intentId,parsed);
+     },
+     async quoteEnglish({actor,stageToken}) {
+       const boundActor=frozenCopy(actor);
+--- a/novaflow-web/packages/shared/src/companion-pricing.mjs
++++ b/novaflow-web/packages/shared/src/companion-pricing.mjs
+@@ -22,7 +22,7 @@
+ // and settlement. A content hash also invalidates quotes on capability changes.
+ // 272 is a parser-only release using 265's verified pricing contract.
+ // Future releases must use their own revision; explicit overrides remain unchanged.
+-const DEFAULT_PRICING_REVISION = ['2.0.272','2.0.275','2.0.276','2.0.277','2.0.278','2.0.279','2.0.280','2.0.281','2.0.282'].includes(RELEASE_VERSION) ? '2.0.265' : RELEASE_VERSION;
++const DEFAULT_PRICING_REVISION = ['2.0.272','2.0.275','2.0.276','2.0.277','2.0.278','2.0.279','2.0.280','2.0.281','2.0.282','2.0.283','2.0.284','2.0.285'].includes(RELEASE_VERSION) ? '2.0.265' : RELEASE_VERSION;
+ export async function companionPricingPolicy(provider = {}, {revision=DEFAULT_PRICING_REVISION} = {}) {
+   const normalized = normalizeCreditConfig(provider.creditConfig);
+   const config = {
+--- a/novaflow-web/package.json
++++ b/novaflow-web/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "novaflow-web-workspace",
+   "private": true,
+-  "version": "2.0.282",
++  "version": "2.0.285",
+   "type": "module",
+   "description": "Foart website editor, compute-only assistant and administration.",
+   "workspaces": [
+--- a/novaflow-web/package-lock.json
++++ b/novaflow-web/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "novaflow-web-workspace",
+-  "version": "2.0.282",
++  "version": "2.0.285",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "novaflow-web-workspace",
+-      "version": "2.0.282",
++      "version": "2.0.285",
+       "workspaces": [
+         "packages/shared",
+         "control-local",
+@@ -6526,7 +6526,7 @@
+     },
+     "web": {
+       "name": "@novaflow-web/web",
+-      "version": "2.0.282",
++      "version": "2.0.285",
+       "dependencies": {
+         "react": "^19.2.4",
+         "react-dom": "^19.2.4"
+@@ -6541,7 +6541,7 @@
+     },
+     "worker": {
+       "name": "novaflow-worker",
+-      "version": "2.0.282",
++      "version": "2.0.285",
+       "devDependencies": {
+         "electron": "32.2.0",
+         "electron-builder": "25.1.8"
+--- a/novaflow-web/web/package.json
++++ b/novaflow-web/web/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "@novaflow-web/web",
+   "private": true,
+-  "version": "2.0.282",
++  "version": "2.0.285",
+   "type": "module",
+   "scripts": {
+     "dev": "vite --port 4891 --strictPort",
+--- a/novaflow-web/worker/package.json
++++ b/novaflow-web/worker/package.json
+@@ -2,7 +2,7 @@
+   "name": "novaflow-worker",
+   "productName": "Foart",
+   "private": true,
+-  "version": "2.0.282",
++  "version": "2.0.285",
+   "description": "Foart",
+   "type": "commonjs",
+   "main": "electron/compute-main.cjs",
+--- a/novaflow-web/worker/package-lock.json
++++ b/novaflow-web/worker/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "novaflow-worker",
+-  "version": "2.0.282",
++  "version": "2.0.285",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "novaflow-worker",
+-      "version": "2.0.282",
++      "version": "2.0.285",
+       "devDependencies": {
+         "electron": "32.2.0",
+         "electron-builder": "25.1.8"
+--- a/novaflow-web/packages/shared/src/release.mjs
++++ b/novaflow-web/packages/shared/src/release.mjs
+@@ -1,2 +1,2 @@
+-// Application release identifier; protocol and model versions remain independent.
+-export const RELEASE_VERSION = "2.0.282";
++// Application release identifier; protocol and model versions remain independent.
++export const RELEASE_VERSION = "2.0.285";
+--- a/novaflow-web/supabase/functions/_art-shared/release.mjs
++++ b/novaflow-web/supabase/functions/_art-shared/release.mjs
+@@ -1,3 +1,3 @@
+ // GENERATED COPY - source: packages/shared/src/release.mjs
+-// Application release identifier; protocol and model versions remain independent.
+-export const RELEASE_VERSION = "2.0.282";
++// Application release identifier; protocol and model versions remain independent.
++export const RELEASE_VERSION = "2.0.285";
+--- a/novaflow-web/supabase/functions/novaflow-web/release.mjs
++++ b/novaflow-web/supabase/functions/novaflow-web/release.mjs
+@@ -1,5 +1,5 @@
+-// GENERATED COPY - do not edit here.
+-// Source: packages/shared/src/release.mjs
+-// Regenerate with: npm run sync:edge
+-// Application release identifier; protocol and model versions remain independent.
+-export const RELEASE_VERSION = "2.0.282";
++// GENERATED COPY - do not edit here.
++// Source: packages/shared/src/release.mjs
++// Regenerate with: npm run sync:edge
++// Application release identifier; protocol and model versions remain independent.
++export const RELEASE_VERSION = "2.0.285";

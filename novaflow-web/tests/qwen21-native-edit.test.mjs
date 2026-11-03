@@ -1,0 +1,47 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import{buildQwen21NativeRewrite,compileQwen21NativeRewrite,QWEN21_NATIVE_REWRITE}from'../packages/shared/src/qwen21-native-rewrite.mjs';
+import{validateQwen21NativePreservation}from'../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs';
+const model='xai/grok-4.7',input={promptContract:QWEN21_NATIVE_REWRITE,targetEngine:'qwen-2.1',qwenPromptMode:'img2img',currentPrompt:'只把杯身改成红色，保持杯子造型、把手、白色背景和构图不变',requirements:'',supportsNegativePrompt:true,negativePrompt:'水印'};
+test('Chinese image editing is one native Chinese instruction, without English translation',()=>{
+ const p=buildQwen21NativeRewrite(input,model,['subject']),body=JSON.parse(p.body.input[1].content[0].text);assert.equal(p.nativeEdit,true);assert.equal(p.modelPromptLanguage,'zh');assert.equal(p.body.max_output_tokens,2048);assert.deepEqual(body.reference_roles,[{image:1,role:'subject'}]);
+ assert.deepEqual(p.body.text.format.schema.required,['rewritten_prompt']);
+ const text='将图像中杯身的颜色改为红色，保持杯子的造型、把手、白色背景、原有构图及其余内容不变。';
+ const r=compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:text})},p,validateQwen21NativePreservation);assert.equal(r.modelPrompt,text);assert.equal(r.displayPrompt,text);assert.equal(r.modelPromptLanguage,'zh');assert.equal(r.negativePrompt,'水印');
+});
+test('multiple image roles retain their exact order and English edits stay English',()=>{
+ const p=buildQwen21NativeRewrite({...input,currentPrompt:'Transfer the style from <image2> onto the mug in <image1>, keeping the mug shape and composition unchanged.'},model,['subject','style']);
+ const body=JSON.parse(p.body.input[1].content[0].text);assert.deepEqual(body.reference_roles,[{image:1,role:'subject'},{image:2,role:'style'}]);assert.equal(p.modelPromptLanguage,'en');
+ const rewritten_prompt='Transfer only the rendering style of <image2> to the mug in <image1>, keeping the mug shape, composition and all untargeted content unchanged.';
+ const result=compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,validateQwen21NativePreservation);assert.equal(result.modelPrompt,rewritten_prompt);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:rewritten_prompt.replace('<image2>','another image')})},p,validateQwen21NativePreservation),/reference/);
+});
+test('legacy v2 edit quotes retain their original paired English contract',()=>{
+ const p=buildQwen21NativeRewrite({...input,promptContract:'qwen21-native-rewrite-v2'},model,['subject']);assert.equal(p.nativeEdit,undefined);assert.deepEqual(p.body.text.format.schema.required,['display_prompt','model_prompt']);
+});
+test('explicit application reference bindings survive a single-image edit',()=>{
+ const source={...input,currentPrompt:'只把__NFMUG_1__中的杯身改成红色，保持其他内容不变'},p=buildQwen21NativeRewrite(source,model,['subject']);
+ const rewritten_prompt='将__NFMUG_1__中的杯身改为红色，保持其他内容不变。';
+ const result=compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,validateQwen21NativePreservation);assert.equal(result.modelPrompt,rewritten_prompt);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:rewritten_prompt.replace('__NFMUG_1__','图像')})},p,validateQwen21NativePreservation));
+});
+test('user-specified artwork text must survive exactly; a deliberate replacement drops the old text',()=>{
+ const source={...input,currentPrompt:'把标题改为‘春日计划’，保持杯子和背景不变'},p=buildQwen21NativeRewrite(source,model,['subject']);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'把标题改为“夏日特惠”，保持杯子和背景不变。'})},p,validateQwen21NativePreservation));
+ assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'把标题改为“春日计划”，保持杯子和背景不变。'})},p,validateQwen21NativePreservation));
+ const replaced={...input,currentPrompt:'把标题从“旧标题”改成“新标题”，保持其他内容不变'},r=buildQwen21NativeRewrite(replaced,model,['subject']);
+ assert.doesNotThrow(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'把标题改成“新标题”，保持其他内容不变。'})},r,()=>true));
+});
+test('English instruction with Chinese image text stays English',()=>{
+ const p=buildQwen21NativeRewrite({...input,currentPrompt:'Change the headline to “春日计划”, keeping the mug and background unchanged.'},model,['subject']);assert.equal(p.modelPromptLanguage,'en');
+ const rewritten_prompt='Change the headline to “春日计划”, while keeping the mug and the background unchanged.';
+ assert.equal(compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt})},p,()=>true).modelPromptLanguage,'en');
+});
+test('explicitly swapping the left and right edit target is rejected',()=>{
+ const p=buildQwen21NativeRewrite({...input,currentPrompt:'把左边的杯子改成红色，保持右边杯子不变'},model,['subject']);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({rewritten_prompt:'把右边的杯子改成红色，保持左边杯子不变。'})},p,validateQwen21NativePreservation),/target side/);
+});
+test('new editing contract rejects text-only and incomplete response shapes',()=>{
+ const p=buildQwen21NativeRewrite(input,model,['subject']);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify({display_prompt:'改为红色',model_prompt:'Red'})},p,validateQwen21NativePreservation),/fields/);
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:'{"rewritten_prompt":'},p,validateQwen21NativePreservation),/complete JSON/);
+});
