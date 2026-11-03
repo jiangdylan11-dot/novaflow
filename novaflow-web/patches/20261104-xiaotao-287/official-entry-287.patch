@@ -1,0 +1,100 @@
+--- a/novaflow-web/tools/package-site.mjs
++++ b/novaflow-web/tools/package-site.mjs
+@@ -22,6 +22,17 @@
+ import { prepareDeploymentArtReview } from './art-knowledge-deploy-review.mjs';
+ import {linkFullAssets,assertFullDestinations} from './isolated-full-site-policy.mjs';
+ import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
++
++// 287 frozen release: never fall through to the ordinary shared-output build.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-287','--package-only','--control-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web','--auth-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 287 package arguments');
++  const helper=new URL('../../work/xiaotao-local-287-20261104/release-287.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='9d7e6b0b51e512a20c2e2ad75dc733dea682a30f8365d4b999eae999716d9f81';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('287 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).package287(args)));process.exit(0);
++}
+ 
+ // 286 frozen candidate: strictly read-only prepare-only verification.
+ if(process.argv.slice(2).includes('--local-qwen-286')){
+--- a/novaflow-web/tools/deploy-site.mjs
++++ b/novaflow-web/tools/deploy-site.mjs
+@@ -6,6 +6,17 @@
+ import {randomUUID,createHash} from 'node:crypto';
+ import {readConfig} from './set-web-config.mjs';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++
++// 287 frozen release: only the reviewed helper may perform the explicit action.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-287','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 287 deployment arguments');
++  const helper=new URL('../../work/xiaotao-local-287-20261104/release-287.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='9d7e6b0b51e512a20c2e2ad75dc733dea682a30f8365d4b999eae999716d9f81';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('287 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute287('site',args)));process.exit(0);
++}
+ 
+ // 286 frozen candidate: strictly read-only prepare-only verification.
+ if(process.argv.slice(2).includes('--local-qwen-286')){
+--- a/novaflow-web/tools/deploy-control-plane.mjs
++++ b/novaflow-web/tools/deploy-control-plane.mjs
+@@ -9,6 +9,17 @@
+ import {bundleEdgeFunction} from './bundle-edge-function.mjs';
+ import {syncEdgeFunction} from './sync-edge-function.mjs';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++
++// 287 frozen release: only the reviewed helper may perform the explicit action.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-287','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 287 deployment arguments');
++  const helper=new URL('../../work/xiaotao-local-287-20261104/release-287.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='9d7e6b0b51e512a20c2e2ad75dc733dea682a30f8365d4b999eae999716d9f81';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('287 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute287('control',args)));process.exit(0);
++}
+ 
+ // 286 frozen candidate: strictly read-only prepare-only verification.
+ if(process.argv.slice(2).includes('--local-qwen-286')){
+--- a/novaflow-web/tools/deploy-backend.mjs
++++ b/novaflow-web/tools/deploy-backend.mjs
+@@ -5,6 +5,17 @@
+ import {dirname,resolve,join} from 'node:path';
+ import {setTimeout as delay} from 'node:timers/promises';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++// 287 frozen release: only the reviewed helper may perform the explicit action.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-287','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 287 deployment arguments');
++  const helper=new URL('../../work/xiaotao-local-287-20261104/release-287.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='9d7e6b0b51e512a20c2e2ad75dc733dea682a30f8365d4b999eae999716d9f81';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('287 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute287('backend',args)));process.exit(0);
++}
++
+ // 286 frozen candidate: strictly read-only prepare-only verification.
+ if(process.argv.slice(2).includes('--local-qwen-286')){
+   const helper=new URL('../../work/local-qwen-aligned-286-20261104/release-preflight-286.mjs',import.meta.url);
+--- a/novaflow-web/tools/deploy-companion.mjs
++++ b/novaflow-web/tools/deploy-companion.mjs
+@@ -5,6 +5,17 @@
+ import {dirname,resolve,join} from 'node:path';
+ import {setTimeout as delay} from 'node:timers/promises';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++// 287 frozen release: only the reviewed helper may perform the explicit action.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-287','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 287 deployment arguments');
++  const helper=new URL('../../work/xiaotao-local-287-20261104/release-287.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='9d7e6b0b51e512a20c2e2ad75dc733dea682a30f8365d4b999eae999716d9f81';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('287 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute287('companion',args)));process.exit(0);
++}
++
+ // 286 frozen candidate: strictly read-only prepare-only verification.
+ if(process.argv.slice(2).includes('--local-qwen-286')){
+   const helper=new URL('../../work/local-qwen-aligned-286-20261104/release-preflight-286.mjs',import.meta.url);

@@ -1,0 +1,49 @@
+--- a/novaflow-web/worker/src/worker-core.mjs
++++ b/novaflow-web/worker/src/worker-core.mjs
+@@ -305,6 +305,13 @@
+     && task?.model_id === PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID
+     && parameters.action === 'art-agent-chat';
+   if (!qwen) throw new Error('请先选择小桃 AI 模型并重新提交，未加载模型或扣除积分。');
++}
++
++// Leave one polling tick for the timer to notice that an empty-queue delay
++// has elapsed. The normal 2s poll therefore revisits the queue within about
++// 5s instead of waiting for the failure backoff's 30s ceiling.
++export function emptyClaimDelayMs(delayMs, pollMs) {
++  return Math.min(delayMs, Math.max(0, 5000 - pollMs));
+ }
+ 
+ export function qwenCpuAdvertisable(status, currentTaskId = null) {
+@@ -1725,7 +1732,9 @@
+         if(claimsPaused || !sharing || !running || epoch!==shareEpoch)return false;
+         let candidateStatus;
+         try {candidateStatus=promptAssistantRef()?.status?.();} catch {deferCloudClaim(backoffEpoch);return false;}
+-        if(candidateStatus?.qwenRotationCandidateEnabled!==true || !qwenCpuAdvertisable(candidateStatus,state.currentTaskId)){deferCloudClaim(backoffEpoch);return false;}
++        if(!candidateStatus || typeof candidateStatus!=='object' || candidateStatus.ok===false){deferCloudClaim(backoffEpoch);return false;}
++        if(candidateStatus.qwenRotationCandidateEnabled!==true){deferCloudClaim(backoffEpoch,true);return false;}
++        if(!qwenCpuAdvertisable(candidateStatus,state.currentTaskId)){deferCloudClaim(backoffEpoch);return false;}
+         claim=await callControl('POST','/api/worker/qwen-rotation/claim',{token:state.workerToken,body:{}});
+       }
+     } catch (error) {
+@@ -1749,7 +1758,7 @@
+       if (!local) deferCloudClaim(backoffEpoch);
+       return false;
+     }
+-    if (!claim.task) { if (!local) deferCloudClaim(backoffEpoch); return false; }
++    if (!claim.task) { if (!local) deferCloudClaim(backoffEpoch,true); return false; }
+     if (!local) resetCloudClaimBackoff();
+     if (claim.grantKey) state.grantKey = claim.grantKey;
+ 
+@@ -1875,10 +1884,10 @@
+     nextCloudClaimAt = 0;
+     cloudClaimBackoffEpoch++;
+   }
+-  function deferCloudClaim(epoch) {
++  function deferCloudClaim(epoch, emptyQueue=false) {
+     // A stale empty reply cannot undo an intervening pause/resume or restart.
+     if (epoch !== cloudClaimBackoffEpoch) return;
+-    nextCloudClaimAt = performance.now() + claimDelayMs;
++    nextCloudClaimAt = performance.now() + (emptyQueue ? emptyClaimDelayMs(claimDelayMs,claimBaseMs) : claimDelayMs);
+     claimDelayMs = Math.min(claimMaxMs, claimDelayMs * 2);
+   }
+ 

@@ -1,0 +1,121 @@
+--- a/novaflow-web/renderer/novaflow-web-runtime.js
++++ b/novaflow-web/renderer/novaflow-web-runtime.js
+@@ -2394,12 +2394,37 @@
+   // against that worker.
+   // Two minutes, the same the node then gives the browser to upload: a node that claims late
+   // (a 60s limit gave up just before the claim) must still find the upload coming.
+-  async function waitForAssignment(taskId, { timeoutMs = 120000, onWait, assertCurrent } = {}) {
++  async function waitForAssignment(taskId, { timeoutMs = 120000, onWait, assertCurrent, signal } = {}) {
+     const started = Date.now();
++    let consecutiveNetworkFailures = 0;
++    const check = () => {
++      if (signal?.aborted) throw Object.assign(new Error('本次请求已取消'), {name:'AbortError'});
++      if (assertCurrent) assertCurrent();
++    };
++    const pause = ms => new Promise((resolve, reject) => {
++      if (signal?.aborted) return reject(Object.assign(new Error('本次请求已取消'), {name:'AbortError'}));
++      let timer;
++      const abort = () => {clearTimeout(timer);signal?.removeEventListener('abort', abort);reject(Object.assign(new Error('本次请求已取消'), {name:'AbortError'}));};
++      timer = setTimeout(() => {signal?.removeEventListener('abort', abort);resolve();}, ms);
++      signal?.addEventListener('abort', abort, {once:true});
++    });
+     for (;;) {
+-      if (assertCurrent) assertCurrent();
+-      const res = await control('GET', '/api/web/tasks/' + taskId);
+-      if (assertCurrent) assertCurrent();
++      check();
++      if (Date.now() - started > timeoutMs) throw new Error('等不到空闲算力节点，参考图没能送出');
++      let res;
++      try {
++        res = await control('GET', '/api/web/tasks/' + taskId);
++      } catch (error) {
++        check();
++        const transient = !error?.status && error?.name !== 'AbortError' &&
++          (error?.name === 'TimeoutError' || /failed to fetch|fetch failed|network|load failed/i.test(String(error?.message || error)));
++        if (!transient || consecutiveNetworkFailures >= 3 || Date.now() - started >= timeoutMs) throw error;
++        const delay = Math.min(600 * (2 ** consecutiveNetworkFailures++), Math.max(0, timeoutMs - (Date.now() - started)));
++        await pause(delay);check();
++        continue;
++      }
++      check();
++      consecutiveNetworkFailures = 0;
+       const task = res.task || {};
+       tasks.set(taskId, task);
+       if (task.assigned_worker_id) return task;
+@@ -2415,7 +2440,7 @@
+       if (Date.now() - started > timeoutMs) {
+         throw new Error('等不到空闲算力节点，参考图没能送出');
+       }
+-      await new Promise((r) => setTimeout(r, 700));
++      await pause(700);
+     }
+   }
+ 
+@@ -2470,7 +2495,7 @@
+     const check=()=>options.candidate===true || options.qwenPlan===true ? checkCandidateTransport(options) : options.assertCurrent?.();
+     check();
+     if(options.candidate===true || options.qwenPlan===true)candidateSecureBase(CONFIG.controlUrl);
+-    const task = await waitForAssignment(taskId, { onWait: onWait });
++    const task = await waitForAssignment(taskId, { onWait: onWait, assertCurrent: check, signal: options.signal });
+     check();
+     if(options.expectedNodeId && task?.assigned_worker_id!==options.expectedNodeId)throw new Error('任务分配节点不匹配，未上传。');
+     const attempts = options.candidate===true || options.qwenPlan===true ? 1 : options.retryConnection ? 3 : 1;
+@@ -2739,7 +2764,9 @@
+     async runtimeGetSystemStats(payload) {
+       try {
+         const video = /:8189(?:\/|$)/.test(String(payload && payload.baseUrl || ''));
+-        const count = await poolHas(video ? 'h3_i2v' : 'qwen_t2i');
++        const probeType = video ? 'h3_i2v' : selectedImageProbeType();
++        const count = await poolHas(probeType);
++        if (!video && probeType!==selectedImageProbeType()) return {ok:false,status:409,error:'绘图模型已变化，请重试'};
+         if (!count) return { ok: false, status: 503, error: video ? '当前无可用视频节点，请稍后重试' : '当前无可用生图节点，请稍后重试' };
+         return {
+           ok: true,
+@@ -3281,16 +3308,33 @@
+   const LOCAL_RUNTIME = /^https?:\/\/(?:127\.0\.0\.1|localhost):(8188|8189)(\/|$)/i;
+   const PORT_TASK_TYPE = { 8188: 'qwen_t2i', 8189: 'h3_i2v' };
+ 
++  function selectedImageProbeType() {
++    const state=root.__NovaFlowArtGenerate?.state;
++    if(!state?.active || state.provider!=='local')return 'qwen_t2i';
++    let engine='';
++    try {engine=root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider,state.mode,state)?.engine || state.localDrawEngine || '';} catch {return 'qwen_t2i';}
++    if(engine!=='qwen-2.1')return 'qwen_t2i';
++    return state.localQwen21Variant==='turbo' ? 'qwen21-turbo' : 'qwen21-standard';
++  }
+   let capsCache = { at: 0, byTaskType: {} };
+   async function poolHas(taskType) {
+-    if (Date.now() - capsCache.at > 8000) {
++    const epoch=computeNodeEpoch,nodeId=computeNode?.id || '',mode=taskMode(),token=currentSession()?.token || '';
++    const current=()=>epoch===computeNodeEpoch && nodeId===(computeNode?.id || '') && mode===taskMode() && token===(currentSession()?.token || '');
++    const old=capsCache.context;
++    if (Date.now() - capsCache.at > 8000 || !old || old.epoch!==epoch || old.nodeId!==nodeId || old.mode!==mode || old.token!==token) {
++      const context={epoch,nodeId,mode,token};
+       try {
+         const caps = await control('GET', '/api/web/capabilities');
++        if(!current())return 0;
+         const byTaskType = {};
+         for (const t of caps.taskTypes || []) byTaskType[t.task_type] = Number(t.available_workers || 0);
+-        capsCache = { at: Date.now(), byTaskType };
++        const features=caps.features || {};
++        byTaskType['qwen21-standard']=Number.isSafeInteger(features.qwenImage21Workers) && features.qwenImage21Workers>=0 ? features.qwenImage21Workers : features.qwenImage21===true ? 1 : 0;
++        byTaskType['qwen21-turbo']=Number.isSafeInteger(features.qwenImage21TurboWorkers) && features.qwenImage21TurboWorkers>=0 ? features.qwenImage21TurboWorkers : features.qwenImage21Turbo===true ? 1 : 0;
++        capsCache = { at: Date.now(), byTaskType, context };
+       } catch (_) {
+-        capsCache = { at: Date.now(), byTaskType: {} };
++        if(current())capsCache = { at: Date.now(), byTaskType: {}, context };
++        else return 0;
+       }
+     }
+     return Number(capsCache.byTaskType[taskType] || 0);
+@@ -3346,7 +3390,9 @@
+     }
+ 
+     if (path === '/system_stats' || path === '/') {
+-      const workers = await poolHas(taskType);
++      const probeType = taskType==='qwen_t2i' ? selectedImageProbeType() : taskType;
++      const workers = await poolHas(probeType);
++      if(taskType==='qwen_t2i' && probeType!==selectedImageProbeType()) return new Response(JSON.stringify({ok:false,error:'绘图模型已变化，请重试'}),{status:409,headers:{'content-type':'application/json'}});
+       if (!workers) {
+         // Fail the probe, so the panel does not offer to generate on compute
+         // that is not there. The wording the panel shows is rewritten for the
