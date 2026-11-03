@@ -1,0 +1,236 @@
+--- a/novaflow-web/renderer/xiaotao-art-agent.js
++++ b/novaflow-web/renderer/xiaotao-art-agent.js
+@@ -464,7 +464,8 @@
+   function conversationRows(messages) {
+     const rows = [];
+     for (const message of messages) {
+-      const content = String(message.content || '');
++      const raw = String(message.content || '');
++      const content = message.role==='assistant' ? raw.replace(/^本次为文字或图片对话，未操作软件。\n\n/, '') : raw;
+       if (message.role === 'status' && /^(?:消息已发送，正在等待小桃回复|请求已收到，开始分析当前绘图)/.test(content)) continue;
+       const receipt = message.role === 'status' && /^(?:本次)?实扣\s*(?:\d+(?:\.\d+)?|<0\.000001)\s*(?:分|积分)/.test(content);
+       const previous = rows[rows.length - 1];
+@@ -475,6 +476,25 @@
+       rows.push({...message, content, receipts:typeof message.receipt === 'string' && message.receipt ? [message.receipt] : [], ...(receipt ? {receiptOnly:true} : {})});
+     }
+     return rows;
++  }
++  async function copyMessageText(text, button, doc, environment, selectionTarget) {
++    let copied=false;
++    try {
++      if(typeof environment.navigator?.clipboard?.writeText==='function') {
++        try {await environment.navigator.clipboard.writeText(String(text));copied=true;} catch {/* Try the synchronous browser fallback. */}
++      }
++      if(!copied && typeof doc.execCommand==='function') {
++        const helper=doc.createElement('textarea');helper.value=String(text);helper.setAttribute('readonly','');
++        Object.assign(helper.style,{position:'fixed',left:'-10000px',top:'0'});doc.body.append(helper);
++        try {helper.focus();helper.select();copied=doc.execCommand('copy')===true;} finally {helper.remove();}
++      }
++    } catch {/* Offer a visible, selectable fallback below. */}
++    if(copied){button.textContent='已复制';return true;}
++    try {
++      const selection=environment.getSelection?.(),range=doc.createRange?.();
++      if(selection&&range&&selectionTarget){range.selectNodeContents(selectionTarget);selection.removeAllRanges();selection.addRange(range);}
++    } catch {/* Keep the failure message even if selection is unavailable. */}
++    button.textContent='请选中文字按 Ctrl+C';return false;
+   }
+   function renderConversationRow(doc, message, {copyText = () => {}, chooseUploadDestination = () => {}} = {}) {
+     const el = (tag, className = '', text) => {const node = doc.createElement(tag); node.className = className; if (text !== undefined) node.textContent = text; return node;};
+@@ -491,9 +511,10 @@
+     const copy = el('button', 'nf-xiaotao-copy', textPrompt ? '复制提示词' : '复制');
+     copy.type = 'button';
+     copy.setAttribute('aria-label', message.role === 'user' ? '复制你的消息' : textPrompt ? '复制小桃的完整提示词' : '复制小桃的回复');
+-    copy.onclick = () => void copyText(textPrompt ? textPrompt[1] : message.content, copy);
++    copy.onclick = () => void copyText(textPrompt ? textPrompt[1] : message.content, copy, body);
+     label.append(el('span', '', message.role === 'user' ? '你' : '小桃AI'), copy);
+-    bubble.append(label, renderMessageMarkdown(doc, message.content));
++    const body=renderMessageMarkdown(doc, message.content);
++    bubble.append(label, body);
+     if (message.attachments?.length) {
+       const strip = el('div', 'nf-xiaotao-message-attachments');
+       for (const resource of message.attachments) {
+@@ -923,6 +944,7 @@
+     const api = () => retired ? null : getApi();
+     if (storage === root.localStorage) storage = createTabScopedStorage(root.localStorage, root.sessionStorage);
+     const state = {provider:'local', modelId:'qwen3.5-9b-heretic', mode:'chat', activeTask:null,messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, staging:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'Qwen3.5 9B', toolTrace:[], localSession:null, localModelStatus:null, qwenExecutionDevice:null, pricingPolicy:null, pricingError:'',billingNotices:[]};
++    state.qwen35CpuTrialChecked=false;
+     const operationRecoveryStates=new Map();
+     let pendingFoartImageReview=null,foartImageReviewUndo=null;
+     state.foartImageReviewCanUndo=false;
+@@ -1669,24 +1691,26 @@
+       if(epoch!==localCapabilityEpoch || state.provider!=='local' || state.modelId!=='qwen3.5-9b-heretic')return;
+       state.qwenExecutionDevice=verifiedQwenExecutionDevice(response);
+     }
+-    function invalidateLocalCapability() {localCapabilityEpoch++;localCapabilitySequence++;state.qwenExecutionDevice=null;state.qwen35CpuTrialAvailable=false;state.qwen35FoartReadonlyAvailable=false;state.qwen35FoartSeekAvailable=false;state.qwen35FoartRotationCandidateAvailable=false;state.qwen35FoartPlanAvailable=false;onChange(state);}
++    function clearLocalCapability() {state.qwenExecutionDevice=null;state.qwen35CpuTrialAvailable=false;state.qwen35CpuTrialChecked=false;state.qwen35FoartReadonlyAvailable=false;state.qwen35FoartSeekAvailable=false;state.qwen35FoartRotationCandidateAvailable=false;state.qwen35FoartPlanAvailable=false;}
++    function invalidateLocalCapability() {localCapabilityEpoch++;localCapabilitySequence++;clearLocalCapability();onChange(state);}
+     async function calibrateLocalStatus() {
+       if (state.provider !== 'local' || CHAT_MODELS[state.modelId]?.retired || state.pending || state.generating || state.applying) return;
+-      if (typeof api()?.promptAssistantGetStatus !== 'function') {state.qwen35CpuTrialAvailable=false;state.qwen35FoartReadonlyAvailable=false;state.qwen35FoartSeekAvailable=false;state.qwen35FoartRotationCandidateAvailable=false;state.qwen35FoartPlanAvailable=false;onChange(state);return;}
++      if (typeof api()?.promptAssistantGetStatus !== 'function') {invalidateLocalCapability();return;}
+       const operation = serial, capabilityEpoch = localCapabilityEpoch, sequence=++localCapabilitySequence;
+       const current=()=>operation===serial && capabilityEpoch===localCapabilityEpoch && sequence===localCapabilitySequence && state.provider==='local' && !state.pending && !state.generating && !state.applying;
+       try {
+         const response = await api().promptAssistantGetStatus();
+         if (!current()) return;
+         const data = response?.result || response?.data || response;
+-        if (response?.ok === false || data?.ok === false) {state.qwen35CpuTrialAvailable=false;state.qwen35FoartReadonlyAvailable=false;state.qwen35FoartSeekAvailable=false;state.qwen35FoartRotationCandidateAvailable=false;state.qwen35FoartPlanAvailable=false; onChange(state); return;}
++        if (response?.ok === false || data?.ok === false || typeof data?.features?.qwen35CpuTrial !== 'boolean') {clearLocalCapability();onChange(state);return;}
+         state.qwen35CpuTrialAvailable=data?.features?.qwen35CpuTrial===true;
++        state.qwen35CpuTrialChecked=true;
+         state.qwen35FoartReadonlyAvailable=data?.features?.qwen35FoartReadonly===true;
+         state.qwen35FoartSeekAvailable=data?.features?.qwen35FoartSeek===true;
+         state.qwen35FoartRotationCandidateAvailable=QWEN_ROTATION_CANDIDATE_RELEASE_ENABLED && data?.features?.qwen35FoartRotationCandidate===true;
+         state.qwen35FoartPlanAvailable=data?.features?.qwen35FoartPlan===true;
+          updateSelectedLocalStatus(data); onChange(state);
+-      } catch {if(current()){state.qwen35CpuTrialAvailable=false;state.qwen35FoartReadonlyAvailable=false;state.qwen35FoartSeekAvailable=false;state.qwen35FoartRotationCandidateAvailable=false;state.qwen35FoartPlanAvailable=false; onChange(state);}}
++      } catch {if(current()){clearLocalCapability();onChange(state);}}
+     }
+     function invalidate(message = '绘图内容已变化，原建议已失效') {if (state.proposal || state.applied) {bridge.clearPrepared(); state.proposal = null; state.proposalSnapshot = null; state.applied = false; state.status = message; notify();}}
+     function refreshContext() {
+@@ -2385,7 +2409,7 @@
+         if(state.modelId!==selected || serial!==operation || state.pending || state.generating || state.applying)return false;
+         state.error=state.pricingError || '积分价格已刷新，请确认后重新发送';state.status='未提交，不扣积分';notify();return false;
+       }
+-      if (!modelAvailable(state.modelId)) {state.error = state.modelId==='qwen3.5-9b-heretic' ? '当前算力节点没有可用的 Qwen3.5 9B 本地服务，未提交任务。'+CHAT_MODELS[state.modelId].detail : CHAT_MODELS[state.modelId]?.detail || '所选模型尚未接入'; state.status = '未提交，不扣积分'; notify(); return false;}
++      if (!modelAvailable(state.modelId)) {state.error = state.modelId==='qwen3.5-9b-heretic' ? (state.qwen35CpuTrialChecked===true?'当前算力节点没有可用的 Qwen3.5 9B 本地服务，未提交任务。':'本地模型设备待检测，请稍后重试；未提交任务。')+CHAT_MODELS[state.modelId].detail : CHAT_MODELS[state.modelId]?.detail || '所选模型尚未接入'; state.status = '未提交，不扣积分'; notify(); return false;}
+       if(promptSelection){
+         const {info,source,message:original,recordMessage:record}=promptSelection;
+         if(info.surface==='video')return prepareSelectedH3TextDraft(original,{recordMessage:record,source});
+@@ -2447,7 +2471,7 @@
+           typeof root.NovaFlowSkeletonEditor.api?.()?.agentPrepareSingleBoneRotation==='function')
+           capabilities.push('将选中骨骼已有旋转关键帧设为明确角度，需确认且可以撤销');
+         if(api()?.qwenBusinessAvailableSync?.()===true && typeof root.NovaFlowFoartTools?.execute==='function')
+-          capabilities.push('整理当前绘图的文字提示词，确认后应用');
++          capabilities.push('整理当前绘图的文字提示词并直接应用');
+         const reply='我可以进行文字和图片对话。'+(capabilities.length?'当前节点还支持：'+capabilities.join('；')+'。':'当前节点尚未确认可用的动画工具。')+'其他操作以当前界面能力和确认结果为准；音视频内容尚不能直接分析。本次只说明能力，没有执行操作。';
+         if(recordMessage){pushUser(message);state.history=[...state.history,{role:'user',content:message},{role:'assistant',content:reply}].slice(-12);state.conversationId='';}
+         state.messages.push({role:'assistant',content:reply});state.error='';state.status='能力说明，未执行工具操作';notify();return true;
+@@ -2652,7 +2676,7 @@
+         if(communityChatOnly && /(?:已|已经|完成|成功).{0,24}(?:修改|调整|生成|设置|选中|删(?:除|掉|去|了)?|导出|导入|绘制|写入|应用|执行|处理)|(?:我|小桃).{0,24}删(?:除|掉|去)?[^。！？!?；;\n]{0,12}了|(?:修改|调整|生成|设置|选中|删(?:除|掉|去)?|导出|导入|绘制|写入|应用|执行|处理).{0,8}(?:好了|完成|成功)/.test(data.reply))fail('模型回复包含未经执行的操作声明，未修改作品，请重新提问');
+         rememberQwenExecutionDevice(response,deviceEpoch);
+         if(data.needsInput){
+-          state.messages.push({role:'assistant',content:(communityChatOnly?'本次为文字或图片对话，未操作软件。\n\n':'')+data.reply});state.conversationId=data.conversationId || state.conversationId;
++          state.messages.push({role:'assistant',content:data.reply});state.conversationId=data.conversationId || state.conversationId;
+           if(Array.isArray(data.history))state.history=copy(data.history);
+           state.toolTrace=copy(data.toolTrace || []);state.model=String(data.model || state.model);state.localSession=null;
+           pendingIntent={...(task || {surface:'image',mode:'img2img'}),message:requestMessage};state.confirmation=null;state.samplingApproval=null;state.status='等待补充需求';return true;
+@@ -2682,7 +2706,7 @@
+         const discussionOnly=/[?？]|吗[。！!]?\s*$|解释|讨论|聊聊|什么意思|为什么|如何|怎么|(?:不要|不用|别|先不|暂不).{0,6}(?:生成|生图|出图|执行|应用)|(?:只|仅).{0,8}(?:提示词|方案|讨论|解释)/.test(message)
+           || /(?:给我|提供|输出).{0,12}提示词/.test(message) && !/写入|填入|写到|写进|填进|填到|应用|生成一张|直接生成|生图/.test(message);
+         const promptOnly=discussionOnly || !data.proposal?.action || data.proposal.action==='prompt';
+-        const reply=communityChatOnly ? '本次为文字或图片对话，未操作软件。\n\n'+data.reply : mode!=='chat' && finalProposal && promptOnly ? data.reply+'\n\n完整提示词：\n```text\n'+finalProposal.prompt+'\n```' : data.reply;
++        const reply=!communityChatOnly && mode!=='chat' && finalProposal && promptOnly ? data.reply+'\n\n完整提示词：\n```text\n'+finalProposal.prompt+'\n```' : data.reply;
+         const settled=billingReceipt(billing),receipt=settled?creditReceipt({...settled,...(prediction?.credits!=null?{expected_credits:prediction.credits}:{})}):'';
+         state.messages.push({role:'assistant', content:reply, ...(receipt ? {receipt} : {})});
+         // Keep the latest settled amount in the shared, quiet billing line.
+@@ -2691,7 +2715,7 @@
+         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
+         const unchanged = mode === 'chat' || sameSnapshot(snapshot, recapture(snapshot));
+         if (mode !== 'chat' && finalProposal && unchanged && finalProposal.contextFingerprint === contextFingerprint) {state.proposal = finalProposal===data.proposal?copy(finalProposal):finalProposal; state.proposalSnapshot = snapshot; state.status = '方案已准备，可直接说“按这个方案生成”';}
+-        else state.status = communityChatOnly ? '已回复 · 本次未操作软件' : !unchanged ? '当前绘图已变化，这次回复中的建议未应用' : mode === 'chat' && state.provider === 'local' && snapshot.artContext.surface === 'drawing' ? '已回复 · 当前仅对话，尚未形成可生图双图上下文' : '已回复';
++        else state.status = communityChatOnly ? '已回复' : !unchanged ? '当前绘图已变化，这次回复中的建议未应用' : mode === 'chat' && state.provider === 'local' && snapshot.artContext.surface === 'drawing' ? '已回复 · 当前仅对话，尚未形成可生图双图上下文' : '已回复';
+         const action=execution || (!discussionOnly && ['apply','generate'].includes(data.proposal?.action) ? {generate:data.proposal.action==='generate'} : null);
+         if (action) {
+           state.activeTask={surface:'image',mode:finalProposal?.generationMode || task?.mode || 'txt2img',baseRequest:task?.revision?state.activeTask?.baseRequest || message:message,
+@@ -2759,12 +2783,32 @@
+       }catch(error){state.error=String(error?.message||error);return false;}
+       finally{state.applying=false;notify();}
+     }
++    // A node can finish its model probe after the page's initial feature
++    // snapshot. Refresh immediately before a local business operation and
++    // reject the result if the selected model, account or node changed.
++    async function refreshQwenBusinessBeforeUse() {
++      const service=api(),selected=businessModelSnapshot(),operation=serial;
++      const getGuard=service?.captureFoartSessionGuard;
++      const guard=typeof getGuard==='function' ? getGuard.call(service) : null;
++      if(typeof getGuard==='function' && (typeof guard!=='function'||guard()!==true))return false;
++      const runtime=root.NovaFlowWebRuntime,nodeId=runtime?.computeNode?.id || '';
++      const current=()=>!retired && serial===operation && state.provider===selected.provider && state.modelId===selected.modelId &&
++        businessModelEpoch===selected.epoch && (!guard||guard()===true) && (runtime?.computeNode?.id || '')===nodeId;
++      state.pending=true;state.status='正在确认本地节点…';notify();
++      let refreshed=false;
++      try {
++        if(typeof service?.runtimeFeatures==='function')await service.runtimeFeatures();
++        refreshed=true;
++      } catch {/* A failed capability check must not authorize an operation. */}
++      finally {if(serial===operation){state.pending=false;notify();}}
++      try {return refreshed && current() && service?.qwenBusinessAvailableSync?.()===true;} catch {return false;}
++    }
+     // The selected Qwen optimizer supports text or an explicit subject/style
+     // pair; confirmation and undo reuse the existing image review path.
+     async function prepareSelectedH3TextDraft(message,{recordMessage=true,source}={}) {
+       if(pendingMediaPromptReview){state.error='请先应用或取消上一次提示词草稿。';notify();return false;}
+       const local=state.provider==='local'&&state.modelId==='qwen3.5-9b-heretic';
+-      if(local&&api()?.qwenBusinessAvailableSync?.()!==true){state.error='当前本地节点的视频文字优化尚未就绪，未提交。';state.status='未提交';notify();return false;}
++      if(local&&!(await refreshQwenBusinessBeforeUse())){state.error='当前本地节点的视频文字优化尚未就绪，未提交。';state.status='未提交';notify();return false;}
+       if(local&&api()?.qwen21NativeRewriteV3AvailableSync?.()!==true){state.error='当前本人节点尚未确认支持视频文字优化，请更新算力助手后重试。';state.status='未提交';notify();return false;}
+       if(!local&&(state.provider!=='api'||currentPricingPolicy()?.config?.xiaotao_online?.operation_video_rewrite_v3!==true||!policyAllowsOnline(state.modelId))) {
+         state.error='当前所选大脑的视频文字草稿尚未开放，未提交或扣费。';state.status='未提交';notify();return false;
+@@ -2977,7 +3021,7 @@
+     }
+     async function prepareQwenCurrentDrawingPrompt(message,{recordMessage=true,source}={}) {
+       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate;
+-      if(api()?.qwenBusinessAvailableSync?.()!==true){state.error='当前 Qwen 提示词节点尚未就绪，未提交。';notify();return false;}
++      if(!(await refreshQwenBusinessBeforeUse())){state.error='当前 Qwen 提示词节点尚未就绪，未提交。';notify();return false;}
+       if((communityUploads()||[]).length){state.error='此入口只优化当前绘图文字，不分析附件；请先移除附件。';notify();return false;}
+       const selectedPrompt=source?.prompt??rt?.state?.prompt;
+       if(!tools?.execute||!rt?.state||typeof selectedPrompt!=='string'||!selectedPrompt.trim()) {state.error='请先提供要优化的提示词。';notify();return false;}
+@@ -3001,7 +3045,7 @@
+     async function rewriteQwenAudioText(message,intent,{recordMessage=true,source,kind:sourceKind}={}) {
+       if(pendingMediaPromptReview){state.error='请先应用或取消上一次提示词草稿。';notify();return false;}
+       if(/(?:听|试听|收听|播放|辨听).{0,16}(?:音频|音效|音乐|声音|录音|音轨|声轨|素材|片段)/.test(message)){state.error='当前只支持文字改写，不能听取或分析音频内容；请直接描述声音。';state.status='未提交分析，不扣积分';notify();return false;}
+-      if(state.provider==='local'&&api()?.qwenBusinessAvailableSync?.()!==true){state.error='当前所选模型的音频文字改写尚未开通，未提交。';notify();return false;}
++      if(state.provider==='local'&&!(await refreshQwenBusinessBeforeUse())){state.error='当前所选模型的音频文字改写尚未开通，未提交。';notify();return false;}
+       if(state.provider==='api'&&(currentPricingPolicy()?.config?.xiaotao_online?.operation_audio_rewrite_v3!==true||!policyAllowsOnline(state.modelId))){state.error='所选在线模型的音频文字改写尚未开通，未提交或扣费。';notify();return false;}
+       if((state.staged||[]).length||(communityUploads()||[]).length){state.error='此次只处理文字，不能读取附件，请移除附件后重试。';notify();return false;}
+       const kind=sourceKind||(/音乐|配乐/.test(message)?'music':/音效|声音/.test(message)?'sfx':'');
+@@ -3046,7 +3090,7 @@
+     // or silently substitute a paid/other model.
+     async function analyzeStagedImage(kind) {
+       if (!['reverse','style'].includes(kind) || state.pending || state.generating || state.applying || state.uploading || state.staging) return false;
+-      if (api()?.qwenBusinessAvailableSync?.()!==true) {state.error='本地图片分析节点尚未就绪，未提交请求。';notify();return false;}
++      if (!(await refreshQwenBusinessBeforeUse())) {state.error='本地图片分析节点尚未就绪，未提交请求。';notify();return false;}
+       if (state.provider!=='local' || state.modelId!=='qwen3.5-9b-heretic') {state.error='此操作暂只支持本地 Qwen 免费模型；未切换模型或扣费。';notify();return false;}
+       if (api()?.qwenBusinessImageAvailableSync?.()!==true) {state.error='当前 Qwen 业务试用仅支持文字，图片反推和画风分析尚未开放；本次未提交。';notify();return false;}
+       if (state.staged.length!==1 || state.staged[0]?.status!=='ready' || state.staged[0]?.kind!=='image' || !/^data:image\/(?:png|jpeg|webp);base64,/i.test(state.staged[0]?.previewUrl || '')) {
+@@ -3374,7 +3418,7 @@
+     root.addEventListener?.('novaflow-client-auth-changed',()=>{
+       const next=authIdentity();
+       if(next!==lastAuthIdentity){lastAuthIdentity=next;replaceSession();}
+-      controller.clearQwenExecutionDevice();
++      controller.invalidateLocalCapability();nodeRecheck.reset();if(qwenRecheckEligible())void nodeRecheck.refreshNow();
+     });
+     const storedAccount=value=>{
+       if(!value)return 'signed-out';
+@@ -3401,19 +3445,13 @@
+     if (typeof doc.addEventListener === 'function') doc.addEventListener('visibilitychange', () => {if(qwenRecheckEligible())void nodeRecheck.refreshNow();else nodeRecheck.update();});
+     if (typeof root.addEventListener === 'function') root.addEventListener('novaflow:compute-node', () => {controller.invalidateLocalCapability();nodeRecheck.reset();if(qwenRecheckEligible())void nodeRecheck.refreshNow();});
+     if (typeof root.addEventListener === 'function') root.addEventListener('novaflow:runtime-features', () => render(controller.state));
+-    async function copyText(text, button) {
+-      try {
+-        if (root.navigator?.clipboard?.writeText) await root.navigator.clipboard.writeText(text);
+-        else {const helper=el('textarea'); helper.value=text; Object.assign(helper.style,{position:'fixed',left:'-10000px'}); doc.body.append(helper); helper.select(); try {if (!doc.execCommand('copy')) throw new Error('复制失败');} finally {helper.remove();}}
+-        button.textContent='已复制';
+-      } catch {button.textContent='请选中文字复制';}
+-    }
++    async function copyText(text, button, target) {return copyMessageText(text,button,doc,root,target);}
+     function syncModelOptions() {
+       if(onlinePricingGroup){const label=controller.onlineOperationDecimalConfirmed()?'收费 · 在线（按实际用量结算）':controller.onlineOperationMinimumConfirmed()?'收费 · 在线（成功操作最低 1 积分）':'收费 · 在线（计费规则待确认）';if(onlinePricingGroup.group.label!==label)onlinePricingGroup.group.label=label;if(onlinePricingGroup.groupTitle.textContent!==label)onlinePricingGroup.groupTitle.textContent=label;if(onlinePricingGroup.menuGroup.getAttribute('aria-label')!==label)onlinePricingGroup.menuGroup.setAttribute('aria-label',label);}
+       let selected=null;
+       for(const [id,option] of modelOptions){
+         const model=CHAT_MODELS[id],rate=model.provider==='api'?controller.modelRateSummary(id,true):'',displayLabel=model.provider==='local'?model.label.replace('（本地·免费）',''):model.label;
+-        const status=controller.modelAvailable(id)?'':id==='qwen3.5-9b-heretic'?'无可用节点':model.provider==='api' && !controller.pricingPolicyKey()?'价格待确认':'未开通';
++        const status=controller.modelAvailable(id)?'':id==='qwen3.5-9b-heretic'?(controller.state.qwen35CpuTrialChecked===true?'无可用节点':'设备待检测'):model.provider==='api' && !controller.pricingPolicyKey()?'价格待确认':'未开通';
+         const device=id==='qwen3.5-9b-heretic' && !status ? qwenExecutionDeviceLabel(controller.state.qwenExecutionDevice) : '';
+         const note=[model.provider==='local'?'本地对话免费':rate,device,status].filter(Boolean).join(' · ');
+         const optionText=model.label+(rate?' · '+rate:'')+(status?' · '+status:'');if(option.textContent!==optionText)option.textContent=optionText;
+@@ -3460,7 +3498,7 @@
+       fab.dataset.state = activity; robotState.textContent = activity === 'working' ? '工作中' : state.provider === 'local' && state.pending ? ({loading:'加载中',analyzing:'分析中',releasing:'释放中'}[state.operation?.phase] || {loading:'加载中',answering:'回答中',releasing:'释放中',warm:'准备回答'}[state.localSession?.state] || '连接中') : state.pending ? '回答中' : state.confirmation ? '等待确认' : state.provider === 'local' && warm ? '上次已就绪' : '待机'; fab.setAttribute('aria-label','小桃AI，'+robotState.textContent+'，点击聊天，可拖动');
+       tools.textContent = [...new Set(state.toolTrace.map(step => ({get_art_context:'已读取当前绘图',propose_art_direction:'已整理完整提示词',apply_art_direction:'模型请求写入提示框',generate_art_image:'模型请求绘图执行',apply_prompt_completed:'已写入提示框',generate_completed:'已完成实际生图'}[step.name] || '')).filter(Boolean))].join(' · ');
+       status.textContent = state.modelId==='qwen3.5-9b-heretic' && !controller.modelAvailable(state.modelId) && !state.pending
+-        ? '当前无可用节点 · 未提交，不扣积分。'
++        ? (state.qwen35CpuTrialChecked===true?'当前无可用节点 · 未提交，不扣积分。':'设备待检测 · 未提交，不扣积分。')
+         : state.status || (state.provider==='api' && controller.modelAvailable(state.modelId)?'':CHAT_MODELS[state.modelId]?.detail) || '';
+       error.textContent = state.error; error.hidden = !state.error; proposal.hidden = !state.proposal;
+       confirmation.hidden = !state.confirmation; confirmationText.textContent = state.confirmation ? `当前为 ${samplingLabel(state.confirmation.sampling)}。${state.confirmation.sampling.styleTransfer ? '双图风格迁移使用 CFG3；按当前参数会保留版本和步数，并设为 CFG3。' : ''}确认后才分析并生成一张。` : '';

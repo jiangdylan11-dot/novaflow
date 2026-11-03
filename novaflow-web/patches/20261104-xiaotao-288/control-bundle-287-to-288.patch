@@ -1,0 +1,30 @@
+--- a/control-bundle/index.ts
++++ b/control-bundle/index.ts
+@@ -443,7 +443,7 @@
+ // Source: packages/shared/src/release.mjs
+ // Regenerate with: npm run sync:edge
+ // Application release identifier; protocol and model versions remain independent.
+-const RELEASE_VERSION = "2.0.287";
++const RELEASE_VERSION = "2.0.288";
+ 
+ // ===== protocol.mjs ==================================================
+ // GENERATED COPY - do not edit here.
+@@ -2908,6 +2908,9 @@
+     const qwen21 = await store.countCapableWorkers(QWEN21_MODEL_ID, findModel(QWEN21_MODEL_ID).min_vram_mb,
+       HEARTBEAT_TIMEOUT_SECONDS, workerId, user ? canUsePremiumNodes(user.plan) : true, user?.id || null,
+       user ? canUseSharedCompute(user.plan) : true).catch(() => 0);
++    const qwen21Turbo = await store.countCapableWorkers('qwen-image-2.1-turbo', findModel('qwen-image-2.1-turbo').min_vram_mb,
++      HEARTBEAT_TIMEOUT_SECONDS, workerId, user ? canUsePremiumNodes(user.plan) : true, user?.id || null,
++      user ? canUseSharedCompute(user.plan) : true).catch(() => 0);
+     // Community trial readiness can expose a specific machine's setup, so
+     // unlike public generic counts it is only disclosed to an authorized user.
+     const qwen35CpuTrial = user ? await store.countCapableWorkers(PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID, 0,
+@@ -2971,7 +2974,7 @@
+       protocol: PROTOCOL_VERSION,
+       taskTypes,
+       available_workers: Math.max(0, ...counts),
+-      features: { qwenImage21: qwen21 > 0, qwen35CpuTrial: qwen35CpuTrial > 0, qwen35BusinessTrial: qwen35BusinessTrial > 0,qwen21NativeRewriteV3,
++      features: { qwenImage21: qwen21 > 0, qwenImage21Workers: qwen21, qwenImage21Turbo: qwen21Turbo > 0, qwenImage21TurboWorkers: qwen21Turbo, qwen35CpuTrial: qwen35CpuTrial > 0, qwen35BusinessTrial: qwen35BusinessTrial > 0,qwen21NativeRewriteV3,
+         qwen35FoartPlan:qwenPlanReady,qwen35FoartPlanOwnerBound:qwenPlanReady,
+         qwen21LocalImageEdit:qwenImageEditReady,qwen21LocalImageEditOwnerLeaseBound:qwenImageEditReady,
+         qwen35FoartRotationCandidate:qwenRotationReady,qwen35FoartRotationOwnerLeaseBound:qwenRotationReady,

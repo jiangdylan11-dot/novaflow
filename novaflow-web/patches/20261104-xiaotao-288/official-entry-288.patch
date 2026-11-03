@@ -1,0 +1,100 @@
+--- a/novaflow-web/tools/package-site.mjs
++++ b/novaflow-web/tools/package-site.mjs
+@@ -23,6 +23,17 @@
+ import {linkFullAssets,assertFullDestinations} from './isolated-full-site-policy.mjs';
+ import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
+ 
++// 288 frozen release: never fall through to shared build or default deploy.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-288','--package-only','--control-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web','--auth-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 288 release arguments');
++  const helper=new URL('../../work/xiaotao-local-288-20261104/release-288.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='45ae8bd4212c682fc70f89bf88e3ca8c3b3cb06e98fd4082895dd5c75e0245e8';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('288 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).package288(args)));process.exit(0);
++}
++
+ // 287 frozen release: never fall through to the ordinary shared-output build.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
+   const args=process.argv.slice(2),expected=['--local-qwen-287','--package-only','--control-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web','--auth-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend'];
+--- a/novaflow-web/tools/deploy-site.mjs
++++ b/novaflow-web/tools/deploy-site.mjs
+@@ -7,6 +7,17 @@
+ import {readConfig} from './set-web-config.mjs';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
+ 
++// 288 frozen release: never fall through to shared build or default deploy.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-288','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 288 release arguments');
++  const helper=new URL('../../work/xiaotao-local-288-20261104/release-288.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='45ae8bd4212c682fc70f89bf88e3ca8c3b3cb06e98fd4082895dd5c75e0245e8';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('288 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute288('site',args)));process.exit(0);
++}
++
+ // 287 frozen release: only the reviewed helper may perform the explicit action.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
+   const args=process.argv.slice(2),expected=['--local-qwen-287','--execute'];
+--- a/novaflow-web/tools/deploy-control-plane.mjs
++++ b/novaflow-web/tools/deploy-control-plane.mjs
+@@ -9,6 +9,17 @@
+ import {bundleEdgeFunction} from './bundle-edge-function.mjs';
+ import {syncEdgeFunction} from './sync-edge-function.mjs';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++
++// 288 frozen release: never fall through to shared build or default deploy.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-288','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 288 release arguments');
++  const helper=new URL('../../work/xiaotao-local-288-20261104/release-288.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='45ae8bd4212c682fc70f89bf88e3ca8c3b3cb06e98fd4082895dd5c75e0245e8';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('288 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute288('control',args)));process.exit(0);
++}
+ 
+ // 287 frozen release: only the reviewed helper may perform the explicit action.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
+--- a/novaflow-web/tools/deploy-backend.mjs
++++ b/novaflow-web/tools/deploy-backend.mjs
+@@ -5,6 +5,17 @@
+ import {dirname,resolve,join} from 'node:path';
+ import {setTimeout as delay} from 'node:timers/promises';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++// 288 frozen release: never fall through to shared build or default deploy.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-288','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 288 release arguments');
++  const helper=new URL('../../work/xiaotao-local-288-20261104/release-288.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='45ae8bd4212c682fc70f89bf88e3ca8c3b3cb06e98fd4082895dd5c75e0245e8';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('288 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute288('backend',args)));process.exit(0);
++}
++
+ // 287 frozen release: only the reviewed helper may perform the explicit action.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
+   const args=process.argv.slice(2),expected=['--local-qwen-287','--execute'];
+--- a/novaflow-web/tools/deploy-companion.mjs
++++ b/novaflow-web/tools/deploy-companion.mjs
+@@ -5,6 +5,17 @@
+ import {dirname,resolve,join} from 'node:path';
+ import {setTimeout as delay} from 'node:timers/promises';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++// 288 frozen release: never fall through to shared build or default deploy.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-288','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 288 release arguments');
++  const helper=new URL('../../work/xiaotao-local-288-20261104/release-288.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='45ae8bd4212c682fc70f89bf88e3ca8c3b3cb06e98fd4082895dd5c75e0245e8';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('288 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute288('companion',args)));process.exit(0);
++}
++
+ // 287 frozen release: only the reviewed helper may perform the explicit action.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-287'))){
+   const args=process.argv.slice(2),expected=['--local-qwen-287','--execute'];

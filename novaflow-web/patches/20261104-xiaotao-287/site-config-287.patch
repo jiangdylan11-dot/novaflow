@@ -1,0 +1,42 @@
+--- a/novaflow-web/tools/build-web-renderer.mjs
++++ b/novaflow-web/tools/build-web-renderer.mjs
+@@ -553,7 +553,8 @@
+     '      window.NOVAFLOW_RELEASE_VERSION = ' + JSON.stringify(RELEASE_VERSION) + ';\n' +
+     '      window.NOVAFLOW_WEB_CONFIG = window.NOVAFLOW_WEB_CONFIG || {\n' +
+     '        controlUrl: "http://127.0.0.1:4890",\n' +
+-    '        authUrl: "https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend"\n' +
++    '        authUrl: "https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend",\n' +
++    '        xiaotaoQwenBusinessEnabled: true\n' +
+     '      };\n' +
+     '    </script>\n');
+ }
+--- a/novaflow-web/tools/set-web-config.mjs
++++ b/novaflow-web/tools/set-web-config.mjs
+@@ -27,10 +27,11 @@
+   const control = /controlUrl:\s*"([^"]*)"/.exec(m[0]);
+   const auth = /authUrl:\s*"([^"]*)"/.exec(m[0]);
+   const knowledge=/artKnowledgeUrl:\s*"([^"]*)"/.exec(m[0]),enabled=/artKnowledgeEnabled:\s*(true|false)/.exec(m[0]);
+-  return {controlUrl:control?control[1]:'',authUrl:auth?auth[1]:'',...(knowledge?{artKnowledgeUrl:knowledge[1]}:{}),...(enabled?{artKnowledgeEnabled:enabled[1]==='true'}:{})};
++  const qwenBusiness=/xiaotaoQwenBusinessEnabled:\s*(true|false)\b/.exec(m[0]);
++  return {controlUrl:control?control[1]:'',authUrl:auth?auth[1]:'',...(knowledge?{artKnowledgeUrl:knowledge[1]}:{}),...(enabled?{artKnowledgeEnabled:enabled[1]==='true'}:{}),...(qwenBusiness?{xiaotaoQwenBusinessEnabled:qwenBusiness[1]==='true'}:{})};
+ }
+ 
+-export function writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled }) {
++export function writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled, xiaotaoQwenBusinessEnabled }) {
+   const m = BLOCK.exec(html);
+   if (!m) throw new Error('the config block is not in web-dist/index.html - run the build first');
+   const current = readConfig(html);
+@@ -38,10 +39,11 @@
+   if (/\/functions\/v1\/novaflow-web\/?$/i.test(nextAuth)) throw new Error('账号认证地址不能指向算力控制函数 novaflow-web；请使用既有 novaflow-backend');
+   const next =
+     'window.NOVAFLOW_WEB_CONFIG = window.NOVAFLOW_WEB_CONFIG || {\n' +
+-    '        controlUrl: "' + (controlUrl ?? current.controlUrl) + '",\n' +
++    '        controlUrl: '+JSON.stringify(controlUrl??current.controlUrl)+',\n' +
+     '        authUrl: '+JSON.stringify(authUrl??current.authUrl)+
+     ((artKnowledgeUrl??current.artKnowledgeUrl)!==undefined?',\n        artKnowledgeUrl: '+JSON.stringify(artKnowledgeUrl??current.artKnowledgeUrl):'')+
+-    ((artKnowledgeEnabled??current.artKnowledgeEnabled)!==undefined?',\n        artKnowledgeEnabled: '+JSON.stringify(artKnowledgeEnabled??current.artKnowledgeEnabled):'')+'\n'+
++    ((artKnowledgeEnabled??current.artKnowledgeEnabled)!==undefined?',\n        artKnowledgeEnabled: '+JSON.stringify(artKnowledgeEnabled??current.artKnowledgeEnabled):'')+
++    ((xiaotaoQwenBusinessEnabled??current.xiaotaoQwenBusinessEnabled)!==undefined?',\n        xiaotaoQwenBusinessEnabled: '+JSON.stringify(xiaotaoQwenBusinessEnabled??current.xiaotaoQwenBusinessEnabled):'')+'\n'+
+     '      };';
+   return html.slice(0, m.index) + next + html.slice(m.index + m[0].length);
+ }
