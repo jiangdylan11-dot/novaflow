@@ -9,6 +9,8 @@
 
 import { artPromptLanguageSystem } from './art-prompt-language.mjs';
 import { withXiaotaoFoartRole } from './xiaotao-role-policy.mjs';
+import { hasXiaotaoModelRate, invalidXiaotaoTokenUsage, estimateXiaotaoModelUsage, estimateXiaotaoModelBudget, xiaotaoModelRatePolicy } from './xiaotao-model-rates.mjs';
+import {hasXiaotaoDecimalV1, exactXiaotaoTokenCost, ceilXiaotaoLedgerCredit} from './xiaotao-decimal-usage.mjs';
 
 export const DEFAULT_LOW_BALANCE_USD = 2;
 export const DEFAULT_LOW_BALANCE_CNY = 15;
@@ -325,6 +327,7 @@ function normalizeXiaotaoOnline(input) {
     usd_per_million_tokens: Number.isFinite(usd) && usd >= 0 && usd <= 1000 ? usd : defaults.usd_per_million_tokens,
     markup: Number.isFinite(markup) && markup > 0 && markup <= 1000 ? markup : DEFAULT_XIAOTAO_ONLINE_MARKUP,
     grok_4_7_rates: normalizeGrok47Rates(stored.grok_4_7_rates),
+    model_rates: xiaotaoModelRatePolicy(stored.model_rates),
     file_tokens: {
       image: clampOnlineInt(files.image, 0, 1000000, defaults.file_tokens.image),
       video: clampOnlineInt(files.video, 0, 1000000, defaults.file_tokens.video),
@@ -351,7 +354,7 @@ export function xiaotaoOnlineSystemPrompt({ vision = false, promptLanguage = 'en
 // Reservation only. A longer message or a heavier file raises the hold because
 // it is expected to use more tokens. Nothing here is a flat per-file fee.
 // outputTokens is the request max_tokens. The default is that budget, 2048.
-export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, files = [], outputTokens, config, model, promptLanguage = 'en' } = {}) {
+export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, files = [], outputTokens, config, model, promptLanguage = 'en', amountPolicy } = {}) {
   const policy = xiaotaoOnlinePolicy(config);
   const counts = { image: 0, video: 0, audio: 0 };
   let fileTokens = 0;
@@ -371,9 +374,24 @@ export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, 
   const grok47 = /^(?:xai\/)?grok-4\.7$/i.test(String(model || '').trim());
   const rates = policy.grok_4_7_rates;
   const high = inputTokens >= rates.high_input_threshold;
+  const modelEstimate = estimateXiaotaoModelBudget(model, inputTokens, outputBudget, config);
   const usd = grok47
     ? (inputTokens * (high ? rates.high_input : rates.input) + outputBudget * (high ? rates.high_output : rates.output)) / 1000000
-    : tokens / 1000000 * policy.usd_per_million_tokens;
+    : modelEstimate ? modelEstimate.usd : tokens / 1000000 * policy.usd_per_million_tokens;
+  // Only the explicitly selected, immutable V3 snapshot can opt into decimal
+  // estimates. Legacy callers continue their original integer reservation.
+  if (amountPolicy !== undefined) {
+    if (amountPolicy !== 'decimal-v1' || !hasXiaotaoDecimalV1(config)) throw new TypeError('credit amount policy is invalid');
+    if (!grok47 && !modelEstimate) throw new TypeError('model rate is unavailable');
+    const inputRate = grok47 ? (high ? rates.high_input : rates.input) : modelEstimate.inputRate;
+    const outputRate = grok47 ? (high ? rates.high_output : rates.output) : modelEstimate.outputRate;
+    const cachedRate = grok47 ? (high ? rates.high_cached_input : rates.cached_input) : modelEstimate.cachedRate;
+    if (!active) return {tokens,usd:0,usdExact:'0',rawCredits:0,rawCreditsExact:'0',credits:0,counts,cap:policy.message_cap_credits};
+    const exact = exactXiaotaoTokenCost([{inputTokens,outputTokens:outputBudget,cachedTokens:0,inputRate,outputRate,cachedRate}],
+      normalizeCreditConfig(config).credits_per_usd, policy.markup);
+    const credits = Math.min(policy.message_cap_credits,ceilXiaotaoLedgerCredit(exact.rawCreditsExact));
+    return {tokens,usd:Number(exact.usdExact),...exact,rawCredits:Number(exact.rawCreditsExact),credits,counts,cap:policy.message_cap_credits};
+  }
   const raw = creditsFromXiaotaoUsd(usd, config);
   const credits = active ? Math.max(1, Math.min(policy.message_cap_credits, Math.max(0, raw || 0))) : 0;
   return { tokens, usd, rawCredits: raw, credits, counts, cap: policy.message_cap_credits };
@@ -382,11 +400,12 @@ export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, 
 // 多退少补: the desired charge is the actual USD amount, bounded by the
 // per-message cap, and is allowed to exceed the reservation. The SQL settlement
 // refunds the surplus or tops up the shortfall without taking the balance negative.
-// Money fields win. Grok 4.7 token estimates use RunningHub's published input,
-// output and cache rates; these estimates are not a provider invoice. An
-// incomplete Grok usage record is unpriced and refunded; other models retain
-// the legacy total-token fallback or reserved estimate.
-export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config, model } = {}) {
+// Grok retains its established money-field priority. Other models with known
+// rates use complete token and cache counts; provider money is not a verified
+// USD invoice contract for those routes.
+export function settleXiaotaoOnlineCredits({ usage, usageRecords, reservedCredits, config, model } = {}) {
+  if (Array.isArray(usageRecords) && usageRecords.length === 1 && hasXiaotaoModelRate(model)) usage = usageRecords[0];
+  else if (usage == null && Array.isArray(usageRecords) && usageRecords.length === 1) usage = usageRecords[0];
   const policy = xiaotaoOnlinePolicy(config);
   const normalized = normalizeCreditConfig(config);
   const cap = policy.message_cap_credits;
@@ -398,10 +417,39 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config, mod
   let usageMissing = false;
   let tokenRateEstimate = null;
   const grok47 = /^(?:xai\/)?grok-4\.7$/i.test(String(model || '').trim());
-  if (usd == null) {
+  const knownRate = grok47 || hasXiaotaoModelRate(model);
+  const requireKnownCache = knownRate && !grok47;
+  // DeepSeek's approved fixed user price, and other known non-Grok prices,
+  // cannot be replaced by unverified provider money fields.
+  if (requireKnownCache) usd = null;
+  // A repaired plan can use more than one provider request. Price each request
+  // at its own context tier and only then sum before rounding and the one-message cap.
+  if (Array.isArray(usageRecords) && usageRecords.length > 1 && knownRate) {
+    const parts = usageRecords.map(record => {
+      const money = parseUsageUsd(record);
+      // Preserve deployed V2 Grok's frozen monetary-field priority. V3 first
+      // validates provider counters independently and never passes this money.
+      if (!requireKnownCache && money.usd != null) return {usd:money.usd, source:'rh_consume_money'};
+      if (record?.billing_token_usage_invalid === true || invalidXiaotaoTokenUsage(record)) return null;
+      const partTokens = tokenUsageRecord(record);
+      const estimate = grok47 ? estimateRunningHubGrok47(partTokens, model, config) : estimateXiaotaoModelUsage(model, partTokens, config);
+      if (requireKnownCache && estimate?.cacheKnown !== true) return null;
+      return estimate ? {...estimate, source:'token_rate_estimate'} : null;
+    });
+    if (parts.some(part => !part)) { usd = null; usageMissing = true; }
+    else {
+      usd = parts.reduce((sum, part) => sum + part.usd, 0);
+      pricingSource = parts.every(part => part.source === 'rh_consume_money') ? 'rh_consume_money' : 'token_rate_estimate';
+      tokenRateEstimate = { requests:parts };
+    }
+  } else if (knownRate && usage && (requireKnownCache || usd == null)
+      && (usage.billing_token_usage_invalid === true || invalidXiaotaoTokenUsage(usage))) {
+    usd = null; usageMissing = true;
+  } else if (usd == null) {
     const count = countedUsageTokens(tokens);
-    if (grok47) {
-      tokenRateEstimate = estimateRunningHubGrok47(tokens, model, config);
+    if (knownRate) {
+      tokenRateEstimate = grok47 ? estimateRunningHubGrok47(tokens, model, config) : estimateXiaotaoModelUsage(model, tokens, config);
+      if (requireKnownCache && tokenRateEstimate?.cacheKnown !== true) tokenRateEstimate = null;
       if (tokenRateEstimate) {
         usd = tokenRateEstimate.usd;
         pricingSource = 'token_rate_estimate';
@@ -418,7 +466,7 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config, mod
     tokens,
     money: usage && typeof usage === 'object' ? (usage.thirdPartyConsumeMoney ?? null) : null,
     consumeMoney: usage && typeof usage === 'object' ? (usage.consumeMoney ?? null) : null,
-    moneySource: parsed.source || null,
+    moneySource: requireKnownCache ? null : (parsed.source || null),
     usdCost: usd,
     tokenRateEstimate,
     creditsPerUsd: normalized.credits_per_usd,
@@ -427,20 +475,20 @@ export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config, mod
     reservedCredits: reserved
   };
   if (usageMissing) {
-    const credits = grok47 ? 0 : Math.min(reserved, cap);
+    const credits = knownRate ? 0 : Math.min(reserved, cap);
     return {
       ...base,
       rawCredits: null,
       credits,
-      capped: !grok47 && reserved > cap,
-      settleCapped: !grok47 && reserved > cap,
+      capped: !knownRate && reserved > cap,
+      settleCapped: !knownRate && reserved > cap,
       reserveCapped: false,
       toppedUp: false,
       shortfall: 0,
       refund: Math.max(0, reserved - credits),
-      pricingSource: grok47 ? 'unpriced_usage' : 'estimate_cap',
+      pricingSource: knownRate ? 'unpriced_usage' : 'estimate_cap',
       usageMissing: true,
-      warning: grok47 ? 'Grok 4.7 usage is incomplete or invalid; no credits charged' : reserved > cap
+      warning: knownRate ? 'Model usage is incomplete or invalid; no credits charged' : reserved > cap
         ? `thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate capped at ${credits}`
         : 'thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate'
     };
@@ -514,6 +562,7 @@ export function parseUsageUsd(usage) {
 const TOKEN_USAGE_KEYS = [
   'input_tokens', 'output_tokens', 'total_tokens',
   'prompt_tokens', 'completion_tokens',
+  'prompt_cache_hit_tokens', 'prompt_cache_miss_tokens',
   'input_tokens_details', 'output_tokens_details',
   'prompt_tokens_details', 'completion_tokens_details'
 ];
@@ -545,12 +594,13 @@ function finiteTokenCount(value) {
 // A missing cache detail means zero known cached tokens, not proof of no hit.
 function estimateRunningHubGrok47(record, model, config) {
   if (!record || !/^(?:xai\/)?grok-4\.7$/i.test(String(model || '').trim())) return null;
+  if (invalidXiaotaoTokenUsage(record)) return null;
   const input = finiteTokenCount(record.input_tokens ?? record.prompt_tokens);
   const output = finiteTokenCount(record.output_tokens ?? record.completion_tokens);
   const total = finiteTokenCount(record.total_tokens);
   if (input == null || output == null || input + output <= 0 || (total != null && total !== input + output)) return null;
-  const details = record.input_tokens_details ?? record.prompt_tokens_details;
-  const cacheRaw = details && typeof details === 'object' ? details.cached_tokens : undefined;
+  const cacheRaw = [record.input_tokens_details,record.prompt_tokens_details]
+    .map(details=>details?.cached_tokens).find(value=>value!=null) ?? record.prompt_cache_hit_tokens;
   const cached = cacheRaw == null ? 0 : finiteTokenCount(cacheRaw);
   if (cached == null || cached > input) return null;
   const stored = xiaotaoOnlinePolicy(config).grok_4_7_rates;
@@ -846,6 +896,14 @@ export function createFeatureCreditPorts(rpc) {
     try {
       return await rpc(name, args);
     } catch (error) {
+      // The legacy reservation can race the v2 path on the same usage key.
+      // A unique violation rolls back this invocation, but the other request
+      // may already hold credits. Never report it as an insufficient balance.
+      if (name === 'reserve_feature_credits' && error?.code === '23505' &&
+          ['xiaotao-text','xiaotao-vision','online_chat_turn','xiaotao_vision'].includes(args?.p_feature)) {
+        throw Object.assign(new Error('本次未调用模型；该请求可能已有积分预留，请核对积分记录'),
+          {statusCode:503,code:'xiaotao_reservation_status_unknown'});
+      }
       const wrapped = new Error(publicCreditError(error?.message || error));
       wrapped.statusCode = 402;
       if (String(error?.message || '').includes('云服务余额不足')) wrapped.code = 'rh_low_balance';
