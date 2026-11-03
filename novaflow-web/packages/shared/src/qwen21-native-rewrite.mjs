@@ -15,9 +15,9 @@ export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
   const nativeEdit=input.promptContract===QWEN21_NATIVE_REWRITE&&input.qwenPromptMode==='img2img';
   if(nativeEdit){
     const instruction=input.requirements?.trim()||input.currentPrompt;
-    const descriptive=instruction.replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/gu,'');
+    const descriptive=instruction.replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|(?<![A-Za-z0-9])'[^'\r\n]+'(?![A-Za-z0-9])|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/gu,'');
     const language=/[\u3400-\u9fff]/u.test(descriptive)?'zh':'en';
-    return {kind:'qwen21-native',input:{...input},nativeEdit:true,modelPromptLanguage:language,body:{model,store:false,temperature:0,max_output_tokens:2048,
+    return {kind:'qwen21-native',input:{...input},nativeEdit:true,referenceCount:referenceRoles.length,modelPromptLanguage:language,body:{model,store:false,temperature:0,max_output_tokens:2048,
       input:[{role:'system',content:[{type:'input_text',text:EDIT_SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:'image-editing',current_instruction:input.currentPrompt,requested_changes:input.requirements||'',reference_roles:referenceRoles.map((role,index)=>({image:index+1,role})),instruction_language:language})}]}],
       text:{format:{type:'json_schema',name:'qwen21_native_edit',strict:true,schema:{type:'object',properties:{rewritten_prompt:{type:'string'}},required:['rewritten_prompt'],additionalProperties:false}}}}};
   }
@@ -25,19 +25,35 @@ export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
     input:[{role:'system',content:[{type:'input_text',text:SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:input.qwenPromptMode==='img2img'?'image-editing':'text-to-image',current_prompt:input.currentPrompt,requested_changes:input.requirements||''})}]}],
     text:{format:{type:'json_schema',name:'qwen21_native_rewrite',strict:true,schema:{type:'object',properties:{display_prompt:{type:'string'},model_prompt:{type:'string'}},required:['display_prompt','model_prompt'],additionalProperties:false}}}}};
 }
-function literals(text){return [...String(text).matchAll(/(?:“([^”\r\n]+)”|‘([^’\r\n]+)’|「([^」\r\n]+)」|『([^』\r\n]+)』|"([^"\r\n]+)")/gu)].map(m=>m.slice(1).find(Boolean));}
+function literals(text){return [...String(text).matchAll(/(?:“([^”\r\n]+)”|‘([^’\r\n]+)’|「([^」\r\n]+)」|『([^』\r\n]+)』|"([^"\r\n]+)"|(?<![A-Za-z0-9])'([^'\r\n]+)'(?![A-Za-z0-9]))/gu)].map(m=>m.slice(1).find(Boolean));}
 function refs(text){return String(text).match(/<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/g)||[];}
 function requestedLiterals(input){
-  const source=input.currentPrompt||'',changes=input.requirements||'',base=literals(source),replacement=/(?:文字|标题|标语|标签|文案|text|title|label).{0,30}(?:改为|改成|替换|换成|写成|change|replace)/iu;
-  const oldIn=text=>[...text.matchAll(/(?:从|由)\s*[“‘「『"]([^”’」』"\r\n]+)[”’」』"]\s*(?:改为|改成|替换为|换成)/gu)].map(m=>m[1]);
+  const source=input.currentPrompt||'',changes=input.requirements||'',base=literals(source);
+  const oldIn=text=>{
+    const patterns=[
+      /(?:从|由)\s*[“‘「『"']([^”’」』"'\r\n]+)[”’」』"']\s*(?:改为|改成|替换为|换成)/gu,
+      /\bfrom\s*[“‘「『"']([^”’」』"'\r\n]+)[”’」』"']\s*(?:to|with)\b/giu,
+      /\b(?:replace|change)\b[^\r\n]{0,80}?[“‘「『"']([^”’」』"'\r\n]+)[”’」』"']\s*(?:with|to)\s*[“‘「『"']/giu,
+      /(?:把|将)[^\r\n]{0,40}?[“‘「『"']([^”’」』"'\r\n]+)[”’」』"']\s*(?:改为|改成|替换为|换成)\s*[“‘「『"']/gu
+    ];
+    return patterns.flatMap(pattern=>[...text.matchAll(pattern)].map(m=>m[1]));
+  };
   const removed=new Set([...oldIn(source),...oldIn(changes)]),changed=literals(changes);
-  if(changed.length&&base.length===1&&replacement.test(changes))removed.add(base[0]);
+  // A single quoted string is not necessarily the title being changed: it
+  // might belong to another object. Infer replacement only for a standalone,
+  // uniquely identified title field; all other replacements must name the old text.
+  const sourceWithoutLettering=base.reduce((text,value)=>text.split(value).join(''),source);
+  const uniqueTitle=(sourceWithoutLettering.match(/标题|\btitle\b/giu)||[]).length===1;
+  const sourceTitle=/^\s*(?:标题|title)\s*(?:是|为|[:：])?\s*[“‘「『"']/iu.test(source);
+  const changeTitle=/^\s*(?:(?:把|将)\s*)?(?:标题\s*(?:改为|改成|替换为|换成|写成)|(?:change|replace)\s+(?:the\s+)?title\s+(?:to|with))\s*[“‘「『"']/iu.test(changes);
+  if(base.length===1&&changed.length===1&&uniqueTitle&&sourceTitle&&changeTitle)removed.add(base[0]);
   return [...new Set([...base.filter(x=>!removed.has(x)),...changed.filter(x=>!removed.has(x))])];
 }
 function editedSide(text){
   const m=/(?:把|将)\s*(左(?:边|侧)|右(?:边|侧))(?:的)?[^，,。；;\n]{0,30}?(?:改成|改为|变成|变为|换成|替换|调整为)/u.exec(text);
   return m?(m[1].startsWith('左')?'left':'right'):null;
 }
+
 function explicitFacts(input,display,model){
   const changes=input.requirements||'',replace=/(?:改成|改为|替换|换成|删除|去掉|移除|change|replace|remove)/i.test(changes);
   const source=replace?changes:input.currentPrompt+'\n'+changes;
@@ -61,16 +77,27 @@ export function compileQwen21NativeRewrite(response,prepared,preserve){
   if(!value||Array.isArray(value)||Object.keys(value).sort().join(',')!==expected)fail('Qwen 2.1 rewrite fields invalid');
   const display=typeof (nativeEdit?value.rewritten_prompt:value.display_prompt)==='string'?(nativeEdit?value.rewritten_prompt:value.display_prompt).trim():'',model=nativeEdit?display:typeof value.model_prompt==='string'?value.model_prompt.trim():'';
   const language=prepared.modelPromptLanguage||'en';
-  if(display.length<8||model.length<8||display.length>16000||model.length>20000||(language==='en'&&(model.match(/[A-Za-z]+/g)||[]).length<8))fail('Qwen 2.1 rewrite incomplete');
+  if(display.length<(nativeEdit?2:8)||model.length<(nativeEdit?2:8)||display.length>16000||model.length>20000||(language==='en'&&(model.match(/[A-Za-z]+/g)||[]).length<(nativeEdit?1:8)))fail('Qwen 2.1 rewrite incomplete');
   const input=prepared.input,requirements=input.requirements||'';
-  if(typeof preserve!=='function'||preserve(input.currentPrompt,display,requirements)!==true)fail('Qwen 2.1 rewrite lost source constraints');
+  // Lexical overlap rejects equivalent image edits and cannot establish
+  // semantic safety. Keep it for text-to-image; edit instructions still reach
+  // the model verbatim, with exact lettering and references checked below.
+  if(!nativeEdit && (typeof preserve!=='function'||preserve(input.currentPrompt,display,requirements)!==true))fail('Qwen 2.1 rewrite lost source constraints');
   if(!nativeEdit)explicitFacts(input,display,model);
   // Literal equality is a useful deterministic check, not a semantic proof.
   // Every quoted image string in the Chinese display must survive in English.
   const exact=[...new Set([...refs(input.currentPrompt),...refs(requirements),...requestedLiterals(input),...literals(display)])];
   for(const item of exact)if(!display.includes(item)||!model.includes(item))fail('Qwen 2.1 rewrite lost lettering or reference');
+  if(nativeEdit){
+    if(!Number.isSafeInteger(prepared.referenceCount)||prepared.referenceCount<0||prepared.referenceCount>3)fail('Qwen 2.1 edit reference count invalid');
+    for(const match of display.matchAll(/<image(\d+)>|@参考图\s*(\d+)/giu)){
+      const index=Number(match[1]||match[2]);
+      if(!Number.isSafeInteger(index)||index<1||index>prepared.referenceCount)fail('Qwen 2.1 edit reference out of range');
+    }
+  }
   if(nativeEdit){const expectedSide=editedSide(requirements)||editedSide(input.currentPrompt),actualSide=editedSide(display);if(expectedSide&&actualSide&&expectedSide!==actualSide)fail('Qwen 2.1 rewrite changed the edit target side');}
   let prose=model;for(const item of exact)prose=prose.split(item).join('');
+  if(nativeEdit)prose=prose.replace(/<image\d+>|@参考图\s*\d+/giu,'');
   if(language==='en'&&/[\u3400-\u9fff\uf900-\ufaff]/u.test(prose))fail('Qwen 2.1 model prose is not English');
   if(/^\s*\[(?:Style|Subjects|Environment|Lighting|Camera|Requirements)\]/im.test(model))fail('Qwen 2.1 model prompt must be native prose');
   const contract=input.promptContract||QWEN21_NATIVE_REWRITE;

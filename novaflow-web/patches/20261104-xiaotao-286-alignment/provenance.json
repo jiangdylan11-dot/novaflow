@@ -1,0 +1,78 @@
+{
+  "installerSha256": "f6366eac647f0f54e7867f06d75c74d166e7b8ed73f376604ed292a3db589083",
+  "imageModuleLfNormalizedSha256": "15df47b615b92c00e99bbd65ba3891556ae0602d6798200a70212efbdd5713e8",
+  "sourceAndBundleProvenance": {
+    "novaflow-web/renderer/novaflow-brand-runtime.js": {
+      "baseline": "work/qa-art-web-unified-267-20261103/renderer/novaflow-brand-runtime.js",
+      "baselineSha256": "3e03e8d1e7aaa361be3c75fd01301cfd6dd941ddcf76bca51b26b7220eb6f808",
+      "target": "work/local-qwen-aligned-286-20261104/web-source/novaflow-web/renderer/novaflow-brand-runtime.js",
+      "targetSha256": "0d1bb7621c24957324148bfae8a5eebc23b4fae0d43517b3a68add95e8a2363c"
+    },
+    "novaflow-web/renderer/novaflow-smart-ai.js": {
+      "baseline": "work/qwen21-edit-283-20261104/source/novaflow-smart-ai.js",
+      "baselineSha256": "aefdd3d6d999aebd828acd1406259f61c1c4b54c60506dd622b0643a4d6400eb",
+      "target": "work/local-qwen-aligned-286-20261104/web-source/novaflow-web/renderer/novaflow-smart-ai.js",
+      "targetSha256": "72a8756c2971ed91bfc93a22265bd6eccd77f9b038cd724ddb1eae99e8eb1f61"
+    },
+    "novaflow-web/renderer/novaflow-web-runtime.js": {
+      "baseline": "work/qwen21-edit-283-20261104/source/novaflow-web-runtime.js",
+      "baselineSha256": "42ed2293752745f96b116eaa3402d8a42edc683faec6919958aaf1a6c687d109",
+      "target": "work/local-qwen-aligned-286-20261104/web-source/novaflow-web/renderer/novaflow-web-runtime.js",
+      "targetSha256": "177bf4b98df00936e2e3db0357c23ffcbaff97029655dfe50fa871a5a61bdea5"
+    },
+    "novaflow-web/renderer/xiaotao-foart-tools.js": {
+      "baseline": "work/qwen21-edit-283-20261104/source/xiaotao-foart-tools.js",
+      "baselineSha256": "c27cdea7cc45a56d7943772a2be77b48b5c79c36a9e2c5e9de1c2b9e6239a186",
+      "target": "work/local-qwen-aligned-286-20261104/web-source/novaflow-web/renderer/xiaotao-foart-tools.js",
+      "targetSha256": "155582f9387cb0c2f87eaf1eafb5b0f444be6cd19f35dc663b70695fcde778ce"
+    },
+    "novaflow-web/renderer/xiaotao-art-agent.js": {
+      "baseline": "work/qwen21-edit-284-20261104/source/xiaotao-art-agent.js",
+      "baselineSha256": "99015f18bf4baf99b2d10919dc635260738317ca8918cd03da92d0100808312b",
+      "target": "work/local-qwen-aligned-286-20261104/web-source/novaflow-web/renderer/xiaotao-art-agent.js",
+      "targetSha256": "cc05d72226a8083d4757378400bfe05b3c9ff672abf854a4619a39387705f4be"
+    },
+    "control-bundle/index.ts": {
+      "baseline": "work/local-qwen-aligned-286-20261104/control/supabase/functions/novaflow-web/index.ts",
+      "baselineSha256": "2cc9b6d5b4a4e7da3ae48ece93d22b8fcfbdaa91995cfe6becc6dc43db133417",
+      "target": "work/local-qwen-aligned-286-20261104/release-candidate/control-286-disabled.ts",
+      "targetSha256": "46e6821d422fb6c1cab60aeb2f2816ee5fab29425c6f175b51b7e133b54f57ed"
+    },
+    "companion-bundle/index.mjs": {
+      "baseline": "work/qwen21-edit-285-20261104/companion-285.mjs",
+      "baselineSha256": "972a33ae00596abc3447d610ce96bb2b59671235a255a98799b9d96889b1c71d",
+      "target": "work/local-qwen-aligned-286-20261104/release-candidate/companion-286.mjs",
+      "targetSha256": "b4e226900b6a6a0861a928278b9753a3baef60839b22244dc8d677933b84c2bd"
+    }
+  },
+  "files": {
+    "20261104010000_qwen_image_edit_ownership_generation.sql": {
+      "bytes": 1457,
+      "sha256": "9fbbac13f655cd00a54fd5f7313f655aad750e61ff56589e1556c8ab3372581a"
+    },
+    "20261104011000_qwen_image_edit_lease.sql": {
+      "bytes": 3370,
+      "sha256": "1b486aa42af9fc17cfb87a3a9e7d5d14e225a953c292cccac19c487985599c04"
+    },
+    "companion-285-to-286.patch": {
+      "bytes": 10372,
+      "sha256": "ac57828e9b104809440a9df189a61e77276e6055e01a77f46c2d392673309a10"
+    },
+    "compute-261-to-286-f636.patch": {
+      "bytes": 84572,
+      "sha256": "6d7a6feba10efb677ace49842b41e7495dc7f0cb361ecb3f42b106e781717877"
+    },
+    "control-263-to-286-disabled.patch": {
+      "bytes": 24690,
+      "sha256": "89a8ca30dc355c4fd36e5053eb33de3cb9e2f4236df343eb3ae4fe75a2e900e0"
+    },
+    "README.md": {
+      "bytes": 4313,
+      "sha256": "c6463da04a9acc93ae0b4b3444610db5945fd732ef230be9282e0b9e2225ec68"
+    },
+    "web-285-readable-to-286.patch": {
+      "bytes": 62930,
+      "sha256": "87d902c14a4a9eb8c66e45471dbe20e4cd9e1262508f76d8972ec6ba827298be"
+    }
+  }
+}

@@ -1,0 +1,356 @@
+--- a/control-bundle/index.ts
++++ b/control-bundle/index.ts
+@@ -142,10 +142,13 @@
+ // ---------------------------------------------------------------------------
+ async function issueWorkerToken(worker, controlSecret, ttlSeconds = 3600) {
+   const iat = nowSeconds();
++  const generation=worker.ownership_generation;
++  if(generation!=null && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(generation)))throw new Error('invalid worker ownership generation');
+   return await signEnvelope('nfw_', {
+     kind: 'worker',
+     wid: String(worker.id),
+     owner: String(worker.owner_id || ''),
++    ...(generation == null ? {} : {ownership_generation:generation}),
+     name: String(worker.worker_name || ''),
+     iat,
+     exp: iat + ttlSeconds,
+@@ -195,7 +198,7 @@
+   const iat = nowSeconds();
+   const ttl = Number(input.ttlSeconds) > 0 ? Number(input.ttlSeconds) : 900;
+   const scoped = input.scope !== undefined;
+-  if (scoped && (input.scope !== 'qwen-foart-plan-v1' ||
++  if (scoped && (!['qwen-foart-plan-v1','qwen21-local-image-edit-v1'].includes(input.scope) ||
+       !Number.isSafeInteger(input.attempt) || input.attempt < 1 || input.attempt > 20)) {
+     throw new Error('invalid grant scope or attempt');
+   }
+@@ -215,7 +218,7 @@
+ async function verifyGrantToken(token, grantKey, expect = {}) {
+   const payload = await verifyEnvelope('nfg_', token, grantKey);
+   if (payload.kind !== 'grant') throw new Error('invalid token');
+-  if (payload.scope !== undefined && (payload.scope !== 'qwen-foart-plan-v1' ||
++  if (payload.scope !== undefined && (!['qwen-foart-plan-v1','qwen21-local-image-edit-v1'].includes(payload.scope) ||
+       !Number.isSafeInteger(payload.attempt) || payload.attempt < 1 || payload.attempt > 20)) {
+     throw new Error('invalid grant scope or attempt');
+   }
+@@ -440,7 +443,7 @@
+ // Source: packages/shared/src/release.mjs
+ // Regenerate with: npm run sync:edge
+ // Application release identifier; protocol and model versions remain independent.
+-const RELEASE_VERSION = "2.0.263";
++const RELEASE_VERSION = "2.0.286";
+ 
+ // ===== protocol.mjs ==================================================
+ // GENERATED COPY - do not edit here.
+@@ -1353,11 +1356,18 @@
+ const MAX_BODY_BYTES = 256 * 1024;
+ const MAX_PROMPT_CHARS = 4000;
+ const UI_CPU_CAPABILITY = 'foart-ui-cpu-compiler-v1';
++const QWEN21_NATIVE_REWRITE_V3_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-native-rewrite-v3';
+ const QWEN_PLAN_SCOPE = 'qwen-foart-plan-v1';
+ const QWEN_PLAN_CAPABILITY = 'qwen3.5-9b-heretic-foart-plan-v1';
+ const QWEN_PLAN_REQUEST_FILE = 'qwen-foart-plan-request.json';
+ const QWEN_PLAN_RESULT_FILE = attempt => `qwen-foart-plan-result-${attempt}.json`;
++const QWEN_IMAGE_EDIT_SCOPE = 'qwen21-local-image-edit-v1';
++const QWEN_IMAGE_EDIT_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-local-image-edit-v1';
++const QWEN_IMAGE_EDIT_REQUEST_FILE = 'qwen21-local-image-edit-request.json';
++const QWEN_IMAGE_EDIT_RESULT_FILE = attempt => `qwen21-local-image-edit-result-${attempt}.json`;
++const QWEN_IMAGE_EDIT_MAX_REQUEST_BYTES = 16 * 1024 * 1024;
+ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
++const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+ 
+ class HttpError extends Error {
+   constructor(status, code, message, extra) {
+@@ -1471,15 +1481,16 @@
+       throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'Qwen UI owner lease unavailable');
+     if (Object.hasOwn(input, 'assistant_tool_scope') || Object.hasOwn(input, 'assistantToolScope')) {
+       const allowed = ['action','model_id','assistant_tool_scope','request_id','request_sha256','request_bytes','references'];
+-      if (Object.keys(input).some(k => !allowed.includes(k)) || input.assistant_tool_scope !== QWEN_PLAN_SCOPE ||
+-          input.action !== 'art-agent-chat' || input.model_id !== PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID ||
++      const imageEdit=input.assistant_tool_scope===QWEN_IMAGE_EDIT_SCOPE;
++      if (Object.keys(input).some(k => !allowed.includes(k)) || ![QWEN_PLAN_SCOPE,QWEN_IMAGE_EDIT_SCOPE].includes(input.assistant_tool_scope) ||
++          input.action !== (imageEdit?'optimize-prompt':'art-agent-chat') || input.model_id !== PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID ||
+           typeof input.request_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.request_id) ||
+           typeof input.request_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(input.request_sha256) ||
+-          !Number.isSafeInteger(input.request_bytes) || input.request_bytes < 1 || input.request_bytes > 262144 ||
+-          cleanRefs.length !== 1 || cleanRefs[0].name !== QWEN_PLAN_REQUEST_FILE || cleanRefs[0].kind !== 'json' ||
++          !Number.isSafeInteger(input.request_bytes) || input.request_bytes < 1 || input.request_bytes > (imageEdit?QWEN_IMAGE_EDIT_MAX_REQUEST_BYTES:262144) ||
++          cleanRefs.length !== 1 || cleanRefs[0].name !== (imageEdit?QWEN_IMAGE_EDIT_REQUEST_FILE:QWEN_PLAN_REQUEST_FILE) || cleanRefs[0].kind !== 'json' ||
+           cleanRefs[0].bytes !== input.request_bytes) throw bad('invalid Qwen Foart plan task');
+-      return {action:'art-agent-chat',model_id:PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID,
+-        assistant_tool_scope:QWEN_PLAN_SCOPE,request_id:input.request_id,request_sha256:input.request_sha256,
++      return {action:input.action,model_id:PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID,
++        assistant_tool_scope:input.assistant_tool_scope,request_id:input.request_id,request_sha256:input.request_sha256,
+         request_bytes:input.request_bytes,references:cleanRefs};
+     }
+     const action = sanitizeText(input.action, 40);
+@@ -1658,11 +1669,12 @@
+ }
+ 
+ /** @param {{store:any,secrets:any,logger?:(...args:any[])=>void,companion?:{reply:(input:any)=>Promise<any>}|null,qwenRotationVerifyEnabled?:boolean,qwenRotationCreateEnabled?:boolean}} options */
+-function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwenRotationVerifyEnabled=false, qwenRotationCreateEnabled=false, qwenPlanEnabled=false }) {
++function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwenRotationVerifyEnabled=false, qwenRotationCreateEnabled=false, qwenPlanEnabled=false, qwen21LocalImageEditEnabled=false }) {
+   const log = logger || (() => {});
+   const sessionSecret = secrets?.sessionSecret || '';
+   const controlSecret = secrets?.controlSecret || '';
+   const artKnowledge = createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError});
++  const qwenScopeEnabled=scope=>scope===QWEN_PLAN_SCOPE ? qwenPlanEnabled===true : scope===QWEN_IMAGE_EDIT_SCOPE && qwen21LocalImageEditEnabled===true;
+ 
+   async function requireUser(headers) {
+     const token = bearerToken(headers.authorization || headers.Authorization);
+@@ -1729,11 +1741,20 @@
+ 
+   // Existing ordinary task storage is reused; this scope only returns a plan.
+   // The private manifest is created by this server, not accepted from a node.
++  async function requireQwenImageEditLease(task,bound,attempt,op,sha256=null,bytes=null) {
++    if(typeof store.verifyQwenImageEditLease!=='function')throw new HttpError(503,'qwen_image_edit_lease_unavailable','Qwen image edit authorization unavailable');
++    let authorized=false;
++    try {authorized=await store.verifyQwenImageEditLease({taskId:String(task.id),workerId:String(bound.worker_id),
++      userId:String(bound.user_id),sessionId:String(bound.session_id),attempt,op,sha256,bytes})===true;} catch {}
++    if(!authorized)throw new HttpError(403,ERROR_CODE.FORBIDDEN,'Qwen image edit authorization denied');
++  }
++
+   async function requireQwenPlanActor(headers, task) {
+     const actor = await requireArtActor(headers);
+     const bound = task?.input_manifest?.qwen_foart_plan;
+-    if (!isQwenPlanTask(task) || !qwenPlanUnexpired(task) || task.task_type !== PROMPT_ASSISTANT_TASK_TYPE || task.model_id !== QWEN_PLAN_CAPABILITY ||
+-        task.input_manifest?.parameters?.assistant_tool_scope !== QWEN_PLAN_SCOPE || !bound || bound.scope !== QWEN_PLAN_SCOPE ||
++    const contract=qwenScopedContract(task);
++    if (!contract || !qwenScopeEnabled(contract.scope) || !qwenPlanUnexpired(task) || task.task_type !== PROMPT_ASSISTANT_TASK_TYPE || task.model_id !== contract.capability ||
++        task.input_manifest?.parameters?.assistant_tool_scope !== contract.scope || !bound || bound.scope !== contract.scope ||
+         String(task.user_id) !== String(actor.user.id) || bound.user_id !== String(actor.user.id) ||
+         bound.session_id !== actor.sessionId || !Number.isSafeInteger(bound.session_expires_epoch) ||
+         bound.session_expires_epoch <= nowSeconds() || !UUID_RE.test(String(bound.worker_id || '')))
+@@ -1741,13 +1762,13 @@
+     const worker = await store.getWorkerById(bound.worker_id);
+     if (!qwenPlanUnexpired(task) || bound.session_expires_epoch <= nowSeconds() ||
+         !worker || String(worker.owner_id || '') !== String(actor.user.id) || !workerAllowsUser(worker, actor.user) ||
++        (contract.scope===QWEN_IMAGE_EDIT_SCOPE && (!UUID_V4_RE.test(String(bound.ownership_generation||'')) || bound.ownership_generation!==worker.ownership_generation)) ||
+         (task.assigned_worker_id && String(task.assigned_worker_id) !== String(worker.id)))
+       throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'Qwen plan authorization denied');
+     return {actor,worker,bound};
+   }
+ 
+   async function handleQwenPlanVerify(taskId, body, headers) {
+-    if (qwenPlanEnabled !== true) throw new HttpError(503, 'qwen_plan_unavailable', 'Qwen plan verification unavailable');
+     const worker = await requireWorker(headers);
+     const uploadFinish = body?.op === 'upload' && body?.phase === 'finish';
+     const required = uploadFinish ? ['op','phase','attempt','sha256','bytes'] : ['op','phase'];
+@@ -1760,12 +1781,13 @@
+         (body.op !== 'upload' && !Number.isSafeInteger(body.attempt)) ||
+         (Object.hasOwn(body,'attempt') && (!Number.isSafeInteger(body.attempt) || body.attempt < 1 || body.attempt > 20)) ||
+         (uploadFinish && (typeof body.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(body.sha256) ||
+-          !Number.isSafeInteger(body.bytes) || body.bytes < 1 || body.bytes > 262144)))
++          !Number.isSafeInteger(body.bytes) || body.bytes < 1 || body.bytes > QWEN_IMAGE_EDIT_MAX_REQUEST_BYTES)))
+       throw bad('invalid Qwen plan verification request');
+     const task = await store.getTask(taskId), bound = task?.input_manifest?.qwen_foart_plan;
++    const contract=qwenScopedContract(task);
+     const attempt = Number(task?.attempt_count);
+-    if (!task || !isQwenPlanTask(task) || !qwenPlanUnexpired(task) || task.task_type !== PROMPT_ASSISTANT_TASK_TYPE || task.model_id !== QWEN_PLAN_CAPABILITY ||
+-        task.input_manifest?.parameters?.assistant_tool_scope !== QWEN_PLAN_SCOPE || !bound || bound.scope !== QWEN_PLAN_SCOPE ||
++    if (!task || !contract || !qwenScopeEnabled(contract.scope) || !qwenPlanUnexpired(task) || task.task_type !== PROMPT_ASSISTANT_TASK_TYPE || task.model_id !== contract.capability ||
++        task.input_manifest?.parameters?.assistant_tool_scope !== contract.scope || !bound || bound.scope !== contract.scope ||
+         String(task.assigned_worker_id || '') !== String(worker.id) || bound.worker_id !== String(worker.id) ||
+         bound.user_id !== String(task.user_id || '') || String(worker.owner_id || '') !== String(task.user_id || '') ||
+         !UUID_RE.test(String(bound.session_id || '')) || !Number.isSafeInteger(bound.session_expires_epoch) ||
+@@ -1773,6 +1795,11 @@
+         (body.attempt !== undefined && body.attempt !== attempt) ||
+         (uploadFinish && (body.sha256 !== bound.request_sha256 || body.bytes !== bound.request_bytes)))
+       throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'Qwen plan authorization denied');
++    if(contract.scope===QWEN_IMAGE_EDIT_SCOPE){
++      const workerActor=await verifyWorkerToken(bearerToken(headers.authorization || headers.Authorization),controlSecret);
++      if(String(workerActor.owner||'')!==String(worker.owner_id||'') || worker.enabled!==true || !UUID_V4_RE.test(String(bound.ownership_generation||'')) || workerActor.ownership_generation!==worker.ownership_generation || workerActor.ownership_generation!==bound.ownership_generation)
++        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'Qwen image edit authorization denied');
++    }
+     const states = body.op === 'upload' || body.op === 'wait' ? [TASK_STATE.ASSIGNED,TASK_STATE.UPLOADING] :
+       body.op === 'download' ? [TASK_STATE.COMPLETED] : [TASK_STATE.PROCESSING];
+     if (!states.includes(task.status) || (body.op === 'download' && task.result_expired))
+@@ -1792,8 +1819,10 @@
+         String(latest.assigned_worker_id || '') !== String(worker.id) ||
+         latest.input_manifest?.qwen_foart_plan?.session_id !== bound.session_id)
+       throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'Qwen plan authorization denied');
++    if(contract.scope===QWEN_IMAGE_EDIT_SCOPE)
++      await requireQwenImageEditLease(latest,bound,attempt,body.op,uploadFinish?body.sha256:null,uploadFinish?body.bytes:null);
+     return {ok:true,authorized:true,taskId,workerId:String(worker.id),userId:String(task.user_id),
+-      sessionId:bound.session_id,scope:QWEN_PLAN_SCOPE,attempt,op:body.op,
++      sessionId:bound.session_id,scope:contract.scope,attempt,op:body.op,
+       ...(uploadFinish ? {digestBound:true,sha256:body.sha256,bytes:body.bytes} : {})};
+   }
+ 
+@@ -2277,9 +2306,10 @@
+ 
+     if (isQwenPlanTask(current)) {
+       const attempt = Number(current.attempt_count);
++      const contract=qwenScopedContract(current);
+       if (!Number.isSafeInteger(body.attempt) || body.attempt !== attempt || attempt < 1 || attempt > 20 ||
+           !Array.isArray(body.outputs) || body.outputs.length !== 1 ||
+-          body.outputs[0]?.name !== QWEN_PLAN_RESULT_FILE(attempt) || body.outputs[0]?.kind !== 'json' ||
++          !contract || body.outputs[0]?.name !== contract.resultFile(attempt) || body.outputs[0]?.kind !== 'json' ||
+           !Number.isSafeInteger(body.outputs[0]?.bytes) || body.outputs[0].bytes < 1 || body.outputs[0].bytes > 65536)
+         throw new HttpError(403,ERROR_CODE.FORBIDDEN,'Qwen plan result denied');
+       await handleQwenPlanVerify(taskId,{op:current.status === TASK_STATE.COMPLETED ? 'download' : 'complete',
+@@ -2406,10 +2436,11 @@
+ 
+   async function handleCreateTask(body, headers) {
+     const user = await requireUser(headers);
+-    const planRequested = body?.parameters?.assistant_tool_scope === QWEN_PLAN_SCOPE;
++    const requestedQwenScope=body?.parameters?.assistant_tool_scope;
++    const planRequested = [QWEN_PLAN_SCOPE,QWEN_IMAGE_EDIT_SCOPE].includes(requestedQwenScope);
+     let planActor = null, planSessionExpiry = 0;
+     if (planRequested) {
+-      if (qwenPlanEnabled !== true) throw new HttpError(503, 'qwen_plan_unavailable', 'Qwen plan unavailable');
++      if (!qwenScopeEnabled(requestedQwenScope)) throw new HttpError(503, 'qwen_plan_unavailable', 'Qwen plan unavailable');
+       planActor = await requireArtActor(headers);
+       let session;
+       try { session = await verifySessionToken(bearerToken(headers.authorization || headers.Authorization),sessionSecret); }
+@@ -2477,8 +2508,8 @@
+       if (taskType === PROMPT_ASSISTANT_TASK_TYPE && [PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID,PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY,UI_CPU_CAPABILITY].includes(parameters.model_id)) {
+         req = { ...req, modelId: parameters.model_id, minVramMb: 0 };
+       }
+-      if (parameters.assistant_tool_scope === QWEN_PLAN_SCOPE)
+-        req = { ...req, modelId: QWEN_PLAN_CAPABILITY, minVramMb: 0 };
++      if (parameters.assistant_tool_scope === QWEN_PLAN_SCOPE || parameters.assistant_tool_scope === QWEN_IMAGE_EDIT_SCOPE)
++        req = { ...req, modelId: parameters.assistant_tool_scope===QWEN_IMAGE_EDIT_SCOPE?QWEN_IMAGE_EDIT_CAPABILITY:QWEN_PLAN_CAPABILITY, minVramMb: 0 };
+       pricing = priceTask(taskType, parameters);
+     }
+ 
+@@ -2510,7 +2541,8 @@
+     }
+     if (planRequested && (taskType !== PROMPT_ASSISTANT_TASK_TYPE || !target ||
+         String(target.owner_id || '') !== String(user.id) || !workerAllowsUser(target,user) ||
+-        String(planActor?.user?.id || '') !== String(user.id)))
++        String(planActor?.user?.id || '') !== String(user.id) ||
++        (requestedQwenScope===QWEN_IMAGE_EDIT_SCOPE && !UUID_V4_RE.test(String(target.ownership_generation||'')))))
+       throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'Qwen plan requires your own enabled node');
+ 
+     // Fail fast when nothing online can run it, instead of parking the task in
+@@ -2523,7 +2555,7 @@
+     }
+     if (req.modelId === PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY && capable === 0)
+       throw new HttpError(409, ERROR_CODE.NOT_FOUND, '当前没有支持此业务的 Qwen 节点，本次未提交。');
+-    if (req.modelId === QWEN_PLAN_CAPABILITY && capable === 0)
++    if ([QWEN_PLAN_CAPABILITY,QWEN_IMAGE_EDIT_CAPABILITY].includes(req.modelId) && (!Number.isSafeInteger(Number(capable)) || Number(capable)<1))
+       throw new HttpError(409, ERROR_CODE.NOT_FOUND, '当前本人节点尚未支持 Qwen 基础操作，本次未提交。');
+     if (req.modelId === UI_CPU_CAPABILITY && capable === 0)
+       throw new HttpError(409, ERROR_CODE.NOT_FOUND, '所选算力节点不支持 UI CPU 编译，本次未提交。');
+@@ -2539,8 +2571,9 @@
+       target_worker_id: target ? target.id : null,
+       target_worker_name: target ? target.worker_name : null,
+       allow_premium_nodes: allowPremiumNodes,
+-      ...(planRequested ? {qwen_foart_plan:{scope:QWEN_PLAN_SCOPE,user_id:String(user.id),
++      ...(planRequested ? {qwen_foart_plan:{scope:requestedQwenScope,user_id:String(user.id),
+         session_id:planActor.sessionId,session_expires_epoch:planSessionExpiry,worker_id:String(target.id),
++        ...(requestedQwenScope===QWEN_IMAGE_EDIT_SCOPE?{ownership_generation:target.ownership_generation}:{}),
+         request_id:parameters.request_id,request_sha256:parameters.request_sha256,request_bytes:parameters.request_bytes}} : {})
+     };
+ 
+@@ -2550,7 +2583,7 @@
+       modelId: req.modelId,
+       inputManifest,
+       estimatedCreditCost: pricing.creditCost,
+-      expiresAt: new Date(planRequested ? Math.min(Date.now()+5*60*1000,planSessionExpiry*1000) : Date.now() + 6 * 3600 * 1000).toISOString()
++      expiresAt: new Date(planRequested ? Math.min(Date.now()+(requestedQwenScope===QWEN_IMAGE_EDIT_SCOPE?15:5)*60*1000,planSessionExpiry*1000) : Date.now() + 6 * 3600 * 1000).toISOString()
+     });
+ 
+     log('task created', { taskId: task.id, taskType, capable });
+@@ -2669,7 +2702,7 @@
+     const qwenPlan = isQwenPlanTask(task);
+     let planBinding = null;
+     if (qwenPlan) {
+-      if (qwenPlanEnabled !== true) throw new HttpError(503,'qwen_plan_unavailable','Qwen plan unavailable');
++      if (!qwenScopeEnabled(qwenScopedContract(task)?.scope)) throw new HttpError(503,'qwen_plan_unavailable','Qwen plan unavailable');
+       planBinding = await requireQwenPlanActor(headers,task);
+       if (!body || !['upload','download'].includes(body.op) || !Number.isSafeInteger(body.attempt) ||
+           body.attempt < 1 || body.attempt > 20 || body.attempt !== Number(task.attempt_count))
+@@ -2696,9 +2729,11 @@
+     const ttlSeconds = qwenPlan ? Math.min(60,planBinding.bound.session_expires_epoch-nowSeconds()) :
+       (op === GRANT_OP.DOWNLOAD ? GRANT_DOWNLOAD_TTL_SECONDS : GRANT_TTL_SECONDS);
+     if (ttlSeconds < 1) throw new HttpError(403,ERROR_CODE.FORBIDDEN,'Qwen plan authorization denied');
++    if(qwenPlan && qwenScopedContract(task)?.scope===QWEN_IMAGE_EDIT_SCOPE)
++      await requireQwenImageEditLease(task,planBinding.bound,Number(task.attempt_count),op);
+     const token = await issueGrantToken(
+       { userId: user.id, taskId: task.id, workerId: worker.id, op, ttlSeconds,
+-        ...(qwenPlan ? {scope:QWEN_PLAN_SCOPE,attempt:Number(task.attempt_count)} : {}) },
++        ...(qwenPlan ? {scope:qwenScopedContract(task).scope,attempt:Number(task.attempt_count)} : {}) },
+       grantKey
+     );
+     return {
+@@ -2881,6 +2916,15 @@
+     const qwen35BusinessTrial = user ? await store.countCapableWorkers(PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY, 0,
+       HEARTBEAT_TIMEOUT_SECONDS, workerId, canUsePremiumNodes(user.plan), user.id,
+       canUseSharedCompute(user.plan)).catch(() => 0) : 0;
++    let qwen21NativeRewriteV3=false;
++    if(user && workerId && typeof store.getWorkerById==='function') {
++      const node=await store.getWorkerById(workerId).catch(()=>null);
++      if(node && String(node.owner_id || '')===String(user.id) && workerAllowsUser(node,user)) {
++        const count=await store.countCapableWorkers(QWEN21_NATIVE_REWRITE_V3_CAPABILITY,0,
++          HEARTBEAT_TIMEOUT_SECONDS,workerId,canUsePremiumNodes(user.plan),user.id,false).catch(()=>0);
++        qwen21NativeRewriteV3=Number(count)>0;
++      }
++    }
+     let qwenPlanReady=false;
+     if(qwenPlanEnabled===true && user && workerId) {
+       const actor=await requireArtActor(headers).catch(()=>null);
+@@ -2889,6 +2933,16 @@
+         const count=await store.countCapableWorkers(QWEN_PLAN_CAPABILITY,0,
+           HEARTBEAT_TIMEOUT_SECONDS,workerId,canUsePremiumNodes(user.plan),user.id,false).catch(()=>0);
+         qwenPlanReady=Number(count)>0;
++      }
++    }
++    let qwenImageEditReady=false;
++    if(qwen21LocalImageEditEnabled===true && user && workerId) {
++      const actor=await requireArtActor(headers).catch(()=>null);
++      const node=actor ? await store.getWorkerById(workerId).catch(()=>null) : null;
++      if(node && String(node.owner_id || '')===String(user.id) && workerAllowsUser(node,user) && UUID_V4_RE.test(String(node.ownership_generation||''))) {
++        const count=await store.countCapableWorkers(QWEN_IMAGE_EDIT_CAPABILITY,0,
++          HEARTBEAT_TIMEOUT_SECONDS,workerId,canUsePremiumNodes(user.plan),user.id,false).catch(()=>0);
++        qwenImageEditReady=Number(count)>0;
+       }
+     }
+     let qwenRotationReady=false;
+@@ -2917,8 +2971,9 @@
+       protocol: PROTOCOL_VERSION,
+       taskTypes,
+       available_workers: Math.max(0, ...counts),
+-      features: { qwenImage21: qwen21 > 0, qwen35CpuTrial: qwen35CpuTrial > 0, qwen35BusinessTrial: qwen35BusinessTrial > 0,
++      features: { qwenImage21: qwen21 > 0, qwen35CpuTrial: qwen35CpuTrial > 0, qwen35BusinessTrial: qwen35BusinessTrial > 0,qwen21NativeRewriteV3,
+         qwen35FoartPlan:qwenPlanReady,qwen35FoartPlanOwnerBound:qwenPlanReady,
++        qwen21LocalImageEdit:qwenImageEditReady,qwen21LocalImageEditOwnerLeaseBound:qwenImageEditReady,
+         qwen35FoartRotationCandidate:qwenRotationReady,qwen35FoartRotationOwnerLeaseBound:qwenRotationReady,
+         qwen35UiDraft: false, qwen35UiOwnerLeaseBound: false },
+       models: MODEL_MANIFEST.map((m) => ({
+@@ -3316,9 +3371,16 @@
+ }
+ 
+ function isQwenPlanTask(task) {
+-  return task?.model_id === QWEN_PLAN_CAPABILITY ||
+-    task?.input_manifest?.parameters?.assistant_tool_scope === QWEN_PLAN_SCOPE ||
+-    task?.input_manifest?.qwen_foart_plan?.scope === QWEN_PLAN_SCOPE;
++  return [QWEN_PLAN_CAPABILITY,QWEN_IMAGE_EDIT_CAPABILITY].includes(task?.model_id) ||
++    [QWEN_PLAN_SCOPE,QWEN_IMAGE_EDIT_SCOPE].includes(task?.input_manifest?.parameters?.assistant_tool_scope) ||
++    [QWEN_PLAN_SCOPE,QWEN_IMAGE_EDIT_SCOPE].includes(task?.input_manifest?.qwen_foart_plan?.scope);
++}
++
++function qwenScopedContract(task) {
++  const scope=task?.input_manifest?.qwen_foart_plan?.scope;
++  if(scope===QWEN_PLAN_SCOPE)return {scope,capability:QWEN_PLAN_CAPABILITY,resultFile:QWEN_PLAN_RESULT_FILE};
++  if(scope===QWEN_IMAGE_EDIT_SCOPE)return {scope,capability:QWEN_IMAGE_EDIT_CAPABILITY,resultFile:QWEN_IMAGE_EDIT_RESULT_FILE};
++  return null;
+ }
+ 
+ function isQwenRotationCandidateTask(task) {
+@@ -3705,6 +3767,15 @@
+     return unwrapRpc(data);
+   },
+ 
++  async verifyQwenImageEditLease({taskId,workerId,userId,sessionId,attempt,op,sha256=null,bytes=null}: any) {
++    const {data,error}=await admin().rpc('novaflow_qwen_image_edit_authorize_v1',{
++      p_task_id:taskId,p_worker_id:workerId,p_user_id:userId,p_session_id:sessionId,
++      p_attempt:attempt,p_op:op,p_sha256:sha256,p_bytes:bytes
++    });
++    if(error)throw error;
++    return data===true;
++  },
++
+   async authorizeQwenRotationLease({ taskId, workerId, userId, sessionId, attempt, op, proofExpiresAtMs, uploadSha256=null, uploadBytes=null }: any) {
+     const { data, error } = await admin().rpc('novaflow_qwen_rotation_authorize_v1', {
+       p_task_id: taskId, p_worker_id: workerId, p_user_id: userId, p_session_id: sessionId,
