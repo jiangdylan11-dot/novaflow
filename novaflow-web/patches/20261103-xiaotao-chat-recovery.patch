@@ -1,0 +1,422 @@
+--- a/novaflow-web/renderer/xiaotao-art-agent.js
++++ b/novaflow-web/renderer/xiaotao-art-agent.js
+@@ -73,7 +73,8 @@
+     return amount.toFixed(6).replace(/\.?0+$/,'');
+   }
+   const cleanBillingNotices = rows => (Array.isArray(rows)?rows:[]).filter(row=>row && typeof row.id==='string' && row.id.length<=100 && CHAT_MODELS[row.modelId]?.provider==='api' && typeof row.unknown==='boolean' && (row.confirmed===null || creditUnits(row.confirmed)!==null) && (row.unknown || row.confirmed!==null) && (row.owner===undefined || typeof row.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(row.owner))).slice(-20).map(({id,modelId,confirmed,unknown,owner})=>({id,modelId,confirmed,unknown,...(owner===undefined?{}:{owner})}));
+-  function billingNoticeText(row) {const label=CHAT_MODELS[row.modelId]?.label||'在线模型',confirmed=row.confirmed===null?'':`已确认小桃模型扣 ${displayCredits(row.confirmed)} 分；`;return `${label}：${confirmed}${row.unknown?(row.confirmed===null?'本次请求积分状态待核对，请勿重复提交。':'其余请求积分状态待核对，请勿重复提交。'):'其他收费工具另计。'}`;}
++  function billingNoticeText(row) {return row.unknown?'本次扣费待核对':`本次扣费 ${displayCredits(row.confirmed)} 积分`;}
++  function appendBillingNotice(rows,row) {return cleanBillingNotices([...rows.filter(item=>item.id!==row.id&&(item.unknown||item.owner!==row.owner)),row]);}
+   const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
+   const fail = message => { throw new Error(message); };
+   // The root field is supplied by the owned runtime after it has verified the
+@@ -936,6 +937,7 @@
+         policy.config && typeof policy.config==='object' && Array.isArray(policy.models) ? policy : null;
+     }
+     function selectedOnlineModel(policy=currentPricingPolicy()) {return state.modelId==='legacy-online' ? policy?.defaultModel : state.modelId;}
++    function pricingBindingCurrent(version) {return !!version&&state.pricingPolicy?.version===version;}
+     // Any operation-level price must come from the same current, versioned
+     // policy as the quote; historic one-credit policies remain valid in flight.
+     function onlineOperationMinimumConfirmed() {
+@@ -1487,10 +1489,10 @@
+         const row={id,modelId,owner:owner.owner,confirmed:quota===undefined?null:quota.settled_credits,unknown};
+         const old=state.billingNotices.find(item=>item.id===id);
+         // Never evict an existing notice merely to acknowledge another receipt.
+-        if(!old && state.billingNotices.length>=20)return false;
++        if(!old && state.billingNotices.filter(item=>item.unknown).length>=20)return false;
+         if(old && (old.owner!==row.owner || old.modelId!==row.modelId ||
+           old.confirmed!==null && old.confirmed!==row.confirmed || !old.unknown && row.unknown))return false;
+-        state.billingNotices=cleanBillingNotices([...state.billingNotices.filter(item=>item.id!==id),row]);notify();
++        state.billingNotices=appendBillingNotice(state.billingNotices,row);notify();
+         if(!activeOwner())return false;
+         const raw=typeof storage?.getDurableItem==='function' ? storage.getDurableItem(STORAGE_KEY) :
+           storage===root.localStorage && typeof storage?.getItem==='function' ? storage.getItem(STORAGE_KEY) : null;
+@@ -1501,7 +1503,7 @@
+     }
+     function visibleBillingNotices() {
+       let currentOwner='';try {const binding=api()?.captureFoartBillingOwner?.();if(binding?.current?.()===true)currentOwner=binding.owner;}catch {}
+-      return state.billingNotices.filter(row=>row.owner===undefined || row.owner===currentOwner);
++      return state.billingNotices.filter(row=>row.owner===undefined || row.owner===currentOwner).slice(-1);
+     }
+     function dismissBillingNotice(id) {state.billingNotices=state.billingNotices.filter(item=>item.id!==id);notify();}
+     function artBillingNotices() {
+@@ -1540,6 +1542,7 @@
+     function onlineBusinessUi(modelId,imageUploadGrant=null,selectionStillCurrent=()=>true) {
+       const binding=api()?.captureFoartBillingOwner?.();
+       const decimal=onlineOperationDecimalConfirmed();
++      const operationBound=currentPricingPolicy()?.config?.xiaotao_online?.operation_art_v3===true;
+       const acceptedCredits=value=>decimal ? creditUnits(value)!==null : Number.isSafeInteger(value)&&value>=0;
+       const current=()=>!retired&&!!binding&&typeof binding.current==='function'&&binding.current()===true&&state.provider==='api'&&state.modelId===modelId&&selectionStillCurrent()===true;
+       return {
+@@ -1551,8 +1554,10 @@
+         onPricingQuote:()=>{if(current()){state.status='正在准备请求…';notify();}},
+         confirmPricingQuote:async()=>current(),
+         onBillingNotice:row=>{
+-          if(!current()||row?.submitted!==true||row.modelId!==modelId||typeof row.requestId!=='string')return false;
++          if(!binding?.current?.()||row?.submitted!==true||row.modelId!==modelId||typeof row.requestId!=='string')return false;
+           const settled=row.quota?.status==='settled'&&acceptedCredits(row.quota.settled_credits);
++          if(operationBound&&settled){publishBilling({id:row.requestId,modelId,owner:binding.owner,confirmed:row.quota.settled_credits,confirmedCount:1,unknown:row.unknown===true||(row.quota.uncollected_credits||0)>0,inFlight:false});return true;}
++          if(!current())return false;
+           const ok=settled?storage?.persistArtSettlement?.(binding.owner,{id:row.requestId,modelId,confirmed:row.quota.settled_credits,pricingSource:row.quota.pricing_source,cacheKnown:row.quota.cache_known})
+             :storage?.persistArtPending?.(binding.owner,{id:row.requestId,modelId});
+           if(ok!==true){state.error=settled?'账单回执未能安全保存，请核对实际扣分。':'无法安全保存待核对账单，未提交。';notify();return false;}
+@@ -1566,7 +1571,7 @@
+       // runtime. Do not write their interim state into the unscoped tab archive.
+       if(billing.recoveryBound&&(billing.unknown||billing.inFlight||!billing.confirmedCount)){notify();return;}
+       const row={id:billing.id,modelId:billing.modelId,confirmed:billing.confirmedCount?billing.confirmed:null,unknown:billing.unknown||billing.inFlight,...(billing.owner?{owner:billing.owner}:{})};
+-      state.billingNotices=cleanBillingNotices([...state.billingNotices.filter(item=>item.id!==billing.id),row]);notify();
++      state.billingNotices=appendBillingNotice(state.billingNotices,row);notify();
+     }
+     function billingOwner() {
+       try {const b=api()?.captureFoartBillingOwner?.();return b?.current?.()===true && typeof b.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(b.owner) ? b.owner : undefined;} catch {return undefined;}
+@@ -2419,7 +2424,8 @@
+       const explicitPreviousImage=/(?:\u521a\u624d|\u521a\u521a|\u4e0a\u4f20|\u4e4b\u524d|\u4e0a\u4e00\u5f20|\u90a3\u5f20|\u8fd9\u5f20).{0,8}(?:\u56fe|\u56fe\u7247|\u7167\u7247)/.test(message);
+       const freshInvocationUploads=state.staged.slice();
+       const invocationUploads=freshInvocationUploads.length ? freshInvocationUploads : operationUploadScope && !explicitPreviousImage ? [] : lastUploads;
+-      const capabilityOnly=!confirmed && !includeResult && !invocationUploads.length && qwenCapabilityQuestion(message);
++      const promptConversation=!confirmed&&!includeResult&&!invocationUploads.length&&root.NovaFlowXiaotaoPromptSource?.isPromptConversation?.(message)===true;
++      const capabilityOnly=!confirmed && !includeResult && !invocationUploads.length && (promptConversation||qwenCapabilityQuestion(message));
+       const capabilityHistory=capabilityOnly?copy(state.history):null;
+       const promptDiscussion=communityChatOnly&&(qwenPromptDiscussion(message)||qwenNoToolExplanation(message));
+       // A specifically requested text-only drawing draft has its own operation;
+@@ -2433,7 +2439,7 @@
+       if (!capabilityOnly && root.NovaFlowFoartToolContract?.foartUnsupportedMediaAnalysis(message,invocationUploads)) {
+         state.error='当前小桃模型尚未接入音频或视频内容分析，不能声称已听到或看过；请明确描述要执行的剪辑或生成操作。'; state.status='未提交分析，不扣积分'; notify(); return false;
+       }
+-      if(communityChatOnly && capabilityOnly) {
++      if(communityChatOnly && capabilityOnly && !promptConversation) {
+         const capabilities=[];
+         if(state.qwen35FoartReadonlyAvailable===true)capabilities.push('在动画模块只读查询当前工程、骨骼和轨道');
+         if(state.qwen35FoartSeekAvailable===true)capabilities.push('将动画定位到指定帧，需要你确认且可以撤销');
+@@ -2547,9 +2553,9 @@
+         catch(error){state.error=String(error?.message||error);notify();return false;}
+       }
+       if (recordMessage) {pushUser(message); recordMessage = false;}
+-      let execution = communityChatOnly ? null : executionIntent(message);
++      let execution = communityChatOnly || promptConversation ? null : executionIntent(message);
+       if (execution && state.provider !== 'local') {state.error = '本次在线智能请求尚未接入绘图工具，未提交操作。请在 Foart 生图版块使用当前模型。';state.status='未提交工具执行'; notify(); return false;}
+-      const requestedGeneration = !communityChatOnly && (samplingRequest(message) || task?.surface==='image' && !task.discussion && !task.named.length);
++      const requestedGeneration = !communityChatOnly && !promptConversation && (samplingRequest(message) || task?.surface==='image' && !task.discussion && !task.named.length);
+       const requestedFeedback = !communityChatOnly && state.provider === 'local' && bridge.hasResult?.() && feedbackRequest(message);
+       if (!communityChatOnly && state.provider === 'local' && bridge.hasResult?.() && typeof api()?.artLearning === 'function'
+         && /不满意|效果不好|画风不对|人物.{0,6}(?:不错|没问题|可以).{0,12}(?:但是|主要|只是)|画风不够|光影不对|上次的画风更准确|调整|修改|改成|太蓝|太黄/.test(message))
+@@ -2619,7 +2625,7 @@
+         const uploadModel=state.modelId;
+         const uploadCurrent=()=>operation===serial&&!stopped&&state.provider==='api'&&state.modelId===uploadModel&&typeof uploadOwner?.current==='function'&&uploadOwner.current()===true;
+         activeChatHasImages=mode==='chat' && images.length>0;
+-        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage, history:capabilityOnly?[]:copy(state.history), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {}),
++        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage, history:capabilityOnly&&!promptConversation?[]:copy(state.history), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {}),
+           ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
+         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新官网页面并检查 Foart状态');
+         const deviceEpoch=localCapabilityEpoch;
+@@ -2679,7 +2685,7 @@
+         const reply=communityChatOnly ? '本次为文字或图片对话，未操作软件。\n\n'+data.reply : mode!=='chat' && finalProposal && promptOnly ? data.reply+'\n\n完整提示词：\n```text\n'+finalProposal.prompt+'\n```' : data.reply;
+         const settled=billingReceipt(billing),receipt=settled?creditReceipt({...settled,...(prediction?.credits!=null?{expected_credits:prediction.credits}:{})}):'';
+         state.messages.push({role:'assistant', content:reply, ...(receipt ? {receipt} : {})});
+-        if(receipt)clearBillingNotice(billing);
++        // Keep the latest settled amount in the shared, quiet billing line.
+         if (!capabilityOnly) state.conversationId = data.conversationId || state.conversationId;
+         if (Array.isArray(data.history)) state.history = capabilityOnly?[...capabilityHistory,{role:'user',content:message},{role:'assistant',content:data.reply}].slice(-12):copy(data.history);
+         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
+@@ -2713,13 +2719,21 @@
+         owner.document?.querySelectorAll?.('['+attr+'="1"]').length!==1||owner.navigator?.userActivation?.isActive!==true)
+         throw Error('请在草稿界面亲自点击，未修改提示词。');
+     }
+-    function queueMediaPromptReview({surface,prompt,snapshot,bindingCurrent}) {
+-      if(pendingMediaPromptReview)throw Error('请先应用或取消上一次提示词草稿。');
+-      if(!['video','audio','ui'].includes(surface)||(surface==='ui'?(!prompt||typeof prompt!=='object'||typeof prompt.prompt!=='string'||!prompt.prompt.trim()||typeof prompt.negativePrompt!=='string'):(typeof prompt!=='string'||!prompt.trim()))||!snapshot||
+-        typeof snapshot.applyDraft!=='function'||typeof snapshot.undoDraft!=='function'||typeof bindingCurrent!=='function'||bindingCurrent()!==true)
+-        throw Error('提示词草稿或当前会话无法核对，未应用。');
+-      pendingMediaPromptReview={surface,prompt,snapshot,bindingCurrent};mediaPromptUndo=null;
+-      state.mediaPromptProposal={surface};state.mediaPromptCanUndo=false;
++    async function applyOptimizedMediaPrompt({surface,prompt,snapshot,bindingCurrent}) {
++      if(!['video','audio','ui'].includes(surface)||!snapshot||typeof snapshot.applyDraft!=='function'||typeof bindingCurrent!=='function'||bindingCurrent()!==true)
++        throw Error('提示词或当前页面已变化，未更新。');
++      const result=await snapshot.applyDraft(prompt,{userConfirmed:true,bindingCurrent});
++      if(result?.phase!=='applied')throw Error('提示词更新未能确认，请检查当前输入框。');
++      pendingMediaPromptReview=null;mediaPromptUndo=null;state.mediaPromptProposal=null;state.mediaPromptCanUndo=false;
++    }
++    function applyOptimizedDrawingPrompt(receipt,current) {
++      const tools=root.NovaFlowFoartTools;
++      if(typeof current!=='function'||current()!==true||typeof tools?.confirmImageReview!=='function')throw Error('绘图页面已变化，未更新提示词。');
++      const result=tools.confirmImageReview(receipt.reviewId);
++      if(result?.phase!=='applied'||result.reviewId!==receipt.reviewId)throw Error('绘图提示词更新未能确认。');
++      pendingFoartImageReview=null;foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;state.proposal=null;state.proposalSnapshot=null;state.applied=true;
++      const quota=receipt.optimization?.quota;
++      if(state.provider==='api'&&quota?.status==='settled'&&creditUnits(quota.settled_credits)!==null)publishBilling({id:'prompt-'+receipt.reviewId,modelId:state.modelId,owner:billingOwner(),confirmed:quota.settled_credits,confirmedCount:1,unknown:false,inFlight:false});
+     }
+     async function applyMediaPromptReview(event) {
+       const review=pendingMediaPromptReview;if(!review||state.pending||state.applying)return false;
+@@ -2759,11 +2773,11 @@
+       const owner=api()?.captureFoartBillingOwner?.(),sessionGuard=api()?.captureFoartSessionGuard?.();
+       if(owner?.current?.()!==true || typeof sessionGuard!=='function' || sessionGuard()!==true) {state.error='无法确认当前账号，未提交或扣费。';notify();return false;}
+       const policyVersion=currentPricingPolicy()?.version;
+-      const abort=new root.AbortController();promptAbort=abort;state.pending=true;state.error='';state.status='正在准备视频提示词草稿；不会自动回填或生成视频。';
++      const abort=new root.AbortController();promptAbort=abort;state.pending=true;state.error='';state.status='正在优化视频提示词…';
+       if(recordMessage)pushUser(message);notify();
+       let snapshot;
+       const bindingCurrent=()=>!abort.signal.aborted&&state.provider===selected.provider&&state.modelId===selected.modelId&&businessModelEpoch===selected.epoch&&
+-        sessionGuard()===true&&owner.current()===true&&currentPricingPolicy()?.version===policyVersion;
++        sessionGuard()===true&&owner.current()===true&&pricingBindingCurrent(policyVersion);
+       const current=()=>promptAbort===abort&&bindingCurrent()&&(!source?.workspaceGuard||source.workspaceGuard()===true)&&(!source?.attachmentStillCurrent||source.attachmentStillCurrent()===true)&&(!snapshot||snapshot.isCurrent()===true);
+       try {
+         const video=root.NovaFlowAiSequenceGeneration?.capture?.(),textOnly=/(?:只|仅).{0,6}(?:文字|文本)|(?:不要|不用|无需|别).{0,6}(?:看|分析).{0,6}(?:图片|首尾帧|参考图)/.test(message);
+@@ -2778,9 +2792,9 @@
+         if(result?.ok!==true)throw Error(result?.error||'视频草稿未完成，请核对账单。');
+         const draft=result.draft;
+         if(draft?.status!=='preview-only'||draft.applyAvailable!==false||draft.textOnly!==!includeReferenceImages||typeof draft.displayPrompt!=='string'||typeof draft.modelPrompt!=='string'||draft.h3Mode!==snapshot.request.h3Mode||draft.durationSeconds!==snapshot.request.durationSeconds)throw Error('视频草稿格式无效，未应用。');
+-        queueMediaPromptReview({surface:'video',prompt:draft.displayPrompt,snapshot,bindingCurrent});
+-        state.messages.push({role:'assistant',content:'视频提示词草稿（确认后可应用，未生成视频）：\n'+draft.displayPrompt+'\n\n英文执行稿：\n'+draft.modelPrompt+(includeReferenceImages?'\n\n已按本次确认的首帧与尾帧图片生成草稿。':'\n\n参考槽只标记角色，未分析图片、视频或音频内容。'),receipts:[`本次实扣 ${displayCredits(result.quota.settled_credits)} 积分（预估 ${displayCredits(result.quota.quote_estimated_credits)}）。`]});
+-        state.status='请核对视频提示词草稿。';return true;
++        await applyOptimizedMediaPrompt({surface:'video',prompt:draft.displayPrompt,snapshot,bindingCurrent});
++        state.messages.push({role:'assistant',content:'视频提示词已优化并更新到输入框。',receipts:[`本次实扣 ${displayCredits(result.quota.settled_credits)} 积分。`]});
++        state.status='视频提示词已优化并更新。';return true;
+       }catch(error){state.error=String(error?.message||error);state.status='视频草稿未完成，未回填或生成。';return false;}
+       finally{if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+     }
+@@ -2807,12 +2821,12 @@
+       if(typeof capture!=='function'||typeof method!=='function'||!requestId||(!local&&selected.provider!=='api')){state.error='UI 草稿接口不可用，未提交。';notify();return false;}
+       const owner=local?null:api()?.captureFoartBillingOwner?.(),sessionGuard=local?null:api()?.captureFoartSessionGuard?.();
+       if(!local && (owner?.current?.()!==true || typeof sessionGuard!=='function' || sessionGuard()!==true)){state.error='无法确认当前账号，未提交或扣费。';notify();return false;}
+-      const abort=new root.AbortController();promptAbort=abort;state.pending=true;state.error='';state.status='正在准备 UI 提示词草稿：最多 3 张参考图、共 20 MiB，不会自动应用或生成。';
++      const abort=new root.AbortController();promptAbort=abort;state.pending=true;state.error='';state.status='正在优化 UI 提示词…';
+       if(recordMessage)pushUser(message);notify();
+       let snapshot,referenceTransaction,queued=false;
+       const policyVersion=local?null:currentPricingPolicy()?.version;
+       const bindingCurrent=()=>!abort.signal.aborted&&state.provider===selected.provider&&state.modelId===selected.modelId&&businessModelEpoch===selected.epoch&&
+-        (local||sessionGuard()===true&&owner.current()===true&&currentPricingPolicy()?.version===policyVersion);
++        (local||sessionGuard()===true&&owner.current()===true&&pricingBindingCurrent(policyVersion));
+       const current=()=>promptAbort===abort&&bindingCurrent()&&(!source?.workspaceGuard||source.workspaceGuard()===true)&&(!source?.attachmentStillCurrent||source.attachmentStillCurrent()===true)&&(!snapshot||snapshot.isCurrent()===true);
+       try {
+         if(referenceSource==='uploads'){
+@@ -2840,9 +2854,9 @@
+         if(result?.ok!==true)throw Error(result?.error||(local?'UI 草稿未完成，未应用。':'UI 草稿未完成，请核对账单。'));
+         const draft=result.draft;if(draft?.status!=='preview-only'||draft.applyAvailable!==false||typeof draft.prompt!=='string'||typeof draft.negativePrompt!=='string')throw Error('UI 草稿格式无效，未应用。');
+         if(!Array.isArray(draft.sourceManifest))throw Error('UI 草稿参考角色无效，未应用。');
+-        queueMediaPromptReview({surface:'ui',prompt:Object.freeze({prompt:draft.prompt,negativePrompt:draft.negativePrompt}),snapshot,bindingCurrent});queued=true;
+-        state.messages.push({role:'assistant',content:'UI 提示词草稿（确认后可应用，未生成）：\n'+draft.prompt+(draft.negativePrompt?'\n\n负面约束：\n'+draft.negativePrompt:'')+(draft.sourceManifest.length?'\n\n参考角色：'+draft.sourceManifest.map(x=>`图${x.index} ${x.role}`).join('，'):'\n\n仅优化文字，未分析图片。')+(local?'\n本地大脑免费。':`\n本次实扣 ${displayCredits(result.quota.settled_credits)} 积分（预估 ${displayCredits(result.quota.quote_estimated_credits)}）。`)});
+-        state.status='请核对 UI 提示词草稿。';return true;
++        await applyOptimizedMediaPrompt({surface:'ui',prompt:Object.freeze({prompt:draft.prompt,negativePrompt:draft.negativePrompt}),snapshot,bindingCurrent});queued=true;
++        state.messages.push({role:'assistant',content:'UI 提示词已优化并更新到输入框。'});
++        state.status='UI 提示词已优化并更新。';return true;
+       } catch(error) {state.error=String(error?.message||error);state.status='UI 草稿未完成，未应用。';return false;}
+       finally {if(!queued){try{if(snapshot?.cancelDraft)snapshot.cancelDraft();else referenceTransaction?.cancel?.();}catch{}}if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+     }
+@@ -2920,9 +2934,9 @@
+       // The review outlives the in-flight request. Keep its binding valid after
+       // promptAbort is cleared, while continuing to enforce model/session/policy.
+       const bindingCurrent=()=>drawingCurrent()&&(!source?.workspaceGuard||source.workspaceGuard()===true)&&selectionCurrent()&&sessionGuard()===true&&owner.current()===true&&
+-        currentPricingPolicy()?.version===policy.version&&currentPricingPolicy()?.config?.xiaotao_online?.operation_art_v3===true&&(!visual||currentPricingPolicy()?.config?.xiaotao_online?.operation_vision_chat_v3===true)&&onlineOperationDecimalConfirmed();
++        pricingBindingCurrent(policy.version)&&terms.operation_art_v3===true&&(!visual||terms.operation_vision_chat_v3===true)&&terms.billing_scope==='operation'&&decimalCreditsPolicy(terms);
+       const current=()=>promptAbort===abort&&bindingCurrent()&&(!source?.attachmentStillCurrent||source.attachmentStillCurrent()===true);
+-      state.pending=true;state.error='';state.status='正在准备所选模型的绘图提示词草稿。';if(recordMessage)pushUser(message);notify();
++      state.pending=true;state.error='';state.status='正在优化绘图提示词…';if(recordMessage)pushUser(message);notify();
+       try {
+         const receipt=await tools.execute({action:'image_optimize',prompt:selectedPrompt,generationMode:visual?'img2img':'txt2img'},
+           // The exact intent is an operation request, not a visual edit brief.
+@@ -2934,6 +2948,11 @@
+           quota?.status!=='settled'||creditUnits(quota.settled_credits)===null||(quota.uncollected_credits!==undefined&&quota.uncollected_credits!==0)) {
+           if(typeof receipt?.reviewId==='string')tools.cancelImageReview?.(receipt.reviewId);
+           throw Error('优化草稿或模型状态无效，未应用。');
++        }
++        if(generateAfterReview!==true){
++          applyOptimizedDrawingPrompt(receipt,current);
++          state.messages.push({role:'assistant',content:'绘图提示词已优化并更新到输入框。'});
++          state.status='绘图提示词已优化并更新。';return true;
+         }
+         pendingFoartImageReview={id:receipt.reviewId,selection:selected};foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;
+         state.proposal={kind:'foart-online-review',surface:'drawing',prompt:receipt.prompt,generateRequested:generateAfterReview===true&&receipt.generationAvailable===true,promptOptimization:{reviewRequired:true}};state.proposalSnapshot=null;state.applied=false;
+@@ -2958,10 +2977,9 @@
+         const receipt=await tools.execute({action:'image_optimize',prompt:selectedPrompt,generationMode:mode},
+           {provider:selected.provider,modelId:selected.modelId,requirements:source?.requirements??message,signal:abort.signal,selectionStillCurrent:selectionCurrent,onStatus:text=>{if(current()){state.status=text;notify();}}});
+         if(!current()||receipt?.phase!=='review'||receipt.optimization?.reviewRequired!==true||typeof receipt.reviewId!=='string'||typeof receipt.prompt!=='string'||typeof receipt.modelPrompt!=='string')throw Error('本地优化草稿或模型状态无效，未应用。');
+-        pendingFoartImageReview={id:receipt.reviewId,selection:selected};foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;
+-        state.proposal={kind:'foart-online-review',surface:'drawing',prompt:receipt.prompt,promptOptimization:{reviewRequired:true}};state.proposalSnapshot=null;state.applied=false;
+-        state.messages.push({role:'assistant',content:'请核对本地免费优化草稿；当前未写入或生成。确认后可应用到绘图，生成需另行手动操作。\n\n'+receipt.prompt+'\n\n英文执行稿：\n'+receipt.modelPrompt});
+-        state.status='等待核对草稿';return true;
++        applyOptimizedDrawingPrompt(receipt,current);
++        state.messages.push({role:'assistant',content:'绘图提示词已优化并更新到输入框。'});
++        state.status='绘图提示词已优化并更新。';return true;
+       }catch(error){state.error=String(error?.message||error);state.status='未应用或生成图片。';return false;}
+       finally{if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+     }
+@@ -2987,10 +3005,10 @@
+       const owner=selected.provider==='api'?api()?.captureFoartBillingOwner?.():null,sessionGuard=selected.provider==='api'?api()?.captureFoartSessionGuard?.():null;
+       if(selected.provider==='api'&&(owner?.current?.()!==true||typeof sessionGuard!=='function'||sessionGuard()!==true)){state.error='无法确认当前账号，未提交或扣费。';notify();return false;}
+       const policyVersion=selected.provider==='api'?currentPricingPolicy()?.version:null;
+-      promptAbort=abort;state.pending=true;state.error='';state.status='正在改写音频文字提示词；不会生成音频。';
++      promptAbort=abort;state.pending=true;state.error='';state.status='正在优化音频提示词…';
+       if(recordMessage)pushUser(message);notify();
+       const bindingCurrent=()=>!abort.signal.aborted&&state.provider===selected.provider&&state.modelId===selected.modelId&&businessModelEpoch===selected.epoch&&
+-        (selected.provider!=='api'||sessionGuard()===true&&owner.current()===true&&currentPricingPolicy()?.version===policyVersion);
++        (selected.provider!=='api'||sessionGuard()===true&&owner.current()===true&&pricingBindingCurrent(policyVersion));
+       const current=()=>promptAbort===abort&&bindingCurrent()&&(!review||review.isCurrent()===true);
+       const cancel=()=>{if(selected.provider==='local')void Promise.resolve(api()?.promptAssistantCancelRequest?.({requestId})).catch(()=>{});};
+       abort.signal.addEventListener('abort',cancel,{once:true});
+@@ -3005,9 +3023,9 @@
+         if(selected.provider==='api'&&(handoff.analysisBackend!=='runninghub'||handoff.modelIdentity?.id!==selected.modelId))throw Error('在线模型身份未确认，结果未采用，请核对账单。');
+         const text=String(data?.prompt||'').trim();if(!text||text.length>4000)throw Error('音频文字改写没有返回有效内容。');
+         if(selected.provider==='api'&&(data.quota?.status!=='settled'||creditUnits(data.quota.settled_credits)===null||(data.quota.uncollected_credits||0)>0))throw Error('账单状态未确认，请勿重复提交。');
+-        if(review)queueMediaPromptReview({surface:'audio',prompt:text,snapshot:review,bindingCurrent});
+-        state.messages.push({role:'assistant',content:'音频文字提示词草稿（请检查）：\n'+text+'\n\n仅处理文字，未分析或生成音频。',...(selected.provider==='api'?{receipts:['本次实扣 '+displayCredits(data.quota.settled_credits)+' 积分（估算 '+displayCredits(data.quota.quote_estimated_credits)+' 积分）']}:{})});
+-        state.status=review?'请核对音频提示词草稿。':'文字改写完成，未生成音频。';return true;
++        if(review)await applyOptimizedMediaPrompt({surface:'audio',prompt:text,snapshot:review,bindingCurrent});
++        state.messages.push({role:'assistant',content:review?'音频提示词已优化并更新到输入框。':'音频提示词已优化：\n'+text,...(selected.provider==='api'?{receipts:['本次实扣 '+displayCredits(data.quota.settled_credits)+' 积分。']}:{})});
++        state.status=review?'音频提示词已优化并更新。':'音频提示词已优化。';return true;
+       }catch(error){state.error=String(error?.message||error);state.status='文字改写未完成，未生成音频。';return false;}
+       finally{abort.signal.removeEventListener('abort',cancel);if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+     }
+@@ -3230,7 +3248,7 @@
+     mediaPromptApply.onclick=event=>void controller.applyMediaPromptReview(event);mediaPromptCancel.onclick=event=>controller.cancelMediaPromptReview(event);mediaPromptUndo.onclick=event=>void controller.undoMediaPromptReview(event);
+     mediaPromptActions.append(mediaPromptApply,mediaPromptCancel,mediaPromptUndo);mediaPromptPanel.append(mediaPromptText,mediaPromptActions);
+     const tools = el('div', 'nf-xiaotao-tools');
+-    const billingAlerts=el('div','nf-xiaotao-billing-alerts');billingAlerts.setAttribute('role','alert');billingAlerts.setAttribute('aria-label','小桃模型积分提示');Object.assign(billingAlerts.style,{maxHeight:'110px',overflowY:'auto',flex:'0 1 auto'});
++    const billingAlerts=el('div','nf-xiaotao-billing-alerts');billingAlerts.setAttribute('role','status');billingAlerts.setAttribute('aria-live','polite');billingAlerts.setAttribute('aria-label','小桃模型积分提示');Object.assign(billingAlerts.style,{flex:'0 0 auto'});
+     const status = el('div', 'nf-xiaotao-status'); status.setAttribute('role', 'status'); const error = el('p', 'nf-xiaotao-error'); error.setAttribute('role', 'alert');
+     const footer = el('form', 'nf-xiaotao-compose'), input = el('textarea'); input.rows = 3; input.placeholder = '有什么需要我帮助的？'; input.setAttribute('aria-label', '给智能助手的消息');
+     const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), modelSelect = el('select', 'nf-xiaotao-model-select'), newConversation = el('button', '', '新对话'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送'), imageReverse = el('button', '', '反推图片'), imageStyle = el('button', '', '分析画风');
+@@ -3397,14 +3415,10 @@
+       const businessVisible=root.electronAPI?.qwenBusinessAvailableSync?.()===true && state.provider==='local' && state.modelId==='qwen3.5-9b-heretic';
+       imageReverse.hidden=imageStyle.hidden=!businessVisible;
+       lastPricingKey=controller.pricingPolicyKey();
+-      const artNotices=controller.artBillingNotices(),operationNotices=controller.operationRecoveryNotices(),businessNotices=controller.visibleBillingNotices();
+-      billingAlerts.replaceChildren();billingAlerts.hidden=!businessNotices.length&&!artNotices.length&&Array.isArray(operationNotices)&&!operationNotices.length;
+-      for(const row of businessNotices){const item=el('p','nf-xiaotao-error',billingNoticeText(row)),dismiss=el('button','','知道了');dismiss.type='button';dismiss.setAttribute('aria-label','关闭这条积分提示');dismiss.onclick=()=>controller.dismissBillingNotice(row.id);item.append(dismiss);billingAlerts.append(item);}
+-      for(const row of artNotices){
+-        const label=CHAT_MODELS[row.modelId]?.label||'\u5728\u7ebf\u6a21\u578b';
+-        const detail=row.unknown?'\u672c\u6b21\u8bf7\u6c42\u79ef\u5206\u72b6\u6001\u5f85\u6838\u5bf9\uff0c\u8bf7\u52ff\u91cd\u590d\u63d0\u4ea4\u3002':`\u5df2\u6263 ${row.confirmed} \u79ef\u5206\uff1b\u6309\u63a5\u53e3\u7528\u91cf\u4e0e\u76ee\u5f55\u8d39\u7387\u8ba1\u7b97${row.cacheKnown?'':'\uff0c\u7f13\u5b58\u7528\u91cf\u672a\u77e5'}\uff0c\u975e\u4f9b\u5e94\u5546\u5b9e\u8d26\u3002`;
+-        const item=el('p','nf-xiaotao-error',`${label}\uff1a${detail}`),dismiss=el('button','','\u77e5\u9053\u4e86');dismiss.type='button';dismiss.setAttribute('aria-label','\u5173\u95ed\u7f8e\u5de5\u79ef\u5206\u72b6\u6001\u63d0\u793a');dismiss.onclick=()=>controller.dismissArtBillingNotice(row.id);item.append(dismiss);billingAlerts.append(item);
+-      }
++      const artNotices=controller.artBillingNotices(),operationNotices=state.pending?[]:controller.operationRecoveryNotices(),businessNotices=controller.visibleBillingNotices();
++      const latestNotice=businessNotices.at(-1)||artNotices.at(-1);
++      billingAlerts.replaceChildren();billingAlerts.hidden=!latestNotice&&Array.isArray(operationNotices)&&!operationNotices.length;
++      if(latestNotice)billingAlerts.append(el('p','nf-xiaotao-billing-note',billingNoticeText(latestNotice)));
+       if(operationNotices===null)billingAlerts.append(el('p','nf-xiaotao-error','无法读取待核对账单记录，在线操作暂不可提交。'));
+       for(const row of operationNotices||[]){
+         const status=row.recovery?.status,settled=status==='settled',detail=settled
+@@ -3423,7 +3437,7 @@
+         rendered = state.messages.slice(); messages.replaceChildren();
+         const rows = conversationRows(state.messages);
+         if (!rows.length) messages.append(intro);
+-        for (const row of rows) messages.append(renderConversationRow(doc, row, {copyText, chooseUploadDestination:controller.chooseUploadDestination}));
++        for (const row of rows) messages.append(renderConversationRow(doc, {...row,receipts:[]}, {copyText, chooseUploadDestination:controller.chooseUploadDestination}));
+         messages.scrollTop = messages.scrollHeight;
+       }
+       const stagedItems = state.staged || []; stagedRow.hidden = !stagedItems.length; stagedRow.replaceChildren(); for (const item of stagedItems) {const card=el('div','nf-xiaotao-staged-item');card.setAttribute('data-status',item.status);if(item.status==='reading')card.setAttribute('aria-busy','true');const imagePreview=item.kind==='image' && item.previewUrl;const thumb=imagePreview?el('img','nf-xiaotao-staged-thumb'):el('div','nf-xiaotao-staged-fallback',item.kind==='video'?'视频':item.kind==='audio'?'音频':'文件');if(imagePreview){thumb.src=item.previewUrl;thumb.alt=item.name;thumb.setAttribute('alt',item.name);}if(item.status==='reading')card.append(el('span','nf-xiaotao-staged-spinner'));const remove=el('button','nf-xiaotao-staged-remove','×');remove.type='button';remove.setAttribute('aria-label','移除 '+item.name);remove.onclick=event=>{event.preventDefault?.();event.stopPropagation?.();controller.removeStaged(item.id);};card.append(thumb,remove);stagedRow.append(card);}
+--- a/novaflow-web/renderer/xiaotao-prompt-source.js
++++ b/novaflow-web/renderer/xiaotao-prompt-source.js
+@@ -14,8 +14,20 @@
+   const revision = /^(?:(?:请|麻烦|帮我|给我|那就|再|把它|把画面|将其|将画面)[，,。\s]*)*(?:改成|改为|换成|换为|调整成|调整为|增加|加入|添加|去掉|移除|删除|保留|保持|强调|弱化|缩短|延长)/;
+   const operationOnly = /^(?:(?:请|麻烦|帮我|给我|把|将|对|一下|下|再|只|仅|直接|当前|页面|输入框|下面|下方|对话|聊天|里的|中的|这段|这个|该|的|首尾帧|首尾|视频|画面|绘图|生图|编辑|风格|音乐|音效|音频|ui|UI|布局|角色|提示词|提示语|提示|prompt|优化|润色|改写|整理|完善|增强|一下|即可|就好|生成草稿)[\s，,。.!！：:、]*)+$/i;
+
++  function isPromptConversation(instruction) {
++    const request=text(instruction),head=request.split(/[:：]/,1)[0];
++    // Inspect the instruction, never the prompt text following an explicit
++    // colon. A complaint mentioning an action is not permission to run it.
++    const explicit=/^(?:(?:请|麻烦|帮我|给我|先|再|直接|然后|那就|把|将)\s*)*(?:优化|润色|改写|整理|完善|增强|改成|改为|调整成|调整为)/;
++    const clauses=head.split(/[，,。；;！？!?\n]+/).map(text).filter(Boolean);
++    if(clauses.some(clause=>explicit.test(clause)))return false;
++    return /为什么|为何|怎么|如何|什么意思|什么原因|正常对话|普通对话|无法.{0,6}对话|不能.{0,6}对话|一直报错|总是报错|反馈极慢|响应.{0,4}慢|做不到/.test(head)
++      || /(?:优化|润色|改写|提示词).{0,16}(?:失败|报错|不正常|不成功|很慢|太慢|不能用|用不了)/.test(head);
++  }
++
+   function classifyPromptAction(instruction) {
+     const request=text(instruction);
++    if(isPromptConversation(request))return 'none';
+     if(!request||/(?:不|不要|不用|无需|别|禁止)(?:再|直接|自动)?\s*(?:优化|润色|改写|整理|完善|增强)/.test(request))return 'none';
+     const revisionOnly=revision.test(request) && !/(?:骨骼|图层|插槽|工程|素材|文件|参数|时长|帧率|关键帧|镜头轨道)/.test(request);
+     if(!revisionOnly&&!/(?:优化|润色|改写|整理|完善|增强)/.test(request))return 'none';
+@@ -55,6 +67,6 @@
+     if (chat) return ready('conversation', chat);
+     return ask('both-prompts-empty');
+   }
+-  return Object.freeze({ resolvePromptSource, extractTurnPrompt, classifyPromptAction,
++  return Object.freeze({ resolvePromptSource, extractTurnPrompt, classifyPromptAction, isPromptConversation,
+     isOptimizationRequest: instruction => classifyPromptAction(instruction)==='optimize' });
+ });
+--- a/novaflow-web/packages/shared/src/xiaotao-operation-v3-chat.mjs
++++ b/novaflow-web/packages/shared/src/xiaotao-operation-v3-chat.mjs
+@@ -6,6 +6,7 @@
+ import {canonicalizeXiaotaoV3OperationIntent} from './xiaotao-operation-v3-prepare.mjs';
+ import {inspectXiaotaoV3StyleReply} from './xiaotao-style-framework-v3.mjs';
+ import {inspectXiaotaoV3VideoReply} from './xiaotao-video-framework-v3.mjs';
++import {xiaotaoVideoResponseFormat} from './xiaotao-video-response-format.mjs';
+ import {inspectXiaotaoV3UiReply} from './xiaotao-ui-framework-v3.mjs';
+ import {companionPricingPolicy,COMPANION_OUTPUT_TOKENS} from './companion-pricing.mjs';
+ import {estimateXiaotaoOnlineCredits} from './feature-credits.mjs';
+@@ -156,7 +157,8 @@
+     // held for reconciliation, even if this process has not seen a response.
+     if(signal?.aborted || await isCurrent(actor)!==true)fail('operation-status-unknown',503);
+     let posted;
+-    try {posted=await infer({body:{model,input:compiled.input,temperature:audioRewrite?.5:.4,reasoning:{effort:'low'},max_output_tokens:outputTokens},
++    try {posted=await infer({body:{model,input:compiled.input,temperature:audioRewrite?.5:.4,reasoning:{effort:'low'},max_output_tokens:outputTokens,
++      ...(videoRewrite?{text:{format:xiaotaoVideoResponseFormat(intent.h3Mode)}}:{})},
+       model,signal,maxRetries:0,includeBillingIntegrity:true});}
+     catch {fail('operation-status-unknown',503);}
+     const data=posted?.data;
+--- a/novaflow-web/renderer/novaflow-web-runtime.js
++++ b/novaflow-web/renderer/novaflow-web-runtime.js
+@@ -1014,7 +1014,7 @@
+         if(settled){
+           lastQuota=quota;
+           if(operationArtV3&&!(result.settlement.uncollectedCredits>0)){v3FinalSettled=true;if(!cancelled&&recoveryOwner?.current?.())operationRecoveryForget(recoveryOwner,recoveryId);}
+-          if(!operationArtV3&&!notice(quote.requestId,quota,false))
++          if(!notice(quote.requestId,quota,false))
+             return no('billing-record-unavailable','本阶段已结算，但账单记录未能更新，请核对实际扣费。',{quota,billingUnknown:true});
+           pendingId='';
+         }
+@@ -1022,8 +1022,11 @@
+         if(!current())return no('assistant-selection-changed',settled?'模型或会话已变，本阶段已结算，请核对账单。':'模型或会话已变，账单状态待核对。',{...(quota?{quota}:{}),billingUnknown:!settled});
+         if(operationArtV3&&settled&&result.settlement.uncollectedCredits>0)
+           return no('operation-incomplete',incompleteSettlementMessage({charged:result.settlement.settledCredits,uncollected:result.settlement.uncollectedCredits}),{quota,billingUnknown:true});
+-        if(result?.ok!==true||!settled)return no(result?.errorCode||'assistant-business-invalid-result',
+-          settled?'本阶段未完成，请查看实际扣费。':'本阶段未完成，账单状态待核对。',{...(quota?{quota}:{}),billingUnknown:!settled});
++        if(result?.ok!==true||!settled){
++          console.warn('[NovaFlow] Xiaotao art phase rejected',stage,result?.errorCode||'assistant-business-invalid-result',result?.validationIssue||'');
++          const message=({'structure-invalid':'模型返回的绘图提示词未通过完整性校验。','english-invalid':'模型返回的英文执行稿未通过校验。','provider-incomplete':'模型回复未完整返回。'})[result?.errorCode]||'本阶段未完成。';
++          return no(result?.errorCode||'assistant-business-invalid-result',settled?message:'本阶段未完成，账单状态待核对。',{...(quota?{quota}:{}),billingUnknown:!settled});
++        }
+         if(stage==='structure'){
+           if(gptImage){
+             if(result.releaseEligible!==true||result.reviewRequired!==true||result.targetEngine!=='gpt-image-2.5'||
+--- a/novaflow-web/renderer/xiaotao-art-agent.css
++++ b/novaflow-web/renderer/xiaotao-art-agent.css
+@@ -140,3 +140,7 @@
+ #nf-xiaotao-art-root .nf-xiaotao-legacy summary { cursor:pointer; }
+ #nf-xiaotao-art-root .nf-xiaotao-legacy p { margin:6px 0; }
+ #nf-xiaotao-art-root .nf-xiaotao-legacy pre { max-height:120px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
++
++/* One quiet amount for the latest request; normal settlement is not an alert. */
++#nf-xiaotao-art-root .nf-xiaotao-billing-alerts { padding:3px 14px 5px; }
++#nf-xiaotao-art-root .nf-xiaotao-billing-note { margin:0; padding:0; border:0; background:transparent; color:#999999; font-size:11px; line-height:1.5; font-variant-numeric:tabular-nums; }
+--- a/novaflow-web/packages/shared/src/companion-art-business.mjs
++++ b/novaflow-web/packages/shared/src/companion-art-business.mjs
+@@ -104,7 +104,11 @@
+ }
+ function validateEnglish(display,output) {
+   if(typeof output!=='string')fail('english-invalid');
+-  const trimmed=output.trim();
++  // Providers sometimes translate the source section labels literally despite
++  // the requested English headings. Canonicalize only equivalent headings;
++  // the complete six-section order and all content checks still apply below.
++  const trimmed=output.trim().replace(/^[ \t]*\[(Lighting (?:and|&) Colou?r|User Additional Requirements|Additional Requirements|User Requirements)\][ \t]*$/gim,
++    (_heading,label)=>/^lighting/i.test(label)?'[Lighting]':'[Requirements]');
+   const refs=display.match(/<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/g)||[];
+   const literals=[...display.matchAll(/(?:文字|写着|字样|标签|lettering|text)[^\n]{0,30}?[「“"]([^」”"\n]+)[」”"]/gi)].map(m=>m[1]);
+   if(!trimmed||[...refs,...literals].some(s=>!trimmed.includes(s))||(trimmed.match(/[A-Za-z]+/g)||[]).length<8)fail('english-invalid');
+@@ -280,13 +284,13 @@
+           return v3Settlement(q.requestId,receipt,outcome);
+         };
+         const sessionFresh=async()=>{try{return sameActor(actor,boundActor)&&await isCurrent(boundActor,q.model)===true;}catch{return false;}};
+-        const cancel=async errorCode=>{const settlement=await finish('cancel');if(!await sessionFresh())fail('selection-stale');return {ok:false,errorCode,settlement};};
++        const cancel=async(errorCode,validationIssue)=>{const settlement=await finish('cancel');if(!await sessionFresh())fail('selection-stale');return {ok:false,errorCode,settlement,...(validationIssue?{validationIssue:String(validationIssue).slice(0,200)}:{})};};
+         const fresh=async()=>!signal?.aborted&&await sessionFresh();
+         if(!await fresh())return cancel('cancelled-after-dispatch');
+         if(result.response?.status!=='completed'||result.response?.finish_reason!=='stop'||!Array.isArray(result.response?.output)||
+           result.response.output.some(item=>item?.type==='function_call'))return cancel('provider-incomplete');
+         if(q.stage==='structure'){
+-          let compiled;try{compiled=compiler.grokResponsesPublicResult(result.response,q.prepared.options);}catch{return cancel('structure-invalid');}
++          let compiled;try{compiled=compiler.grokResponsesPublicResult(result.response,q.prepared.options);}catch(error){return cancel('structure-invalid',error?.message);}
+           if(q.prepared.kind==='gpt-image-2.5'){
+             if(typeof compiled.output_text!=='string'||!compiled.output_text.trim()||compiled.has_negative_prompt===true)return cancel('structure-invalid');
+             const parentHash=hash({actor:boundActor,model:q.model,operation:q.operation,structureHash:q.requestHash,display:compiled.output_text});
