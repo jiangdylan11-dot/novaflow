@@ -1,0 +1,12 @@
+{
+  "version": "2.0.289",
+  "baselineTreeSha256": "5920351e6d0b0d2994290feced35d7e3b1d1af51451f88ea84f0b609743993c2",
+  "treeSha256": "2ea23dfae044f9f14ae05d9e9ed4ab4e9008cb4e7bc8828f6d1ee1d859d4f5f9",
+  "files": 739,
+  "componentSha256": {
+    "control": "609d2ef067d82160f3bfb61970b4c42a146db8c55ed72ff27d4202ca141ee220",
+    "backend": "8e5f8aefccb54f54aa89ca91f7d5ad482737ffb2a25257953c53836bd85bf405",
+    "companion": "518c338ee986cd0717ea6d69b9d79cc78c9c5a13929cbd812584f15a1a8995b4"
+  },
+  "zipSha256": "2a098381feb0576a453e755023371f403b8f0d5d30078b920a42051a5109586e"
+}
