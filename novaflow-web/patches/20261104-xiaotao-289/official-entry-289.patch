@@ -1,0 +1,100 @@
+--- a/novaflow-web/tools/package-site.mjs
++++ b/novaflow-web/tools/package-site.mjs
+@@ -22,6 +22,17 @@
+ import { prepareDeploymentArtReview } from './art-knowledge-deploy-review.mjs';
+ import {linkFullAssets,assertFullDestinations} from './isolated-full-site-policy.mjs';
+ import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
++
++// 289 frozen release: no shared-output build or default deployment fallback.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-289'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-289','--package-only','--control-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web','--auth-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 289 release arguments');
++  const helper=new URL('../../work/xiaotao-local-289-20261104/release-289.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='69efd7af3b432495feae7441ffc0190d0155bb9980356b9b5cc0517bcf1816dd';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('289 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).package289(args)));process.exit(0);
++}
+ 
+ // 288 frozen release: never fall through to shared build or default deploy.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
+--- a/novaflow-web/tools/deploy-site.mjs
++++ b/novaflow-web/tools/deploy-site.mjs
+@@ -6,6 +6,17 @@
+ import {randomUUID,createHash} from 'node:crypto';
+ import {readConfig} from './set-web-config.mjs';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++
++// 289 frozen release: no shared-output build or default deployment fallback.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-289'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-289','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 289 release arguments');
++  const helper=new URL('../../work/xiaotao-local-289-20261104/release-289.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='69efd7af3b432495feae7441ffc0190d0155bb9980356b9b5cc0517bcf1816dd';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('289 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute289('site',args)));process.exit(0);
++}
+ 
+ // 288 frozen release: never fall through to shared build or default deploy.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
+--- a/novaflow-web/tools/deploy-control-plane.mjs
++++ b/novaflow-web/tools/deploy-control-plane.mjs
+@@ -9,6 +9,17 @@
+ import {bundleEdgeFunction} from './bundle-edge-function.mjs';
+ import {syncEdgeFunction} from './sync-edge-function.mjs';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++
++// 289 frozen release: no shared-output build or default deployment fallback.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-289'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-289','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 289 release arguments');
++  const helper=new URL('../../work/xiaotao-local-289-20261104/release-289.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='69efd7af3b432495feae7441ffc0190d0155bb9980356b9b5cc0517bcf1816dd';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('289 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute289('control',args)));process.exit(0);
++}
+ 
+ // 288 frozen release: never fall through to shared build or default deploy.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
+--- a/novaflow-web/tools/deploy-backend.mjs
++++ b/novaflow-web/tools/deploy-backend.mjs
+@@ -5,6 +5,17 @@
+ import {dirname,resolve,join} from 'node:path';
+ import {setTimeout as delay} from 'node:timers/promises';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++// 289 frozen release: no shared-output build or default deployment fallback.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-289'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-289','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 289 release arguments');
++  const helper=new URL('../../work/xiaotao-local-289-20261104/release-289.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='69efd7af3b432495feae7441ffc0190d0155bb9980356b9b5cc0517bcf1816dd';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('289 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute289('backend',args)));process.exit(0);
++}
++
+ // 288 frozen release: never fall through to shared build or default deploy.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
+   const args=process.argv.slice(2),expected=['--local-qwen-288','--execute'];
+--- a/novaflow-web/tools/deploy-companion.mjs
++++ b/novaflow-web/tools/deploy-companion.mjs
+@@ -5,6 +5,17 @@
+ import {dirname,resolve,join} from 'node:path';
+ import {setTimeout as delay} from 'node:timers/promises';
+ import {RELEASE_VERSION} from '../packages/shared/src/release.mjs';
++// 289 frozen release: no shared-output build or default deployment fallback.
++if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-289'))){
++  const args=process.argv.slice(2),expected=['--local-qwen-289','--execute'];
++  if(args.length!==expected.length||new Set(args).size!==args.length||expected.some(arg=>!args.includes(arg)))throw Error('Invalid 289 release arguments');
++  const helper=new URL('../../work/xiaotao-local-289-20261104/release-289.mjs',import.meta.url);
++  const {readFile:readFrozen}=await import('node:fs/promises'),{createHash:createFrozenHash}=await import('node:crypto');
++  const expectedSha='69efd7af3b432495feae7441ffc0190d0155bb9980356b9b5cc0517bcf1816dd';
++  if(!/^[a-f0-9]{64}$/.test(expectedSha)||createFrozenHash('sha256').update(await readFrozen(helper)).digest('hex')!==expectedSha)throw Error('289 release helper not pinned or changed');
++  console.log(JSON.stringify(await (await import(helper)).execute289('companion',args)));process.exit(0);
++}
++
+ // 288 frozen release: never fall through to shared build or default deploy.
+ if(process.argv.slice(2).some(arg=>arg.startsWith('--local-qwen-288'))){
+   const args=process.argv.slice(2),expected=['--local-qwen-288','--execute'];

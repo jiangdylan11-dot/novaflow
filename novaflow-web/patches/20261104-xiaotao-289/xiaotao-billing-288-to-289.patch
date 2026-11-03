@@ -1,0 +1,36 @@
+--- a/novaflow-web/renderer/xiaotao-art-agent.js
++++ b/novaflow-web/renderer/xiaotao-art-agent.js
+@@ -73,7 +73,11 @@
+     return amount.toFixed(6).replace(/\.?0+$/,'');
+   }
+   const cleanBillingNotices = rows => (Array.isArray(rows)?rows:[]).filter(row=>row && typeof row.id==='string' && row.id.length<=100 && CHAT_MODELS[row.modelId]?.provider==='api' && typeof row.unknown==='boolean' && (row.confirmed===null || creditUnits(row.confirmed)!==null) && (row.unknown || row.confirmed!==null) && (row.owner===undefined || typeof row.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(row.owner))).slice(-20).map(({id,modelId,confirmed,unknown,owner})=>({id,modelId,confirmed,unknown,...(owner===undefined?{}:{owner})}));
+-  function billingNoticeText(row) {return row.unknown?'本次扣费待核对':`本次扣费 ${displayCredits(row.confirmed)} 积分`;}
++  function billingNoticeText(row,provider) {return row.unknown?(provider==='local'?'此前在线扣费待核对':'本次扣费待核对'):`本次扣费 ${displayCredits(row.confirmed)} 积分`;}
++  function billingNoticeForView(provider,business,art) {
++    const pending=[...business,...art].filter(row=>row?.unknown===true).at(-1);
++    return pending || (provider==='api' ? business.at(-1)||art.at(-1)||null : null);
++  }
+   function appendBillingNotice(rows,row) {return cleanBillingNotices([...rows.filter(item=>item.id!==row.id&&(item.unknown||item.owner!==row.owner)),row]);}
+   const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
+   const fail = message => { throw new Error(message); };
+@@ -1525,7 +1529,7 @@
+     }
+     function visibleBillingNotices() {
+       let currentOwner='';try {const binding=api()?.captureFoartBillingOwner?.();if(binding?.current?.()===true)currentOwner=binding.owner;}catch {}
+-      return state.billingNotices.filter(row=>row.owner===undefined || row.owner===currentOwner).slice(-1);
++      return state.billingNotices.filter(row=>row.owner===undefined || row.owner===currentOwner);
+     }
+     function dismissBillingNotice(id) {state.billingNotices=state.billingNotices.filter(item=>item.id!==id);notify();}
+     function artBillingNotices() {
+@@ -3467,9 +3471,9 @@
+       imageReverse.hidden=imageStyle.hidden=!businessVisible;
+       lastPricingKey=controller.pricingPolicyKey();
+       const artNotices=controller.artBillingNotices(),operationNotices=state.pending?[]:controller.operationRecoveryNotices(),businessNotices=controller.visibleBillingNotices();
+-      const latestNotice=businessNotices.at(-1)||artNotices.at(-1);
++      const latestNotice=billingNoticeForView(state.provider,businessNotices,artNotices);
+       billingAlerts.replaceChildren();billingAlerts.hidden=!latestNotice&&Array.isArray(operationNotices)&&!operationNotices.length;
+-      if(latestNotice)billingAlerts.append(el('p','nf-xiaotao-billing-note',billingNoticeText(latestNotice)));
++      if(latestNotice)billingAlerts.append(el('p','nf-xiaotao-billing-note',billingNoticeText(latestNotice,state.provider)));
+       if(operationNotices===null)billingAlerts.append(el('p','nf-xiaotao-error','无法读取待核对账单记录，在线操作暂不可提交。'));
+       for(const row of operationNotices||[]){
+         const status=row.recovery?.status,settled=status==='settled',detail=settled
