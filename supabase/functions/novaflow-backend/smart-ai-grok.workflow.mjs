@@ -9275,7 +9275,14 @@ function buildGrokImageReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MO
   };
 }
 
+function validateQwen21NativePreservation(source, candidate, instruction) {
+  return ordinaryArtStructuredPromptSourcePreserved(source, candidate, instruction)
+    && ordinaryArtStructuredPromptCriticalAnchorsPreserved(source, candidate, instruction)
+    && ordinaryArtStructuredPromptHardBlocksPreserved(source, candidate, instruction);
+}
+
 export {
+  validateQwen21NativePreservation,
   buildGrokPromptOptimizeRequest,
   buildAudioPromptRequest,
   isAudioPromptPayload,
