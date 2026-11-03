@@ -1,18 +1,43 @@
 // Qwen Image 2.1 native prose, paired in one model call. This is an explicit
 // opt-in contract; the older structured/double-stage requests remain valid.
-export const QWEN21_NATIVE_REWRITE='qwen21-native-rewrite-v2';
+export const QWEN21_NATIVE_REWRITE='qwen21-native-rewrite-v3';
+export const QWEN21_NATIVE_CONTRACTS=Object.freeze(['qwen21-native-rewrite-v2',QWEN21_NATIVE_REWRITE]);
 const fail=message=>{throw Object.assign(new Error(message),{code:'qwen21-rewrite-invalid'});};
 const SYSTEM=`Rewrite an image prompt for Qwen Image 2.1. Return matching Chinese display_prompt and English model_prompt in one JSON object. Both describe exactly the same final image or edit; the two fields are editor/model copies, never bilingual lettering inside the image.
-For text-to-image, write fluent observer prose: medium/style and main subject first, spatial composition and background next, then visible materials, lighting and overall palette. A normal scene needs roughly 250-450 English words; use less for a deliberately simple image and more only when explicit content requires it. No section labels, field inventories, checklists, analysis, vague quality boosters or repeated summary. Preserve intentional simplicity and empty space; do not invent extra subjects, readable text, logos or narrative props.
+For text-to-image, write fluent observer prose: anchor the medium, style, subject and background first. Walk the frame in a coherent spatial order, locating each meaningful element relative to the frame and to other subjects; distinguish foreground, middle distance and background when relevant. Describe the actual material and its response to light, specific color tones, one coherent light source/direction and matching shadows/reflections. Close once on composition and mood. Develop an ordinary scene to roughly 300-500 English words when that adds useful visual decisions, without imposing that length on a deliberately minimal image. Dense posters, charts or multiple panels must spell out all user content and its placement. No section labels, field inventories, checklists, analysis, vague quality boosters or repeated summary. Preserve intentional simplicity and empty space; do not invent extra subjects, readable text, logos or narrative props.
 For image editing, lead with the requested operation. Describe only the targeted changes; use one concise clause to preserve the remaining content, identity, layout and medium. Do not repaint unchanged details or infer unseen features. Keep input reference tokens and their assigned roles. User-given readable text stays verbatim in its original script, including punctuation; translate descriptive prose only. Preserve the user's explicit subjects, counts, colors, positions and constraints. Apply requested changes to the final state instead of retaining conflicting old attributes.
 Canvas dimensions, aspect ratio, sampling and negative prompt are owned by the application: do not change them or insert them as picture content. Return only the two complete strings; do not generate an image.`;
-export function buildQwen21NativeRewrite(input,model){
+const EDIT_SYSTEM=`Rewrite the user's image-editing instruction for Qwen Image 2.1 using the supplied real images. Return only rewritten_prompt in JSON, as one continuous instruction paragraph. If the user instruction is Chinese, write the instruction in Chinese; otherwise use English. Text to appear inside the image is a separate language decision: exact user text first, otherwise retain the image's dominant language, otherwise the user's language. Quote only actual readable artwork text, verbatim, never bilingual glosses or descriptive attributes.
+For changing this image, lead with the requested operation and make the named change strong and unmistakable. Describe only the changed attributes; preserve the untargeted content, identity, product design/count, layout, pose, accessories and rendering medium with a concise blanket clause. Do not describe the old face, clothing, background or style in detail merely to preserve it, since that invites regeneration. Do not soften the requested edit just to preserve identity.
+For making a new scene from a reference subject, actively compose the requested scene and lighting while keeping the referenced identity; do not treat scene creation as a tiny local edit. Ground every visible claim in the supplied images and request; do not invent unseen details, lettering or extra edit operations.
+One image: refer naturally to the image, without adding numbered tags. Preserve any reference tags or protected __NF...__ resource placeholders already supplied by the application verbatim, including for one image; these are bindings, not lettering. Multiple images: use <image1>, <image2>, etc., name each image's role, identify the base canvas when there is one, and say which specific attribute transfers from each reference. A style reference supplies style, not its objects, text or composition. For compositing, preserve identity sources and integrate scale, perspective, contact shadows and illumination coherently. For removal/outpainting, describe only the revealed/extended region needed for continuity. User-selected canvas dimensions, reference order, aspect ratio and sampling remain application parameters; do not insert them into the picture or change them.`;
+export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
+  const nativeEdit=input.promptContract===QWEN21_NATIVE_REWRITE&&input.qwenPromptMode==='img2img';
+  if(nativeEdit){
+    const instruction=input.requirements?.trim()||input.currentPrompt;
+    const descriptive=instruction.replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/gu,'');
+    const language=/[\u3400-\u9fff]/u.test(descriptive)?'zh':'en';
+    return {kind:'qwen21-native',input:{...input},nativeEdit:true,modelPromptLanguage:language,body:{model,store:false,temperature:0,max_output_tokens:2048,
+      input:[{role:'system',content:[{type:'input_text',text:EDIT_SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:'image-editing',current_instruction:input.currentPrompt,requested_changes:input.requirements||'',reference_roles:referenceRoles.map((role,index)=>({image:index+1,role})),instruction_language:language})}]}],
+      text:{format:{type:'json_schema',name:'qwen21_native_edit',strict:true,schema:{type:'object',properties:{rewritten_prompt:{type:'string'}},required:['rewritten_prompt'],additionalProperties:false}}}}};
+  }
   return {kind:'qwen21-native',input:{...input},body:{model,store:false,temperature:0,max_output_tokens:4096,
     input:[{role:'system',content:[{type:'input_text',text:SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:input.qwenPromptMode==='img2img'?'image-editing':'text-to-image',current_prompt:input.currentPrompt,requested_changes:input.requirements||''})}]}],
     text:{format:{type:'json_schema',name:'qwen21_native_rewrite',strict:true,schema:{type:'object',properties:{display_prompt:{type:'string'},model_prompt:{type:'string'}},required:['display_prompt','model_prompt'],additionalProperties:false}}}}};
 }
-function literals(text){return [...String(text).matchAll(/[“「『"]([^”」』"\r\n]+)[”」』"]/gu)].map(m=>m[1]);}
+function literals(text){return [...String(text).matchAll(/(?:“([^”\r\n]+)”|‘([^’\r\n]+)’|「([^」\r\n]+)」|『([^』\r\n]+)』|"([^"\r\n]+)")/gu)].map(m=>m.slice(1).find(Boolean));}
 function refs(text){return String(text).match(/<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/g)||[];}
+function requestedLiterals(input){
+  const source=input.currentPrompt||'',changes=input.requirements||'',base=literals(source),replacement=/(?:文字|标题|标语|标签|文案|text|title|label).{0,30}(?:改为|改成|替换|换成|写成|change|replace)/iu;
+  const oldIn=text=>[...text.matchAll(/(?:从|由)\s*[“‘「『"]([^”’」』"\r\n]+)[”’」』"]\s*(?:改为|改成|替换为|换成)/gu)].map(m=>m[1]);
+  const removed=new Set([...oldIn(source),...oldIn(changes)]),changed=literals(changes);
+  if(changed.length&&base.length===1&&replacement.test(changes))removed.add(base[0]);
+  return [...new Set([...base.filter(x=>!removed.has(x)),...changed.filter(x=>!removed.has(x))])];
+}
+function editedSide(text){
+  const m=/(?:把|将)\s*(左(?:边|侧)|右(?:边|侧))(?:的)?[^，,。；;\n]{0,30}?(?:改成|改为|变成|变为|换成|替换|调整为)/u.exec(text);
+  return m?(m[1].startsWith('左')?'left':'right'):null;
+}
 function explicitFacts(input,display,model){
   const changes=input.requirements||'',replace=/(?:改成|改为|替换|换成|删除|去掉|移除|change|replace|remove)/i.test(changes);
   const source=replace?changes:input.currentPrompt+'\n'+changes;
@@ -32,20 +57,24 @@ function explicitFacts(input,display,model){
 }
 export function compileQwen21NativeRewrite(response,prepared,preserve){
   let value;try{value=JSON.parse(response.output_text);}catch{fail('Qwen 2.1 rewrite must be complete JSON');}
-  if(!value||Array.isArray(value)||Object.keys(value).sort().join(',')!=='display_prompt,model_prompt')fail('Qwen 2.1 rewrite fields invalid');
-  const display=typeof value.display_prompt==='string'?value.display_prompt.trim():'',model=typeof value.model_prompt==='string'?value.model_prompt.trim():'';
-  if(display.length<8||model.length<20||display.length>16000||model.length>20000||(model.match(/[A-Za-z]+/g)||[]).length<8)fail('Qwen 2.1 rewrite incomplete');
+  const nativeEdit=prepared.nativeEdit===true,expected=nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
+  if(!value||Array.isArray(value)||Object.keys(value).sort().join(',')!==expected)fail('Qwen 2.1 rewrite fields invalid');
+  const display=typeof (nativeEdit?value.rewritten_prompt:value.display_prompt)==='string'?(nativeEdit?value.rewritten_prompt:value.display_prompt).trim():'',model=nativeEdit?display:typeof value.model_prompt==='string'?value.model_prompt.trim():'';
+  const language=prepared.modelPromptLanguage||'en';
+  if(display.length<8||model.length<8||display.length>16000||model.length>20000||(language==='en'&&(model.match(/[A-Za-z]+/g)||[]).length<8))fail('Qwen 2.1 rewrite incomplete');
   const input=prepared.input,requirements=input.requirements||'';
   if(typeof preserve!=='function'||preserve(input.currentPrompt,display,requirements)!==true)fail('Qwen 2.1 rewrite lost source constraints');
-  explicitFacts(input,display,model);
+  if(!nativeEdit)explicitFacts(input,display,model);
   // Literal equality is a useful deterministic check, not a semantic proof.
   // Every quoted image string in the Chinese display must survive in English.
-  const exact=[...new Set([...refs(input.currentPrompt),...refs(requirements),...literals(display)])];
+  const exact=[...new Set([...refs(input.currentPrompt),...refs(requirements),...requestedLiterals(input),...literals(display)])];
   for(const item of exact)if(!display.includes(item)||!model.includes(item))fail('Qwen 2.1 rewrite lost lettering or reference');
+  if(nativeEdit){const expectedSide=editedSide(requirements)||editedSide(input.currentPrompt),actualSide=editedSide(display);if(expectedSide&&actualSide&&expectedSide!==actualSide)fail('Qwen 2.1 rewrite changed the edit target side');}
   let prose=model;for(const item of exact)prose=prose.split(item).join('');
-  if(/[\u3400-\u9fff\uf900-\ufaff]/u.test(prose))fail('Qwen 2.1 model prose is not English');
+  if(language==='en'&&/[\u3400-\u9fff\uf900-\ufaff]/u.test(prose))fail('Qwen 2.1 model prose is not English');
   if(/^\s*\[(?:Style|Subjects|Environment|Lighting|Camera|Requirements)\]/im.test(model))fail('Qwen 2.1 model prompt must be native prose');
-  return {displayPrompt:display,modelPrompt:model,modelPromptLanguage:'en',targetEngine:'qwen-2.1',promptContract:QWEN21_NATIVE_REWRITE,
-    modelPromptPolicy:QWEN21_NATIVE_REWRITE,translationValidation:'paired-prose-and-literals',
+  const contract=input.promptContract||QWEN21_NATIVE_REWRITE;
+  return {displayPrompt:display,modelPrompt:model,modelPromptLanguage:language,targetEngine:'qwen-2.1',promptContract:contract,
+    modelPromptPolicy:contract,translationValidation:nativeEdit?'native-edit-and-literals':'paired-prose-and-literals',
     ...(input.supportsNegativePrompt===true?{hasNegativePrompt:true,negativePrompt:input.negativePrompt||''}:{})};
 }
