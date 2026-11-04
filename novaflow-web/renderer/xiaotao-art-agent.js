@@ -2313,7 +2313,8 @@
       state.status='提示词已写入，正在生成…';notify();
       await rt.run();
       if(rt.state.error)throw Error('提示词已写入，但生成没有完成：'+rt.state.error);
-      return {action:op.action,phase:'completed',plannerPrompt:true,prompt:String(rt.state.prompt||''),message:'已写入提示词并完成生成，请在绘图页查看结果。'};
+      const made=rt.selectedResult?.();
+      return {action:op.action,phase:'completed',plannerPrompt:true,prompt:String(rt.state.prompt||''),outputs:made?[{id:made.id,name:made.name||'成图'}]:[],message:'已写入提示词并完成生成，请在绘图页查看结果。'};
     }
     async function prepareQwenCurrentDrawingPrompt(message,{recordMessage=true,source}={}) {
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate;
