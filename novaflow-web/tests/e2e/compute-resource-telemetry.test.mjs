@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require = createRequire(import.meta.url);
-const {cpuSnapshot, cpuPercent, gpuRows} = require('../../worker/src/resource-telemetry.cjs');
+const {cpuSnapshot, cpuPercent, gpuRows, thermalZoneCelsius} = require('../../worker/src/resource-telemetry.cjs');
 
 test('CPU usage is the total non-idle share between two system samples', () => {
   const sample = (user, idle) => [{times:{user,nice:0,sys:0,idle,irq:0}}];
@@ -12,6 +12,13 @@ test('CPU usage is the total non-idle share between two system samples', () => {
   assert.equal(cpuPercent(cpuSnapshot(sample(100, 100)), cpuSnapshot(sample(90, 90))), null);
   assert.equal(cpuSnapshot([{times:{idle: 1}}]), null);
   assert.equal(cpuPercent(cpuSnapshot(sample(100, 100)), cpuSnapshot([...sample(130, 170), ...sample(1, 1)])), null);
+});
+
+test('CPU temperature is the hottest valid Windows thermal zone', () => {
+  assert.equal(thermalZoneCelsius('3715\r\n3702\r\n').toFixed(2),'98.35');
+  assert.equal(thermalZoneCelsius('0\n3010\n').toFixed(2),'27.85');
+  assert.equal(thermalZoneCelsius(''),null);
+  assert.equal(thermalZoneCelsius('0\nbroken\n9999'),null);
 });
 
 test('NVIDIA usage and temperature handle unavailable values and multiple devices', () => {

@@ -33,4 +33,10 @@ function gpuRows(stdout) {
     return {name: match[1].trim(), used, total, temperature: optionalNumber(match[4], 150), percent: optionalNumber(match[5], 100)};
   }).filter(Boolean);
 }
-module.exports = {cpuSnapshot, cpuPercent, gpuRows};
+// Windows thermal zones report tenths of a kelvin. A machine can expose several
+// zones and some are idle placeholders, so the hottest valid one is the reading.
+function thermalZoneCelsius(stdout) {
+  const values = String(stdout || '').trim().split(/\r?\n/).map(line => optionalNumber(line, 4232)).filter(value => value > 2731.5).map(value => value / 10 - 273.15);
+  return values.length ? Math.max(...values) : null;
+}
+module.exports = {cpuSnapshot, cpuPercent, gpuRows, thermalZoneCelsius};

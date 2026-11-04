@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
-const { cpuSnapshot, cpuPercent, gpuRows } = require('../src/resource-telemetry.cjs');
+const { cpuSnapshot, cpuPercent, gpuRows, thermalZoneCelsius } = require('../src/resource-telemetry.cjs');
 const WEBSITE = 'https://foart.net/';
 const CONTROL = 'https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web';
 app.setName('Foart');
@@ -18,6 +18,7 @@ let win, tray, assistant, assistantFactory, operation = null, lastError = '', pa
 let queue = Promise.resolve();
 let resources = { ram: null, vram: null, cpu: null, gpu: null };
 let previousCpu = null;
+let cpuTemperature = null;
 let samplingResources = false;
 function sampleResources() {
   if (samplingResources) return;
@@ -28,8 +29,13 @@ function sampleResources() {
   try { currentCpu = cpuSnapshot(os.cpus()); } catch { /* CPU telemetry unavailable */ }
   const percent = cpuPercent(previousCpu, currentCpu);
   previousCpu = currentCpu;
-  // Windows has no consistently available unprivileged CPU temperature API.
-  resources.cpu = { percent, temperature: null };
+  // This performance counter needs no administrator rights, unlike MSAcpi_ThermalZoneTemperature.
+  if (process.platform === 'win32') execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '(Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation).HighPrecisionTemperature'], { windowsHide: true, timeout: 4000 }, (error, stdout) => {
+    cpuTemperature = error ? null : thermalZoneCelsius(stdout);
+    if (resources.cpu) resources.cpu.temperature = cpuTemperature;
+    emit();
+  });
+  resources.cpu = { percent, temperature: cpuTemperature };
   execFile('nvidia-smi', ['--query-gpu=name,memory.used,memory.total,temperature.gpu,utilization.gpu', '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 5000 }, (error, stdout) => {
     const rows = error ? [] : gpuRows(stdout);
     const name = assistant?.getState().gpu?.name;
