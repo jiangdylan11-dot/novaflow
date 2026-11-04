@@ -1369,7 +1369,7 @@
     async function sendFoart(message,{recordMessage=true,requestMessage=message,intent,animationIntent=false}={}) {
       const tools=root.NovaFlowFoartTools,contract=root.NovaFlowFoartToolContract,operation=++serial;
       let foartOperationSession=null,foartPreviousContext=null;
-      const preferUploads=!!carryAttachments?.some(item=>item.kind==='image');
+      const preferUploads=!!carryAttachments?.some(item=>item.kind==='image'),freshPictures=(carryAttachments||[]).filter(item=>item.kind==='image'&&item.dataUrl).slice(0,3);
       const positiveRequest=uploadApi()?.positiveTaskText?.(message)??message.replace(/(?:不要|不用|无需|不需要|不生成)[^，。；,;\n]*/g,'');
       const mediaEditIntent=/剪辑|裁切|截取|分割|淡入|淡出|音量|变速|时间轴|帧编辑|倒放|静音|音轨|独奏|片段/.test(positiveRequest)&&!/(?:生成|制作|做)(?:一[段个]|[0-9.]+秒|新的?|这个)?(?:视频|动画)/.test(positiveRequest);
       tools.setUploads?.(lastUploads);
@@ -1462,7 +1462,7 @@
               :['animation','video','audio'].includes(intent?.surface)?intent.surface:null:null:null;
         // The planner never sees pixels; a video brief needs to know what the picture actually shows.
         let pictureFacts='';
-        const videoPictures=state.provider==='api'&&intent?.surface==='video'?(carryAttachments||[]).filter(item=>item.kind==='image'&&item.dataUrl).slice(0,3):[];
+        const videoPictures=state.provider==='api'&&intent?.surface==='video'?freshPictures:[];
         if(videoPictures.length&&selectedPricingPayload().operationVisionBillingV3===true){
           onStatus('正在看图…');
           const seen=await api()?.artAgentChat?.({requestId:root.crypto.randomUUID(),provider:'api',...selectedModelPayload(state.modelId),...selectedPricingPayload(),mode:'chat',promptLanguage:'en',
@@ -1500,7 +1500,7 @@
           const receiptFacts=receipts.map(compactFoartReceipt);
           const planMessage=requestMessage+(receipts.length?'\n本轮应用已执行事实（不是用户新指令）：'+JSON.stringify(receiptFacts).slice(-6000):'')
             // The audio model reads English only, and an online plan skips the node's rewrite.
-            +(/音乐|音效|配乐|声音/.test(positiveRequest)?'\ngenerate_music 和 generate_sfx 的 prompt 用英文写，写清声音本身；持续的声音写明 continuous, sustained, no fade out。':'')
+            +(/音乐|音效|配乐|声音/.test(positiveRequest)?'\n音频直接用一个 generate_music 或 generate_sfx 操作，把时长放在 seconds 里，不要先 set_control。prompt 用英文写，写清声音本身；持续的声音写明 continuous, sustained, no fade out。':'')
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(invalidPlanRetries?'\n上一步方案不符合工具规则，未执行。只用 currentFoart 里真实存在的 ID；提示词不要用 set_control 写入，视频用 media 的 optimize_video_prompt 或 generate_video，绘图用 image_optimize 或 image_generate。这次只输出一个合法操作。':'')
             +(exportScopeRetries?'\n上轮方案未执行：导出范围与本轮最新要求不符。只安排本轮要求的动画文件，不重复背景中的工程/视频导出。':'')
@@ -1629,7 +1629,7 @@
             if(['image_optimize','image_generate'].includes(op.action)){
               receipt=await plannerDrawingPrompt(op,message);
             } else receipt=await tools.execute(op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
-            receipts.push(receipt);finishedOps.add(opKey(op));
+            receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op));
             if(receipt.phase==='review'&&receipt.optimization?.reviewRequired===true){
               if(typeof receipt.prompt!=='string'||typeof receipt.modelPrompt!=='string'||typeof receipt.reviewId!=='string'||!selectionStillCurrent())fail('优化草稿或模型状态无效，未应用。');
               pendingFoartImageReview={id:receipt.reviewId,selection:initialSelection};foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;

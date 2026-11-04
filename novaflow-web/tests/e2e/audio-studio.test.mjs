@@ -63,8 +63,8 @@ test('the worker renders a loop longer than the loop and writes the length into 
   const straight = audioGraphExtras(TASK_TYPE.AUDIO_MUSIC, { prompt: 'x', duration_seconds: 30, loop: false });
   assert.equal(straight.generate_seconds, 30);
   const sfx = audioGraphExtras(TASK_TYPE.AUDIO_SFX, { prompt: 'coin pickup,', duration_seconds: 1, reprompt: false });
-  assert.equal(sfx.generate_seconds, 1);
-  assert.equal(sfx.caption_fallback, 'coin pickup. Length: 1 seconds');
+  assert.equal(sfx.generate_seconds, 1.6);
+  assert.equal(sfx.caption_fallback, 'coin pickup. Length: 2 seconds');
   assert.equal(sfx.reprompt, false);
   assert.match(audioRepromptPrompt('sfx', '  打开木门  ', 3.4), /sound design expert[\s\S]*Input: 打开木门\nTarget audio length: 3 seconds\./);
 });
@@ -236,9 +236,9 @@ test('agent track edits synchronize the native header controls with rendered aud
 function nativeAgentAudio({optimize,signal}={}){
  const source=readFileSyncSafe(ROOT+'renderer/audio-studio.tool.js');
  const method=source.slice(source.indexOf('    async agentGenerate(op,'),source.indexOf('    async agentExport()')).replace(/,\s*$/, '');
- const requests=[],submissions=[],state={music:{bpm:100,loop:true},sfx:{seconds:1,count:2,rewrite:true,category:'ui'}};
+ const requests=[],submissions=[],state={board:'b',boards:{b:{}},music:{bpm:100,loop:true},sfx:{seconds:1,count:2,rewrite:true,category:'ui'}};
  const sandbox={state,signal,window:{electronAPI:{smartAiPromptOptimize:async p=>{requests.push(p);return optimize?optimize(p,state):{ok:true,result:{prompt:'A short clean metallic button click, no music.'}};}}},activate(){},setMode(){},syncDockValues(){},musicCaption:()=> 'Harp instrumental, seamless loop.',sfxCaption:()=> 'Original native UI click, clean, no music.',submit:async(type,kind,label,parameters)=>{submissions.push({type,kind,label,parameters});return {ok:true,resourceId:'audio-'+submissions.length,taskId:'task-'+submissions.length,name:'Sfx_'+submissions.length,seconds:1};}};
- const context=createContext(sandbox);runInContext('var nativeApi={'+method+'}',context);
+ const context=createContext(sandbox);runInContext('var ASSISTANT_AUDIO_ACTION_ENABLED=false;var textReviewEpoch=0;var nativeApi={'+method+'}',context);
  return {state,requests,submissions,run:()=>sandbox.nativeApi.agentGenerate({action:'generate_sfx',prompt:'轻微金属按钮点击',count:2},{analysisProvider:'api',signal})};
 }
 test('online audio compiles once with the original SFX frame, preserves Chinese display and reuses the caption for the native batch',async()=>{
