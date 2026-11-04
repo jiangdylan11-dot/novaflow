@@ -2162,6 +2162,11 @@
         } finally {if(operation===serial){stopStatusPolling();activeRequest='';foartAbort=null;state.pending=false;state.operation=null;notify();}}
       } catch(error) {state.history=previousHistory;state.error=String(error?.message||error);state.status='旋转未完成，请核对作品';notify();return false;}
     }
+    // Operation billing sends names and sizes of attachments, never pixels.
+    function foartWireContext(snapshot){
+      const media=/^(?:dataUrl|imageUrl|previewUrl|blob|bytes)$/i;
+      return JSON.parse(JSON.stringify(snapshot,(key,value)=>media.test(key)||typeof value==='string'&&/^data:/i.test(value)?undefined:value));
+    }
     async function sendFoart(message,{recordMessage=true,requestMessage=message,intent,animationIntent=false,musicDraftRequested=false}={}) {
       const tools=root.NovaFlowFoartTools,contract=root.NovaFlowFoartToolContract,operation=++serial;
       const operationFoartV3=state.provider==='api'&&(selectedPricingPayload().operationFoartOpenV3===true||selectedPricingPayload().operationFoartRotationV3===true||
@@ -2327,11 +2332,11 @@
           const plannerSource=imageSourceBinding(snapshot),plannerImages=images.map(item=>({role:item?.role||'reference',dataUrl:item?.dataUrl}));
           const plannerImageGuard=()=>imageGuard()&&imageSourceBinding(tools.capture())===plannerSource&&sameImages(plannerImages,images.map(item=>({role:item?.role||'reference',dataUrl:item?.dataUrl})));
           const responsePromise=finishNow?Promise.resolve({ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:summarize(terminalFacts.length?terminalFacts:receipts),operations:[]}}}):operationFoartV3
-            ?foartOperationSession?api()?.foartOperationResume?.({requestId:activeRequest,session:foartOperationSession,previousContext:foartPreviousContext,receipt:receipts.at(-1),context:snapshot,signal})
-              :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),...(musicDraftRequested===true?{musicDraftRequested:true}:{}),message:planMessage,history:compactFoartHistory(previousHistory),promptLanguage:'en',foartContext:snapshot,signal})
+            ?foartOperationSession?api()?.foartOperationResume?.({requestId:activeRequest,session:foartOperationSession,previousContext:foartPreviousContext,receipt:receipts.at(-1),context:foartWireContext(snapshot),signal})
+              :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),...(musicDraftRequested===true?{musicDraftRequested:true}:{}),message:planMessage,history:compactFoartHistory(previousHistory),promptLanguage:'en',foartContext:foartWireContext(snapshot),signal})
             :api()?.artAgentChat?.({requestId:activeRequest,provider:state.provider,...selectedModelPayload(state.modelId),...selectedPricingPayload(),...(communityUploads() ? {uploads:communityUploads()} : {}),...(animationStage?{foartAnimationStage:animationStage}:{}),mode:'foart',promptLanguage:'en',message:planMessage,history:compactFoartHistory(previousHistory),foartContext:snapshot,images,...(billing&&images.length?{confirmImageUpload:authorizeImages,imageSessionGuard:plannerImageGuard}:{})});
           if(!finishNow)startStatusPolling(operation,activeRequest);const response=await responsePromise;stopStatusPolling();
-          if(operationFoartV3&&(response?.data?.foartOperationSession||response?.session)){foartOperationSession=response.data?.foartOperationSession||response.session;foartPreviousContext=snapshot;billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
+          if(operationFoartV3&&(response?.data?.foartOperationSession||response?.session)){foartOperationSession=response.data?.foartOperationSession||response.session;foartPreviousContext=foartWireContext(snapshot);billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
           else if(!finishNow){if(operationFoartV3&&response?.data?.quota?.status==='settled'){billing.unknown=false;foartOperationSession=null;}collectBilling(billing,response);}
           if(signal.aborted||operation!==serial)return false;
           if(!response?.ok){handlePricingFailure(response);fail(response?.error||'Foart 工具规划未完成');}
@@ -2667,9 +2672,9 @@
         /(?:生成|制作|创建|合成|generate|create).{0,12}(?:音乐|music)|(?:音乐|music).{0,12}(?:生成|制作|创建|合成|generate|create)/i.test(message)&&!forbidsGeneration(message);
       const operationNeedsTools=confirmed||includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
         /打开|关闭|进入|切换|操作|执行|调用|生成|制作|修改|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)/.test(message);
-      const operationGeneral=operationTextOnly&&selectedPricingPayload().operationFoartGeneralV3===true&&!capabilityOnly&&!confirmed&&!includeResult&&!invocationUploads.length&&!!operationNeedsTools;
+      const operationGeneral=operationTextOnly&&selectedPricingPayload().operationFoartGeneralV3===true&&!capabilityOnly&&!confirmed&&!includeResult&&!!operationNeedsTools;
       if(operationTextOnly && !capabilityOnly && !operationOpen && !operationRotation && !operationAudio && !operationGeneral && operationNeedsTools) {
-        state.error=selectedPricingPayload().operationFoartGeneralV3===true&&invocationUploads.length?'在线操作暂不支持带附件，请先移除附件再发送。':operationVision?'当前操作级计费仅支持独立的文字和图片聊天；工具、作品上下文及音视频附件尚未接入。':'当前操作级计费仅支持独立的纯文字聊天；工具、作品上下文和附件尚未接入。';state.status='未提交，不扣积分';notify();return false;
+        state.error=operationVision?'当前操作级计费仅支持独立的文字和图片聊天；工具、作品上下文及音视频附件尚未接入。':'当前操作级计费仅支持独立的纯文字聊天；工具、作品上下文和附件尚未接入。';state.status='未提交，不扣积分';notify();return false;
       }
       if (!(await ensureStaged())) return false;
       if(operationOpen||operationRotation||operationAudio||operationGeneral){if(!root.NovaFlowFoartTools){state.error='工具尚未就绪，本次未提交。';notify();return false;}

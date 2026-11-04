@@ -151,7 +151,7 @@ export function createXiaotaoV3FoartPlanner({enabled=false,secret,loadProvider,r
       ready();const canonical=canonicalizeXiaotaoV3FoartIntent(originalIntent,initialContext),{policy,ports}=await latest();
       if(!policy.models.some(row=>row.id===model&&row.available===true))fail('operation-model-unavailable',503);
       if(canonical.intent.musicDraftRequested===true&&!(foartAudioMusicEnabled===true&&musicPolicyReady(policy)))fail('foart-operation-unsupported',409);
-      if(isIdleDraftRequest(canonical.intent.message)){
+      if(isIdleDraftRequest(canonical.intent.message)&&!(generalAllowed(policy)&&canonical.intent.idleDraftRequested!==true)){
         if(canonical.intent.idleDraftRequested!==true||foartIdleDraftEnabled!==true||policy.config?.xiaotao_online?.operation_foart_idle_draft_v3!==true||xiaotaoCreditAmountPolicy(policy.config)!=='decimal-v1')fail('foart-operation-unsupported',409);
         idleDraftTargets(canonical.initial);
       }
@@ -165,7 +165,7 @@ export function createXiaotaoV3FoartPlanner({enabled=false,secret,loadProvider,r
       ready();const checked=await validateTicket({actor,operationToken,originalIntent,initialContext,isCurrent}),{policy,ports}=await latest();
       if(policy.version!==checked.terms.policyVersion||!policy.models.some(row=>row.id===checked.terms.model&&row.available===true))fail('operation-pricing-unavailable',503);
       if(checked.canonical.intent.musicDraftRequested===true&&!(foartAudioMusicEnabled===true&&musicPolicyReady(policy)))fail('foart-operation-unsupported',409);
-      const idleRequested=isIdleDraftRequest(checked.canonical.intent.message);
+      const idleRequested=isIdleDraftRequest(checked.canonical.intent.message)&&!(generalAllowed(policy)&&checked.canonical.intent.idleDraftRequested!==true);
       if(idleRequested){
         if(checked.canonical.intent.idleDraftRequested!==true||foartIdleDraftEnabled!==true||policy.config?.xiaotao_online?.operation_foart_idle_draft_v3!==true||xiaotaoCreditAmountPolicy(policy.config)!=='decimal-v1')fail('foart-operation-unsupported',409);
         idleDraftTargets(checked.canonical.initial);

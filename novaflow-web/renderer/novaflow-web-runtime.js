@@ -2078,6 +2078,8 @@
     companionCloudUsed.add(id);companionCloudRequests.set(id,controller);
     return {controller,close(){clearTimeout(timer);if(expiryTimer!==null)clearTimeout(expiryTimer);foartSessionObservers.delete(abort);signal?.removeEventListener?.('abort',abort);companionCloudRequests.delete(id);}};
   }
+  const FOART_OPERATION_MESSAGES={'foart-operation-unsupported':'小桃这次没有给出可执行的操作，请换个说法再试。','foart-media-consent-required':'本次请求夹带了图片数据，未提交。','operation-planner-incomplete':'小桃没有给出完整的操作方案，请再试一次。','phase-limit':'这次操作步骤太多，请拆开分几次说。','operation-model-unavailable':'所选模型暂不可用。','operation-pricing-unavailable':'价格已变化，请重新发送。'};
+  const foartOperationMessage=error=>FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message]||String(error?.message||'操作未提交。');
   async function foartOperationStart(payload={}) {
     const guard=captureFoartSessionGuard(),recoveryOwner=captureFoartBillingOwner();
     if(typeof guard!=='function'||!guard()||!recoveryOwner?.current?.())return {ok:false,providerSubmitted:false,errorCode:'assistant-selection-unavailable',error:'登录会话不可用，操作未提交。'};
@@ -2144,7 +2146,7 @@
       return foartOperationResult(result,record,initialContext);
     } catch(error) {
       if(!providerSubmitted&&recoveryId&&recoveryOwner.current())operationRecoveryForget(recoveryOwner,recoveryId);
-      return {ok:false,providerSubmitted,billingUnknown:providerSubmitted,...(providerSubmitted&&session?{session}:{}),errorCode:error?.code||'operation-unavailable',error:providerSubmitted?'操作结果或账单状态待核对，请勿重复提交。':String(error?.message||'操作未提交。')};
+      return {ok:false,providerSubmitted,billingUnknown:providerSubmitted,...(providerSubmitted&&session?{session}:{}),errorCode:error?.code||'operation-unavailable',error:providerSubmitted?(FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message]||'操作结果或账单状态待核对，请勿重复提交。'):foartOperationMessage(error)};
     } finally {request?.close();}
   }
   async function foartOperationResume(payload={}) {
@@ -2175,7 +2177,7 @@
       const value=foartOperationResult(result,record,context);record.state='closed';return value;
     } catch(error) {
       record.state=providerSubmitted?'unknown':'pending';
-      return {ok:false,providerSubmitted,billingUnknown:true,session:payload.session,errorCode:error?.code||'operation-unavailable',error:providerSubmitted?'操作结果或账单状态待核对，请勿重复提交。':String(error?.message||'下一步未提交，请核对前一阶段账单。')};
+      return {ok:false,providerSubmitted,billingUnknown:true,session:payload.session,errorCode:error?.code||'operation-unavailable',error:providerSubmitted?(FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message]||'操作结果或账单状态待核对，请勿重复提交。'):foartOperationMessage(error)};
     } finally {request?.close();}
   }
   async function foartOperationCancel(payload={}) {
