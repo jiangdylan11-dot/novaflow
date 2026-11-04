@@ -53,7 +53,7 @@ function validateStyleImageSize(dataUrl) {
   // The edge runtime's zlib ignores info and returns the bytes themselves, with no engine to read.
   const expected=h*(1+w*channels),input=Buffer.concat(compressed,compressedBytes);let result;
   try{result=inflateSync(input,{maxOutputLength:expected+1,info:true});}catch{fail();}
-  const pixels=Buffer.isBuffer(result)?result:result?.buffer;
+  const pixels=result instanceof Uint8Array?result:result?.buffer;
   if(!pixels||pixels.length!==expected||(result.engine&&result.engine.bytesWritten!==input.length))fail();
   for(let row=0;row<h;row++)if(pixels[row*(1+w*channels)]>4)fail();
 }
