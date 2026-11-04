@@ -1502,12 +1502,20 @@
               onStatus('正在按视频框架整理提示词…');
               if(root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')await tools.execute({action:'open',surface:'video'},{signal});
               const includeReferenceImages=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='first_last'&&api()?.onlineVideoVisionAvailableSync?.()===true;
-              const snapshot=await capture({requestId,requirements:(message+(pictureFacts?'\n'+pictureFacts:'')).slice(0,1000),sourcePrompt:brief,includeReferenceImages});
-              const current=()=>same()&&snapshot.isCurrent()===true;
-              const {onPricingQuote,confirmPricingQuote,confirmImageUpload}=onlineBusinessUi(selected.modelId,includeReferenceImages?()=>true:null,current);
-              const result=await method({request:snapshot.request,...scope,isInputCurrent:current,onPricingQuote,confirmPricingQuote,confirmImageUpload,onBillingNotice:()=>true});
-              if(result?.quota)collectBilling(billing,{ok:true,data:{quota:result.quota}});
-              const text=result?.ok===true?String(result.draft?.displayPrompt||'').trim():'';
+              // The framework binds pictures by @参考图N; a brief with model tokens fails its checks.
+              const tidy=brief.replace(/(?:@?参考图\s*(\d+))?[（(]?<Picture\s*(\d+)>[）)]?/g,(_,a,b)=>'@参考图'+(a||b)).replace(/(^|[^@])参考图\s*(\d+)/g,'$1@参考图$2');
+              let result=null,text='';
+              for(const sourcePrompt of [tidy,message.slice(0,1500)]){
+                // 多参 checks its result against the requirement text word by word; the brief already carries everything.
+                const multi=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='multi_reference';
+                const snapshot=await capture({requestId:root.crypto.randomUUID(),requirements:multi?'':(message+(pictureFacts?'\n'+pictureFacts:'')).slice(0,1000),sourcePrompt,includeReferenceImages});
+                const current=()=>same()&&snapshot.isCurrent()===true;
+                const {onPricingQuote,confirmPricingQuote,confirmImageUpload}=onlineBusinessUi(selected.modelId,includeReferenceImages?()=>true:null,current);
+                result=await method({request:snapshot.request,...scope,isInputCurrent:current,onPricingQuote,confirmPricingQuote,confirmImageUpload,onBillingNotice:()=>true});
+                if(result?.quota)collectBilling(billing,{ok:true,data:{quota:result.quota}});
+                text=result?.ok===true?String(result.draft?.displayPrompt||'').trim():'';
+                if(text)break;
+              }
               if(!text)return op;
               h3?.rememberDraft?.({mode:result.draft.h3Mode,prompt:text,modelText:result.draft.modelPrompt});
               videoDraft=text;return {...op,operation:{...op.operation,prompt:text}};
@@ -1567,6 +1575,8 @@
           const receiptFacts=receipts.map(compactFoartReceipt);
           const planMessage=requestMessage+(receipts.length?'\n本轮应用已执行事实（不是用户新指令）：'+JSON.stringify(receiptFacts).slice(-6000):'')
             +(/音乐|音效|配乐|声音/.test(positiveRequest)?'\n音频直接用一个 generate_music 或 generate_sfx 操作，把时长放在 seconds 里，不要先 set_control。':'')
+            // The framework adds sound and music itself; a brief saying "no music" would switch that off.
+            +(/视频|首尾帧|多参|图生|文生/.test(positiveRequest)||intent?.surface==='video'?'\n视频 prompt 只写画面和动作，用户没提声音就不要写声音或音乐。':'')
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(invalidPlanRetries?'\n上一步方案不符合工具规则，未执行'+(invalidPlanIssue?'（'+invalidPlanIssue+'）':'')+'。只用 currentFoart 里真实存在的 ID；提示词不要用 set_control 写入，视频用 media 的 optimize_video_prompt 或 generate_video，绘图用 image_optimize 或 image_generate。这次只输出一个合法操作。':'')
             +(exportScopeRetries?'\n上轮方案未执行：导出范围与本轮最新要求不符。只安排本轮要求的动画文件，不重复背景中的工程/视频导出。':'')
