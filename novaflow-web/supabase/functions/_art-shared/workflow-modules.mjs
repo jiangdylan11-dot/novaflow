@@ -14,6 +14,7 @@
 
 export const QWEN21_EDIT_LORA_CAPABILITY = 'qwen-image-2.1-turbo-edit-lora-v1';
 export const QWEN21_EDIT_LORA_NAME = 'qwen/qwen2_1-femaledVaginus-nsfw-v1_3-fine_L22-31.safetensors';
+export const QWEN21_UC_LORA_NAME = 'qwen/qwen-image-2.1-uncensored-lora.safetensors';
 
 export const WORKFLOW_MODULES = Object.freeze({
   'novaflow-brand-runtime': {

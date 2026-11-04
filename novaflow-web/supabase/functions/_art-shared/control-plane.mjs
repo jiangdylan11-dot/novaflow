@@ -71,7 +71,7 @@ import {
 } from './tokens.mjs';
 
 import { priceTask } from './pricing.mjs';
-import { isAllowedWorkflowCall, workflowModule, workflowModelId, QWEN21_EDIT_LORA_CAPABILITY, QWEN21_EDIT_LORA_NAME } from './workflow-modules.mjs';
+import { isAllowedWorkflowCall, workflowModule, workflowModelId, QWEN21_EDIT_LORA_CAPABILITY, QWEN21_EDIT_LORA_NAME, QWEN21_UC_LORA_NAME } from './workflow-modules.mjs';
 import { MODEL_MANIFEST, QWEN21_MODEL_ID, findModel } from './model-manifest.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -2153,12 +2153,16 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
       if (!item || !Number.isFinite(strength) || strength < 0 || strength > 2) throw bad('LoRA 已变化或不兼容，请重新选择');
       return { ok: true, item, strength };
     }
-    // A fixed feature is available only when every eligible node reports it compatible.
-    const features = engine ? { qwen21_nsfw_lora: items.some(item => item.name.replace(/\\/g, '/').toLowerCase() === QWEN21_EDIT_LORA_NAME.toLowerCase()) } : undefined;
-    // Keep the complete verified catalogue for validation and old selections.
-    // The browser may hide this switch-managed item from its ordinary picker.
-    const catalogItems = engine ? items.map(item => item.name.replace(/\\/g, '/').toLowerCase() === QWEN21_EDIT_LORA_NAME.toLowerCase()
-      ? { ...item, autoManaged: 'qwen21-nsfw-lora-v1' } : item) : items;
+    // Keep both verified adapters in the catalogue so workers can validate the graph.
+    const managed = new Map([[QWEN21_EDIT_LORA_NAME.toLowerCase(), 'qwen21-nsfw-lora-v1'], [QWEN21_UC_LORA_NAME, 'qwen21-uc-lora-v1']]);
+    const catalogItems = engine ? items.map(item => {
+      const autoManaged = managed.get(item.name.replaceAll('\\', '/').toLowerCase());
+      return autoManaged ? { ...item, autoManaged } : item;
+    }) : items;
+    const features = engine ? {
+      qwen21_nsfw_lora: catalogItems.some(item => item.autoManaged === 'qwen21-nsfw-lora-v1'),
+      qwen21_uc_lora: catalogItems.some(item => item.autoManaged === 'qwen21-uc-lora-v1')
+    } : undefined;
     return { ok: true, items: catalogItems, ...(features ? { features } : {}) };
   }
 

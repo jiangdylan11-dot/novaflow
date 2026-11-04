@@ -1034,6 +1034,7 @@ function estimateTask(taskType, parameters) {
 
 const QWEN21_EDIT_LORA_CAPABILITY = 'qwen-image-2.1-turbo-edit-lora-v1';
 const QWEN21_EDIT_LORA_NAME = 'qwen/qwen2_1-femaledVaginus-nsfw-v1_3-fine_L22-31.safetensors';
+const QWEN21_UC_LORA_NAME = 'qwen/qwen-image-2.1-uncensored-lora.safetensors';
 
 const WORKFLOW_MODULES = Object.freeze({
   'novaflow-brand-runtime': {
@@ -3516,12 +3517,16 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
       if (!item || !Number.isFinite(strength) || strength < 0 || strength > 2) throw bad('LoRA 已变化或不兼容，请重新选择');
       return { ok: true, item, strength };
     }
-    // A fixed feature is available only when every eligible node reports it compatible.
-    const features = engine ? { qwen21_nsfw_lora: items.some(item => item.name.replace(/\\/g, '/').toLowerCase() === QWEN21_EDIT_LORA_NAME.toLowerCase()) } : undefined;
-    // Keep the complete verified catalogue for validation and old selections.
-    // The browser may hide this switch-managed item from its ordinary picker.
-    const catalogItems = engine ? items.map(item => item.name.replace(/\\/g, '/').toLowerCase() === QWEN21_EDIT_LORA_NAME.toLowerCase()
-      ? { ...item, autoManaged: 'qwen21-nsfw-lora-v1' } : item) : items;
+    // Keep both verified adapters in the catalogue so workers can validate the graph.
+    const managed = new Map([[QWEN21_EDIT_LORA_NAME.toLowerCase(), 'qwen21-nsfw-lora-v1'], [QWEN21_UC_LORA_NAME, 'qwen21-uc-lora-v1']]);
+    const catalogItems = engine ? items.map(item => {
+      const autoManaged = managed.get(item.name.replaceAll('\\', '/').toLowerCase());
+      return autoManaged ? { ...item, autoManaged } : item;
+    }) : items;
+    const features = engine ? {
+      qwen21_nsfw_lora: catalogItems.some(item => item.autoManaged === 'qwen21-nsfw-lora-v1'),
+      qwen21_uc_lora: catalogItems.some(item => item.autoManaged === 'qwen21-uc-lora-v1')
+    } : undefined;
     return { ok: true, items: catalogItems, ...(features ? { features } : {}) };
   }
 

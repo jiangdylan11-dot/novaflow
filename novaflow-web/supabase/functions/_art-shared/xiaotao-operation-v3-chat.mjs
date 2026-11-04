@@ -99,7 +99,7 @@ export function createXiaotaoOperationV3Chat({enabled=false,visionEnabled=false,
     if(await isCurrent(actor)!==true)fail('selection-stale',401);
     const sessionFresh=async()=>{try{return await isCurrent(actor)===true;}catch{return false;}};
     const model=untrustedTicketModel(payload.operationToken);
-    const {intent,compiled,intentHash,uiPrepared,uiAdapter}=await canonicalizeXiaotaoV3OperationIntent(payload.intent,{actor,model,isCurrent,visionEnabled,styleEnabled,styleVisionModels,videoRewriteEnabled,uiDraftEnabled,audioRewriteEnabled,legacyH3ReverseEnabled,legacyH3Adapter});
+    const {intent,compiled,intentHash,uiPrepared,uiAdapter}=await canonicalizeXiaotaoV3OperationIntent(payload.intent,{actor,model,isCurrent,visionEnabled,styleEnabled,styleVisionModels,videoRewriteEnabled,uiDraftEnabled,audioRewriteEnabled});
     const loaded=await loadProvider();
     if(!loaded||typeof loaded!=='object'||!loaded.creditConfig||typeof loaded.creditConfig!=='object')fail('operation-pricing-unavailable',503);
     const provider={...loaded,creditConfig:structuredClone(loaded.creditConfig),

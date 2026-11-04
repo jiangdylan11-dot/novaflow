@@ -57,7 +57,7 @@ export function canonicalizeXiaotaoV3ChatIntent(input,{visionEnabled=false}={}) 
   const intentHash=createHash('sha256').update(JSON.stringify({schema:'nf.xiaotao.operation.vision-intent.v1',intent})).digest('hex');
   return {intent,compiled,intentHash};
 }
-export async function canonicalizeXiaotaoV3OperationIntent(input,{actor,model,isCurrent,visionEnabled=false,styleEnabled=false,styleVisionModels=[],videoRewriteEnabled=false,uiDraftEnabled=false,audioRewriteEnabled=false,legacyH3ReverseEnabled=false,legacyH3Adapter}={}) {
+export async function canonicalizeXiaotaoV3OperationIntent(input,{actor,model,isCurrent,visionEnabled=false,styleEnabled=false,styleVisionModels=[],videoRewriteEnabled=false,uiDraftEnabled=false,audioRewriteEnabled=false}={}) {
   if(input?.mode==='style-analysis') {
     if(styleEnabled!==true)fail('operation-intent-unsupported');
     if(input.kind!=='aifx-supplement'&&(visionEnabled!==true||!styleVisionModels.includes(model)))fail('model-vision-unavailable',503);
@@ -94,7 +94,7 @@ export function createXiaotaoOperationV3Prepare({enabled=false,visionEnabled=fal
     if(signal?.aborted)fail('cancelled-before-prepare',409);
     const actor={userId:user.id.toLowerCase(),sessionId};
     if(await isCurrent(actor)!==true)fail('selection-stale',401);
-    const {intentHash,compiled}=await canonicalizeXiaotaoV3OperationIntent(payload.intent,{actor,model:payload.model,isCurrent,visionEnabled,styleEnabled,styleVisionModels,videoRewriteEnabled,uiDraftEnabled,audioRewriteEnabled,legacyH3ReverseEnabled,legacyH3Adapter});
+    const {intentHash,compiled}=await canonicalizeXiaotaoV3OperationIntent(payload.intent,{actor,model:payload.model,isCurrent,visionEnabled,styleEnabled,styleVisionModels,videoRewriteEnabled,uiDraftEnabled,audioRewriteEnabled});
     const loaded=await loadProvider();
     if(!loaded||typeof loaded!=='object'||!loaded.creditConfig||typeof loaded.creditConfig!=='object')fail('operation-pricing-unavailable',503);
     const provider={...loaded,creditConfig:structuredClone(loaded.creditConfig),
