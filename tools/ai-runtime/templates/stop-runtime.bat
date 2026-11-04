@@ -11,7 +11,7 @@ if not defined GENERATED_DIR set "GENERATED_DIR=%TMP%\NovaFlow\AI-Runtime\runtim
 set "PID_FILE=%GENERATED_DIR%\runtime.pid"
 
 if not exist "%RUNTIME_JSON%" (
-  echo NovaFlow AI Runtime runtime.json was not found: "%RUNTIME_JSON%"
+  echo Foart AI Runtime runtime.json was not found: "%RUNTIME_JSON%"
   exit /b 1
 )
 
@@ -26,13 +26,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$listeners=Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue;" ^
   "$owners=@($listeners | Select-Object -ExpandProperty OwningProcess -Unique);" ^
   "$pidValue=0;" ^
-  "if (Test-Path -LiteralPath $env:PID_FILE) { $pidText=(Get-Content -Raw -LiteralPath $env:PID_FILE).Trim(); if ($pidText -match '^\d+$') { $pidValue=[int]$pidText } else { Remove-Item -LiteralPath $env:PID_FILE -Force -ErrorAction SilentlyContinue; Write-Host ('Removed malformed NovaFlow AI Runtime pid file: ' + $env:PID_FILE) } }" ^
+  "if (Test-Path -LiteralPath $env:PID_FILE) { $pidText=(Get-Content -Raw -LiteralPath $env:PID_FILE).Trim(); if ($pidText -match '^\d+$') { $pidValue=[int]$pidText } else { Remove-Item -LiteralPath $env:PID_FILE -Force -ErrorAction SilentlyContinue; Write-Host ('Removed malformed Foart AI Runtime pid file: ' + $env:PID_FILE) } }" ^
   "$targetPid=0;" ^
   "if ($pidValue -gt 0) { $proc=Get-CimInstance Win32_Process -Filter ('ProcessId=' + $pidValue) -ErrorAction SilentlyContinue; $cmd=if ($proc) { [string]$proc.CommandLine } else { '' }; if ((Test-RuntimeCommand $cmd) -and ($owners -contains $pidValue)) { $targetPid=$pidValue } }" ^
   "if (-not $targetPid) { foreach ($owner in $owners) { $ownerProc=Get-CimInstance Win32_Process -Filter ('ProcessId=' + $owner) -ErrorAction SilentlyContinue; $ownerCmd=if ($ownerProc) { [string]$ownerProc.CommandLine } else { '' }; if (Test-RuntimeCommand $ownerCmd) { $targetPid=[int]$owner; break } } }" ^
-  "if (-not $targetPid) { Remove-Item -LiteralPath $env:PID_FILE -Force -ErrorAction SilentlyContinue; Write-Host ('NovaFlow AI Runtime has no verified listener; stale PID removed: ' + $pidValue); exit 0 }" ^
+  "if (-not $targetPid) { Remove-Item -LiteralPath $env:PID_FILE -Force -ErrorAction SilentlyContinue; Write-Host ('Foart AI Runtime has no verified listener; stale PID removed: ' + $pidValue); exit 0 }" ^
   "& taskkill.exe /PID $targetPid /T /F | Out-Null;" ^
   "Remove-Item -LiteralPath $env:PID_FILE -Force -ErrorAction SilentlyContinue;" ^
-  "Write-Host ('NovaFlow AI Runtime stopped. PID: ' + $targetPid);"
+  "Write-Host ('Foart AI Runtime stopped. PID: ' + $targetPid);"
 
 exit /b %ERRORLEVEL%

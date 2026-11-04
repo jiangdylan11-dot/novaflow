@@ -7,6 +7,7 @@ import { createRuntimeServices, videoRuntimeUrl } from './runtime-services.mjs';
 import { createBorrowedRuntimeServices } from './borrowed-runtime-services.mjs';
 import { createPromptAssistant } from './prompt-assistant.mjs';
 import { ensureFlashBrainConfiguration } from './flash-brain-configuration.mjs';
+import { foartRuntimeJsonPath } from './runtime-location.mjs';
 
 // This isolated prototype requires an explicit, trusted startup opt-in. A
 // packaged release must wire it deliberately after integration validation.
@@ -27,7 +28,7 @@ export async function createComputeAssistant(options) {
   // ourselves, so a later runtime restart can follow an updated config.
   const hasExplicitModelsRoot = Boolean(options.modelsRoot);
   const runtimeJsonPath = options.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON
-    || join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow/AI-Runtime/runtime.json');
+    || foartRuntimeJsonPath();
   if (!hasExplicitModelsRoot) {
     try {
       const config = JSON.parse((await readFile(runtimeJsonPath, 'utf8')).replace(/^\uFEFF/, ''));

@@ -25,7 +25,7 @@ NSIS 安装器，非一键（可选安装目录），装到当前用户目录，
 
 | 东西 | 体积 | 从哪来 |
 | --- | --- | --- |
-| ComfyUI + Python + CUDA | 约 7.5 GB | NovaFlow 桌面版的 AI 运行时（`C:\ProgramData\NovaFlow\AI-Runtime\engine`），或者对方自己已有的 ComfyUI |
+| ComfyUI + Python + CUDA | 约 7.5 GB | NovaFlow 桌面版的 AI 运行时（`C:\ProgramData\Foart\AI-Runtime\engine`），或者对方自己已有的 ComfyUI |
 | `Qwen-Rapid-AIO-NSFW-v20.safetensors` | 26.5 GB | 出图要用 |
 | Minimax H3 四件套（模型 / 文本编码器 / 视频 VAE / 音频 VAE） | 39.5 GB | 出视频要用 |
 

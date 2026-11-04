@@ -123,13 +123,13 @@ function Write-RuntimeJson {
     [Parameter(Mandatory=$true)][string] $Path,
     [Parameter(Mandatory=$true)][string] $RuntimeVersion
   )
-  $installPath = "C:\ProgramData\NovaFlow\AI-Runtime"
-  $assetsPath = if (Test-Path -LiteralPath "D:\") { "D:\NovaFlow" } else { "C:\ProgramData\NovaFlow" }
+  $installPath = "C:\ProgramData\Foart\AI-Runtime"
+  $assetsPath = if (Test-Path -LiteralPath "D:\") { "D:\Foart" } else { "C:\ProgramData\Foart" }
   $modelsPath = Join-Path $assetsPath "models"
-  $customNodesPath = Join-Path $assetsPath "custom_nodes"
+  $customNodesPath = Join-Path $installPath "engine\ComfyUI\custom_nodes"
   $json = @(
     "{",
-    '  "name": "NovaFlow AI Runtime",',
+    '  "name": "Foart AI Runtime",',
     ('  "version": "{0}",' -f $RuntimeVersion),
     '  "engine": "comfyui-core",',
     '  "port": 8188,',
@@ -221,7 +221,7 @@ if ($QwenComponentSourcePath) {
   $launcher = @'
 @echo off
 setlocal
-set "RUNTIME=%ProgramData%\NovaFlow\AI-Runtime"
+set "RUNTIME=%ProgramData%\Foart\AI-Runtime"
 if not "%~1"=="" set "RUNTIME=%~1"
 echo Installing the verified Qwen CPU component to: "%RUNTIME%"
 echo This does not change model settings or install model weights.
@@ -247,12 +247,12 @@ if (-not (Test-Path -LiteralPath $readmeTemplate)) {
 $RuntimeSourcePath = Convert-ToFullPath $RuntimeSourcePath
 $OutputRoot = Convert-ToFullPath $OutputRoot
 $unpackedRoot = Join-Path $OutputRoot "unpacked"
-$releaseRoot = Join-Path $unpackedRoot "NovaFlow-AI-Runtime"
+$releaseRoot = Join-Path $unpackedRoot "Foart-AI-Runtime"
 $releaseRuntimeRoot = Join-Path $releaseRoot "Runtime"
 $runtimeDest = Join-Path $releaseRuntimeRoot "AI-Runtime"
 $setupExe = Join-Path $releaseRoot "setup.exe"
 $readmeDest = Join-Path $releaseRoot "README.txt"
-$zipPath = Join-Path $OutputRoot ("NovaFlow-AI-Runtime-{0}.zip" -f $Version)
+$zipPath = Join-Path $OutputRoot ("Foart-AI-Runtime-{0}.zip" -f $Version)
 
 Assert-UnderPath -Child $unpackedRoot -Parent $OutputRoot
 Assert-UnderPath -Child $releaseRoot -Parent $OutputRoot
@@ -308,13 +308,14 @@ Write-RuntimeScriptShim -RuntimeRoot $runtimeDest -ScriptName "start-runtime.bat
 Write-RuntimeScriptShim -RuntimeRoot $runtimeDest -ScriptName "stop-runtime.bat"
 Write-RuntimeScriptShim -RuntimeRoot $runtimeDest -ScriptName "check-runtime.bat"
 
-# Every custom node NovaFlow's graphs name ships with the Runtime (setup.exe copies them into the
-# assets folder's custom_nodes); the models are delivered separately (MODELS.txt). The H3 video nodes
+# Every custom node NovaFlow's graphs name ships with the Runtime (setup.exe copies them into
+# engine\ComfyUI\custom_nodes); the models are delivered separately (MODELS.txt). The H3 video nodes
 # come from this repository, the rest from the build machine's working Runtime.
 $releaseCustomNodes = Join-Path $releaseRuntimeRoot "custom_nodes"
 New-Item -ItemType Directory -Force -Path $releaseCustomNodes | Out-Null
 if (-not $CustomNodesSource) {
-  $installedRuntimeJson = Join-Path $env:ProgramData "NovaFlow\AI-Runtime\runtime.json"
+  $installedRuntimeJson = Join-Path $env:ProgramData "Foart\AI-Runtime\runtime.json"
+  if (-not (Test-Path -LiteralPath $installedRuntimeJson)) { $installedRuntimeJson = Join-Path $env:ProgramData "NovaFlow\AI-Runtime\runtime.json" }
   if (Test-Path -LiteralPath $installedRuntimeJson) {
     $CustomNodesSource = [string]((Get-Content -Raw -LiteralPath $installedRuntimeJson | ConvertFrom-Json).customNodesPath)
   }
@@ -330,7 +331,10 @@ foreach ($node in Get-ChildItem -LiteralPath $h3Nodes -Directory) {
   & robocopy $node.FullName (Join-Path $releaseCustomNodes $node.Name) /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD __pycache__ /XF *.pyc | Out-Null
   if ($LASTEXITCODE -gt 7) { throw "Copying $($node.Name) failed with robocopy exit code $LASTEXITCODE" }
 }
-foreach ($required in @('ComfyUI-GGUF-leejet', 'ComfyUI-RMBG', 'ComfyUI-See-through', 'seedvr2_videoupscaler', 'novaflow_h3_attention', 'novaflow_h3_reference', 'novaflow_h3_refstrength', 'novaflow_h3_v2v')) {
+$bf16Loader = Join-Path $releaseCustomNodes "novaflow_qwen_bf16_loader"
+New-Item -ItemType Directory -Force -Path $bf16Loader | Out-Null
+Copy-Item -LiteralPath (Convert-ToFullPath (Join-Path $scriptRoot "..\..\novaflow-web\worker\src\comfy\qwen21-bf16-loader.py")) -Destination (Join-Path $bf16Loader "__init__.py") -Force
+foreach ($required in @('novaflow_qwen_bf16_loader', 'ComfyUI-GGUF-leejet', 'ComfyUI-RMBG', 'ComfyUI-See-through', 'seedvr2_videoupscaler', 'novaflow_h3_attention', 'novaflow_h3_reference', 'novaflow_h3_refstrength', 'novaflow_h3_v2v')) {
   if (-not (Test-Path -LiteralPath (Join-Path $releaseCustomNodes $required))) { throw "Required custom node missing from the package: $required" }
 }
 # SageAttention / Triton (the H3 attention node imports them) must be in the shipped Python.
@@ -362,7 +366,7 @@ if (-not (Test-Path -LiteralPath $zipPath)) {
 $unpackedSize = Get-DirectorySize -Path $releaseRoot
 $zipSize = (Get-Item -LiteralPath $zipPath).Length
 
-Write-Host "NovaFlow AI Runtime offline package created."
+Write-Host "Foart AI Runtime offline package created."
 Write-Host "Unpacked: $releaseRoot"
 Write-Host "Zip: $zipPath"
 Write-Host ("Unpacked size: {0}" -f (Format-Bytes $unpackedSize))

@@ -6,7 +6,7 @@ param(
   [string] $SourceQwenRunnerRoot,
   [ValidateSet('none','cpu')][string] $QwenRunnerProfile = 'none',
   [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime")),
-  [string] $InstallPath = "C:\ProgramData\NovaFlow\AI-Runtime",
+  [string] $InstallPath = "C:\ProgramData\Foart\AI-Runtime",
   [string] $AssetsPath,
   [string] $ModelsPath,
   [string] $CustomNodesPath,
@@ -44,9 +44,9 @@ function Assert-UnderPath {
 
 function Get-DefaultAssetsPath {
   if (Test-Path -LiteralPath "D:\") {
-    return "D:\NovaFlow"
+    return "D:\Foart"
   }
-  return "C:\ProgramData\NovaFlow"
+  return "C:\ProgramData\Foart"
 }
 
 function Find-PythonForComfyRoot {
@@ -396,7 +396,7 @@ if (-not $ModelsPath) {
   $ModelsPath = Join-Path $AssetsPath "models"
 }
 if (-not $CustomNodesPath) {
-  $CustomNodesPath = Join-Path $AssetsPath "custom_nodes"
+  $CustomNodesPath = Join-Path $InstallPath "engine\ComfyUI\custom_nodes"
 }
 
 if (-not $SourceComfyRoot) {
@@ -461,7 +461,7 @@ $engineRoot = Join-Path $runtimePackageRoot "engine"
 $comfyDest = Join-Path $engineRoot "ComfyUI"
 $pythonDest = Join-Path $engineRoot "python"
 $scriptsDest = Join-Path $runtimePackageRoot "scripts"
-$zipPath = Join-Path $OutputRoot ("NovaFlow-AI-Runtime-{0}.zip" -f $Version)
+$zipPath = Join-Path $OutputRoot ("Foart-AI-Runtime-{0}.zip" -f $Version)
 
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 Assert-UnderPath -Child $packageRoot -Parent $OutputRoot
@@ -546,7 +546,7 @@ Write-Host "Copying ComfyUI engine from $SourceComfyRoot"
 Invoke-RobocopyChecked -Source $SourceComfyRoot -Destination $comfyDest -ExcludeDirs $comfyExcludeDirs -ExcludeFiles $excludeFiles
 
 New-Item -ItemType Directory -Force -Path (Join-Path $comfyDest "custom_nodes") | Out-Null
-Copy-Item -LiteralPath (Join-Path $scriptRoot "custom_nodes/novaflow_sam_point.py") -Destination (Join-Path $assetsPackageRoot "custom_nodes/novaflow_sam_point.py") -Force
+Copy-Item -LiteralPath (Join-Path $scriptRoot "custom_nodes/novaflow_sam_point.py") -Destination (Join-Path $comfyDest "custom_nodes/novaflow_sam_point.py") -Force
 
 Write-Host "Copying Python runtime from $SourcePythonRoot"
 Invoke-RobocopyChecked -Source $SourcePythonRoot -Destination $pythonDest -ExcludeDirs $pythonExcludeDirs -ExcludeFiles $excludeFiles
@@ -610,7 +610,7 @@ if (-not $NoZip) {
   New-ZipArchiveFromChildren -SourceDirectory $packageRoot -DestinationZip $zipPath
 }
 
-Write-Host "NovaFlow AI Runtime package created."
+Write-Host "Foart AI Runtime package created."
 Write-Host "Runtime package root: $runtimePackageRoot"
 Write-Host "AI assets template root: $assetsPackageRoot"
 if (-not $NoZip) {

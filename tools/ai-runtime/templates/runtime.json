@@ -1,5 +1,5 @@
 {
-  "name": "NovaFlow AI Runtime",
+  "name": "Foart AI Runtime",
   "version": "{{VERSION}}",
   "engine": "comfyui-core",
   "port": 8188,

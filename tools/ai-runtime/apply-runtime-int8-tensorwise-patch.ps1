@@ -43,13 +43,11 @@ if (-not (Test-Path -LiteralPath $RuntimeRoot -PathType Container)) {
   throw "RuntimeRoot is missing or is not a directory: $RuntimeRoot"
 }
 
-$liveRuntimeRoot = Convert-ToFullPath "C:\ProgramData\NovaFlow\AI-Runtime"
-$liveRuntimePrefix = $liveRuntimeRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-if (
-  $RuntimeRoot.Equals($liveRuntimeRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
-  $RuntimeRoot.StartsWith($liveRuntimePrefix, [System.StringComparison]::OrdinalIgnoreCase)
-) {
-  throw "Refusing to patch the installed ProgramData Runtime. Patch a staged destination and atomically swap it after validation: $RuntimeRoot"
+foreach ($liveRuntimeRoot in @((Convert-ToFullPath "C:\ProgramData\Foart\AI-Runtime"), (Convert-ToFullPath "C:\ProgramData\NovaFlow\AI-Runtime"))) {
+  $liveRuntimePrefix = $liveRuntimeRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+  if ($RuntimeRoot.Equals($liveRuntimeRoot, [System.StringComparison]::OrdinalIgnoreCase) -or $RuntimeRoot.StartsWith($liveRuntimePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to patch the installed ProgramData Runtime. Patch a staged destination and atomically swap it after validation: $RuntimeRoot"
+  }
 }
 
 $patchRoot = Join-Path $PSScriptRoot "patches\comfy-int8-tensorwise-v1"

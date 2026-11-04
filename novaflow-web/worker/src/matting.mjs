@@ -6,6 +6,7 @@ import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { foartRuntimeRoot } from './runtime-location.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -34,7 +35,7 @@ export function mattingRunnerPath() {
 const PYTHON_CANDIDATES = () => [
   { exe: join(process.env.APPDATA || '', 'NovaFlow', 'birefnet-env', 'venv', 'Scripts', 'python.exe'), source: 'desktop-birefnet-env' },
   { exe: join(process.env.NOVAFLOW_AI_RUNTIME_DIR || '', 'engine', 'python', 'python.exe'), source: 'ai-runtime-env' },
-  { exe: join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime', 'engine', 'python', 'python.exe'), source: 'ai-runtime' },
+  { exe: join(foartRuntimeRoot(), 'engine', 'python', 'python.exe'), source: 'ai-runtime' },
   { exe: 'python', source: 'path' },
   { exe: 'py', args: ['-3'], source: 'path' }
 ];

@@ -22,7 +22,7 @@ ComfyUI 0.37 原生支持该模型（`comfy/text_encoders/sa3.py`），采样 8 
 - `NovaFlowAudioCaption`：清理改写模型的输出（去 Output:/引号/多行），保留 BPM，末尾写入实际渲染长度 `Length: N seconds`。
 - `NovaFlowSaveAudioWav`：标准库写 16-bit PCM WAV（运行环境无 torchcodec），把描述随输出条目回传。
 
-改节点后需重启运行环境：`C:\ProgramData\NovaFlow\AI-Runtime\scripts\stop-runtime.bat` / `start-runtime.bat`。
+改节点后需重启运行环境：`C:\ProgramData\Foart\AI-Runtime\scripts\stop-runtime.bat` / `start-runtime.bat`。
 
 ## 任务链
 

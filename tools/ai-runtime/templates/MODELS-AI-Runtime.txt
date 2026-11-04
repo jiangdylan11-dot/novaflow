@@ -1,6 +1,6 @@
 Foart AI Runtime 模型清单
 
-以下路径都相对于资源目录下的 models 文件夹（默认 D:\NovaFlow\models）。
+以下路径都相对于模型库路径下的 models 文件夹（默认 E:\Foart\models）。
 文件名必须完全一致；大小为参考值。
 
 一、必需：Qwen-Image-2.1（绘图、UI 设计、扩图、局部编辑、智能补图、角度调整、万物迁移、特效提取、去特效）

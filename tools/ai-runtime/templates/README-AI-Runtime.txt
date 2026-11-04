@@ -7,21 +7,20 @@ Foart AI Runtime
 安装：
 1. 先退出 Foart。
 2. 双击 setup.exe。
-3. Runtime 目录保持默认，或自选。
-4. 资源目录（放模型和插件的地方）保持默认，或自选。
-5. 点击安装。
+3. 模型库路径保持默认，或自选（这是唯一可选的位置）。
+4. 点击安装。
 
 默认位置：
-- Runtime：C:\ProgramData\NovaFlow\AI-Runtime
-- 资源目录：D:\NovaFlow（没有 D 盘时为 C:\ProgramData\NovaFlow）
+- 运行环境：C:\ProgramData\Foart\AI-Runtime（固定）
+- 模型库路径：E:\Foart（没有 E 盘时为 D:\Foart，都没有时为 C:\ProgramData\Foart）
 
 安装包已经自带：
 - Python 3.12 + PyTorch 2.10（CUDA 13）+ ComfyUI 0.37；
-- 所有需要的插件（custom_nodes），安装时自动放进资源目录的 custom_nodes，
+- 所有需要的插件（custom_nodes），安装时自动放进运行环境，
   包括 Qwen-Image-2.1 用的 GGUF 加载器、抠图、拆图、放大、H3 视频插件等；
 - H3 视频加速依赖（SageAttention、Triton）。
 
-模型不在安装包里，需要另外放入资源目录下的 models 文件夹。
+模型不在安装包里，需要另外放入模型库路径下的 models 文件夹。
 需要哪些文件、放在哪个子目录、各自用于什么功能，见同目录的 MODELS.txt。
 Qwen-Image-2.1 的三个文件是必需的：扩图、局部编辑、智能补图、角度调整、绘图都只用 2.1，
 缺少时这些功能会直接提示"缺少 Qwen-Image-2.1 所需的模型"。
@@ -34,7 +33,8 @@ text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors 已不再使用，可以删�
 升级已有的 Runtime：
 - 先退出 Foart。setup.exe 会把旧的 engine 挪到 engine.previous，再装新的；
   想退回旧版时，删掉 engine，把 engine.previous 改名为 engine 即可。
-- 资源目录里已有的模型和你自己加的插件不会被删除。
+- 模型库里已有的模型不会被删除。以前装在 C:\ProgramData\NovaFlow 的运行环境会自动搬到新位置，请先退出 Foart。
+- 插件随运行环境一起更新，模型库里旧的 custom_nodes 文件夹不再使用。
 
 以前装过单独的 H3 视频环境（C:\ProgramData\NovaFlow\AI-Runtime-H3）的，装完新版 Foart 助手后
 可以删除那个文件夹；它和这个环境共用同一批模型，删了不会丢模型。

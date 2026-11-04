@@ -19,9 +19,10 @@ import { verifyQwenCpuFiles, qwenCpuFilesUnchanged, qwenCpuFileStamp } from './q
 import { resolveQwenManagedRuntime } from './qwen-managed-runtime.mjs';
 import { checkQwenGpuResources, watchQwenGpuResources, QWEN_GPU_RUNNING_FREE_MIB } from './qwen-gpu-resource-guard.mjs';
 import { freemem } from 'node:os';
+import { foartRuntimeRoot } from './runtime-location.mjs';
 
 export function strataConfigPath(runtimeJsonPath) {
-  return process.env.NOVAFLOW_STRATA_CONFIG || join(runtimeJsonPath ? dirname(runtimeJsonPath) : join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime'), 'strata-prompt.json');
+  return process.env.NOVAFLOW_STRATA_CONFIG || join(runtimeJsonPath ? dirname(runtimeJsonPath) : foartRuntimeRoot(), 'strata-prompt.json');
 }
 export function readStrataConfig(path) {
   try { return JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; }

@@ -116,8 +116,14 @@ if hasattr(sys.stdin, "reconfigure"):
 
 
 MODEL_TYPE = ("qwen35_heretic_local" if os.environ.get("NOVAFLOW_QWEN_STDIO_BRIDGE") == "v1" else "swift15_qwen38_flash_next_iq2_xs") if flash_backend_enabled() else "qwen35_pe_i2i"
-DEFAULT_RUNTIME_JSON = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\runtime.json")
-DEFAULT_COMFY_ROOT = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\engine\ComfyUI")
+def _default_runtime_root():
+    base = Path(os.environ.get("ProgramData") or r"C:\ProgramData")
+    current, legacy = base / "Foart" / "AI-Runtime", base / "NovaFlow" / "AI-Runtime"
+    return legacy if not (current / "runtime.json").exists() and (legacy / "runtime.json").exists() else current
+
+
+DEFAULT_RUNTIME_JSON = _default_runtime_root() / "runtime.json"
+DEFAULT_COMFY_ROOT = _default_runtime_root() / "engine" / "ComfyUI"
 DEFAULT_REVERSE_QWEN3_MODEL_PATH = Path(
     r"E:\BaiduNetdiskDownload\prompt_generator\Huihui-Qwen3-VL-8B-Instruct-Abliterated"
 )

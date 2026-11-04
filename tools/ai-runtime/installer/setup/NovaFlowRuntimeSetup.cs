@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
@@ -80,15 +81,21 @@ namespace NovaFlow.AiRuntimeSetup
                 }
 
                 string runtimePath = GetArgumentValue(args, "--runtime");
+                string legacyPath = GetArgumentValue(args, "--legacy-runtime");
                 string assetsPath = GetArgumentValue(args, "--assets");
-                if (runtimePath == null || assetsPath == null)
+                if (assetsPath == null)
                 {
                     return 2;
+                }
+                if (runtimePath == null)
+                {
+                    runtimePath = SetupForm.FixedRuntimePath();
+                    if (legacyPath == null) legacyPath = SetupForm.LegacyRuntimePath();
                 }
 
                 var reporter = new BackgroundWorker();
                 reporter.WorkerReportsProgress = true;
-                SetupForm.InstallRuntime(new InstallRequest(runtimePath, assetsPath), reporter);
+                SetupForm.InstallRuntime(new InstallRequest(runtimePath, assetsPath, legacyPath), reporter);
                 return 0;
             }
             catch
@@ -118,9 +125,7 @@ namespace NovaFlow.AiRuntimeSetup
 
     internal sealed class SetupForm : Form
     {
-        private readonly TextBox runtimePathTextBox;
         private readonly TextBox assetsPathTextBox;
-        private readonly Button browseRuntimeButton;
         private readonly Button browseAssetsButton;
         private readonly Button installButton;
         private readonly Button cancelButton;
@@ -135,7 +140,7 @@ namespace NovaFlow.AiRuntimeSetup
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(620, 230);
+            ClientSize = new Size(620, 190);
 
             var titleLabel = new Label();
             titleLabel.Text = "Foart AI Runtime Setup";
@@ -144,65 +149,32 @@ namespace NovaFlow.AiRuntimeSetup
             titleLabel.Location = new Point(24, 20);
             Controls.Add(titleLabel);
 
-            var runtimeLabel = new Label();
-            runtimeLabel.Text = "Runtime " + U("5B89", "88C5", "76EE", "5F55") + ":";
-            runtimeLabel.AutoSize = true;
-            runtimeLabel.Location = new Point(26, 68);
-            Controls.Add(runtimeLabel);
-
-            runtimePathTextBox = new TextBox();
-            runtimePathTextBox.Name = "RuntimePathTextBox";
-            runtimePathTextBox.AccessibleName = "RuntimePathTextBox";
-            runtimePathTextBox.Location = new Point(146, 64);
-            runtimePathTextBox.Size = new Size(365, 23);
-            runtimePathTextBox.Text = @"C:\ProgramData\NovaFlow\AI-Runtime";
-            Controls.Add(runtimePathTextBox);
-
-            browseRuntimeButton = new Button();
-            browseRuntimeButton.Name = "BrowseRuntimeButton";
-            browseRuntimeButton.AccessibleName = "BrowseRuntimeButton";
-            browseRuntimeButton.Text = U("6D4F", "89C8");
-            browseRuntimeButton.Location = new Point(523, 62);
-            browseRuntimeButton.Size = new Size(72, 27);
-            browseRuntimeButton.Click += delegate { BrowseForFolder(runtimePathTextBox); };
-            Controls.Add(browseRuntimeButton);
-
             var assetsLabel = new Label();
-            assetsLabel.Text = U("8D44", "6E90", "76EE", "5F55") + ":";
+            assetsLabel.Text = U("6A21", "578B", "5E93", "8DEF", "5F84") + ":";
             assetsLabel.AutoSize = true;
-            assetsLabel.Location = new Point(26, 107);
+            assetsLabel.Location = new Point(26, 68);
             Controls.Add(assetsLabel);
 
             assetsPathTextBox = new TextBox();
             assetsPathTextBox.Name = "AssetsPathTextBox";
             assetsPathTextBox.AccessibleName = "AssetsPathTextBox";
-            assetsPathTextBox.Location = new Point(146, 103);
+            assetsPathTextBox.Location = new Point(146, 64);
             assetsPathTextBox.Size = new Size(365, 23);
-            assetsPathTextBox.Text = ExistingAssetsPath(runtimePathTextBox.Text);
+            assetsPathTextBox.Text = ExistingAssetsPath(File.Exists(Path.Combine(FixedRuntimePath(), "runtime.json")) ? FixedRuntimePath() : LegacyRuntimePath());
             Controls.Add(assetsPathTextBox);
-            bool assetsEdited = false;
-            bool changingAssets = false;
-            assetsPathTextBox.TextChanged += delegate { if (!changingAssets) assetsEdited = true; };
-            runtimePathTextBox.TextChanged += delegate
-            {
-                if (assetsEdited) return;
-                changingAssets = true;
-                try { assetsPathTextBox.Text = ExistingAssetsPath(runtimePathTextBox.Text); }
-                finally { changingAssets = false; }
-            };
 
             browseAssetsButton = new Button();
             browseAssetsButton.Name = "BrowseAssetsButton";
             browseAssetsButton.AccessibleName = "BrowseAssetsButton";
             browseAssetsButton.Text = U("6D4F", "89C8");
-            browseAssetsButton.Location = new Point(523, 101);
+            browseAssetsButton.Location = new Point(523, 62);
             browseAssetsButton.Size = new Size(72, 27);
             browseAssetsButton.Click += delegate { BrowseForFolder(assetsPathTextBox); };
             Controls.Add(browseAssetsButton);
 
             statusLabel = new Label();
             statusLabel.AutoEllipsis = true;
-            statusLabel.Location = new Point(29, 148);
+            statusLabel.Location = new Point(29, 106);
             statusLabel.Size = new Size(565, 24);
             Controls.Add(statusLabel);
 
@@ -210,7 +182,7 @@ namespace NovaFlow.AiRuntimeSetup
             installButton.Name = "InstallButton";
             installButton.AccessibleName = "InstallButton";
             installButton.Text = U("5B89", "88C5");
-            installButton.Location = new Point(421, 183);
+            installButton.Location = new Point(421, 141);
             installButton.Size = new Size(82, 30);
             installButton.Click += InstallButton_Click;
             Controls.Add(installButton);
@@ -219,7 +191,7 @@ namespace NovaFlow.AiRuntimeSetup
             cancelButton.Name = "CancelButton";
             cancelButton.AccessibleName = "CancelButton";
             cancelButton.Text = U("53D6", "6D88");
-            cancelButton.Location = new Point(513, 183);
+            cancelButton.Location = new Point(513, 141);
             cancelButton.Size = new Size(82, 30);
             cancelButton.Click += delegate { Close(); };
             Controls.Add(cancelButton);
@@ -254,16 +226,16 @@ namespace NovaFlow.AiRuntimeSetup
                 return;
             }
 
-            string runtimePath = runtimePathTextBox.Text.Trim();
+            string runtimePath = FixedRuntimePath();
             string assetsPath = assetsPathTextBox.Text.Trim();
-            if (runtimePath.Length == 0 || assetsPath.Length == 0)
+            if (assetsPath.Length == 0)
             {
                 MessageBox.Show(this, U("8BF7", "9009", "62E9", "5B8C", "6574", "7684", "76EE", "5F55", "3002"), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             SetInstallingState(true);
-            worker.RunWorkerAsync(new InstallRequest(runtimePath, assetsPath));
+            worker.RunWorkerAsync(new InstallRequest(runtimePath, assetsPath, LegacyRuntimePath()));
         }
 
         private void Worker_DoWork(object sender, DoWorkEventArgs e)
@@ -290,9 +262,7 @@ namespace NovaFlow.AiRuntimeSetup
 
         private void SetInstallingState(bool installing)
         {
-            runtimePathTextBox.Enabled = !installing;
             assetsPathTextBox.Enabled = !installing;
-            browseRuntimeButton.Enabled = !installing;
             browseAssetsButton.Enabled = !installing;
             installButton.Enabled = !installing;
             cancelButton.Enabled = !installing;
@@ -312,7 +282,7 @@ namespace NovaFlow.AiRuntimeSetup
             Controls.Add(titleLabel);
 
             var runtimeLabel = new Label();
-            runtimeLabel.Text = "Runtime:";
+            runtimeLabel.Text = U("8FD0", "884C", "73AF", "5883") + ":";
             runtimeLabel.AutoSize = true;
             runtimeLabel.Location = new Point(29, 80);
             Controls.Add(runtimeLabel);
@@ -325,7 +295,7 @@ namespace NovaFlow.AiRuntimeSetup
             Controls.Add(runtimeValue);
 
             var assetsLabel = new Label();
-            assetsLabel.Text = U("8D44", "6E90") + ":";
+            assetsLabel.Text = U("6A21", "578B", "5E93") + ":";
             assetsLabel.AutoSize = true;
             assetsLabel.Location = new Point(29, 120);
             Controls.Add(assetsLabel);
@@ -349,7 +319,29 @@ namespace NovaFlow.AiRuntimeSetup
             AcceptButton = finishButton;
         }
 
+        internal static string FixedRuntimePath()
+        {
+            return Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Foart"), "AI-Runtime");
+        }
+
+        internal static string LegacyRuntimePath()
+        {
+            return Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "NovaFlow"), "AI-Runtime");
+        }
+
         internal static void InstallRuntime(InstallRequest request, BackgroundWorker reporter)
+        {
+            RuntimeMigration migration = RuntimeMigration.Begin(request.LegacyRuntimePath, request.RuntimePath, reporter);
+            try { InstallIntoRuntime(request, reporter); }
+            catch (Exception installError)
+            {
+                if (migration != null) migration.Rollback(installError);
+                throw;
+            }
+            if (migration != null) migration.Finish();
+        }
+
+        private static void InstallIntoRuntime(InstallRequest request, BackgroundWorker reporter)
         {
             string setupDirectory = AppDomain.CurrentDomain.BaseDirectory;
             string sourceRuntime = Path.Combine(setupDirectory, "Runtime");
@@ -366,7 +358,9 @@ namespace NovaFlow.AiRuntimeSetup
             string runtimePath = Path.GetFullPath(request.RuntimePath);
             string assetsPath = Path.GetFullPath(request.AssetsPath);
             string modelsPath = Path.Combine(assetsPath, "models");
-            string customNodesPath = Path.Combine(assetsPath, "custom_nodes");
+            // The nodes are program code: they live and upgrade with the engine, while
+            // the folder the user chooses holds only models.
+            string customNodesPath = Path.Combine(Path.Combine(Path.Combine(runtimePath, "engine"), "ComfyUI"), "custom_nodes");
 
             // Keep the previous engine and configuration if installation fails.
             // Any older backup is archived instead of being deleted.
@@ -390,8 +384,6 @@ namespace NovaFlow.AiRuntimeSetup
                 {
                     if (existingConfig.ModelsPath != null)
                         modelsPath = ValidatedRuntimePath(existingConfig.ModelsPath, "modelsPath");
-                    if (existingConfig.CustomNodesPath != null)
-                        customNodesPath = ValidatedRuntimePath(existingConfig.CustomNodesPath, "customNodesPath");
                 }
                 else
                 {
@@ -433,8 +425,7 @@ namespace NovaFlow.AiRuntimeSetup
                 Directory.CreateDirectory(customNodesPath);
                 Directory.CreateDirectory(Path.Combine(runtimePath, "logs"));
 
-                // The custom nodes NovaFlow's graphs need ship beside the Runtime; they go into the assets
-                // folder ComfyUI reads them from. Nodes the user added there themselves stay untouched.
+                // The custom nodes NovaFlow's graphs need ship beside the Runtime and go into the engine.
                 string sourceCustomNodes = Path.Combine(Path.Combine(setupDirectory, "Runtime"), "custom_nodes");
                 if (Directory.Exists(sourceCustomNodes))
                 {
@@ -550,7 +541,7 @@ namespace NovaFlow.AiRuntimeSetup
         private static byte[] BuildUpdatedRuntimeJson(RuntimeConfiguration config, string version, string installPath,
                                                        string assetsPath, string modelsPath, string customNodesPath)
         {
-            if (String.IsNullOrWhiteSpace(config.Name)) config.Name = "NovaFlow AI Runtime";
+            if (String.IsNullOrWhiteSpace(config.Name) || config.Name == "NovaFlow AI Runtime") config.Name = "Foart AI Runtime";
             if (String.IsNullOrWhiteSpace(config.Engine)) config.Engine = "comfyui-core";
             if (!config.Port.HasValue) config.Port = 8188;
             config.Version = version;
@@ -694,7 +685,7 @@ namespace NovaFlow.AiRuntimeSetup
         {
             var builder = new StringBuilder();
             builder.AppendLine("{");
-            builder.AppendLine("  \"name\": \"NovaFlow AI Runtime\",");
+            builder.AppendLine("  \"name\": \"Foart AI Runtime\",");
             builder.AppendLine("  \"version\": \"" + EscapeJson(version) + "\",");
             builder.AppendLine("  \"engine\": \"comfyui-core\",");
             builder.AppendLine("  \"port\": 8188,");
@@ -756,11 +747,128 @@ namespace NovaFlow.AiRuntimeSetup
     {
         public readonly string RuntimePath;
         public readonly string AssetsPath;
+        public readonly string LegacyRuntimePath;
 
-        public InstallRequest(string runtimePath, string assetsPath)
+        public InstallRequest(string runtimePath, string assetsPath, string legacyRuntimePath)
         {
             RuntimePath = runtimePath;
             AssetsPath = assetsPath;
+            LegacyRuntimePath = legacyRuntimePath;
+        }
+    }
+
+    // Moves an environment from the old folder to the fixed one. Same drive, so
+    // this is a rename, not a copy. Configuration written by the old install
+    // names the old folder, so those files follow it; a failed install undoes both.
+    internal sealed class RuntimeMigration
+    {
+        private readonly string legacyPath;
+        private readonly string runtimePath;
+        private readonly Dictionary<string, byte[]> originals = new Dictionary<string, byte[]>();
+
+        private RuntimeMigration(string legacy, string runtime)
+        {
+            legacyPath = legacy;
+            runtimePath = runtime;
+        }
+
+        internal static RuntimeMigration Begin(string legacy, string runtime, BackgroundWorker reporter)
+        {
+            if (String.IsNullOrWhiteSpace(legacy)) return null;
+            legacy = Path.GetFullPath(legacy).TrimEnd('\\');
+            runtime = Path.GetFullPath(runtime).TrimEnd('\\');
+            if (!File.Exists(Path.Combine(legacy, "runtime.json")) || File.Exists(Path.Combine(runtime, "runtime.json"))) return null;
+            if (Directory.Exists(runtime))
+            {
+                if (Directory.GetFileSystemEntries(runtime).Length > 0)
+                    throw new InvalidOperationException("Runtime folder already has files: " + runtime);
+                Directory.Delete(runtime);
+            }
+            StopRuntime(legacy);
+            Directory.CreateDirectory(Path.GetDirectoryName(runtime));
+            try { Directory.Move(legacy, runtime); }
+            catch (IOException error) { throw new IOException("Please quit Foart and stop the AI runtime, then install again. " + error.Message, error); }
+            catch (UnauthorizedAccessException error) { throw new IOException("Please quit Foart and stop the AI runtime, then install again. " + error.Message, error); }
+            var migration = new RuntimeMigration(legacy, runtime);
+            try { migration.RewriteConfigurations(runtime); }
+            catch (Exception error) { migration.Rollback(error); throw; }
+            return migration;
+        }
+
+        private static void StopRuntime(string runtime)
+        {
+            string script = Path.Combine(Path.Combine(runtime, "scripts"), "stop-runtime.bat");
+            if (!File.Exists(script)) return;
+            var startInfo = new ProcessStartInfo();
+            startInfo.FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe";
+            startInfo.Arguments = "/d /c \"\"" + script + "\"\"";
+            startInfo.UseShellExecute = false;
+            startInfo.CreateNoWindow = true;
+            using (Process process = Process.Start(startInfo))
+            {
+                if (!process.WaitForExit(60000)) process.Kill();
+            }
+        }
+
+        private void RewriteConfigurations(string directory)
+        {
+            foreach (string file in Directory.GetFiles(directory, "*.json"))
+            {
+                if (new FileInfo(file).Length > 4 * 1024 * 1024) continue;
+                byte[] before = File.ReadAllBytes(file);
+                string text = Encoding.UTF8.GetString(before);
+                string updated = ReplaceRuntimePath(text, legacyPath, runtimePath);
+                if (updated == text) continue;
+                originals[file] = before;
+                File.WriteAllBytes(file, new UTF8Encoding(false).GetBytes(updated));
+            }
+            foreach (string child in Directory.GetDirectories(directory))
+            {
+                string name = Path.GetFileName(child);
+                if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0) continue;
+                if (name.Equals("logs", StringComparison.OrdinalIgnoreCase) || name.Equals("backups", StringComparison.OrdinalIgnoreCase) ||
+                    name.Equals("staging", StringComparison.OrdinalIgnoreCase) || name.StartsWith("engine", StringComparison.OrdinalIgnoreCase)) continue;
+                RewriteConfigurations(child);
+            }
+        }
+
+        // Paths appear as C:\\x\\y in JSON text, C:/x/y and rarely C:\x\y. Each keeps its
+        // own separators; a longer sibling such as AI-Runtime-H3 is not this folder.
+        internal static string ReplaceRuntimePath(string text, string from, string to)
+        {
+            string[] parts = from.Split('\\');
+            for (int i = 0; i < parts.Length; i++) parts[i] = Regex.Escape(parts[i]);
+            string pattern = String.Join(@"(?:\\\\|\\|/)", parts) + @"(?![A-Za-z0-9_.\-])";
+            return Regex.Replace(text, pattern, delegate(Match match)
+            {
+                if (match.Value.Contains("/")) return to.Replace('\\', '/');
+                return match.Value.Contains("\\\\") ? to.Replace("\\", "\\\\") : to;
+            }, RegexOptions.IgnoreCase);
+        }
+
+        internal void Rollback(Exception cause)
+        {
+            try
+            {
+                foreach (KeyValuePair<string, byte[]> item in originals) File.WriteAllBytes(item.Key, item.Value);
+                Directory.Move(runtimePath, legacyPath);
+            }
+            catch (Exception error)
+            {
+                throw new InvalidOperationException("Runtime installation failed; moving the environment back also failed: " + error.Message, cause);
+            }
+        }
+
+        // The old parent can hold other environments; it goes only when empty.
+        internal void Finish()
+        {
+            try
+            {
+                string parent = Path.GetDirectoryName(legacyPath);
+                if (Directory.Exists(parent) && Directory.GetFileSystemEntries(parent).Length == 0) Directory.Delete(parent);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 }

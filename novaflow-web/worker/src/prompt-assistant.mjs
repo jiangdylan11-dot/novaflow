@@ -25,6 +25,7 @@ import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStrataPromptAssistant, strataConfigPath as defaultStrataConfigPath, readStrataConfig } from './strata-prompt-assistant.mjs';
 import { createQwenPrivateInferenceBridge } from './qwen-private-inference-bridge.mjs';
+import { foartRuntimeJsonPath } from './runtime-location.mjs';
 
 export const MODEL_TYPE = 'qwen3_vl_8b_abliterated_nf4';
 export const MODEL_DIR = 'Huihui-Qwen3-VL-8B-Instruct-Abliterated';
@@ -40,7 +41,7 @@ const START_TIMEOUT_MS = 12000;
 const STOP_TIMEOUT_MS = 5000;
 
 function runtimeJsonDefault() {
-  return join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime', 'runtime.json');
+  return foartRuntimeJsonPath();
 }
 
 /** The script that does the inference, shipped with the desktop client and copied beside this app. */

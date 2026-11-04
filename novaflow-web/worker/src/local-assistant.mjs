@@ -11,11 +11,12 @@ import { ensureFlashBrainConfiguration } from './flash-brain-configuration.mjs';
 import { createArtLearning } from './art-learning.mjs';
 import { createArtKnowledgeCache } from './art-knowledge-cache.mjs';
 import { createArtTaskIdentity } from './art-task-identity.mjs';
+import { foartRuntimeJsonPath } from './runtime-location.mjs';
 
 export async function createLocalAssistant(options) {
   if (!options.modelsRoot) {
     try {
-      const config = JSON.parse((await readFile(join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow/AI-Runtime/runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
+      const config = JSON.parse((await readFile(foartRuntimeJsonPath(), 'utf8')).replace(/^\uFEFF/, ''));
       options = { ...options, modelsRoot: config.modelsPath || '' };
     } catch { /* Missing environments are reported by services.start(). */ }
   }

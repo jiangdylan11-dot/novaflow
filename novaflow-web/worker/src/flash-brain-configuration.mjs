@@ -6,6 +6,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readFileSync,statSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import {foartRuntimeJsonPath} from './runtime-location.mjs';
 const first='Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf';
 const second='Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf';
 const projector='mmproj-Swift-Qwen3.8-Flash-Next-BF16.gguf';
@@ -148,7 +149,7 @@ async function migrateExisting({runtimeJsonPath,configPath,profileMigrationRunne
     return pending(result?.reason || 'ownership-unconfirmed');
   }catch{return pending('ownership-probe-unavailable');}
 }
-export async function ensureFlashBrainConfiguration({runtimeJsonPath=join(process.env.ProgramData || 'C:/ProgramData','NovaFlow','AI-Runtime','runtime.json'),configPath=join(dirname(runtimeJsonPath),'strata-prompt.json'),profileMigrationRunner=runProfileMigration}={}) {
+export async function ensureFlashBrainConfiguration({runtimeJsonPath=foartRuntimeJsonPath(),configPath=join(dirname(runtimeJsonPath),'strata-prompt.json'),profileMigrationRunner=runProfileMigration}={}) {
   if(await exists(configPath))return migrateExisting({runtimeJsonPath,configPath,profileMigrationRunner});
   let runtime;try {runtime=JSON.parse((await readFile(runtimeJsonPath,'utf8')).replace(/^\uFEFF/,''));}catch{return {ok:false,reason:'runtime-not-configured'};}
   if(!runtime.installPath || !runtime.modelsPath)return {ok:false,reason:'runtime-not-configured'};

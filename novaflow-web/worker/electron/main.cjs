@@ -372,9 +372,9 @@ async function handleWarehouseLink(argv = []) {
     const { openWarehouseFolder } = require('./warehouse-folder.cjs');
     const config = readConfig();
     const candidates = [...(config.warehouseFolders || [])];
-    for (const environment of ['AI-Runtime', 'AI-Runtime-H3']) {
+    for (const environment of ['Foart/AI-Runtime', 'NovaFlow/AI-Runtime', 'NovaFlow/AI-Runtime-H3']) {
       try {
-        const runtime = JSON.parse((await fs.promises.readFile(path.join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', environment, 'runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
+        const runtime = JSON.parse((await fs.promises.readFile(path.join(process.env.ProgramData || 'C:/ProgramData', environment, 'runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
         if (runtime.modelsPath) candidates.push(path.join(path.dirname(runtime.modelsPath), 'output'));
         if (runtime.outputPath) candidates.push(runtime.outputPath);
       } catch { /* A fresh machine may not have the AI environment yet. */ }

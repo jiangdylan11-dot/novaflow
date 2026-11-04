@@ -7,6 +7,7 @@ import { createHash,randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { buildFlashBrainConfiguration,ensureFlashBrainConfiguration } from '../../worker/src/flash-brain-configuration.mjs';
+import { foartRuntimeRoot } from '../../worker/src/runtime-location.mjs';
 test('configuration follows the environment and models folders, preserving tested engine controls',()=>{
  const {config,server,required}=buildFlashBrainConfiguration({installPath:'X:/Portable/env',modelsPath:'Y:/Models',configPath:'X:/Portable/state/strata-prompt.json'});
  assert.ok(config.pythonPath.startsWith('X:'));assert.ok(config.modelFiles.every(f=>f.path.startsWith('Y:')));assert.ok(server.tokenizer.startsWith('Y:'));
@@ -100,7 +101,7 @@ test('an unavailable or uncertain owner/lock probe preserves the old profile and
  }
 });
 
-const bundledPython=join(process.env.ProgramData || 'C:/ProgramData','NovaFlow','AI-Runtime','engine','strata','control-0.1.49.2','python','python.exe');
+const bundledPython=join(foartRuntimeRoot(),'engine','strata','control-0.1.49.2','python','python.exe');
 const cpuControlStub=trace=>`import contextlib,json\nfrom pathlib import Path\nTRACE=Path(${JSON.stringify(trace)})\ndef record(x):\n with TRACE.open('a') as f:f.write(x+'\\n')\nclass Settings:\n def __init__(self,path):\n  self.path=path;self.raw=json.loads(Path(path).read_text());self.server_path=self.raw['serverConfigPath'];self.receipt=self.raw['receiptPath']\nclass Owner:\n @classmethod\n def read(cls,s):\n  record('owner');o=cls();o.receipt=json.loads(Path(s.receipt).read_text());return o\n def parent(self):return None\ndef remaining_released_identities(o):return []\ndef port_open(s):return False\ndef exact_heavy_processes(s):return []\n@contextlib.contextmanager\ndef operation_lock(s):\n record('lock-enter')\n try:yield\n finally:record('lock-exit')\n`;
 const cpuMigrationRunner=stub=>async({script,input})=>JSON.parse(execFileSync(bundledPython,['-B','-c',script],
  {input:JSON.stringify({...input,controlModulePath:stub}),encoding:'utf8',windowsHide:true,timeout:5000}));

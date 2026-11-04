@@ -499,8 +499,10 @@ test("Runtime start reports an early launcher exit without waiting for full back
   const startTemplate = fs.readFileSync(startRuntimeTemplatePath, "utf8");
   const pidWriteIndex = startTemplate.indexOf("Set-Content -LiteralPath $env:PID_FILE -Value $proc.Id");
   const earlyCheckIndex = startTemplate.indexOf("Assert-RuntimeLauncherAlive $proc $stdout $stderr");
-  const successIndex = startTemplate.indexOf("NovaFlow AI Runtime started. PID:");
+  const successIndex = startTemplate.indexOf("Foart AI Runtime started. PID:");
 
+  assert.doesNotMatch(startTemplate, /--base-directory/, "custom nodes live in the engine, so ComfyUI must not read them from the model library");
+  assert.match(startTemplate, /\$modelArgs=@\('--models-directory'/, "models always come from the chosen model library");
   assert.notEqual(pidWriteIndex, -1, "the launcher PID contract used by the stop script must remain intact");
   assert.notEqual(earlyCheckIndex, -1, "the detached launcher must be checked during its early startup window");
   assert.ok(pidWriteIndex < earlyCheckIndex, "the PID must be recorded before early process checks begin");
@@ -570,7 +572,7 @@ http.createServer((_request, response) => {
 
     const started = spawnSync("cmd.exe", ["/d", "/c", startPath], { env, encoding: "utf8", timeout: 15000 });
     assert.equal(started.status, 0, `normal launcher should pass its bounded early window: ${started.stderr || started.stdout}`);
-    assert.match(started.stdout, /NovaFlow AI Runtime started\. PID: \d+ Port:/);
+    assert.match(started.stdout, /Foart AI Runtime started\. PID: \d+ Port:/);
     assert.equal(await waitForLoopbackPort(port, true), true, "the normal fixture process should remain alive after the script returns");
     assert.match(fs.readFileSync(pidPath, "utf8").trim(), /^\d+$/, "normal startup must retain the stop-compatible launcher PID");
 

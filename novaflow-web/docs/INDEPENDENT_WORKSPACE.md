@@ -30,7 +30,7 @@
 
 - 后台配置继续使用 `%APPDATA%/novaflow-license-manager` 和 Windows 用户环境变量。
 - 授权签名私钥保存在 `novaflow-web/admin/.secrets`，已校验与原公钥匹配；不进入 Git、公开网页或用户启动助手包。
-- 用户授权、Worker 身份、模型和安装好的 AI 环境保留原位置。图像环境为 `C:/ProgramData/NovaFlow/AI-Runtime`，视频环境为 `C:/ProgramData/NovaFlow/AI-Runtime-H3`。
+- 用户授权、Worker 身份、模型和安装好的 AI 环境保留原位置。图像环境为 `C:/ProgramData/Foart/AI-Runtime`，视频环境为 `C:/ProgramData/NovaFlow/AI-Runtime-H3`。
 - 后台当前运行日志写入 `novaflow-web/admin/.runtime-logs`，不进入 Git。
 - 当前启动器仍占用的 `.tmp-launcher-design-start.log` 和 `.err` 属于正在写入的运行输出，保留且不进入 Git；其他历史临时日志已清除。
 

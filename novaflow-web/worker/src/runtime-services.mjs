@@ -5,6 +5,7 @@ import net from 'node:net';
 import { spawn, execFile } from 'node:child_process';
 import { assertLocalOnly } from './comfy/comfy-client.mjs';
 import { installQwen21Bf16Node } from './comfy/install-qwen21-bf16.mjs';
+import { foartRuntimeRoot } from './runtime-location.mjs';
 // The batch file starts a long-lived Python process. execFile waits for its
 // inherited output pipes to close, even after the launcher itself has exited.
 // Runtime logs already go to files; wait for the launcher's exit, not Python.
@@ -80,11 +81,10 @@ export function createRuntimeServices({
   roots = {}, alternatePorts = ALTERNATE_RUNTIME_PORTS
 } = {}) {
   const video = videoRuntimeUrl(videoUrl, imageUrl);
-  const programData = process.env.ProgramData || 'C:/ProgramData';
   const home = (kind, url, root) => ({ kind, url, root, home: { url, root } });
-  const entries = [home('image', assertLocalOnly(imageUrl), roots.image || join(programData, 'NovaFlow', 'AI-Runtime'))];
+  const entries = [home('image', assertLocalOnly(imageUrl), roots.image || foartRuntimeRoot())];
   // Only a node that points video at a runtime of its own still has a second one to start.
-  if (video !== imageUrl) entries.push(home('video', assertLocalOnly(video), roots.video || join(programData, 'NovaFlow', 'AI-Runtime-H3')));
+  if (video !== imageUrl) entries.push(home('video', assertLocalOnly(video), roots.video || foartRuntimeRoot('AI-Runtime-H3')));
   const shadowBase = join(stateFile ? dirname(stateFile) : join(tmpdir(), 'NovaFlow'), 'runtime-alt');
   const owned = new Set();
   const borrowed = new Set();
