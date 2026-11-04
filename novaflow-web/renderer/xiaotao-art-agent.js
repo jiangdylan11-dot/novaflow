@@ -1006,9 +1006,11 @@
     function answersQuestion(message){return !!pendingIntent&&(!pendingIntent.foart||state.provider==='api')&&!/取消|重新|另外|新建|优化|润色/.test(message);}
     function preparePromptSource(message,{recordMessage=true}={}) {
       const helper=root.NovaFlowXiaotaoPromptSource,info=activePromptSource();
+      // A page that moved on, or a reply that picks no source, simply ends the
+      // wait; the message is then read as a new request, never refused.
+      if(pendingPromptSource&&!sourceBindingCurrent(pendingPromptSource,info))pendingPromptSource=null;
       if(pendingPromptSource){
         const pending=pendingPromptSource;
-        if(!sourceBindingCurrent(pending,info)){pendingPromptSource=null;state.error='页面、账号或模型已变化，请重新提出优化请求；未提交或扣费。';state.status='未提交';notify();return {stop:true};}
         const answer=String(message||'').trim();
         if(/^(?:取消|算了|不用了)[。.!！]?$/u.test(answer)){pendingPromptSource=null;if(recordMessage)pushUser(answer);state.status='已取消；未提交，不扣积分';notify();return {stop:true};}
         const page=/^(?:(?:就|请|我)?(?:用|选|选择|按照))?(?:当前)?(?:页面|下面|下方|输入框)(?:的)?(?:提示词|内容)?[。.!！]?$/u.test(answer);
@@ -1017,9 +1019,11 @@
         if(page&&pending.info.pagePrompt.trim())source={status:'ready',source:'page',prompt:pending.info.pagePrompt.trim(),requirements:''};
         else if(chat&&pending.conversationPrompt)source={status:'ready',source:'conversation',prompt:pending.conversationPrompt,requirements:''};
         else if(!page&&!chat&&!pending.conversationPrompt)source=helper?.resolvePromptSource?.({pagePrompt:'',conversationPrompt:answer,instruction:pending.message});
-        if(!source||source.status!=='ready'){state.error='请明确回复“页面”或“对话”，也可以发送完整提示词；未提交或扣费。';notify();return {stop:true};}
-        source={...source,workspaceSnapshot:pending.workspaceSnapshot,workspaceGuard:pending.workspaceGuard,stagedItems:pending.stagedItems,attachmentStillCurrent:pending.attachmentStillCurrent};
-        pendingPromptSource=null;if(recordMessage)pushUser(answer);return {info,source,message:pending.message,recordMessage:false};
+        pendingPromptSource=null;
+        if(source?.status==='ready'){
+          source={...source,workspaceSnapshot:pending.workspaceSnapshot,workspaceGuard:pending.workspaceGuard,stagedItems:pending.stagedItems,attachmentStillCurrent:pending.attachmentStillCurrent};
+          if(recordMessage)pushUser(answer);return {info,source,message:pending.message,recordMessage:false};
+        }
       }
       if(!info||answersQuestion(message))return null;
       if(!helper?.classifyPromptAction||!helper?.resolvePromptSource){

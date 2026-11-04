@@ -34,7 +34,7 @@ async function fixture({refs=[],prompt='',foart=[],chat=[]}={}) {
     return {artContext:{surface:'drawing'},images:includeDrawingReferences?refs.map((ref,i)=>({source:i+1,role:ref.drawingRole,dataUrl:ref.dataUrl,name:ref.name})):[],drawingPreview};}};
   const c=root.NovaFlowXiaotaoArtAgent.createController({bridge,api});
   assert.equal(c.setModel('xai/grok-4.7'),true);await c.refreshPricingPolicy();
-  return {c,chats,starts};
+  return {c,chats,starts,setPrompt:value=>{rtState.prompt=value;}};
 }
 const refs=()=>[{name:'a.png',dataUrl:png('a'),drawingRole:'subject'},{name:'b.png',dataUrl:png('b'),drawingRole:'style'}];
 
@@ -86,6 +86,20 @@ test('asking to optimize an empty prompt still asks for the prompt',async()=>{
   const f=await fixture({refs:refs()});
   await f.c.send('优化提示词');
   assert.equal(f.starts.length+f.chats.length,0);assert.match(f.c.state.status,/提示词来源/);
+});
+test('filling the page after being asked for a prompt just runs the new request',async()=>{
+  const f=await fixture({refs:refs()});
+  await f.c.send('优化提示词');
+  f.setPrompt('换成黑色的吊带背心');
+  await f.c.send('优化提示词');
+  assert.doesNotMatch(f.c.state.error,/已变化/);
+});
+test('a reply that picks no source is read as a new request',async()=>{
+  const f=await fixture({refs:refs(),prompt:'海边的女孩',foart:[done('好的')]});
+  await f.c.send('优化提示词：森林里的男孩');
+  assert.match(f.c.state.status,/提示词来源/);
+  await f.c.send('打开音频');
+  assert.equal(f.starts.length,1);assert.equal(f.c.state.error,'');
 });
 test('a failed turn stays in this session context',async()=>{
   const f=await fixture({refs:refs(),foart:[{ok:false,error:'操作未完成'},done('好的')]});
