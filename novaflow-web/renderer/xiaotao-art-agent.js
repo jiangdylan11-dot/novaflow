@@ -1466,7 +1466,7 @@
           const lookId=root.crypto.randomUUID();
           const seen=await Promise.race([api()?.artAgentChat?.({requestId:lookId,provider:'api',...selectedModelPayload(state.modelId),...selectedPricingPayload(),mode:'chat',promptLanguage:'en',
             message:question,history:[],artContext:{},images:pictures.map((item,index)=>({dataUrl:item.dataUrl,role:'attachment',source:index+1,name:item.name})),uploads:[],
-            imageSessionGuard:imageGuard,confirmImageUpload:async()=>imageGuard()}),new Promise(resolve=>setTimeout(()=>resolve(null),40000))]);
+            imageSessionGuard:imageGuard,confirmImageUpload:async()=>imageGuard()}),new Promise(resolve=>setTimeout(()=>resolve(null),60000))]);
           if(seen)collectBilling(billing,seen);else await api()?.artAgentStop?.({requestId:lookId,provider:'api'});
           return seen?.ok===true?String(seen.data?.reply||''):'';
         };
