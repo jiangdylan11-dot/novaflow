@@ -9,6 +9,7 @@ const REF_FIELDS=new Set(['key','kind','sourceId']);
 const MODES=new Set(['text_video','image_video','first_last','multi_reference']);
 const KINDS=new Set(['image','video','audio']);
 const invalid=()=>{throw Object.assign(new Error('video-intent-unsupported'),{code:'video-intent-unsupported',statusCode:400});};
+const invalidBecause=reason=>{throw Object.assign(new Error(String(reason||'video-intent-unsupported').slice(0,200)),{code:'video-intent-unsupported',statusCode:400});};
 const plain=x=>x && typeof x==='object' && !Array.isArray(x);
 const digest=x=>createHash('sha256').update(JSON.stringify(x),'utf8').digest('hex');
 
@@ -85,10 +86,10 @@ export function createServerOwnedH3Intent({workflow}={}) {
     // surrounding prose or relax the H3 schema and semantic validation.
     const fence=text.trim().match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i);
     const content=fence?fence[1]:text;
-    let pair;try{pair=JSON.parse(content);}catch{invalid();}
+    let pair;try{pair=JSON.parse(content);}catch{invalidBecause('模型输出不是完整的 JSON');}
     if(!plain(pair)||!Object.hasOwn(pair,'modelPrompt')||!Object.hasOwn(pair,'displayPrompt')||
       Object.keys(pair).some(key=>!['modelPrompt','displayPrompt','editPolicy'].includes(key)))invalid();
-    try {return workflow.validateAndRestore({text:content,context:trusted.validation.context,current:trusted.validation.current});} catch {invalid();}
+    try {return workflow.validateAndRestore({text:content,context:trusted.validation.context,current:trusted.validation.current});} catch(error) {invalidBecause(error?.message);}
   }
   return Object.freeze({canonicalize,validateResult});
 }
@@ -102,8 +103,8 @@ export function inspectXiaotaoV3VideoReply({intent,intentHash,reply}={}) {
   const result=adapter.validateResult(reply,intent,intentHash);
   const display=String(result?.text||'').trim(),model=String(result?.modelText||'').trim();
   if(!display||!model||display.length>12000||model.length>12000)invalid();
-  // H3 permits Chinese only in literal dialogue/onscreen text. Never claim
-  // successful English compilation when untranslated prose remains.
-  if(/[\u3400-\u9fff]/.test(model.replace(/<d>[\s\S]*?<\/d>|"([^"\n]*)"|“([^”\n]*)”/g,'')))invalid();
+  // Names and style words may stay Chinese in the English text; mostly Chinese prose fails.
+  const prose=model.replace(/<d>[\s\S]*?<\/d>|"([^"\n]*)"|“([^”\n]*)”/g,''),han=(prose.match(/[\u3400-\u9fff]/g)||[]).length;
+  if(han>8&&(prose.match(/[A-Za-z]{2,}/g)||[]).join('').length<han*2)invalidBecause('英文稿里还有大段中文');
   return {displayPrompt:display,modelPrompt:model,h3Mode:intent.h3Mode,durationSeconds:intent.durationSeconds,textOnly:!Array.isArray(intent.images)};
 }

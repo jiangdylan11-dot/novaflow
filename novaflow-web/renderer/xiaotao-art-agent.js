@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
   // BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)
-  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"glm/glm-5.3-flash","label":"智谱 GLM-5.3 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
+  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"bytedance/doubao-seed-2.1-lite","label":"豆包 Seed 2.1 Lite","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
   const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));
   const isXiaotaoOnlineModel = id => XIAOTAO_ONLINE_MODEL_IDS.includes(id);
   const isXiaotaoFlatRateModel = id => XIAOTAO_ONLINE_MODELS.some(model => model.id === id && model.flatRate);
@@ -1510,6 +1510,11 @@
               if(terms?.operation_video_rewrite_v3!==true||typeof capture!=='function'||typeof method!=='function')return op;
               onStatus('正在按视频框架整理提示词…');
               if(root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')await tools.execute({action:'open',surface:'video'},{signal});
+              // A mode the user names wins over the one the page was left on.
+              if(intent?.mode&&/文生|图生|首尾帧|多参/.test(positiveRequest)&&root.NovaFlowAiSequenceGeneration?.capture?.()?.genType!==intent.mode){
+                uploadApi()?.switchMode?.(root.document,intent.mode);
+                for(let i=0;i<20&&root.NovaFlowAiSequenceGeneration?.capture?.()?.genType!==intent.mode;i++)await new Promise(resolve=>root.setTimeout(resolve,100));
+              }
               const includeReferenceImages=['first_last','image_video'].includes(root.NovaFlowAiSequenceGeneration?.capture?.()?.genType)&&api()?.onlineVideoVisionAvailableSync?.()===true;
               // The framework binds pictures by @参考图N; a brief with model tokens fails its checks.
               const bindMaterials=source=>{
@@ -1520,7 +1525,10 @@
                 return (missing.length?text+'。同时使用 '+missing.join('、')+'。':text).slice(0,1500);
               };
               let result=null,text='';
-              for(const sourcePrompt of [bindMaterials(brief),bindMaterials(message)]){
+              let draftIssue='';
+              for(const firstSource of [bindMaterials(brief),bindMaterials(message)]){
+                // The retry is told what the last draft got wrong, the way the planner retry is.
+                const sourcePrompt=draftIssue?(firstSource+'\n上一稿被退回的原因：'+draftIssue+'。这次必须改正。').slice(0,1500):firstSource;
                 // 多参 checks its result against the requirement text word by word; the brief already carries everything.
                 const multi=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='multi_reference';
                 const snapshot=await capture({requestId:root.crypto.randomUUID(),requirements:multi?'':(message+(pictureFacts?'\n'+pictureFacts:'')).slice(0,1000),sourcePrompt,includeReferenceImages});
@@ -1530,6 +1538,7 @@
                 if(result?.quota)collectBilling(billing,{ok:true,data:{quota:result.quota}});
                 text=result?.ok===true?String(result.draft?.displayPrompt||'').trim():'';
                 if(text)break;
+                draftIssue=String(result?.draftIssue||'');
               }
               if(!text)return op;
               h3?.rememberDraft?.({mode:result.draft.h3Mode,prompt:text,modelText:result.draft.modelPrompt});

@@ -159,8 +159,8 @@ export function createXiaotaoOperationV3Chat({enabled=false,visionEnabled=false,
     if(recorded?.status!=='recorded')fail('operation-status-unknown',503);
     const providerReply=actualReply(data);
     const reply=(videoRewrite&&providerReply?.length>12000)||(audioRewrite&&providerReply?.length>4000)?null:providerReply;
-    let videoDraft=null;
-    if(videoRewrite&&reply){try{videoDraft=inspectXiaotaoV3VideoReply({intent,intentHash:verified.intentHash,reply});}catch{}}
+    let videoDraft=null,draftIssue='';
+    if(videoRewrite&&reply){try{videoDraft=inspectXiaotaoV3VideoReply({intent,intentHash:verified.intentHash,reply});}catch(error){draftIssue=String(error?.message||'').slice(0,200);}}
     let uiPreview=null;
     if(uiDraft&&reply){try{uiPreview=await inspectXiaotaoV3UiReply({uiPrepared,uiAdapter,reply,signal});}catch{}}
     let styleResult=null;
@@ -173,7 +173,7 @@ export function createXiaotaoOperationV3Chat({enabled=false,visionEnabled=false,
     if(receipt?.status!=='settled'||receipt.outcome!==outcome||!isXiaotaoCreditAmount(receipt.charged,policy.config,{allowZero:true,max:14000000}))fail('operation-status-unknown',503);
     if(!await sessionFresh())fail('selection-stale',401);
     if(!reply)return {ok:false,errorCode:'operation-provider-output-invalid',receipt};
-    if(videoRewrite&&!videoDraft)return {ok:false,errorCode:'operation-video-draft-invalid',receipt};
+    if(videoRewrite&&!videoDraft)return {ok:false,errorCode:'operation-video-draft-invalid',draftIssue,receipt};
     if(uiDraft&&!uiPreview)return {ok:false,errorCode:'operation-ui-draft-invalid',receipt};
     if(styleAnalysis&&!styleResult)return {ok:false,errorCode:'operation-style-result-invalid',receipt};
     if(outcome!=='success')return {ok:false,errorCode:'operation-cancelled-after-dispatch',receipt};

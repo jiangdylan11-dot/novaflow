@@ -12,11 +12,12 @@ import {hasXiaotaoModelRate,xiaotaoModelRatePolicy} from '../packages/shared/src
 import {companionPricingPolicy} from '../packages/shared/src/companion-pricing.mjs';
 
 const root=new URL('../',import.meta.url);
-const QWEN='qwen/qwen3.8-flash-next',GLM='glm/glm-5.3-flash';
+const QWEN='qwen/qwen3.8-flash-next',GLM='bytedance/doubao-seed-2.1-lite';
 
-test('Qwen and GLM are online brains beside DeepSeek, Grok and GPT', () => {
-  assert.deepEqual([...XIAOTAO_ONLINE_MODEL_IDS].sort(),['deepseek/deepseek-v4.1-flash',GLM,'openai/gpt-6.1-sol-saver',QWEN,'xai/grok-4.7'].sort());
-  assert.deepEqual([...XIAOTAO_FLAT_RATE_MODEL_IDS].sort(),['deepseek/deepseek-v4.1-flash',GLM,QWEN].sort());
+test('Qwen and Doubao are online brains beside DeepSeek, Grok and GPT', () => {
+  const DOUBAO='bytedance/doubao-seed-2.1-lite';
+  assert.deepEqual([...XIAOTAO_ONLINE_MODEL_IDS].sort(),['deepseek/deepseek-v4.1-flash',DOUBAO,'openai/gpt-6.1-sol-saver',QWEN,'xai/grok-4.7'].sort());
+  assert.deepEqual([...XIAOTAO_FLAT_RATE_MODEL_IDS].sort(),['deepseek/deepseek-v4.1-flash',DOUBAO,QWEN].sort());
   for(const id of XIAOTAO_FLAT_RATE_MODEL_IDS)assert.equal(hasXiaotaoModelRate(id),true,id);
   const policy=xiaotaoModelRatePolicy();
   for(const id of [QWEN,GLM])assert.ok(policy[id].input>0&&policy[id].output>0&&policy[id].cached>=0,id);
@@ -66,8 +67,8 @@ test('Qwen and GLM are offered only with operation billing and an explicit serve
   assert.equal(legacy.models.find(row=>row.id===QWEN).available,false);
   assert.equal(legacy.models.find(row=>row.id===GLM).available,false);
 });
-test('Qwen and GLM get thinking room in max_tokens and in the reservation',()=>{
+test('Qwen gets thinking room in max_tokens and in the reservation',()=>{
   const body={input:[{role:'user',content:[{type:'input_text',text:'x'}]}],max_output_tokens:3000};
-  assert.equal(responsesToChatCompletions(body,GLM).max_tokens,8000);assert.equal(responsesToChatCompletions(body,QWEN).max_tokens,8000);
+  assert.equal(responsesToChatCompletions(body,GLM).max_tokens,3000);assert.equal(responsesToChatCompletions(body,QWEN).max_tokens,8000);
   assert.equal(responsesToChatCompletions(body,'deepseek/deepseek-v4.1-flash').max_tokens,3000);
 });

@@ -56,7 +56,7 @@ test('multireference optimizer uses official fields, including explicit audio an
 });
 test('missing media, invented speaker identities and invalid retention fail before sampling',()=>{
  for(const api of [local,edge]){
-  for(const bad of [text.replaceAll('<Picture 1>','<Picture 2>'),text.replace('<Subject 1> is','<Subject 2> is'),text.replace('fully_copy','fully_preserved'),text.replace('The target video is an edited version of <Video 1>.','Copy the video.')])assert.throws(()=>api.validateReference(bad,options));
+  for(const bad of [text.replaceAll('<Picture 1>','<Picture 2>'),text.replace('<Subject 1> is','<Subject 2> is'),text.replace('The target video is an edited version of <Video 1>.','Copy the video.')])assert.throws(()=>api.validateReference(bad,options));
  }
 });
 test('uploads decide the task list: a picture-only inventory never demands a source video',()=>{

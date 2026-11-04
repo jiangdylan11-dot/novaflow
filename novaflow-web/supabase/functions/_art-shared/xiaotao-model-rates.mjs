@@ -8,6 +8,8 @@ const RATES = Object.freeze({
   'deepseek/deepseek-v4.1-flash': Object.freeze({ input: 0.177, output: 0.7062, cached: 0.0036 }),
   'qwen/qwen3.8-flash-next': Object.freeze({ input: 0.118, output: 0.398, cached: 0.015 }),
   'glm/glm-5.3-flash': Object.freeze({ input: 0.15, output: 0.5, cached: 0.024 }),
+  'bytedance/doubao-seed-2.1-lite': Object.freeze({ input: 0.0826, output: 0.2786, cached: 0.0168 }),
+  'openai/gpt-6-luna-saver': Object.freeze({ input: 0.035, output: 0.175, cached: 0.0035 }),
   'openai/gpt-6.1-sol-saver': Object.freeze({ input: 0.7, output: 3.5, cached: 0.035,
     highInput: 1.4, highOutput: 5.25, highAbove: 272000 })
 });
@@ -15,7 +17,9 @@ const RATES = Object.freeze({
 const SNAPSHOTS = Object.freeze({
   'deepseek/deepseek-v4.1-flash': 'runninghub-fixed-peak-2026-11-01',
   'qwen/qwen3.8-flash-next': 'runninghub-2026-11-04',
-  'glm/glm-5.3-flash': 'runninghub-peak-2026-11-04'
+  'glm/glm-5.3-flash': 'runninghub-peak-2026-11-04',
+  'bytedance/doubao-seed-2.1-lite': 'runninghub-2026-11-05',
+  'openai/gpt-6-luna-saver': 'runninghub-2026-11-05'
 });
 
 export function hasXiaotaoModelRate(model) {

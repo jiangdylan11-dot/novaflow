@@ -64,8 +64,8 @@ test('direct settlement retains provider top-level cache and fails closed on con
 test('reservation and settlement use the same existing credit rule and cap', () => {
   const model='glm/glm-5.3-flash';
   const quote=estimateXiaotaoOnlineCredits({model,text:'x'.repeat(20000),system:'',outputTokens:1000});
-  near(quote.usd,(10000*.15+6000*.5)/1e6); // 1000 asked plus the thinking room
-  assert.equal(quote.credits,2);
+  near(quote.usd,(10000*.15+1000*.5)/1e6);
+  assert.equal(quote.credits,1);
   const decision=settleXiaotaoOnlineCredits({model,usage:{input_tokens:10000,output_tokens:1000,prompt_tokens_details:{cached_tokens:0}},reservedCredits:10});
   near(decision.usdCost,(10000*.15+1000*.5)/1e6);
   assert.equal(decision.credits,1);assert.equal(decision.refund,9);
@@ -219,7 +219,7 @@ test('an idempotent new-model reservation never calls the provider or settles ag
   assert.equal(calls,0);assert.equal(settled,0);assert.equal(released,0);
 });
 test('legacy provider set to a flat-rate model cannot silently use generic token pricing', async () => {
-  for(const model of ['deepseek/deepseek-v4.1-flash','qwen/qwen3.8-flash-next','glm/glm-5.3-flash']){
+  for(const model of ['deepseek/deepseek-v4.1-flash','qwen/qwen3.8-flash-next','bytedance/doubao-seed-2.1-lite']){
     let charged=0,calls=0;
     const provider={apiKey:'fixture',baseUrl:'https://llm.runninghub.ai/v1',model};
     const service=createCompanionChat({provider,charge:async()=>charged++,fetchImpl:async()=>calls++});

@@ -22,7 +22,7 @@ test('explicit Grok selection uses only matching configured model',async () => {
 test('unavailable selection or changed server model fails before reserve and inference',async () => {
   for (const [configured,selected] of [
     ['xai/grok-4.7','deepseek/deepseek-v4.1-flash'],
-    ['xai/grok-4.7','glm/glm-5.3-flash'],
+    ['xai/grok-4.7','bytedance/doubao-seed-2.1-lite'],
     ['xai/grok-4.7','openai/gpt-6.1'],
     ['xai/grok-4.6','xai/grok-4.7']
   ]) {

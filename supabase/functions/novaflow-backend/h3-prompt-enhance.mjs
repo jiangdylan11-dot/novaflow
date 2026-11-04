@@ -444,6 +444,29 @@ function reconcileReferenceTasks(tasks, allowed) {
   if (!kept.some(task => ['reference generation', 'keyframe completion', 'video editing', 'video continuation'].includes(task))) kept.unshift('reference generation');
   return kept;
 }
+// Format the program can write itself is completed, never a reason to send a draft back.
+function completeSubjects(fields, text, zh) {
+  const defined = new Set([...fields.subject_definitions.matchAll(/^<Subject ([1-9]\d*)>/gm)].map(m => Number(m[1])));
+  const pictures = [...new Set(text.match(/<Picture [1-9]\d*>/g) || [])];
+  const used = [...new Set([...text.matchAll(/<Subject ([1-9]\d*)>/g)].map(m => Number(m[1])))];
+  const wanted = defined.size || used.length ? used : pictures.map((_, i) => i + 1);
+  const lines = wanted.filter(id => !defined.has(id)).map(id => {
+    const picture = pictures.includes('<Picture ' + id + '>') ? '<Picture ' + id + '>' : pictures[0];
+    return picture ? '<Subject ' + id + '>' + (zh ? ' 是 ' + picture + ' 中的主体。' : ' is the subject in ' + picture + '.') : '';
+  }).filter(Boolean);
+  return lines.length ? [fields.subject_definitions, ...lines].join('\n').trim() : fields.subject_definitions;
+}
+function completeRetention(fields, zh) {
+  const lines = fields.retention_analysis.split('\n');
+  for (const m of fields.subject_definitions.matchAll(/^<(Subject|Picture|Video|Audio) ([1-9]\d*)>/gm)) {
+    const audio = m[1] === 'Audio', fallback = audio ? 'reference' : 'fully_preserved', note = zh ? '与定义一致' : 'as defined';
+    const relation = audio ? /:\s*(?:fully_copy|partially_copy|reference|weak_reference)\b/ : /:\s*(?:fully_preserved|partially_preserved|attribute_transfer|weak_reference)\b/;
+    const at = lines.findIndex(line => line.trim().startsWith(m[0]));
+    if (at < 0) lines.push(m[0] + ': ' + fallback + ' - ' + note);
+    else if (!relation.test(lines[at])) lines[at] = m[0] + ': ' + fallback + ' - ' + (lines[at].trim().slice(m[0].length).replace(/^[\s:：-]+/, '') || note);
+  }
+  return lines.join('\n').trim();
+}
 function validateReference(value, options = {}) {
   let text = fromReferenceDisplay(value).trim().replace(/^```(?:json|text)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
   if (text.startsWith('{')) {
@@ -472,6 +495,7 @@ function validateReference(value, options = {}) {
     const allowed = media(inventory[1]), used = media(text);
     if (used.some(t => !allowed.includes(t))) throw new Error('H3 多参引用与已上传素材不一致');
   }
+  fields.subject_definitions = completeSubjects(fields, text, !!options.requireChineseOutput);
   const definitions = [...fields.subject_definitions.matchAll(/^<Subject ([1-9]\d*)>[^\n]+/gm)];
   const ids = definitions.map(m => Number(m[1]));
   if (ids.some((id, i) => id !== i + 1) || [...text.matchAll(/<Subject ([1-9]\d*)>/g)].some(m => !ids.includes(Number(m[1])))) throw new Error('H3 多参主体缺少独立定义');
@@ -480,9 +504,10 @@ function validateReference(value, options = {}) {
   }
   const task = /^\[([^\]]+)\]/.exec(fields.summary);
   let tasks = task?.[1].split(/\s*\+\s*/) || [];
-  // Without a source video the task can only be reference generation; a
-  // missing [task] prefix is filled in from the uploads below instead of failing.
-  const inferTasks = !task && inventory && !media(inventory[1]).some(t => t.startsWith('<Video '));
+  // A missing or unknown [task] prefix is filled in from the uploads below instead of failing.
+  const knownTasks = ['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'];
+  const inferTasks = !!inventory && (!task || tasks.some(t => !knownTasks.includes(t)));
+  if (inferTasks) tasks = tasks.filter(t => knownTasks.includes(t));
   if (!inferTasks && (!tasks.length || tasks.some(t => !['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'].includes(t)))) throw new Error('H3 多参缺少明确任务关系');
   if (inventory) {
     // The uploads decide the task list: no video means nothing to edit or
@@ -496,6 +521,7 @@ function validateReference(value, options = {}) {
   }
   if (tasks.includes('reference generation') && text.includes('<Picture ') && !ids.length) throw new Error('H3 多参主体缺少独立定义');
   if (tasks.includes('video editing') && !/^\[[^\]]+\]\s*The target video is an edited version of <Video [1-9]\d*>(?:\.|\s)/.test(fields.summary)) throw new Error('H3 视频编辑必须指定源视频');
+  fields.retention_analysis = completeRetention(fields, !!options.requireChineseOutput);
   const tracked = [...fields.subject_definitions.matchAll(/^<(Subject|Picture|Video|Audio) ([1-9]\d*)>/gm)];
   for (const m of tracked) {
     const line = fields.retention_analysis.split('\n').find(l => l.trim().startsWith(m[0]));
@@ -1268,7 +1294,10 @@ function validateBaseResult(value, options = {}) {
   if (pair && !options.displayIsSource) {
     for (const k of baseFields) results[1].fields[k] = fixDisplayWords(results[1].fields[k], own, k === 'non_diegetic_music');
     if (options.strictPair && baseFields.some(k => englishWords(results[1].fields[k], own).length)) displayIssues.push(baseIssue.english);
-    if (/^N\/A\.?$/i.test(results[0].fields.overall_soundscape.trim()) && !silenceAsked(userIntent(options))) issues.push(baseIssue.silence);
+    if (/^N\/A\.?$/i.test(results[0].fields.overall_soundscape.trim()) && !silenceAsked(userIntent(options))) {
+      results[0].fields.overall_soundscape = 'A quiet ambience fits the scene.';
+      results[1].fields.overall_soundscape = '与画面一致的轻微环境声。';
+    }
     const sounds = results.map((r, i) => r.fields.overall_soundscape.split(i ? /(?<=[。！？])/ : /(?<=[.!?])\s+/)), silent = sounds.map((parts, i) => parts.filter(part => swaySound[i].test(part.trim())));
     if (silent[0].length && silent[0].length === silent[1].length && silent[0].length < sounds[0].length)
       results.forEach((r, i) => { r.fields.overall_soundscape = sounds[i].filter(part => !silent[i].includes(part)).join(i ? '' : ' ').trim(); });

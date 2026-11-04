@@ -65,7 +65,7 @@
     try {const next=await prepareOnlineStyleImage(dataUrl,{maxSide:count>1?640:1024,type:'image/jpeg'});return next.length<dataUrl.length?next:dataUrl;}catch{return dataUrl;}
   }
   // BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)
-  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"glm/glm-5.3-flash","label":"智谱 GLM-5.3 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
+  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"bytedance/doubao-seed-2.1-lite","label":"豆包 Seed 2.1 Lite","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
   const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));
   const isXiaotaoOnlineModel = id => XIAOTAO_ONLINE_MODEL_IDS.includes(id);
   const isXiaotaoFlatRateModel = id => XIAOTAO_ONLINE_MODELS.some(model => model.id === id && model.flatRate);
@@ -695,7 +695,7 @@
         else if(result.ok===false&&result.errorCode==='operation-video-draft-invalid'&&receipt.outcome==='cancel')message='模型已返回，但视频草稿未通过内容或格式校验；已产生的费用按回执结算，未回填或生成。';
         else if(result.ok===false&&result.errorCode==='operation-provider-output-invalid'&&receipt.outcome==='cancel')message='模型没有返回可用的视频草稿；已产生的费用按回执结算，未回填或生成。';
         else if(result.ok===false&&result.errorCode==='operation-cancelled-after-dispatch'&&receipt.outcome==='cancel')message='请求提交后被取消，草稿未应用；已产生的费用按回执结算。';
-        return no('video-draft-incomplete',message,{quota});
+        return no('video-draft-incomplete',message,{quota,draftIssue:String(result?.draftIssue||'').slice(0,200)});
       }
       return {ok:true,draft:{displayPrompt:draft.displayPrompt,modelPrompt:draft.modelPrompt,h3Mode:draft.h3Mode,durationSeconds:draft.durationSeconds,textOnly:!hasImages,status:'preview-only',applyAvailable:false},modelIdentity:{id:selected.modelId},quota};
     }catch{return no('operation-unknown',submitted?'请求结果待核对，请勿重复提交。':'请求未执行，请稍后重试。');}

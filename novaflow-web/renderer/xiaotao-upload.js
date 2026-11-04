@@ -488,7 +488,7 @@
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, positiveTaskText, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, positiveTaskText, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
