@@ -761,20 +761,30 @@
       .aifx-row { display: flex; align-items: center; gap: 8px; }
       .aifx-row[hidden] { display: none; }
       .aifx-row > label { min-width: 74px; font-size: 12px; color: rgba(230, 230, 230, 0.72); }
-      .aifx-material-engine { display: grid; gap: 8px; margin-top: 10px; }
-      .aifx-section-body .nf-upload-dropzone.aifx-reference-zone { min-height: 72px; padding: 10px 12px; }
-      .aifx-reference-zone .nf-upload-dropzone__icon { font-size: 18px; }
-      #${APP_ID} .aifx-reference-thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
-      #${APP_ID} .aifx-reference-thumb { position: relative; width: 56px; height: 56px; flex: none; }
-      #${APP_ID} .nf-upload-dropzone__preview .aifx-reference-thumb img { width: 56px; height: 56px; max-height: 56px; object-fit: cover; border-radius: 6px; }
-      #${APP_ID} .aifx-reference-remove {
-        position: absolute; top: 2px; right: 2px; z-index: 2;
-        width: 18px !important; height: 18px !important; min-width: 18px !important; min-height: 18px !important;
-        max-width: 18px !important; max-height: 18px !important; padding: 0 !important; border: 0; border-radius: 4px !important;
-        display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1;
-        background: rgba(0, 0, 0, 0.62); color: #ffffff; cursor: pointer;
+      .aifx-material-engine { display: grid; gap: 6px; margin-top: 4px; }
+      .aifx-help:empty { display: none; }
+      /* 风格库's pick and the artist's own pictures are one thing - material sources - so they are
+         one list of equal cards, the 风格库 pick first, and the upload box follows the last card at
+         the same height. With nothing in it the list is just the upload box. */
+      #${APP_ID} .aifx-material-board { display: grid; gap: 8px; margin-top: 8px; }
+      #${APP_ID} .aifx-material-items { display: contents; }
+      #${APP_ID} .aifx-material-tile {
+        position: relative; display: flex; align-items: center; gap: 10px; padding: 8px;
+        border-radius: 10px; background: #161616; border: 1px solid rgba(255,255,255,0.10);
       }
-      #${APP_ID} .aifx-reference-remove:hover { color: #ff6b6b; }
+      #${APP_ID} .aifx-material-tile video, #${APP_ID} .aifx-material-tile img { display: block; width: 72px; height: 72px; flex: none; border-radius: 8px; background: #000; object-fit: cover; pointer-events: none; }
+      #${APP_ID} .aifx-material-tile-label { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: #e8e8e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #${APP_ID} .aifx-material-tile-index { display: block; font-size: 11px; font-weight: 400; color: #9a9fa5; margin-bottom: 3px; }
+      #${APP_ID} .aifx-material-remove {
+        width: 24px; height: 24px; border-radius: 999px; flex: none; padding: 0;
+        background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
+        color: #fff; cursor: pointer; font-size: 13px; line-height: 1;
+      }
+      #${APP_ID} .aifx-material-remove:hover { color: #ff6b6b; }
+      .aifx-section-body .nf-upload-dropzone.aifx-reference-zone.aifx-material-add { min-height: 90px; padding: 8px; gap: 4px; box-sizing: border-box; }
+      .aifx-reference-zone .nf-upload-dropzone__icon { font-size: 18px; }
+      .aifx-material-status { margin-top: 6px; font-size: 11px; line-height: 1.5; color: #9a9fa5; }
+      .aifx-material-status:empty { display: none; }
       .aifx-material-engine-label { font-size: 12px; color: rgba(230, 230, 230, 0.72); }
       /* The picker and its look come from xiaotao-art-agent.css; only its place in this panel is set here. */
       .aifx-material-engine #aifx-material-model.aifx-material-model { position: relative; }
@@ -924,21 +934,6 @@
       .aifx-shape-pick.is-active {
         border-color: ${AIFX_ACCENT} !important;
         box-shadow: 0 0 0 1px ${AIFX_ACCENT} inset !important;
-      }
-      .aifx-current-style { margin-top: 8px; }
-      .aifx-current-card {
-        display: flex; align-items: center; gap: 10px; padding: 8px;
-        border-radius: 10px; background: #161616; border: 1px solid rgba(255,255,255,0.10);
-      }
-      .aifx-current-card video { width: 72px; height: 72px; border-radius: 8px; background: #000; flex: none; object-fit: cover; }
-      .aifx-current-card.is-quiet video { opacity: 0.35; }
-      .aifx-current-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: #e8e8e8; }
-      .aifx-current-note { font-size: 11px; font-weight: 400; color: #e0a35c; margin-top: 3px; }
-      .aifx-current-empty { font-size: 11px; line-height: 1.5; color: #9a9fa5; }
-      .aifx-current-clear {
-        width: 24px; height: 24px; border-radius: 999px; flex: none;
-        background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
-        color: #fff; cursor: pointer; font-size: 13px; line-height: 1;
       }
       /* The two libraries: the particle editor's 模板库, over the preview. */
       /* A modal, like 万物迁移: centred behind a mask that covers the window.
@@ -1346,12 +1341,11 @@
                   <div class="nf-upload-dropzone__preview" data-template-preview></div>
                   <span class="nf-upload-dropzone__icon" data-template-empty>+</span>
                   <div class="nf-upload-dropzone__title">上传素材</div>
-                  <div class="nf-upload-dropzone__hint">拖进来，或点击选择。序列帧也行</div>
+                  <div class="nf-upload-dropzone__hint">黑底特效动画 MP4 / WebM / GIF，或一组 PNG 序列帧</div>
                   <div class="nf-upload-dropzone__meta" data-template-meta></div>
                 </div>
-                <div class="aifx-help" data-template-help>黑底特效动画 MP4 / WebM / GIF，或一组 PNG 序列帧</div>
-                <div class="aifx-help aifx-detected" data-template-detected style="color:#6f7479"></div>
-                <div class="aifx-row" style="margin-top:10px">
+                <div class="aifx-help aifx-detected" data-template-detected style="color:#6f7479; margin-top:6px"></div>
+                <div class="aifx-row" style="margin-top:8px">
                   <button class="aifx-button" data-action="open-template-maker" type="button" style="flex:1" title="选效果、画轮廓、拉几个滑块，做一段黑底特效当素材或存进模板库">模板制作</button>
                 </div>
                 <div class="aifx-row" style="margin-top:8px">
@@ -1374,7 +1368,7 @@
                 </div>
                 <div class="aifx-help" data-effect-type></div>
                 <div class="aifx-material-engine" data-aifx-material-engine>
-                  <div class="aifx-material-engine-label">材质识别</div>
+                  <div class="aifx-material-engine-label">模型选择</div>
                   <div id="aifx-material-model" class="aifx-material-model nf-xiaotao-model-host" data-aifx-material-model><div class="nf-xiaotao-brains" data-aifx-material-model-slot></div></div>
                   <div class="aifx-material-engine-note" data-aifx-material-credit></div>
                   <div class="aifx-material-engine-settlement" data-aifx-material-settlement></div>
@@ -1384,17 +1378,14 @@
                   <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。例：下缘不断滴落融水"></textarea>
                 </div>
                 <button class="aifx-button" data-action="open-style-library" type="button" style="width:100%; margin-top:12px">风格库</button>
-                <div class="aifx-current-style" data-style-current></div>
-                <div class="nf-upload-dropzone nf-upload-dropzone--small aifx-reference-zone" data-nf-upload-dropzone="1" data-action="pick-style" data-style-zone style="margin-top:10px">
-                  <div class="nf-upload-dropzone__preview" data-style-preview></div>
-                  <span class="nf-upload-dropzone__icon" data-style-empty>+</span>
-                  <div class="nf-upload-dropzone__title">参考图</div>
-                  <div class="nf-upload-dropzone__hint">可选，最多 4 张。材质改从图里来，多张混成一种，风格让位</div>
-                  <div class="nf-upload-dropzone__meta" data-style-meta></div>
+                <div class="aifx-material-board" data-material-board>
+                  <div class="aifx-material-items" data-material-items></div>
+                  <div class="nf-upload-dropzone nf-upload-dropzone--small aifx-reference-zone aifx-material-add" data-nf-upload-dropzone="1" data-action="pick-style" data-style-zone title="上传参考图" aria-label="上传参考图">
+                    <span class="nf-upload-dropzone__icon">+</span>
+                    <div class="nf-upload-dropzone__title">参考图</div>
+                  </div>
                 </div>
-                <div class="aifx-row" data-style-clear-row hidden>
-                  <button class="aifx-button" data-action="clear-style" type="button" style="flex:1">移除全部参考图</button>
-                </div>
+                <div class="aifx-material-status" data-material-status></div>
               </div>
             </div>
           </div>
@@ -1709,45 +1700,6 @@
     }
     host.innerHTML = ''
     if (entry) host.appendChild(build(entry))
-  }
-
-  // The reference box shows every picture in it, each with its own ×. Rebuilt only when the set
-  // of pictures changes.
-  const syncReferenceThumbs = () => {
-    const zone = state.refs.styleZone
-    const host = state.refs.stylePreview
-    if (!zone || !host) return
-    const filled = state.references.length ? '1' : '0'
-    if (zone.getAttribute('data-filled') !== filled) zone.setAttribute('data-filled', filled)
-    const key = state.references.map((entry) => entry.objectUrl).join('|')
-    if (host.getAttribute('data-preview-src') === key) return
-    host.setAttribute('data-preview-src', key)
-    host.innerHTML = ''
-    if (!state.references.length) return
-    const row = document.createElement('div')
-    row.className = 'aifx-reference-thumbs'
-    state.references.forEach((entry, index) => {
-      const thumb = document.createElement('div')
-      thumb.className = 'aifx-reference-thumb'
-      const image = document.createElement('img')
-      image.alt = entry.fileName
-      image.src = entry.objectUrl
-      thumb.appendChild(image)
-      const remove = document.createElement('button')
-      remove.type = 'button'
-      remove.className = 'aifx-reference-remove'
-      remove.textContent = '×'
-      remove.title = '移除参考图 ' + (index + 1)
-      remove.setAttribute('aria-label', '移除参考图 ' + (index + 1))
-      remove.addEventListener('click', (event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        removeReference(entry)
-      })
-      thumb.appendChild(remove)
-      row.appendChild(thumb)
-    })
-    host.appendChild(row)
   }
 
   const revokeSource = (entry) => {
@@ -2352,6 +2304,8 @@
       // Before the runtime: the read runs on the AI 助手's own model and hands the GPU back after.
       // The references this run uses, fixed now: adding or removing one mid-run waits for the next.
       const references = state.references.slice()
+      const items = materialItems()
+      supplementMentions(state.supplement, items)
       let referenceReads = null
       if (references.length) {
         setStatus('识别参考图材质', references.map((entry) => entry.fileName).join('、'))
@@ -2367,26 +2321,47 @@
       // splitSupplement), and only what is left is translated and said. With no style and no
       // picture the words are the material itself and go through whole.
       const promptOnly = !references.length && !restyle.getPreset(state.attribute)
-      const controls = promptOnly ? null : restyle.splitSupplement(state.supplement)
-      const toSay = controls ? controls.additions : String(state.supplement || '').trim()
+      // Each @参考图N goes through the split and the translation as a placeholder the translator
+      // leaves alone, and only then becomes the words for that source.
+      const phraseFor = (n) => {
+        const item = items[n - 1]
+        const read = item.kind === 'upload' && referenceReads ? referenceReads[item.picture - 1] : null
+        return mentionPhrase(item, read, referencePicture)
+      }
+      const placeholder = (n) => 'REFMARK' + n + 'X'
+      const marked = String(state.supplement || '').replace(MENTION, (all, n) => placeholder(Number(n)))
+      const unmark = (text) => String(text || '').replace(/REFMARK([0-9]+)X/g, (all, n) => phraseFor(Number(n)))
+      const controls = promptOnly ? null : restyle.splitSupplement(marked)
+      const toSay = controls ? controls.additions : marked.trim()
       let supplementEnglish = toSay
       if (/[㐀-鿿]/.test(toSay)) {
         setStatus('翻译提示词补充', '')
-        // A failed translation keeps the Chinese rather than dropping the request.
-        supplementEnglish = await stoppable(translateSupplement(toSay))
-        supplementEnglish = supplementEnglish || toSay
+        // A failed translation keeps the Chinese rather than dropping the request, and so does one
+        // that lost or doubled a placeholder.
+        const english = await stoppable(translateSupplement(toSay))
+        const kept = (text) => (String(text).match(/REFMARK[0-9]+X/g) || []).sort().join()
+        supplementEnglish = english && kept(english) === kept(toSay) ? english : toSay
       }
+      supplementEnglish = unmark(supplementEnglish)
+      const supplementText = unmark(marked)
       const recolour = controls && controls.colour
       const overrides = { shape: currentShape(), spread: controls ? controls.spread : '', colour: recolour }
       const preset = restyle.getPreset(state.attribute)
-      // The first picture's colour paints the init (see referenceColour), unless the words recolour it.
-      const accent = references.length ? (recolour && recolour.tint) || references[0].accent : undefined
-      const attribute = referenceReads
+      // The first source on the board paints the init (see referenceColour), unless the words
+      // recolour it.
+      const accent = references.length
+        ? (recolour && recolour.tint) || (preset ? preset.accent : references[0].accent)
+        : undefined
+      // The 风格库 pick is one more material read, first in line, blended with the pictures.
+      const blended = referenceReads
+        ? [...(preset ? [{ name: preset.name, elements: preset.material, colours: '', breakup: preset.breakup || '' }] : []), ...referenceReads]
+        : null
+      const attribute = blended
         ? {
             id: 'reference',
-            name: referenceReads.map((read) => read.name).filter(Boolean).join(' AND ') || 'REFERENCE',
-            breakup: referenceReads.map((read) => read.breakup).filter(Boolean).join(' '),
-            material: restyle.referenceMaterial(referenceReads, overrides),
+            name: blended.map((read) => read.name).filter(Boolean).join(' AND ') || 'REFERENCE',
+            breakup: blended.map((read) => read.breakup).filter(Boolean).join(' '),
+            material: restyle.referenceMaterial(blended, overrides),
             accent,
           }
         : preset && (overrides.spread || recolour) ? restyle.presetWithOverrides(preset, overrides) : state.attribute
@@ -2429,7 +2404,7 @@
           referenceImages: referencePicture ? references.map((entry) => entry.uploadedName) : [],
           tint,
           attribute,
-          supplement: state.supplement,
+          supplement: supplementText,
           // Older compute nodes ignore these and keep using the Chinese above.
           supplementEnglish,
           supplementControls: controls ? { spread: controls.spread, colour: recolour ? recolour.words : '' } : undefined,
@@ -3261,58 +3236,117 @@
   // The card under 风格库: the picked style playing, its name, and a way to
   // unpick it. Rebuilt only when the pick changes, because refreshUi runs on
   // every playhead tick and a recreated video would restart each time.
-  const renderCurrentStyle = () => {
-    const host = state.refs.styleCurrent
-    const restyle = RESTYLE()
+  // The material sources in board order: the 风格库 pick first, then the uploaded pictures. The
+  // same order numbers them for 提示词补充's @参考图N.
+  const materialItems = () => {
+    const preset = RESTYLE()?.getPreset(state.attribute) || null
+    return [
+      ...(preset ? [{ kind: 'preset', preset }] : []),
+      ...state.references.map((entry, index) => ({ kind: 'upload', entry, picture: index + 1 })),
+    ]
+  }
+
+  const materialStatusText = () => {
+    const entries = state.references
+    const failed = entries.find((entry) => entry.materialState === 'failed')
+    return entries.some((entry) => entry.materialState === 'reading') ? '正在识别参考图材质…'
+      : failed ? (failed.materialError || '材质未识别，按参考图直接生成') : ''
+  }
+
+  // 提示词补充 can @ any source on the board as @参考图N (the board's own numbering), through the
+  // same @ menu the other prompt boxes use.
+  const mentionResources = () => materialItems().map((item, index) => ({
+    key: 'aifx_material_' + (index + 1),
+    label: '参考图' + (index + 1),
+    kind: item.kind === 'preset' ? 'video' : 'image',
+    previewUrl: item.kind === 'preset' ? STYLE_PREVIEW_URL(item.preset.id) : item.entry.objectUrl,
+    fileName: item.kind === 'preset' ? item.preset.label : item.entry.fileName,
+    occupied: true,
+    available: true,
+  }))
+  let mentionSignature = null
+  const syncSupplementMentions = () => {
+    const tool = window.NovaFlowResourceMentionTool
+    const textarea = state.refs.supplement
+    if (!tool || typeof tool.mountTextarea !== 'function' || !textarea || !textarea.isConnected) return
+    const signature = mentionResources().map((item) => item.key + ':' + item.previewUrl).join('|')
+    if (signature === mentionSignature) return
+    mentionSignature = signature
+    tool.mountTextarea({ textarea, surface: 'aifx', getResources: mentionResources })
+  }
+
+  // The @参考图N in 提示词补充, checked against the board before anything runs.
+  const MENTION = /@参考图([1-9][0-9]*)/g
+  const supplementMentions = (text, items) => {
+    const numbers = [...String(text || '').matchAll(MENTION)].map((match) => Number(match[1]))
+    const missing = numbers.filter((n) => n > items.length)
+    if (missing.length) throw new Error('AI 特效：提示词补充里的 @参考图' + missing[0] + ' 没有对应的风格或参考图')
+    return numbers
+  }
+  // What an @参考图N becomes in the English prompt: read out as words, the source's material by
+  // name; sent as pictures, an upload is its own <Picture N>.
+  const mentionPhrase = (item, read, picturePath) => {
+    if (item.kind === 'preset') return 'the ' + String(item.preset.name || item.preset.label).toLowerCase() + ' material'
+    if (picturePath) return 'the material of <Picture ' + item.picture + '>'
+    return 'the ' + String(read && read.name || 'reference').toLowerCase() + ' material'
+  }
+
+  // Rebuilt only when the set of sources changes, because each one carries a playing video or a
+  // picture that would restart.
+  const renderMaterialBoard = () => {
+    const host = state.refs.materialItems
     if (!host) return
-    const preset = restyle ? restyle.getPreset(state.attribute) : null
-    const key = (preset ? preset.id : '') + '|' + state.references.map((entry) => 'ref:' + entry.materialState).join(',')
-    if (host.getAttribute('data-rendered') === key) return
-    host.setAttribute('data-rendered', key)
-    host.innerHTML = ''
-    const card = document.createElement('div')
-    card.className = 'aifx-current-card' + (state.references.length ? ' is-quiet' : '')
-    if (preset) {
-      const video = document.createElement('video')
-      video.muted = true
-      video.loop = true
-      video.playsInline = true
-      video.autoplay = true
-      video.src = STYLE_PREVIEW_URL(preset.id)
-      card.appendChild(video)
-      const text = document.createElement('div')
-      text.className = 'aifx-current-name'
-      text.textContent = preset.label
-      if (state.references.length) {
-        const note = document.createElement('div')
-        note.className = 'aifx-current-note'
-        note.textContent = '已让位给参考图'
-        text.appendChild(note)
-      }
-      card.appendChild(text)
-      const clear = document.createElement('button')
-      clear.type = 'button'
-      clear.className = 'aifx-current-clear'
-      clear.title = '取消这个风格'
-      clear.textContent = '×'
-      clear.setAttribute('data-action', 'clear-attribute')
-      clear.addEventListener('click', () => {
-        state.attribute = ''
-        refreshUi()
+    const items = materialItems()
+    const key = items.map((item) => item.kind === 'preset' ? 'preset:' + item.preset.id : item.entry.objectUrl).join('|')
+    if (host.getAttribute('data-rendered') !== key) {
+      host.setAttribute('data-rendered', key)
+      for (const media of Array.from(host.querySelectorAll('video'))) { media.pause(); media.removeAttribute('src'); media.load() }
+      host.innerHTML = ''
+      items.forEach((item, index) => {
+        const tile = document.createElement('div')
+        tile.className = 'aifx-material-tile'
+        tile.setAttribute('data-material-tile', item.kind)
+        let media
+        if (item.kind === 'preset') {
+          media = document.createElement('video')
+          media.muted = true
+          media.loop = true
+          media.playsInline = true
+          media.autoplay = true
+          media.src = STYLE_PREVIEW_URL(item.preset.id)
+        } else {
+          media = document.createElement('img')
+          media.alt = item.entry.fileName
+          media.src = item.entry.objectUrl
+        }
+        tile.appendChild(media)
+        const label = document.createElement('div')
+        label.className = 'aifx-material-tile-label'
+        const number = document.createElement('span')
+        number.className = 'aifx-material-tile-index'
+        number.textContent = '@参考图' + (index + 1)
+        label.appendChild(number)
+        label.appendChild(document.createTextNode(item.kind === 'preset' ? item.preset.label : item.entry.fileName))
+        label.title = item.kind === 'preset' ? item.preset.label : item.entry.fileName
+        tile.appendChild(label)
+        const remove = document.createElement('button')
+        remove.type = 'button'
+        remove.className = 'aifx-material-remove'
+        remove.textContent = '×'
+        remove.title = item.kind === 'preset' ? '取消这个风格' : '移除这张参考图'
+        remove.setAttribute('aria-label', remove.title)
+        remove.addEventListener('click', (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          if (state.isGenerating) return
+          if (item.kind === 'preset') { state.attribute = ''; refreshUi() } else removeReference(item.entry)
+        })
+        tile.appendChild(remove)
+        host.appendChild(tile)
       })
-      card.appendChild(clear)
-    } else {
-      const empty = document.createElement('div')
-      empty.className = 'aifx-current-empty'
-      const entries = state.references
-      const failed = entries.find((entry) => entry.materialState === 'failed')
-      empty.textContent = !entries.length ? '未选风格'
-        : entries.some((entry) => entry.materialState === 'reading') ? '正在识别参考图材质…'
-          : failed ? (failed.materialError || '材质未识别，按参考图直接生成')
-            : entries.length > 1 ? '材质来自 ' + entries.length + ' 张参考图，混成一种' : '材质来自参考图'
-      card.appendChild(empty)
     }
-    host.appendChild(card)
+    put(state.refs.materialStatus, 'textContent', materialStatusText())
+    put(state.refs.styleZone, 'hidden', state.references.length >= MAX_REFERENCES)
   }
 
   const guard = (handler) => async (event) => {
@@ -3462,7 +3496,8 @@
     refs.previewProgress = root.querySelector('[data-preview-progress]')
     refs.previewProgressFill = root.querySelector('[data-preview-progress-fill]')
     root.querySelector('[data-action="cancel-generate"]')?.addEventListener('click', cancelGenerate)
-    refs.styleCurrent = root.querySelector('[data-style-current]')
+    refs.materialItems = root.querySelector('[data-material-items]')
+    refs.materialStatus = root.querySelector('[data-material-status]')
     refs.openStyle = root.querySelector('[data-action="open-style-library"]')
     refs.openTemplate = root.querySelector('[data-action="open-template-library"]')
     refs.library = root.querySelector('[data-library]')
@@ -3477,8 +3512,6 @@
     refs.templateInput = root.querySelector('[data-template-input]')
     refs.styleInput = root.querySelector('[data-style-input]')
     refs.templateMeta = root.querySelector('[data-template-meta]')
-    refs.styleMeta = root.querySelector('[data-style-meta]')
-    refs.styleClearRow = root.querySelector('[data-style-clear-row]')
     refs.supplement = root.querySelector('[data-action="prompt-supplement"]')
     refs.templateZone = root.querySelector('[data-template-zone]')
     refs.templatePreview = root.querySelector('[data-template-preview]')
@@ -3494,16 +3527,14 @@
     refs.materialModelHost = root.querySelector('[data-aifx-material-model]')
     refs.materialModelSlot = root.querySelector('[data-aifx-material-model-slot]')
     ensureMaterialPicker()
-    refs.stylePreview = root.querySelector('[data-style-preview]')
     refs.templateEmpty = root.querySelector('[data-template-empty]')
-    refs.styleEmpty = root.querySelector('[data-style-empty]')
     refs.templateDetected = root.querySelector('[data-template-detected]')
     refs.playButton = root.querySelector('[data-action="play"]')
     refs.candidates = root.querySelector('[data-candidates]')
     refs.seedLock = root.querySelector('[data-action="lock-seed"]')
     refs.candidateCount = root.querySelector('[data-action="candidates"]')
     refs.candidateCountValue = root.querySelector('[data-candidates-value]')
-    renderCurrentStyle()
+    renderMaterialBoard()
     syncSectionOpen(root)
 
     for (const toggle of Array.from(root.querySelectorAll('[data-section-toggle]'))) {
@@ -3600,8 +3631,6 @@
       event.stopPropagation()
       if (!state.isGenerating) clearTemplate()
     })
-    root.querySelector('[data-action="clear-style"]')
-      .addEventListener('click', guard(() => { clearReferences() }))
     root.querySelector('[data-action="generate"]')
       .addEventListener('click', guard(() => runGenerate()))
     refs.playButton?.addEventListener('click', guard(() => togglePlayback()))
@@ -3774,19 +3803,11 @@
     if (refs.templateClearX && refs.templatePreview && refs.templateClearX.parentElement !== refs.templatePreview) {
       refs.templatePreview.appendChild(refs.templateClearX)
     }
-    syncReferenceThumbs()
-    const count = state.references.length
-    put(refs.styleMeta, 'textContent', !count ? ''
-      : count === 1 ? state.references[0].fileName + '（可再加，最多 ' + MAX_REFERENCES + ' 张）'
-        : count + ' 张参考图' + (count < MAX_REFERENCES ? '（可再加，最多 ' + MAX_REFERENCES + ' 张）' : '（已满）'))
-    put(refs.styleEmpty, 'textContent', count ? '✓' : '+')
-    // A reference image supplies the material outright - naming one as well
-    // just overrides the picture - so the style buttons go quiet while one is
-    // loaded rather than pretending to still apply.
-    renderCurrentStyle()
-    put(refs.openStyle, 'disabled', state.isGenerating || state.references.length > 0)
+    // 风格库's pick and the uploaded pictures sit together and are blended; neither gives way.
+    renderMaterialBoard()
+    syncSupplementMentions()
+    put(refs.openStyle, 'disabled', state.isGenerating)
     put(refs.openTemplate, 'disabled', state.isGenerating)
-    put(refs.styleClearRow, 'hidden', !state.references.length)
     if (refs.supplement) {
       if (refs.supplement.value !== state.supplement) refs.supplement.value = state.supplement
       put(refs.supplement, 'disabled', state.isGenerating)

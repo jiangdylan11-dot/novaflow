@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const RESOURCE_MENTION_TOOL_VERSION = "20261104-mention-programmatic-value-1";
+  const RESOURCE_MENTION_TOOL_VERSION = "20261104-mention-aifx-1";
 
   const SEEDANCE_RESOURCE_CONFIG = Object.freeze([
     Object.freeze({ key: "ref_image", label: "参考图1", kind: "image" }),
@@ -81,6 +81,17 @@
     });
   }
 
+  // AI 特效 提示词补充: the material board's sources, 风格库 pick first, numbered as @参考图N.
+  function aifxResourceConfig(resources) {
+    return (Array.isArray(resources) ? resources : []).map(function (resource, index) {
+      return Object.freeze({
+        key: stringValue(resource && resource.key).trim() || "aifx_material_" + (index + 1),
+        label: "参考图" + (index + 1),
+        kind: resource && resource.kind === "video" ? "video" : "image"
+      });
+    });
+  }
+
   function configForSurface(surface, resources) {
     const normalized = normalizeSurface(surface);
     if (normalized === "art-generate") return artGenerateResourceConfig(resources);
@@ -88,6 +99,7 @@
     if (normalized === "minimax_h3" || normalized === "minimax-h3") return (globalThis.NovaFlowAiSequenceMiniMaxH3Resource?.multiReferenceSlots || []).map(x=>({key:x.key,label:x.label,kind:x.kind,legacyAliases:x.aliases.filter(alias=>alias!=="@"+x.label)}));
     if (normalized === "minimax-h3-image-video") return MINIMAX_H3_IMAGE_VIDEO_RESOURCE_CONFIG;
     if (normalized === "minimax-h3-first-last") return MINIMAX_H3_FIRST_LAST_RESOURCE_CONFIG;
+    if (normalized === "aifx") return aifxResourceConfig(resources);
     return SEEDANCE_RESOURCE_CONFIG;
   }
 
@@ -133,7 +145,9 @@
     descriptors.forEach(function (descriptor) {
       if (!descriptor.occupied) return;
       ordinals[descriptor.kind] += 1;
-      if (normalized === "art-generate") {
+      if (normalized === "aifx") {
+        descriptor.modelLabel = descriptor.kind === "video" ? "风格库" : "上传图";
+      } else if (normalized === "art-generate") {
         descriptor.modelLabel = "图" + ordinals.image;
       } else if (normalized === "ui-design") {
         // 图1通常留给页面结构控制图，用户引用从模型图2开始；不收控制图的引擎（2.1）由调用方给出编号。

@@ -312,13 +312,13 @@ test('style-transfer files stay untouched and the material prompt has no secret'
 
 // 风格参考 takes several pictures (Dylan, Nov 4): each is read, the reads blend into one material;
 // one picture that cannot be read sends them all to H3 as pictures instead.
-async function runTwoReferences(localReply) {
+async function runTwoReferences(localReply, { preset = null, supplement = '' } = {}) {
   const p = page({ withState: true });
   if (localReply) p.context.localReply = localReply;
   const captured = {};
   p.context.NovaFlowAifxRestyleWorkflow = {
-    getPreset: () => null,
-    splitSupplement: () => ({ additions: '', spread: '', colour: null }),
+    getPreset: (id) => (preset && id === preset.id ? preset : null),
+    splitSupplement: (text) => ({ additions: text, spread: '', colour: null }),
     referenceMaterial: (reads) => { captured.reads = reads; return 'blended'; },
     defaultStrengthFor: () => 20,
     buildWorkflow: (options) => { captured.options = options; throw new Error('stop here'); },
@@ -328,6 +328,8 @@ async function runTwoReferences(localReply) {
   Object.assign(p.context.__aifxState, {
     source: { blob: {}, fileName: 'clip.mp4', width: 512, height: 512, duration: 1 },
     references: [{ blob: {}, image, fileName: 'a.png', accent: '#ff0000' }, { blob: {}, image, fileName: 'b.png', accent: '#00ff00' }],
+    attribute: preset ? preset.id : '',
+    supplement,
   });
   await assert.rejects(p.api.runProductionPipeline(), /stop here/);
   return { p, captured };
@@ -351,6 +353,44 @@ test('when one reference cannot be read, every reference goes to H3 as a picture
 
 test('the reference box takes several files and each picture has its own remove', () => {
   assert.match(runtimeSource, /data-style-input type="file" multiple accept="image\/\*"/);
-  assert.match(runtimeSource, /aifx-reference-remove/);
+  assert.match(runtimeSource, /aifx-material-remove/);
   assert.doesNotMatch(runtimeSource, /state\.reference\b/);
+});
+
+const FIRE = { id: 'fire', label: '火焰', name: 'FIRE', material: 'made of blazing flame.', breakup: 'It bursts.', accent: '#ff6600' };
+
+test('a 风格库 pick and uploaded pictures are blended together, the pick first and painting the init', async () => {
+  const { captured } = await runTwoReferences(null, { preset: FIRE });
+  assert.equal(captured.reads.length, 3);
+  assert.equal(captured.reads[0].name, 'FIRE');
+  assert.equal(captured.reads[0].elements, 'made of blazing flame.');
+  assert.equal(captured.options.tint, '#ff6600');
+  assert.match(captured.options.attribute.name, /^FIRE AND /);
+});
+
+test('@参考图N in 提示词补充 names that source on the board', async () => {
+  const { captured } = await runTwoReferences(null, { preset: FIRE, supplement: 'add sparks of @参考图1 and @参考图3' });
+  assert.equal(captured.options.supplementEnglish, 'add sparks of the fire material and the glowing petal material');
+  let n = 0;
+  const pictures = await runTwoReferences(() => (n++ === 0 ? { ok: true, material: { ...LOCAL_MATERIAL } } : { ok: false }), { supplement: 'add @参考图2' });
+  assert.equal(pictures.captured.options.supplementEnglish, 'add the material of <Picture 2>');
+});
+
+test('an @参考图N with nothing behind it stops the run before anything is read', async () => {
+  const p = page({ withState: true });
+  p.context.NovaFlowAifxRestyleWorkflow = { getPreset: () => null, splitSupplement: (text) => ({ additions: text, spread: '', colour: null }) };
+  p.context.NovaFlowAifxRestyleClient = { ensureRuntime: async () => true };
+  Object.assign(p.context, { addEventListener() {}, removeEventListener() {} });
+  Object.assign(p.context.__aifxState, { source: {}, references: [{ blob: {}, image, fileName: 'a.png' }], supplement: '用 @参考图3' });
+  await assert.rejects(p.api.runProductionPipeline(), /@参考图3 没有对应/);
+  assert.equal(p.calls.local.length, 0);
+});
+
+test('one material board: 风格库 pick and uploads side by side, no note, renamed picker', () => {
+  assert.match(runtimeSource, /<div class="aifx-material-engine-label">模型选择<\/div>/);
+  assert.doesNotMatch(runtimeSource, />材质识别</);
+  assert.match(runtimeSource, /data-material-board/);
+  assert.doesNotMatch(runtimeSource, /风格让位|已让位给参考图|data-action="clear-style"|aifx-current-card/);
+  assert.match(runtimeSource, /nf-upload-dropzone__hint">黑底特效动画 MP4 \/ WebM \/ GIF，或一组 PNG 序列帧</);
+  assert.doesNotMatch(runtimeSource, /data-template-help/);
 });

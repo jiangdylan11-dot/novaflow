@@ -966,14 +966,20 @@
     // upload do nothing. With no material named, the same four references gave
     // four different materials on one motion (cracked ice plate, viscous goo,
     // neon capsules, polished gold) where the no-reference control came back
-    // as plain white light. So the subject here is the silhouette only, and
-    // the panel greys the 基础风格 picker while a reference is loaded.
+    // as plain white light. So the subject here is the silhouette only. Since
+    // 2026-11-04 (Dylan) a 风格库 pick no longer gives way to the pictures: it is
+    // one more material in the blend, named once at the end - the words still
+    // pull hard, which is the price of having both.
     // Several references are one look between them: each <Picture N> is named, and the material is
     // the blend of all of them, not one picture per part of the effect.
     const pictures = Array.from({ length: referenceCount }, (_, index) => `<Picture ${index + 1}>`)
     const all = pictures.length === 1 ? pictures[0]
       : pictures.slice(0, -1).join(', ') + ' and ' + pictures[pictures.length - 1]
     const several = pictures.length > 1
+    // A 风格库 pick next to the pictures is one more material in the same blend, said in words.
+    const blend = preset
+      ? `Blended into the same material as well: ${String(preset.name || '').toLowerCase()}, ${preset.material}`
+      : ''
     return [
       'subject_definitions:',
       ...pictures.map(picture => several
@@ -995,6 +1001,7 @@
       several
         ? `A single ${refShape} made of exactly the materials shown in ${all}, blended into one material\nwith their colours, surface finishes and ways of breaking apart mixed through the whole effect.`
         : `A single ${refShape} made of exactly the material shown in ${all}, with the same\ncolour, the same surface finish and the same way of breaking apart.`,
+      ...(blend ? [blend] : []),
       shapeSentence(refShape, clause),
       SHOT_TAIL,
       '',
