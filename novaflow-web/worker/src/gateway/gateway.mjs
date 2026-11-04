@@ -16,7 +16,7 @@
 
 import { createServer } from 'node:http';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { stat, lstat, mkdir, readdir, rm, rmdir, open, link } from 'node:fs/promises';
+import { stat, lstat, mkdir, readdir, rm, rmdir, open, link, rename } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { join, resolve, extname, sep, dirname } from 'node:path';
@@ -269,9 +269,13 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
 
   // Count bytes as they arrive and stop at the cap. The file is removed unless
   // the whole body lands under the cap, so a rejected upload leaves nothing behind.
-  async function streamUpload(req, filePath, maxBytes, tooBigMessage) {
-    await mkdir(dirname(filePath), { recursive: true });
-    const out = createWriteStream(filePath);
+  // Writes to a hidden temp file first. waitForInputs polls the input folder
+  // by name, so the final name must only appear once the file is complete;
+  // otherwise a large request.json is read half-written (truncated JSON).
+  async function streamUpload(req, finalPath, maxBytes, tooBigMessage) {
+    await mkdir(dirname(finalPath), { recursive: true });
+    const filePath = join(dirname(finalPath), `.${randomUUID()}.upload`);
+    const out = createWriteStream(filePath, { flags: 'wx' });
     const head = Buffer.alloc(64);
     let headLen = 0;
     let total = 0;
@@ -307,7 +311,7 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
       const message = oversize ? tooBigMessage : '是空文件';
       throw Object.assign(new Error(message), { status: oversize ? 413 : 400, close: oversize });
     }
-    return { total, head: head.subarray(0, headLen) };
+    return { total, head: head.subarray(0, headLen), tempPath: filePath };
   }
 
   // Candidate inputs remain invisible to waitForInputs until verified, fully
@@ -500,9 +504,11 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
           slot
         });
         if (!verdict.ok) {
-          await rm(filePath, { force: true });
+          await rm(streamed.tempPath, { force: true });
           throw Object.assign(new Error(verdict.message), { status: 400 });
         }
+        try { await rename(streamed.tempPath, filePath); }
+        catch (error) { await rm(streamed.tempPath, { force: true }); throw error; }
         log('input received', { taskId, name, bytes: streamed.total });
         if (onUpload) await onUpload({ taskId, name, bytes: streamed.total, userId: grant.sub });
         res.writeHead(200, { 'content-type': 'application/json', ...corsHeaders(req.headers.origin) });
