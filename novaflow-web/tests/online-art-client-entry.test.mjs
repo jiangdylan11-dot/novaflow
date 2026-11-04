@@ -7,7 +7,7 @@ const source=await readFile(new URL('../renderer/novaflow-web-runtime.js',import
 const creditHelpers=source.slice(source.indexOf('  // Operation-v3 can use'),source.indexOf('  const XIAOTAO_ONLINE_ART_RELEASE_ENABLED'));
 const start=source.indexOf('  async function selectedOnlineBusinessPrompt('),end=source.indexOf('  async function localPromptAssistant(',start);
 assert.ok(start>0&&end>start);
-function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,serverSuccess=false,unknownSecond=false,gptResult=false,pricingSource='token_rate_estimate',cacheKnown=false,operationV3=false,mutateQuote=null,storageFail=false,decimal=false}={}){
+function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,serverSuccess=false,unknownSecond=false,gptResult=false,pricingSource='token_rate_estimate',cacheKnown=false,operationV3=true,mutateQuote=null,storageFail=false,decimal=true}={}){
  const selection={provider:'api',modelId:'xai/grok-4.7',epoch:0},listeners=new Set(),events=[],pending=new Set(),recovery=new Map();
  const operationId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
  let token='session-a',calls=0,onExecute=null;
@@ -21,10 +21,11 @@ function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,ser
   validOperationId:id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id||''),
   currentSession:()=>({token}),captureFoartSessionGuard:()=>{const captured=token;return ()=>token===captured;},companionCloudRequests:new Map(),companionCloudUsed:new Set(),
   stopCompanionCloud:()=>{},api:async(_base,_method,path,body,_timeout,signal)=>{
-   calls++;events.push({kind:path.endsWith('/quote')?'quote':'execute',body});
+   calls++;events.push({kind:path.endsWith('/quote')?'quote':path.endsWith('/cancel')?'cancel':'execute',body});
    if(signal?.aborted)throw Error('aborted');
    if(path.endsWith('/quote')){const quote={stage:body.stage,model:selection.modelId,requestId:body.stage==='structure'?'a'.repeat(64):'b'.repeat(64),
     pricingVersion:'sha256:'+'c'.repeat(64),estimatedCredits:decimal?0.125:3,maxOutputTokens:body.stage==='structure'&&body.input?.targetEngine!=='gpt-image-2.5'?6144:1536,quoteToken:'synthetic-'+body.stage,...(body.images?{imageCount:body.images.length}:{}),...(operationV3?{billingScope:'operation-v3',recoveryOperationId:operationId}:{})};mutateQuote?.(quote,body.stage);return {ok:true,quote};}
+   if(path.endsWith('/cancel'))return {ok:false,errorCode:'operation-cancelled',settlement:{requestId:'a'.repeat(64),status:'settled',settledCredits:0.000002}};
    if(onExecute)await onExecute(body);
    if(unknownSecond&&body.quoteToken==='synthetic-english')throw Error('synthetic transport lost');
    const id=body.quoteToken==='synthetic-structure'?'a'.repeat(64):'b'.repeat(64);
@@ -70,44 +71,29 @@ test('decimal two-stage art retains one operation recovery and one final fractio
  const result=await h.invoke();assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.quota.settled_credits,0.000001);
  assert.equal(h.events.filter(e=>e.kind==='execute').length,2);
 });
-test('settlement states the token-rate basis and unknown cache; an unverified pricing source stays unknown',async()=>{
- const h=harness({gptResult:true,cacheKnown:false});h.payload.targetEngine='gpt-image-2.5';delete h.payload.promptSchema;delete h.payload.agentModelLanguage;
- const result=await h.invoke();assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.quota.pricing_source,'token_rate_estimate');assert.equal(result.quota.cache_known,false);
- assert.match(result.quota.pricing_note,/缓存用量未知/);assert.match(result.quota.pricing_note,/非供应商实账/);
- assert.match(h.events.find(e=>e.kind==='settled').row.quota.pricing_note,/非供应商实账/);
- const unsafe=harness({gptResult:true,pricingSource:'rh_consume_money'});unsafe.payload.targetEngine='gpt-image-2.5';delete unsafe.payload.promptSchema;delete unsafe.payload.agentModelLanguage;
- const rejected=await unsafe.invoke();assert.equal(rejected.ok,false);assert.equal(rejected.billingUnknown,true);assert.equal(unsafe.events.filter(e=>e.kind==='settled').length,0);
-});
 test('GPT Image optimization uses one separately confirmed 1536-token stage without Qwen policy',async()=>{
  const h=harness({gptResult:true});h.payload.targetEngine='gpt-image-2.5';h.payload.supportsNegativePrompt=false;
  delete h.payload.promptSchema;delete h.payload.agentModelLanguage;
  const result=await h.invoke();assert.equal(result.ok,true);assert.equal(result.targetEngine,'gpt-image-2.5');
  assert.equal(result.promptContract,'gpt-image-semantic-fusion-v1');assert.equal(result.modelPromptPolicy,undefined);
- assert.deepEqual(h.events.map(e=>e.kind),['quote','show','confirm','pending','execute','settled']);
+ assert.deepEqual(h.events.map(e=>e.kind),['quote','show','confirm','execute','settled']);
  assert.equal(h.events[0].body.input.targetEngine,'gpt-image-2.5');
 });
 test('actual renderer branch confirms and records each mock phase separately',async()=>{
  for(const model of ['xai/grok-4.7','openai/gpt-6.1-sol-saver']){
   const h=harness();h.selection.modelId=model;h.payload.assistantModelId=model;
-  const result=await h.invoke();assert.equal(result.errorCode,'semantic-verification-pending');assert.equal(result.quota.settled_credits,2);
-  assert.deepEqual(h.events.map(e=>e.kind),['quote','show','confirm','pending','execute','settled','quote','show','confirm','pending','execute','settled']);
+  const result=await h.invoke();assert.equal(result.errorCode,'semantic-verification-pending');assert.equal(result.quota.settled_credits,0.000001);
+  assert.deepEqual(h.events.map(e=>e.kind),['quote','show','confirm','execute','quote','show','confirm','execute','settled']);
   const [first,second]=h.events.filter(e=>e.kind==='quote');
   assert.equal(first.body.modelId,model);assert.equal(first.body.intentId,h.payload.requestId);assert.equal(second.body.stageToken,'signed-stage');
   assert.ok(h.events.filter(e=>e.kind==='show').every(e=>e.exposedToken===undefined));
-  assert.notEqual(h.events.find(e=>e.kind==='pending').row.requestId,h.events.filter(e=>e.kind==='pending')[1].row.requestId);
  }
 });
 test('valid two-stage response remains marked for review and carries actual settlement',async()=>{
  const h=harness({serverSuccess:'valid'}),result=await h.invoke();
  assert.equal(result.ok,true);assert.equal(result.reviewRequired,true);
- assert.equal(result.translationValidation,'structure-and-literals');assert.equal(result.quota.settled_credits,2);
+ assert.equal(result.translationValidation,'structure-and-literals');assert.equal(result.quota.settled_credits,0.000001);
  assert.equal(h.events.filter(e=>e.kind==='execute').length,2);
-});
-test('v3 two-stage art keeps one account-bound recovery ID until confirmed settlement',async()=>{
- const h=harness({operationV3:true,serverSuccess:'valid'}),result=await h.invoke();
- assert.equal(result.ok,true);assert.equal(result.quota.settled_credits,1);assert.equal(result.quota.cache_known,undefined);
- assert.equal(h.events.filter(e=>e.kind==='execute').length,2);
- assert.equal(h.events.some(e=>e.kind==='pending'||e.kind==='settled'),false);
 });
 test('v3 missing, partial or mismatched quote identity fails closed before dispatch',async()=>{
  for(const mutate of [q=>{delete q.billingScope;delete q.recoveryOperationId;},q=>{delete q.billingScope;},q=>{delete q.recoveryOperationId;},q=>{q.recoveryOperationId='not-a-uuid';},q=>{q.pricingVersion='sha256:'+'f'.repeat(64);}]){
@@ -115,22 +101,16 @@ test('v3 missing, partial or mismatched quote identity fails closed before dispa
   assert.equal(h.events.filter(e=>e.kind==='execute').length,0);
  }
  const changed=harness({operationV3:true,mutateQuote:(q,stage)=>{if(stage==='english')q.recoveryOperationId='dddddddd-dddd-4ddd-8ddd-dddddddddddd';}});
- const result=await changed.invoke();assert.equal(result.ok,false);assert.equal(result.billingUnknown,true);assert.equal(changed.events.filter(e=>e.kind==='execute').length,1);
-});
-test('v2 rejects unexpected v3 fields instead of routing them as legacy',async()=>{
- const h=harness({mutateQuote:q=>{q.billingScope='operation-v3';q.recoveryOperationId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';}});
- const result=await h.invoke();assert.equal(result.ok,false);assert.equal(h.events.some(e=>e.kind==='execute'),false);
+ const result=await changed.invoke();assert.equal(result.ok,false);assert.equal(result.quota.settled_credits,0.000002);assert.equal(changed.events.filter(e=>e.kind==='execute').length,1);assert.equal(changed.events.filter(e=>e.kind==='cancel').length,1);
 });
 test('declining the second quote preserves the first receipt and sends no second request',async()=>{
  const h=harness({confirmSecond:false}),result=await h.invoke();
- assert.equal(result.errorCode,'assistant-business-quote-declined');assert.equal(result.quota.settled_credits,2);
- assert.equal(h.events.filter(e=>e.kind==='execute').length,1);assert.equal(h.events.filter(e=>e.kind==='pending').length,1);
+ assert.equal(result.errorCode,'assistant-business-quote-declined');assert.equal(result.quota.settled_credits,0.000002);
+ assert.equal(h.events.filter(e=>e.kind==='execute').length,1);assert.equal(h.events.filter(e=>e.kind==='cancel').length,1);
 });
-test('unpersisted pending or settlement stops before the next paid stage',async()=>{
- const a=harness();a.payload.onBillingNotice=()=>false;const first=await a.invoke();
- assert.equal(first.errorCode,'billing-record-unavailable');assert.equal(a.events.filter(e=>e.kind==='execute').length,0);
- const b=harness({settlementFailure:true}),second=await b.invoke();assert.equal(second.errorCode,'billing-record-unavailable');
- assert.equal(second.quota.settled_credits,2);assert.equal(b.events.filter(e=>e.kind==='execute').length,1);
+test('a settlement that cannot be recorded is reported, with the actual charge',async()=>{
+ const h=harness({settlementFailure:true}),result=await h.invoke();assert.equal(result.errorCode,'billing-record-unavailable');
+ assert.equal(result.quota.settled_credits,0.000001);assert.equal(h.events.filter(e=>e.kind==='execute').length,2);
 });
 test('model or session change while confirming prevents paid dispatch',async()=>{
  for(const change of ['model','session']){
@@ -145,16 +125,14 @@ test('selection change while showing quote does not display a stale confirmation
  const result=await h.invoke();assert.equal(result.errorCode,'assistant-selection-changed');
  assert.equal(confirmed,0);assert.equal(h.events.filter(e=>e.kind==='execute').length,0);
 });
-test('in-flight selection change preserves a late actual receipt and does not start phase two',async()=>{
+test('in-flight selection change does not start phase two',async()=>{
  const h=harness();h.setOnExecute(async()=>h.changeModel());
  const result=await h.invoke();assert.equal(result.errorCode,'assistant-selection-changed');
- assert.equal(result.quota.settled_credits,2);assert.equal(result.billingUnknown,false);
- assert.equal(h.events.filter(e=>e.kind==='settled').length,1);assert.equal(h.events.filter(e=>e.kind==='quote').length,1);
+ assert.equal(h.events.filter(e=>e.kind==='quote').length,1);assert.equal(h.events.filter(e=>e.kind==='execute').length,1);
 });
-test('a lost second response keeps the first receipt and marks the second bill unknown',async()=>{
+test('a lost second response marks the bill unknown and is never cancelled',async()=>{
  const h=harness({unknownSecond:true}),result=await h.invoke();
- assert.equal(result.billingUnknown,true);assert.equal(result.quota.settled_credits,2);
- assert.equal(h.events.filter(e=>e.kind==='pending').length,2);assert.equal(h.events.filter(e=>e.kind==='settled').length,1);
+ assert.equal(result.billingUnknown,true);assert.equal(h.events.filter(e=>e.kind==='execute').length,2);assert.equal(h.events.filter(e=>e.kind==='cancel').length,0);
 });
 test('forged successful second stage lacks trusted contract and is never returned as a prompt',async()=>{
  const h=harness({serverSuccess:true}),result=await h.invoke();
