@@ -13,10 +13,11 @@ const base=()=>({bones:[{name:'root'}],slots:[{name:'arm',bone:'root',attachment
   skins:[{name:'default',attachments:{arm:{arm_l:{path:'e/arm_l'},arm_r:{path:'e/arm_r'},body:{path:'e/body'}}}},{name:'skin1',attachments:{}},{name:'skin2',attachments:{}}]});
 const items=['arm_l','arm_r','body'].map(name=>({slot:'arm',name,skin:'default'}));
 
-test('each selected attachment becomes its own placeholder and no skin is created',()=>{
-  const r=Ops.convertToPlaceholders(base(),items,{preferredSkin:'skin1'}),json=plain(r.json);
+test('each selected attachment becomes its own placeholder in the current skin only',()=>{
+  const r=Ops.convertToPlaceholders(base(),items,'skin1'),json=plain(r.json);
   assert.deepEqual(json.skins.map(s=>s.name),['default','skin1','skin2']);
   assert.deepEqual(plain(Ops.placeholderList(r.json,'arm')).map(p=>p.name).sort(),['arm_l','arm_r','body']);
-  for(const skin of json.skins.slice(1))assert.deepEqual(Object.keys(skin.attachments.arm).sort(),['arm_l','arm_r','body']);
+  assert.deepEqual(Object.keys(json.skins[1].attachments.arm).sort(),['arm_l','arm_r','body']);
+  assert.equal(json.skins[2].attachments.arm,undefined);
   assert.equal(json.skins[0].attachments.arm,undefined);
 });

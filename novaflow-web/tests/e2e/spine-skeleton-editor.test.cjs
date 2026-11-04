@@ -494,8 +494,8 @@ test('skin placeholders: convert a mesh, each skin its own image, switching skin
   j0.animations[an].deform = { default: { [slot]: { [key]: [{ time: 0 }, { time: 0.3, vertices: new Array(len).fill(6) }] } } }
   let r = Ops.createSkin(j0, '红')
   r = Ops.createSkin(r.json, '蓝')
-  assert.throws(() => Ops.convertToPlaceholder(wild, slot, key), /先新建皮肤/)
-  r = Ops.convertToPlaceholder(r.json, slot, key)
+  assert.throws(() => Ops.convertToPlaceholder(wild, slot, key, '红'), /先新建皮肤/)
+  r = Ops.convertToPlaceholder(r.json, slot, key, '红')
   assert.strictEqual(r.owner, '红')
   assert(Ops.isPlaceholder(r.json, slot, key))
   r = Ops.fillPlaceholder(r.json, '蓝', slot, key, { path: 'wild_hair', width: 50, height: 60 })

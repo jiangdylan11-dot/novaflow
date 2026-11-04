@@ -10339,16 +10339,19 @@
   function batchConvertToPlaceholders() {
     const list = selectedAttachments()
     if (!list.length) return
-    edit(`已把 ${list.length} 个附件各转为皮肤占位符`, (j) => Ops.convertToPlaceholders(j, list, { preferredSkin: state.skin }), (r) => {
+    edit(`已把 ${list.length} 个附件各转为皮肤 ${state.skin} 的占位符`, (j) => Ops.convertToPlaceholders(j, list, state.skin), (r) => {
       state.multiAtts = []; state.attachmentAnchor = null
       state.sel = { kind: 'ph', slot: r.placeholders[0].slot, name: r.placeholders[0].name }; revealInTree(state.sel)
     })
   }
 
+  /** 转为皮肤占位符 writes into the current skin only, so that skin must be a real non-default one. */
+  const hasPlaceholderTarget = () => state.skin !== 'default' && !!skinOf(state.skin)
+
   function multiAttachmentBody() {
     const list = selectedAttachments()
     const canCopy = list.every((a) => !Ops.isPlaceholder(state.json, a.slot, a.name))
-    const hasTarget = state.skin !== 'default' && !!skinOf(state.skin)
+    const hasTarget = hasPlaceholderTarget()
     const canConvert = hasTarget && list.every((a) => {
       const att = skinOf(a.skin)?.attachments[a.slot]?.[a.name]
       return a.skin === 'default' && att && !['linkedmesh','clipping','boundingbox','path'].includes(att.type) && !Ops.isPlaceholder(state.json, a.slot, a.name)
@@ -10359,7 +10362,7 @@
     h('div', { class: 'hint' }, 'Ctrl 点选加选 / 取消，Shift 连选，Ctrl+A 全选当前插槽的附件。'),
     h('div', { class: 'hint' }, list.map((a) => h('div', {}, a.name))),
     h('div', { class: 'btns' }, btn('\u8f6c\u4e3a\u76ae\u80a4\u5360\u4f4d\u7b26', batchConvertToPlaceholders, { full: true, disabled: !canConvert,
-      title: canConvert ? '每个附件各转为一个皮肤占位符' : !hasTarget ? '先选择目标非 default 皮肤' : '\u53ea\u80fd\u9009\u62e9 default \u76ae\u80a4\u4e2d\u53ef\u8f6c\u6362\u7684\u666e\u901a\u9644\u4ef6' }))]
+      title: canConvert ? `每个附件各转为一个占位符，只放进皮肤 ${state.skin}` : !hasTarget ? '先选择目标非 default 皮肤' : '\u53ea\u80fd\u9009\u62e9 default \u76ae\u80a4\u4e2d\u53ef\u8f6c\u6362\u7684\u666e\u901a\u9644\u4ef6' }))]
   }
 
   /** The picked image (an attachment in the default skin, or one skin's content of a placeholder). */
@@ -10397,9 +10400,9 @@
       // not a mesh (网格 unticked): nothing to edit until it is one (user 2026-10-13)
       img && state.mode === 'setup' ? btn('编辑网格', () => enterMeshEdit(sel), { primary: !!(state.meshEdit && state.meshEdit.name === sel.name && state.meshEdit.slot === sel.slot), disabled: !mesh, title: mesh ? '在画面里编辑这张网格的顶点' : '先勾「网格」转成网格，再编辑顶点' }) : null,
       img ? btn('换图', () => openSwapImage(sel)) : null,
-      !inPlaceholder && others ? btn('转为皮肤占位符', () => edit(`「${sel.name}」已转为皮肤占位符，每个皮肤先用原图`,
-        (j) => Ops.convertToPlaceholder(j, sel.slot, sel.name),
-        () => { state.sel = { kind: 'ph', name: sel.name, slot: sel.slot } }), { title: '每个皮肤在这里放自己的图' }) : null,
+      !inPlaceholder && others ? btn('转为皮肤占位符', () => edit(`「${sel.name}」已转为皮肤 ${state.skin} 的占位符`,
+        (j) => Ops.convertToPlaceholder(j, sel.slot, sel.name, state.skin),
+        () => { state.sel = { kind: 'ph', name: sel.name, slot: sel.slot } }), { disabled: !hasPlaceholderTarget(), title: hasPlaceholderTarget() ? `只放进皮肤 ${state.skin}，其他皮肤之后各放自己的图` : '先选择目标非 default 皮肤' }) : null,
       !inPlaceholder ? btn('设置父级', () => transferAtt(sel, true), { title: 'P：移到别的插槽' }) : null))
     return out
   }

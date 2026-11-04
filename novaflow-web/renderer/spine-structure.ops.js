@@ -1243,64 +1243,42 @@
   }
 
   /**
-   * Turn a default-skin attachment into a skin placeholder: every other skin
-   * gets it (the first skin that has nothing there takes the original, the rest
-   * link to it when it is a mesh), and default no longer draws it. Each skin can
-   * then swap its own image in.
+   * Turn a default-skin attachment into a skin placeholder of one skin: that
+   * skin takes the original and default no longer draws it. Every other skin
+   * stays as it was and fills the placeholder with its own image later.
    */
-  function convertToPlaceholder(input, slot, name, options) {
+  function convertToPlaceholder(input, slot, name, skin) {
     const json = prepare(input)
     const def = findSkin(json, 'default')
     const att = def.attachments[slot] && def.attachments[slot][name]
     if (!att) fail(`default 皮肤里没有：${name}`)
     if (att.type === 'linkedmesh') fail('链接网格要从它的原网格转')
-    const others = json.skins.filter((x) => x.name !== 'default')
-    if (!others.length) fail('先新建皮肤')
-    const preferred = options && options.preferredSkin && options.preferredSkin !== 'default' ? String(options.preferredSkin) : ''
-    const chosen = preferred ? others.find((x) => x.name === preferred) : null
-    if (preferred && !chosen) fail(`\u627e\u4e0d\u5230\u76ae\u80a4\uff1a${preferred}`)
-    if (chosen && chosen.attachments[slot] && chosen.attachments[slot][name]) fail(`\u76ae\u80a4 ${preferred} \u5df2\u6709 ${slot} / ${name}`)
-    const owner = chosen || others.find((x) => !(x.attachments[slot] && x.attachments[slot][name]))
-    if (!owner) fail(`\u6240\u6709\u76ae\u80a4\u5747\u5df2\u5b58\u5728 ${slot} / ${name}\uff0c\u65e0\u6cd5\u5b89\u5168\u8f6c\u6362`)
-    const linkedToDefault = []
+    if (!json.skins.some((x) => x.name !== 'default')) fail('先新建皮肤')
+    if (!skin || skin === 'default') fail('请先选择目标非 default 皮肤')
+    const owner = json.skins.find((x) => x.name === skin) || fail(`找不到皮肤：${skin}`)
+    if (owner.attachments[slot] && owner.attachments[slot][name]) fail(`皮肤 ${skin} 已有 ${slot} / ${name}`)
     forEachAttachment(json, (a, at) => {
-      if (at.slot === slot && a && a.type === 'linkedmesh' && a.parent === name && !a.skin) linkedToDefault.push(a)
+      if (at.slot === slot && a && a.type === 'linkedmesh' && a.parent === name && !a.skin) a.skin = owner.name
     })
-    if (!owner && linkedToDefault.length) fail('每个皮肤都已有自己的，而且有链接网格用着 default 这份')
-    if (owner) {
-      owner.attachments[slot] = owner.attachments[slot] || {}
-      owner.attachments[slot][name] = att
-      for (const a of linkedToDefault) a.skin = owner.name
-      for (const x of others) {
-        if (x === owner || (x.attachments[slot] && x.attachments[slot][name])) continue
-        x.attachments[slot] = x.attachments[slot] || {}
-        x.attachments[slot][name] = att.type === 'mesh'
-          ? { type: 'linkedmesh', parent: name, skin: owner.name, path: att.path || name, width: att.width, height: att.height }
-          : clone(att)
-      }
-      for (const anim of Object.values(json.animations)) {
-        const d = anim.deform && anim.deform.default && anim.deform.default[slot] && anim.deform.default[slot][name]
-        if (!d) continue
-        anim.deform[owner.name] = anim.deform[owner.name] || {}
-        anim.deform[owner.name][slot] = anim.deform[owner.name][slot] || {}
-        if (!anim.deform[owner.name][slot][name]) anim.deform[owner.name][slot][name] = d
-        delete anim.deform.default[slot][name]
-        if (!Object.keys(anim.deform.default[slot]).length) delete anim.deform.default[slot]
-      }
+    owner.attachments[slot] = owner.attachments[slot] || {}
+    owner.attachments[slot][name] = att
+    for (const anim of Object.values(json.animations)) {
+      const d = anim.deform && anim.deform.default && anim.deform.default[slot] && anim.deform.default[slot][name]
+      if (!d) continue
+      anim.deform[owner.name] = anim.deform[owner.name] || {}
+      anim.deform[owner.name][slot] = anim.deform[owner.name][slot] || {}
+      if (!anim.deform[owner.name][slot][name]) anim.deform[owner.name][slot][name] = d
+      delete anim.deform.default[slot][name]
+      if (!Object.keys(anim.deform.default[slot]).length) delete anim.deform.default[slot]
     }
     delete def.attachments[slot][name]
     if (!Object.keys(def.attachments[slot]).length) delete def.attachments[slot]
-    return { json: tidy(json), owner: owner ? owner.name : null }
+    return { json: tidy(json), owner: owner.name }
   }
 
-  function convertToPlaceholders(input, items, options) {
+  function convertToPlaceholders(input, items, skin) {
     let json = prepare(input)
     if (!Array.isArray(items) || !items.length) fail('\u8bf7\u5148\u9009\u62e9\u9644\u4ef6')
-    const preferredSkin = options && options.preferredSkin ? String(options.preferredSkin) : ''
-    const others = json.skins.filter((s) => s.name !== 'default')
-    if (!others.length) fail('\u5148\u65b0\u5efa\u76ae\u80a4')
-    if (!preferredSkin || preferredSkin === 'default') fail('\u8bf7\u5148\u9009\u62e9\u76ee\u6807\u975e default \u76ae\u80a4')
-    if (!others.some((s) => s.name === preferredSkin)) fail(`\u627e\u4e0d\u5230\u76ae\u80a4\uff1a${preferredSkin}`)
     const def = findSkin(json, 'default'), seen = new Set(), selected = []
     for (const item of items) {
       if (!item || item.skin !== 'default' || typeof item.slot !== 'string' || typeof item.name !== 'string') fail('\u53ea\u80fd\u8f6c\u6362 default \u76ae\u80a4\u7684\u666e\u901a\u9644\u4ef6')
@@ -1315,7 +1293,7 @@
       if (isPlaceholder(json, item.slot, item.name)) fail(`\u5df2\u5b58\u5728\u76ae\u80a4\u5360\u4f4d\u7b26\uff1a${item.slot} / ${item.name}`)
       selected.push({ slot: item.slot, name: item.name })
     }
-    for (const item of selected) json = convertToPlaceholder(json, item.slot, item.name, { preferredSkin }).json
+    for (const item of selected) json = convertToPlaceholder(json, item.slot, item.name, skin).json
     return { json, placeholders: selected }
   }
 
