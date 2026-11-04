@@ -3,10 +3,12 @@
 // ticket and settle trusted provider usage before returning any draft.
 import {createHash} from 'node:crypto';
 import {Buffer} from 'node:buffer';
+import {isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 import {assistant as trustedAssistant,pipeline as trustedPipeline,sourceHashes as trustedSourceHashes} from './xiaotao-ui-professional.generated.mjs';
 
 export const UI_DRAFT_OUTPUT_TOKENS=2048;
 const UI_OUTPUT_FRAME='Return exactly one JSON object with fields prompt, negativePrompt and uiPlan. Both prompt fields must be strings; preserve every __NOVAFLOW_UI_REFERENCE_...__ placeholder exactly once in its own corresponding field.\nuiPlan must contain version:1, layoutMode (preserve, partial or reflow), layoutReference (the 1-based layout anchor), visualMode (style-transfer, theme-redesign, partial or create), references (one {index,role} for each image), layoutChanges (string array) and preserve (string array). Use only the assigned reference roles. Do not perform or claim any UI action.';
+const UI_TEXT_OUTPUT_FRAME='Return exactly one JSON object with fields prompt, negativePrompt and uiPlan. Both prompt fields must be strings. No image was supplied: never claim to have seen one or invent image facts. uiPlan must contain version:1, layoutMode (preserve, partial or reflow), layoutReference:0, visualMode (style-transfer, theme-redesign, partial or create), references:[], layoutChanges (string array) and preserve (string array). Do not perform or claim any UI action.';
 
 const MODELS = new Set(['qwen3.5-9b-heretic','deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver']);
 const ROLES = new Set(['layout','style','content','asset','combined','color','material','character','subject','reference']);
@@ -54,7 +56,7 @@ export function createUiIntentPrototype({assistant,pipeline,isCurrent,verifyRece
       !['redesign','style-transfer','iteration'].includes(request.generationIntent)||typeof request.preserveLayout!=='boolean'||
       !plain(request.size)||Object.keys(request.size).some(k=>!['width','height'].includes(k))||
       ![request.size.width,request.size.height].every(v=>Number.isSafeInteger(v)&&v>=1&&v<=16384)||
-      !plain(request.structure)||!Array.isArray(request.references)||request.references.length<1)fail('ui-invalid-input');
+      !plain(request.structure)||!Array.isArray(request.references))fail('ui-invalid-input');
     if(await isCurrent({actor:who,model,revision:request.revision})!==true)fail('ui-selection-stale');if(signal?.aborted)fail('ui-cancelled');
     if(request.references.length>maxReferences)fail('ui-reference-limit-unavailable');
     const structureBytes=Buffer.byteLength(JSON.stringify(request.structure),'utf8');
@@ -64,17 +66,20 @@ export function createUiIntentPrototype({assistant,pipeline,isCurrent,verifyRece
     const refs=request.references.map(checkedImage);if(refs.reduce((n,r)=>n+r.bytes,0)>LIMIT)fail('ui-reference-byte-limit');
     if(new Set(refs.map(r=>r.id)).size!==refs.length||refs.filter(r=>r.uiLayoutId).length>1)fail('ui-ambiguous-reference');
     for(const match of requirements.matchAll(/(?:@?\u53c2\u8003\u56fe|\u56fe)\s*([1-9][0-9]*)/g))if(Number(match[1])>refs.length)fail('ui-reference-out-of-range');
-    const effective=pipeline.requireLayoutReferences(refs.map(({id,role,uiLayoutId})=>({id,role,...(uiLayoutId?{uiLayoutId}:{})})));
-    const anchor=effective.findIndex(r=>r.role==='layout');if(anchor<0)fail('ui-layout-missing');
+    const textOnly=refs.length===0;
+    const effective=textOnly?[]:pipeline.requireLayoutReferences(refs.map(({id,role,uiLayoutId})=>({id,role,...(uiLayoutId?{uiLayoutId}:{})})));
+    const anchor=textOnly?-1:effective.findIndex(r=>r.role==='layout');if(!textOnly&&anchor<0)fail('ui-layout-missing');
     const structure=assistant.structureSnapshot(request.structure);
     const options={prompt,requirements,generationIntent:request.generationIntent,preserveLayout:request.preserveLayout,size:request.size};
     // Use the unchanged project UI rules; the input role manifest is preserved
     // separately because the old pipeline rewrites an anchor combined->layout.
-    const rules=assistant.buildRequirements(options,structure,refs);
+    if(textOnly&&typeof assistant.buildTextOnlyRequirements!=='function')fail('ui-compiler-unavailable');
+    const rules=textOnly?assistant.buildTextOnlyRequirements(options,structure):assistant.buildRequirements(options,structure,refs);
     const manifest=refs.map(({id,role,uiLayoutId,mime,bytes,sha256},index)=>({index:index+1,id,role,...(uiLayoutId?{uiLayoutId}:{}),mime,bytes,sha256}));
-    const system=[rules,`Reference roles are assigned by the user and cannot be changed. Image ${anchor+1} is the only layout authority.`,
-      ...manifest.map(m=>`Image ${m.index} has original user role ${m.role}${m.index===anchor+1?' and is the layout anchor':''}.`),UI_OUTPUT_FRAME].join('\n');
-    const canonical={schema:'nf.xiaotao.operation.ui-draft.v1',compilerSources:trustedSourceHashes,systemHash:digest(system),outputFrameHash:digest(UI_OUTPUT_FRAME),outputTokens:UI_DRAFT_OUTPUT_TOKENS,actor:who,model,requestId:request.requestId,revision:request.revision,prompt,requirements,negativePrompt,
+    const outputFrame=textOnly?UI_TEXT_OUTPUT_FRAME:UI_OUTPUT_FRAME;
+    const system=(textOnly?[rules,outputFrame]:[rules,`Reference roles are assigned by the user and cannot be changed. Image ${anchor+1} is the only layout authority.`,
+      ...manifest.map(m=>`Image ${m.index} has original user role ${m.role}${m.index===anchor+1?' and is the layout anchor':''}.`),outputFrame]).join('\n');
+    const canonical={schema:'nf.xiaotao.operation.ui-draft.v1',compilerSources:trustedSourceHashes,systemHash:digest(system),outputFrameHash:digest(outputFrame),outputTokens:UI_DRAFT_OUTPUT_TOKENS,actor:who,model,requestId:request.requestId,revision:request.revision,prompt,requirements,negativePrompt,
       generationIntent:request.generationIntent,preserveLayout:request.preserveLayout,size:request.size,structure,anchor:anchor+1,manifest};
     const intentHash=digest(JSON.stringify(canonical));
     const markers=[],negativeMarkers=[];
@@ -102,8 +107,19 @@ export function createUiIntentPrototype({assistant,pipeline,isCurrent,verifyRece
     for(const text of [restored.text,restoredNegative.text])for(const match of text.matchAll(/(?:@?\u53c2\u8003\u56fe|\u56fe)\s*([1-9][0-9]*)/g))
       if(Number(match[1])>prepared.canonical.manifest.length)fail('ui-reference-out-of-range');
     const trustedRefs=prepared.canonical.manifest.map(({id,role,uiLayoutId})=>({id,role,...(uiLayoutId?{uiLayoutId}:{})}));
-    const input={references:pipeline.requireLayoutReferences(trustedRefs),prompt:prepared.canonical.prompt,preserveLayout:prepared.canonical.preserveLayout,generationIntent:prepared.canonical.generationIntent};
-    const checked=pipeline.normalizeQwenPlan(plan,input);if(checked.layoutReference!==prepared.canonical.anchor)fail('ui-layout-changed');
+    let checked;
+    if(trustedRefs.length===0){
+      const claimedVision=/(?:根据|按照|基于|如|从|看到|显示在).{0,8}(?:参考图|布局图|图片|截图|图像)|(?:参考图|布局图|图片|截图|图像)(?:中|上|里|所示).{0,12}(?:显示|可见|有|是)|(?:as shown|seen|depicted|visible)\s+in\s+(?:the|this)\s+(?:image|photo|picture|screenshot)/iu;
+      if(claimedVision.test(restored.text)||claimedVision.test(restoredNegative.text))fail('ui-unprovided-image-claim');
+      if(!plain(plan)||Object.keys(plan).some(k=>!['version','layoutMode','layoutReference','visualMode','references','layoutChanges','preserve'].includes(k))||
+        plan.version!==1||!['preserve','partial','reflow'].includes(plan.layoutMode)||plan.layoutReference!==0||
+        !['style-transfer','theme-redesign','partial','create'].includes(plan.visualMode)||!Array.isArray(plan.references)||plan.references.length!==0||
+        ['layoutChanges','preserve'].some(k=>!Array.isArray(plan[k])||plan[k].length>30||plan[k].some(v=>typeof v!=='string'||!v.trim()||v.length>800)))fail('ui-invalid-result');
+      checked={version:1,layoutMode:plan.layoutMode,layoutReference:0,visualMode:plan.visualMode,references:[],layoutChanges:plan.layoutChanges.map(v=>v.trim()),preserve:plan.preserve.map(v=>v.trim())};
+    } else {
+      const input={references:pipeline.requireLayoutReferences(trustedRefs),prompt:prepared.canonical.prompt,preserveLayout:prepared.canonical.preserveLayout,generationIntent:prepared.canonical.generationIntent};
+      checked=pipeline.normalizeQwenPlan(plan,input);if(checked.layoutReference!==prepared.canonical.anchor)fail('ui-layout-changed');
+    }
     if(await isCurrent({actor:prepared.canonical.actor,model:prepared.canonical.model,revision:prepared.canonical.revision})!==true)fail('ui-selection-stale');if(signal?.aborted)fail('ui-cancelled');
     // No apply or undo is implemented: existing UI dialog writes immediately.
     // Combined/asset role degradation in the downstream generator is an
@@ -115,7 +131,13 @@ export function createUiIntentPrototype({assistant,pipeline,isCurrent,verifyRece
     if(!plain(args?.prepared?.canonical))fail('ui-selection-stale');
     if(args.prepared.canonical.model!=='qwen3.5-9b-heretic') {
       const verified=await verifyReceipt(args.receipt,{actor:args.prepared.canonical.actor,model:args.prepared.canonical.model,intentHash:args.prepared.intentHash});
-      if(verified?.status!=='settled'||!Number.isSafeInteger(verified.charged)||verified.charged<0)fail('ui-billing-unconfirmed');
+      // Only the verified receipt can attest to its frozen amount policy.
+      // Missing markers retain the old integer rule; partial/contradictory
+      // markers must not be inferred from the current model configuration.
+      const online={};
+      for(const key of ['credit_amount_policy','credit_precision','credit_rounding','minimum_positive_credits'])
+        if(verified && Object.hasOwn(verified,key))online[key]=verified[key];
+      if(verified?.status!=='settled'||!isXiaotaoCreditAmount(verified.charged,{xiaotao_online:online},{allowZero:true,max:14000000}))fail('ui-billing-unconfirmed');
     }
     return inspect(args);
   }
@@ -135,7 +157,7 @@ export async function canonicalizeXiaotaoV3UiIntent(input,{actor,model,isCurrent
   const prepared=await adapter.prepare({actor:uiActor,model,request:input.request});
   const userText=prepared.input[1].content.filter(x=>x.type==='input_text').map(x=>x.text).join('\n');
   return {intent:{mode:'ui-draft',epoch:input.epoch,request:input.request},intentHash:prepared.intentHash,uiPrepared:prepared,uiAdapter:adapter,
-    compiled:{input:prepared.input,imageCount:prepared.canonical.manifest.length,textOnly:false,systemText:prepared.system,userText,outputTokens:UI_DRAFT_OUTPUT_TOKENS}};
+    compiled:{input:prepared.input,imageCount:prepared.canonical.manifest.length,textOnly:prepared.canonical.manifest.length===0,systemText:prepared.system,userText,outputTokens:UI_DRAFT_OUTPUT_TOKENS}};
 }
 
 export async function inspectXiaotaoV3UiReply({uiPrepared,uiAdapter,reply,signal}={}) {

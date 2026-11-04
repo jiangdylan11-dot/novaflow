@@ -1522,7 +1522,9 @@
           const plannerImageGuard=()=>imageGuard()&&imageSourceBinding(tools.capture())===plannerSource&&sameImages(plannerImages,images.map(item=>({role:item?.role||'reference',dataUrl:item?.dataUrl})));
           const responsePromise=finishNow?Promise.resolve({ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:receipts.find(r=>r?.plannerPrompt===true)?.message||summarize(terminalFacts.length?terminalFacts:receipts),operations:[]}}}):foartOperationSession?api()?.foartOperationResume?.({requestId:activeRequest,session:foartOperationSession,previousContext:foartPreviousContext,receipt:receipts.at(-1),context:foartWireContext(snapshot),signal})
               :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),message:planMessage,history:compactFoartHistory(previousHistory),promptLanguage:'en',foartContext:foartWireContext(snapshot),signal})
-          if(!finishNow)startStatusPolling(operation,activeRequest);const response=await responsePromise;stopStatusPolling();
+          if(!finishNow)startStatusPolling(operation,activeRequest);let response=await responsePromise;stopStatusPolling();
+          // A long native job can outlive the operation ticket; the work is done, so close the turn on its receipt.
+          if(response?.errorCode==='invalid-operation-ticket'&&receipts.at(-1)?.phase==='completed'){foartOperationSession=null;response={ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:summarize(receipts.slice(-1)),operations:[]}}};billing.inFlight=false;billing.unknown=false;}
           if(response?.data?.foartOperationSession||response?.session){foartOperationSession=response.data?.foartOperationSession||response.session;foartPreviousContext=foartWireContext(snapshot);billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
           else if(!finishNow){if(response?.data?.quota?.status==='settled'){billing.unknown=false;foartOperationSession=null;}collectBilling(billing,response);}
           if(signal.aborted||operation!==serial)return false;
