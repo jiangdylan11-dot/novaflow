@@ -2156,11 +2156,10 @@
       const previousContext=foartOperationCopy(payload.previousContext),context=foartOperationCopy(payload.context),incoming=payload.receipt;
       if(JSON.stringify(previousContext)!==JSON.stringify(record.previousContext))throw Object.assign(Error('操作状态已变化，未提交下一步。'),{code:'assistant-selection-changed'});
       let receipt;
-      if(record.actionKind==='open'&&incoming?.action==='open'&&incoming.phase==='opened'&&incoming.surface===record.surface){
-        receipt={action:'open',phase:'opened',surface:record.surface};record.steps=[...(record.steps||[]),receipt];
-      }else if(record.generalEnabled&&record.actionKind==='tool'&&incoming&&typeof incoming==='object'&&!Array.isArray(incoming)){
+      if(record.generalEnabled&&incoming&&typeof incoming==='object'&&!Array.isArray(incoming)){
         const checked=foartToolReceipt(incoming,record.steps||[]);receipt=checked.receipt;record.steps=[...(record.steps||[]),checked.step];
-      }
+      }else if(record.actionKind==='open'&&incoming?.action==='open'&&incoming.phase==='opened'&&incoming.surface===record.surface)
+        receipt={action:'open',phase:'opened',surface:record.surface};
       else if(record.rotationEnabled&&record.actionKind==='inspect_bones'&&incoming?.action==='animation'&&incoming.operation==='inspect_bones'&&incoming.phase==='observed'&&incoming.inspection&&typeof incoming.inspection==='object'&&!Array.isArray(incoming.inspection))
         receipt={action:'animation',operation:'inspect_bones',phase:'observed',inspection:foartOperationCopy(incoming.inspection)};
       else if(record.rotationEnabled&&record.actionKind==='key_bones'&&incoming?.action==='animation'&&incoming.operation==='key_bones'&&incoming.phase==='applied')

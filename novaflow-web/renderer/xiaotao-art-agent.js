@@ -2407,7 +2407,7 @@
           const stableControls=new Set(snapshot.controls.filter(c=>!c.volatile).map(c=>c.id));
           const attemptKey=JSON.stringify(plan.operations)+'|'+toolBinding(snapshot,stableControls),attempts=(attemptedPlans.get(attemptKey)||0)+1;attemptedPlans.set(attemptKey,attempts);
           if(attempts>2)fail('当前操作没有改变工具状态，已停止重复执行；请求尚未完成');
-          if(!/(?:请|帮我|给我|把|将|做|画|让|换|改|生成|制作|开始|执行|设置|优化|调整|导入|导出|分割|复制|删除|移除|播放|暂停|继续|确认|应用|打开|切换|进入|选择|选中|闭合|合并|填充|放大|扩|提取|抠图|拆图|凶悍|需要|压缩|去黑|转换|转成|转为|粒子|发射|贴图|更.{0,8}(?:点|些)|再.{0,8}(?:点|些))|\b(?:make|generate|create|set|change|edit|apply|export|import|play|pause|open|select|merge|fill|compress|convert)\b/i.test(message))fail('本次没有明确的工具操作要求，未执行修改');
+          if(selectedPricingPayload().operationFoartGeneralV3!==true&&!/(?:请|帮我|给我|把|将|做|画|让|换|改|生成|制作|开始|执行|设置|优化|调整|导入|导出|分割|复制|删除|移除|播放|暂停|继续|确认|应用|打开|切换|进入|选择|选中|闭合|合并|填充|放大|扩|提取|抠图|拆图|凶悍|需要|压缩|去黑|转换|转成|转为|粒子|发射|贴图|更.{0,8}(?:点|些)|再.{0,8}(?:点|些))|\b(?:make|generate|create|set|change|edit|apply|export|import|play|pause|open|select|merge|fill|compress|convert)\b/i.test(message))fail('本次没有明确的工具操作要求，未执行修改');
           if((forbidsGeneration(message)||/只优化|只修改提示词/.test(message))&&plan.operations.some(op=>['image_generate','effect_generate'].includes(op.action)||op.action==='media'&&op.operation?.action?.startsWith('generate_')))fail('本次未授权生成，未提交任务');
           for(const op of plan.operations){
             if(signal.aborted)fail('Foart 操作已停止');
@@ -2575,15 +2575,7 @@
         state.error='当前小桃模型尚未接入音频或视频内容分析，不能声称已听到或看过；请明确描述要执行的剪辑或生成操作。'; state.status='未提交分析，不扣积分'; notify(); return false;
       }
       if(communityChatOnly && capabilityOnly && !promptConversation) {
-        const capabilities=[];
-        if(state.qwen35FoartReadonlyAvailable===true)capabilities.push('在动画模块只读查询当前工程、骨骼和轨道');
-        if(state.qwen35FoartSeekAvailable===true)capabilities.push('将动画定位到指定帧，需要你确认且可以撤销');
-        if((state.qwen35FoartReadonlyAvailable===true || state.qwen35FoartRotationCandidateAvailable===true || state.qwen35FoartPlanAvailable===true) && root.NovaFlowSkeletonEditor?.active?.() &&
-          typeof root.NovaFlowSkeletonEditor.api?.()?.agentPrepareSingleBoneRotation==='function')
-          capabilities.push('将选中骨骼已有旋转关键帧设为明确角度，需确认且可以撤销');
-        if(api()?.qwenBusinessAvailableSync?.()===true && typeof root.NovaFlowFoartTools?.execute==='function')
-          capabilities.push('整理当前绘图的文字提示词并直接应用');
-        const reply='我可以进行文字和图片对话。'+(capabilities.length?'当前节点还支持：'+capabilities.join('；')+'。':'当前节点尚未确认可用的动画工具。')+'其他操作以当前界面能力和确认结果为准；音视频内容尚不能直接分析。本次只说明能力，没有执行操作。';
+        const reply='我可以对话和优化提示词。需要操作软件时，请切换到在线模型。本次只说明能力，没有执行操作。';
         if(recordMessage){pushUser(message);state.history=[...state.history,{role:'user',content:message},{role:'assistant',content:reply}].slice(-12);state.conversationId='';}
         state.messages.push({role:'assistant',content:reply});state.error='';state.status='能力说明，未执行工具操作';notify();return true;
       }
@@ -2619,7 +2611,7 @@
       // The lightweight community route is text/image discussion only. Keep
       // explicit editor commands closed rather than silently treating them as
       // a completed tool action or falling back to another model.
-      if(communityChatOnly && !promptDiscussion && (qwenExplicitWriteIntent(message) || !discussionOnly(message) && /生成|生图|出图|绘制|画一张|画个|制作|压缩|去黑|转换|裁切|分割|导入|导出|播放|暂停|删(?:除|掉|去|了)?|移除|创建|新建|选中|选择|移动|旋转|缩放|修改|调整|编辑|写入|应用|设置|填充|抠图|拆图|调用工具|执行|(?:再|更).{0,8}(?:一点|一些|点)|(?:快|慢|大|小|亮|暗|飘|动)(?:一点|一些|点)/i.test(message))) {
+      if(communityChatOnly && !promptDiscussion && (qwenExplicitWriteIntent(message) || !discussionOnly(message) && /打开|进入|切换|关闭|生成|生图|出图|绘制|画一张|画个|制作|压缩|去黑|转换|裁切|分割|导入|导出|播放|暂停|删(?:除|掉|去|了)?|移除|创建|新建|选中|选择|移动|旋转|缩放|修改|调整|编辑|写入|应用|设置|填充|抠图|拆图|调用工具|执行|(?:再|更).{0,8}(?:一点|一些|点)|(?:快|慢|大|小|亮|暗|飘|动)(?:一点|一些|点)/i.test(message))) {
         state.error=LOCAL_CHAT_ONLY_NOTICE;state.status='未执行操作';notify();return false;
       }
       const continuation=pendingIntent && task && !task.discussion && (task.surface==='chat'||task.surface===pendingIntent.surface) && !/取消|重新|另外|新建/.test(message) ? pendingIntent : null;

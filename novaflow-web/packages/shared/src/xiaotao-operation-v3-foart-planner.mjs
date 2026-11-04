@@ -125,7 +125,7 @@ export function createXiaotaoV3FoartPlanner({enabled=false,secret,loadProvider,r
       }
       // A tool can change what the next one may do, so run the first and replan.
       if(generalEnabled&&plan.operations.length>1)plan={...plan,operations:plan.operations.slice(0,1)};
-      const general=generalEnabled&&plan.operations.length===1&&plan.operations[0].action!=='open';
+      const general=generalEnabled&&plan.operations.length===1;
       let rotation=null;
       if(rotationEnabled&&plan.operations.length===1&&plan.operations[0].action==='animation') {
         try{rotation=inspectRotationPlan(plan,request.foartContext,stage.sequence,evidence);}catch{}
