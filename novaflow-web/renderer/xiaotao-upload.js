@@ -164,6 +164,8 @@
     const imageEdit = artTool||drawingReferenceRequest(positive)||/换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(positive);
     const video = /视频|动画|动效|动态|动起来|动一动|跑起来|转起来|循环动|首尾帧|首帧|尾帧|多参|镜头|剪辑|时间轴/.test(positive);
     const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(positive);
+    // Writing a video prompt without generating still uses the attached pictures.
+    if(video&&/提示词/.test(text)&&!question(text)&&!/(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)/.test(text))discussion=false;
     let surface = imageEdit && !/视频|片段/.test(positive) ? 'image' : audio&&!/视频|动画|动效|动态|首尾帧|多参/.test(positive)?'audio':video ? 'video' : audio ? 'audio'
       : /生图|出图|做图|画图|绘图|静态图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(positive) || kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(positive) ? 'image' : 'chat';
     if(imageEdit&&!video&&!audio&&/调用|请|帮我|换|改|抠图|去背|拆图|放大|扩图|裁切|导出/.test(positive)&&!question(text)&&!/怎么|如何|为什么|能否|是否|(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不|不)执行/.test(text))discussion=false;

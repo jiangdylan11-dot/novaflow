@@ -66,3 +66,8 @@ test('Qwen and GLM are offered only with operation billing and an explicit serve
   assert.equal(legacy.models.find(row=>row.id===QWEN).available,false);
   assert.equal(legacy.models.find(row=>row.id===GLM).available,false);
 });
+test('Qwen and GLM get thinking room in max_tokens and in the reservation',()=>{
+  const body={input:[{role:'user',content:[{type:'input_text',text:'x'}]}],max_output_tokens:3000};
+  assert.equal(responsesToChatCompletions(body,GLM).max_tokens,8000);assert.equal(responsesToChatCompletions(body,QWEN).max_tokens,8000);
+  assert.equal(responsesToChatCompletions(body,'deepseek/deepseek-v4.1-flash').max_tokens,3000);
+});

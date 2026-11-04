@@ -62,9 +62,9 @@
     if (wantsPage && wantsChat) return ask('ambiguous-explicit-source');
     if (wantsPage) return page ? ready('page', page) : ask('page-prompt-empty');
     if (wantsChat) return chat ? ready('conversation', chat) : ask('conversation-prompt-empty');
-    if (page && chat && comparable(page) !== comparable(chat)) return ask('different-prompts');
+    // What the user just wrote wins over what is already on the page.
+    if (chat && !(page && comparable(page) === comparable(chat))) return ready('conversation', chat);
     if (page) return ready('page', page);
-    if (chat) return ready('conversation', chat);
     return ask('both-prompts-empty');
   }
   return Object.freeze({ resolvePromptSource, extractTurnPrompt, classifyPromptAction, isPromptConversation,

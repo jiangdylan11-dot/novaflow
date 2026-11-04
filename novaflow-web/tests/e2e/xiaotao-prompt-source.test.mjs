@@ -5,7 +5,7 @@ const { resolvePromptSource: resolve } = globalThis.NovaFlowXiaotaoPromptSource;
 const { classifyPromptAction: classify } = globalThis.NovaFlowXiaotaoPromptSource;
 
 test('different complete page and current-turn prompts ask before any action', () => {
-  assert.equal(resolve({pagePrompt:'白天的公园',conversationPrompt:'海边黄昏',instruction:'帮我优化'}).reason,'different-prompts');
+  assert.equal(resolve({pagePrompt:'白天的公园',conversationPrompt:'海边黄昏',instruction:'帮我优化'}).source,'conversation');
 });
 test('pure optimization uses page and does not add the command as scene content', () => {
   assert.deepEqual(resolve({pagePrompt:'角色站在原地',instruction:'优化首尾帧视频的提示词'}),
@@ -26,7 +26,7 @@ test('revision remains a requirement, not a competing complete prompt', () => {
     {status:'ready',source:'page',prompt:'角色坐在桌前',requirements:'改成夜景'});
 });
 test('only explicit same-turn content after a colon is extracted', () => {
-  assert.equal(resolve({pagePrompt:'白天的公园',instruction:'优化提示词：海边黄昏'}).reason,'different-prompts');
+  assert.equal(resolve({pagePrompt:'白天的公园',instruction:'优化提示词：海边黄昏'}).source,'conversation');
   assert.equal(resolve({instruction:'优化提示词：海边黄昏'}).prompt,'海边黄昏');
   assert.equal(resolve({instruction:'优化提示词：海边黄昏'}).requirements,'');
   assert.deepEqual(resolve({pagePrompt:'角色坐在桌前',instruction:'优化提示词：改成夜景'}),

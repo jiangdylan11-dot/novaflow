@@ -94,12 +94,10 @@ test('filling the page after being asked for a prompt just runs the new request'
   await f.c.send('优化提示词');
   assert.doesNotMatch(f.c.state.error,/已变化/);
 });
-test('a reply that picks no source is read as a new request',async()=>{
+test('a prompt written in the message wins over the page, with no source question',async()=>{
   const f=await fixture({refs:refs(),prompt:'海边的女孩',foart:[done('好的')]});
   await f.c.send('优化提示词：森林里的男孩');
-  assert.match(f.c.state.status,/提示词来源/);
-  await f.c.send('打开音频');
-  assert.equal(f.starts.length,1);assert.equal(f.c.state.error,'');
+  assert.doesNotMatch(f.c.state.status,/提示词来源/);
 });
 test('a rewrite plus generate goes to the tools as one request',async()=>{
   const f=await fixture({refs:refs(),prompt:'海边的女孩',foart:[done('好的')]});

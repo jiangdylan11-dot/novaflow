@@ -64,10 +64,10 @@ test('direct settlement retains provider top-level cache and fails closed on con
 test('reservation and settlement use the same existing credit rule and cap', () => {
   const model='glm/glm-5.3-flash';
   const quote=estimateXiaotaoOnlineCredits({model,text:'x'.repeat(20000),system:'',outputTokens:1000});
-  near(quote.usd,(10000*.15+1000*.5)/1e6);
-  assert.equal(quote.credits,1);
+  near(quote.usd,(10000*.15+6000*.5)/1e6); // 1000 asked plus the thinking room
+  assert.equal(quote.credits,2);
   const decision=settleXiaotaoOnlineCredits({model,usage:{input_tokens:10000,output_tokens:1000,prompt_tokens_details:{cached_tokens:0}},reservedCredits:10});
-  near(decision.usdCost,quote.usd);
+  near(decision.usdCost,(10000*.15+1000*.5)/1e6);
   assert.equal(decision.credits,1);assert.equal(decision.refund,9);
   assert.equal(decision.pricingSource,'token_rate_estimate');
   const unpriced=settleXiaotaoOnlineCredits({model,usage:{total_tokens:11000},reservedCredits:10});

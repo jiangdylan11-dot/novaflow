@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
   // BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)
-  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true},{"id":"glm/glm-5.3-flash","label":"智谱 GLM-5.3 Flash","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
+  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"glm/glm-5.3-flash","label":"智谱 GLM-5.3 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
   const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));
   const isXiaotaoOnlineModel = id => XIAOTAO_ONLINE_MODEL_IDS.includes(id);
   const isXiaotaoFlatRateModel = id => XIAOTAO_ONLINE_MODELS.some(model => model.id === id && model.flatRate);
@@ -1068,6 +1068,8 @@
     let cachedHost = null;
     const host = () => uploadHost || (cachedHost ||= uploadApi()?.createUploadHost?.(root));
     function pushUser(content) {
+      // A charge belongs to its own turn; only an unconfirmed one stays on screen.
+      state.billingNotices=state.billingNotices.filter(item=>item.unknown);
       const entry = {role:'user', content};
       if (carryAttachments?.length) {entry.attachments = carryAttachments; carryAttachments = null;}
       state.messages.push(entry);
@@ -1621,6 +1623,8 @@
           if(!response?.ok){handlePricingFailure(response);fail(response?.errorCode==='operation-planner-incomplete'?'小桃这一步没有给出可执行的方案，已完成的操作已保留，请换个说法再试。':response?.error||'Foart 工具规划未完成');}
           const data=response.data;if(!data?.toolPlan)fail('工具规划服务尚未更新，未提交操作');
           let plan=contract.validateFoartPlan(data.toolPlan,snapshot);
+          // A brain that answers a video prompt request in prose skips the H3 framework: send it through.
+          if(plan.status!=='act'&&!receipts.length&&forbidsGeneration(message)&&/视频/.test(positiveRequest)&&/提示词/.test(message))plan={...plan,status:'act',reply:'已按视频框架写好提示词。',operations:[{action:'media',operation:{action:'optimize_video_prompt',target:'video',prompt:positiveRequest.slice(0,1500)}}]};
           if(namedEnhancements.length===1&&plan.operations.some(op=>{const name=op.action==='art_action'?op.name:op.action==='activate_control'?Object.keys(enhancementNames).find(key=>snapshot.controls.find(control=>control.id===op.controlId)?.label===enhancementNames[key]):null;return name&&enhancementNames[name]&&name!==namedEnhancements[0];})){
             if(++artActionRetries>2)fail('方案仍未选择本次要求的'+enhancementNames[namedEnhancements[0]]+'，未执行其他增强功能');
             continue;
