@@ -6,45 +6,7 @@ const modelSandbox={module:{exports:{}}};
 runInContext(readFileSync(new URL('../../renderer/art-generate-model.resource.js',import.meta.url),'utf8'),createContext(modelSandbox));
 const models=modelSandbox.module.exports;
 const runtimeSource=readFileSync(new URL('../../renderer/novaflow-brand-runtime.js',import.meta.url),'utf8');
-const preferenceSource=runtimeSource.slice(runtimeSource.indexOf('  const ART_GENERATE_DRAWING_SAMPLING_STORAGE_KEY ='),runtimeSource.indexOf('  const ART_GENERATE_STATE ='));
-function preferences(storage=new Map(),ui=false){
-  const sandbox={window:{localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},NovaFlowUiDesignDrawing:{isActive:()=>ui}}};
-  const context=createContext(sandbox);runInContext(preferenceSource,context);
-  return {storage,read:context.readArtGenerateDrawingSamplingPreferences,save:context.saveArtGenerateDrawingSamplingPreferences};
-}
 const plain=value=>JSON.parse(JSON.stringify(value));
-
-test('no saved sampling choice preserves the existing standard default without enabling Turbo',()=>{
-  const p=preferences(),saved=p.read();
-  assert.equal(saved.localQwen21Variant,undefined);
-  const state={provider:'local',mode:'img2img',localDrawEngine:'qwen-2.1',...saved};
-  const sampling=models.localSamplingFor(state);
-  assert.deepEqual([sampling.route,sampling.steps,sampling.cfg],['qwen-2.1',25,1]);
-  assert.equal(p.storage.size,0);
-});
-
-test('explicit Turbo or standard survives reload without persisting manual sampling into other tools',()=>{
-  const p=preferences(),state={provider:'local',mode:'img2img',localDrawEngine:'qwen-2.1',localQwen21Variant:'turbo',samplingOverrides:{}};
-  models.setLocalSamplingValue(state,'img2img','cfg','1');
-  assert.equal(p.save(state),true);
-  let restored=preferences(p.storage).read(),sampling=models.localSamplingFor({...state,...restored,samplingOverrides:{}});
-  assert.deepEqual([restored.localQwen21Variant,sampling.steps,sampling.cfg,sampling.cfgManual],['turbo',8,1,false]);
-  state.localQwen21Variant='standard';
-  models.setLocalSamplingValue(state,'img2img','steps','32');models.setLocalSamplingValue(state,'img2img','cfg','4');
-  p.save(state);restored=preferences(p.storage).read();sampling=models.localSamplingFor({...state,...restored,samplingOverrides:{}});
-  assert.deepEqual([restored.localQwen21Variant,sampling.steps,sampling.cfg],['standard',25,1]);
-  assert.equal(restored.samplingOverrides,undefined);
-});
-
-test('drawing persistence does not write UI, NSFW, cloud, negative text or unrelated sampler routes',()=>{
-  const state={provider:'local',localQwen21Variant:'standard',negativePrompt:'exact user negative',samplingOverrides:{'rapid:img2img':{steps:6,cfg:3},'standard:img2img':{steps:40,cfg:4},'qwen-2.1:img2img':{steps:25,cfg:3}}};
-  for(const [candidate,p]of [[{...state,nsfw:true},preferences()],[state,preferences(new Map(),true)],[{...state,provider:'google'},preferences()]]){
-    assert.equal(p.save(candidate),false);assert.equal(p.storage.size,0);
-  }
-  const p=preferences();p.save(state);const raw=[...p.storage.values()][0];
-  assert.doesNotMatch(raw,/negativePrompt|exact user negative|samplingOverrides|steps|cfg|rapid:|standard:/);
-  assert.equal(p.read().localQwen21Variant,'standard');
-});
 
 function drawing(){
   const sandbox={localStorage:{getItem:()=>null},NovaFlowArtGenerateModels:models};sandbox.window=sandbox;

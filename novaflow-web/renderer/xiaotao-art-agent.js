@@ -340,7 +340,6 @@
     const text = String(message || '').trim().replace(/[\s：:，,、。！!]/g,'').toLowerCase();
     if (/^(?:按|用)?当前参数(?:生成|开始)?$/.test(text)) return 'current';
     if (/^(?:用|按)?(?:turbo|加速(?:版)?)(?:8步)?cfg3(?:生成|开始)?$/.test(text)) return 'turbo';
-    if (/^(?:用|按)?普通(?:版)?(?:25步)?cfg3(?:生成|开始)?$/.test(text)) return 'standard';
     return null;
   }
   function feedbackRequest(message) {
@@ -348,7 +347,7 @@
     if (/[?？]|(?:能不能|可不可以|能否|是否|怎么|如何|为什么|假如|如果)|吗[。！!]?\s*$|(?:不要|不用|别|先不|暂不|不必|无需).{0,10}(?:生成|生图|出图|改|调|修)|提示词|方案|讨论|解释/.test(text)) return false;
     return /调整|修改|改善|修正|修好|重做|重绘|改成|改一下|调一下|优化|请改|帮我改|降低|增强|减少|去掉/.test(text);
   }
-  const samplingLabel = sampling => `${sampling.variant === 'turbo' ? 'Turbo 加速版' : '普通版'} · ${sampling.steps} 步 · CFG ${sampling.cfg}`;
+  const samplingLabel = sampling => `Turbo 加速版 · ${sampling.steps} 步 · CFG ${sampling.cfg}`;
   function clampPanelPosition(position, size, viewport, margin = 8) {
     const axis = (value, length, available) => {
       const max = Math.max(0, Number(available) - Number(length) - margin), min = Math.min(margin, max);
@@ -613,7 +612,7 @@
       images.sort((a, b) => Number(b.role === 'subject') - Number(a.role === 'subject'));
       const sampling = root.NovaFlowArtGenerateModels?.localSamplingFor?.(s, s.mode, s.negativePrompt, 'qwen-2.1', 'drawing') || {};
       const artContext = copy(Object.fromEntries(SETTINGS.filter(k => s[k] !== undefined).map(k => [k, s[k]])));
-      Object.assign(artContext, {surface:'drawing', engine:'qwen-2.1', nsfw:s.nsfw === true, localDrawEngine:s.localDrawEngine || selectedEngine, localQwen21Variant:s.localQwen21Variant || 'standard', cfg:sampling.cfg ?? 1, steps:sampling.steps ?? 8, referenceRoles:images.map(({source, role}) => ({source, role})), task:s.drawingTask || 'style'});
+      Object.assign(artContext, {surface:'drawing', engine:'qwen-2.1', nsfw:s.nsfw === true, localDrawEngine:s.localDrawEngine || selectedEngine, localQwen21Variant:'turbo', cfg:sampling.cfg ?? 1, steps:sampling.steps ?? 8, referenceRoles:images.map(({source, role}) => ({source, role})), task:s.drawingTask || 'style'});
       if (ctx.projectId !== undefined) artContext.projectId = ctx.projectId;
       const lastResult = runtime().selectedResult?.() || null;
       if (includeResult) {
@@ -639,7 +638,7 @@
       if (includeResult && lastResult?.imageUrl) images.push({dataUrl:lastResult.imageUrl,referenceIdentity:referenceIdentity(lastResult),name:lastResult.name || '当前成图',source:0,role:'result'});
       const artContext=copy(Object.fromEntries(SETTINGS.filter(k=>s[k]!==undefined).map(k=>[k,s[k]])));
       Object.assign(artContext,{surface:'drawing',sourceSurface:ctx.generationSurface,task:'creation',engine:'qwen-2.1',provider:'local',nsfw:false,
-        localQwen21Variant:s.localQwen21Variant || 'standard',steps:sampling.steps,cfg:sampling.cfg,
+        localQwen21Variant:'turbo',steps:sampling.steps,cfg:sampling.cfg,
         mode:refs.length || s.mode==='img2img' && lastResult ? 'img2img' : 'txt2img',prompt:s.prompt || '',negativePrompt:s.negativePrompt || '',referenceRoles:refs.map(r=>({source:r.source,role:'subject'}))});
       const snapshot={artContext,images,lastResult}; snapshotOwners.set(snapshot,s); creationSettings.set(snapshot,copy(Object.fromEntries(SETTINGS.filter(k=>s[k]!==undefined).map(k=>[k,s[k]])))); return publish(snapshot);
     }
@@ -713,11 +712,11 @@
         images:(ctx.references || []).map((ref,i) => ref?.dataUrl ? {source:i+1,role:ref.drawingRole || 'auto',dataUrl:ref.dataUrl} : null).filter(Boolean)};
       Object.assign(binding.artContext,{surface:ctx.generationSurface,steps:sampling.steps,cfg:sampling.cfg});
       if (ctx.projectId !== undefined) binding.artContext.projectId = ctx.projectId;
-      return {variant:sampling.route === 'qwen-2.1-turbo' || s.localQwen21Variant === 'turbo' ? 'turbo' : 'standard',steps:sampling.steps,cfg:sampling.cfg,
+      return {variant:'turbo',steps:sampling.steps,cfg:sampling.cfg,
         styleTransfer:ctx.generationSurface === 'drawing' && s.mode === 'img2img' && binding.images.length === 2,binding};
     }
     function setSampling(choice) {
-      if (!['current','turbo','standard'].includes(choice)) fail('请选择当前参数、Turbo 8 步 CFG3，或普通 25 步 CFG3');
+      if (!['current','turbo'].includes(choice)) fail('请选择当前参数或 Turbo 8 步 CFG3');
       const before = readSampling(), rt = runtime(), s = rt.captureContext().state;
       if (s.running) fail('当前正在生成，请等待结束');
       const currentKey = `${before.variant === 'turbo' ? 'qwen-2.1-turbo' : 'qwen-2.1'}:${s.mode === 'img2img' ? 'img2img' : 'txt2img'}`;
@@ -728,8 +727,8 @@
         if (typeof models?.setLocalSamplingValue !== 'function') fail('采样接口未就绪，未修改绘图参数');
         const previous = {localQwen21Variant:s.localQwen21Variant,samplingOverrides:copy(s.samplingOverrides || {})};
         try {
-          if (choice !== 'current') s.localQwen21Variant = choice === 'turbo' ? 'turbo' : 'standard';
-          const steps = choice === 'current' ? before.steps : choice === 'turbo' ? 8 : 25, cfg = choice === 'current' ? confirmedCfg : 3;
+          s.localQwen21Variant = 'turbo';
+          const steps = choice === 'current' ? before.steps : 8, cfg = choice === 'current' ? confirmedCfg : 3;
           if (choice !== 'current') models.setLocalSamplingValue(s,s.mode,'steps',String(steps));
           models.setLocalSamplingValue(s,s.mode,'cfg',String(cfg));
           // A user's explicit confirmation is manual even when equal to today's
@@ -750,7 +749,7 @@
       if(typeof root.__NovaFlowSmartAI?.optimizeForAgent!=='function')fail('原有生图提示词优化框架尚未加载');
       const model=root.NovaFlowArtGenerateModels?.capabilityFor?.('local',proposal.generationMode,current.artContext);
       const result=await root.__NovaFlowSmartAI.optimizeForAgent({...options,surface:'art',prompt:proposal.prompt,negativePrompt:proposal.negativePrompt,
-        requirements:message,engine:current.artContext.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1',generationMode:proposal.generationMode,
+        requirements:message,engine:'qwen-2.1-turbo',generationMode:proposal.generationMode,
         supportsNegativePrompt:model?.negativePrompt!==false});
       if(options.signal?.aborted || !sameSnapshot(snapshot,captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')})))fail('绘图内容已变化或优化已停止，未写入或生成');
       const slots=[...result.prompt.matchAll(/<image(\d+)>/g)].map(m=>m[1]);

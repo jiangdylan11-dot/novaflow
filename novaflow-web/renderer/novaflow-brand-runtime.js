@@ -79981,25 +79981,6 @@
   const ART_GENERATE_WORKFLOW_TEMPLATES = {
   };
 
-  const ART_GENERATE_DRAWING_SAMPLING_STORAGE_KEY = 'novaflow.drawing.qwen21.sampling.v1';
-  function normalizeArtGenerateDrawingSamplingPreferences(value) {
-    const result = {};
-    if (!value || value.version !== 1) return result;
-    if (['standard', 'turbo'].includes(value.localQwen21Variant)) result.localQwen21Variant = value.localQwen21Variant;
-    return result;
-  }
-  function readArtGenerateDrawingSamplingPreferences() {
-    try { return normalizeArtGenerateDrawingSamplingPreferences(JSON.parse(window.localStorage?.getItem(ART_GENERATE_DRAWING_SAMPLING_STORAGE_KEY) || 'null')); }
-    catch { return {}; }
-  }
-  function saveArtGenerateDrawingSamplingPreferences(state) {
-    if (!state || state.provider !== 'local' || state.nsfw || window.NovaFlowUiDesignDrawing?.isActive?.()) return false;
-    const value = normalizeArtGenerateDrawingSamplingPreferences({ version: 1, localQwen21Variant: state.localQwen21Variant });
-    if (!value.localQwen21Variant) return false;
-    try { window.localStorage?.setItem(ART_GENERATE_DRAWING_SAMPLING_STORAGE_KEY, JSON.stringify({ version: 1, ...value })); return true; }
-    catch { return false; }
-  }
-  const ART_GENERATE_DRAWING_SAMPLING_PREFERENCES = readArtGenerateDrawingSamplingPreferences();
   const ART_GENERATE_STATE = {
     active: false,
     mode: "txt2img",
@@ -80022,7 +80003,7 @@
     height: 1024,
     // Steps / CFG the user typed, per route and mode (see localSamplingFor); empty = route defaults.
     samplingOverrides: {},
-    ...ART_GENERATE_DRAWING_SAMPLING_PREFERENCES,
+    localQwen21Variant: 'turbo',
     loras: [],
     seed: -1,
     randomSeed: true,
@@ -83513,20 +83494,6 @@
       const toggle = nsfwSwitch.querySelector('button');
       if (toggle) toggle.disabled = !!(ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfwLoraChecking);
     }
-    // UI has no NSFW control; a flag left on from 绘图 must not hide or lock 加速 there.
-    const uiSurface = Boolean(window.NovaFlowUiDesignDrawing?.isActive?.());
-    const nsfwBlocksAcceleration = !uiSurface && ART_GENERATE_STATE.nsfw === true;
-    const accelerationToggle = renderArtGenerateToggleButton(ART_GENERATE_STATE.localQwen21Variant === 'turbo' && !nsfwBlocksAcceleration, '加速', () => {
-      if (ART_GENERATE_STATE.running || nsfwBlocksAcceleration) return;
-      ART_GENERATE_STATE.localQwen21Variant = ART_GENERATE_STATE.localQwen21Variant === 'turbo' ? 'standard' : 'turbo';
-      saveArtGenerateDrawingSamplingPreferences(ART_GENERATE_STATE);
-      renderArtGenerateSurfaces({ forceBottom: true });
-    });
-    accelerationToggle.disabled = !!(ART_GENERATE_STATE.running || nsfwBlocksAcceleration);
-    accelerationToggle.title = nsfwBlocksAcceleration ? '旧版生图路线已移除，请刷新页面后重新选择模型' : '开启使用 Turbo 8 步，关闭使用普通版 25 步';
-    const accelerationSwitch = createArtEl('div', {
-      className: 'novaflow-art-generate-param', 'data-novaflow-art-generate-acceleration': '1'
-    }, [createArtEl('span', {text:'加速'}), accelerationToggle]);
     const creditSnapshot = artGenerateCreditSnapshot();
     const creditPricing = window.NovaFlowArtGenerateCreditPricing;
     const idleSubmitLabel = creditPricing && typeof creditPricing.getButtonLabel === "function"
@@ -83554,7 +83521,6 @@
       renderSampling: renderArtGenerateSamplingField,
       renderSeedToggle: renderArtGenerateSeedToggle,
       nsfwSwitch,
-      accelerationSwitch,
       rerender: () => renderArtGenerateSurfaces({ forceBottom: true })
     }) || [];
     // 生成数量 applies to every provider, so it sits after the provider-specific fields (after NSFW for 本地模型).
