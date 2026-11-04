@@ -1,6 +1,7 @@
 // Server-owned, text-only H3 draft contract. It does not analyse media, apply
 // a prompt, or start generation. Each request receives an isolated H3 factory.
 import {createHash} from 'node:crypto';
+import {restoreChineseTerms} from './h3-chinese-terms.mjs';
 import {createH3Workflow} from './xiaotao-h3-factory-v3.mjs';
 import {companionInput} from './companion-chat.mjs';
 
@@ -106,5 +107,5 @@ export function inspectXiaotaoV3VideoReply({intent,intentHash,reply}={}) {
   // Names and style words may stay Chinese in the English text; mostly Chinese prose fails.
   const prose=model.replace(/<d>[\s\S]*?<\/d>|"([^"\n]*)"|“([^”\n]*)”/g,''),han=(prose.match(/[\u3400-\u9fff]/g)||[]).length;
   if(han>8&&(prose.match(/[A-Za-z]{2,}/g)||[]).join('').length<han*2)invalidBecause('英文稿里还有大段中文');
-  return {displayPrompt:display,modelPrompt:model,h3Mode:intent.h3Mode,durationSeconds:intent.durationSeconds,textOnly:!Array.isArray(intent.images)};
+  return {displayPrompt:display,modelPrompt:restoreChineseTerms(model,intent.prompt+'\n'+(intent.requirements||'')),h3Mode:intent.h3Mode,durationSeconds:intent.durationSeconds,textOnly:!Array.isArray(intent.images)};
 }
