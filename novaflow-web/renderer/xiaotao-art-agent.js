@@ -1851,7 +1851,7 @@
       }
       const qwenAudioDiscussion=(communityChatOnly||state.provider==='api')&&(promptDiscussion||qwenPromptDiscussion(message.replace(/(?:不要|不用|无需|别|不)(?:再|直接|自动)?(?:生成|制作)(?:音频|音效|音乐)?/g,'')));
       const qwenAudioIntent=qwenAudioDiscussion ? uploadApi()?.inferTask?.(message,[],null) : null;
-      if(qwenAudioIntent && !state.staged.length && (qwenAudioIntent.surface==='audio'||qwenAudioIntent.discussion===true&&/音效|音乐|配乐|声音/.test(message)) &&
+      if(qwenAudioIntent && !(state.provider==='api'&&state.staged.length) && (qwenAudioIntent.surface==='audio'||qwenAudioIntent.discussion===true&&/音效|音乐|配乐|声音/.test(message)) &&
         /提示词|prompt/i.test(message)&&/优化|改写|整理|润色/.test(message)&&!/(?:不要|不用|无需|别|不必).{0,5}(?:优化|改写|整理|润色)/.test(message))
         return rewriteQwenAudioText(message,qwenAudioIntent,{recordMessage});
       recoverActiveTask();
@@ -2322,7 +2322,7 @@
     // and the prompt then goes out as written.
     async function translateH3Online(text){
       const policy=currentPricingPolicy()||await refreshPricingPolicy();
-      const modelId=['deepseek/deepseek-v4.1-flash','openai/gpt-6.1-sol-saver'].find(id=>policyAllowsOnline(id));
+      const modelId=[...XIAOTAO_ONLINE_MODELS.filter(model=>model.flatRate).map(model=>model.id),'openai/gpt-6.1-sol-saver'].find(id=>policyAllowsOnline(id));
       if(!policy||!modelId)return '';
       const terms=policy.config.xiaotao_online,operation=operationCreditsPolicy(terms)&&terms.operation_text_chat_v3===true;
       const reply=await api()?.artAgentChat?.({requestId:root.crypto.randomUUID(),provider:'api',modelId,expectedModelId:modelId,pricingVersion:policy.version,pricingExpiresAt:policy.expiresAt,

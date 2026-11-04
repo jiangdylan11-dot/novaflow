@@ -5144,7 +5144,9 @@
       const online = async () => {
         if (!translateOnly) return "";
         const requirements = String(payload?.requirements || "").replace(/^H3 (?:compile: translate-only|response format: bilingual-v1)\n/gm, "");
-        const text = await window.NovaFlowXiaotaoArtAgent?.panel?.controller?.translateH3Online?.(requirements + "\n\nReply with the English modelPrompt text only, in the same field layout. No JSON, no displayPrompt, no comment.");
+        // The 多参 rules alone pass the chat limit, and a cut message would lose the prompt itself.
+        const rules = requirements.length < 11000 ? requirements : "Translate only. The source prompt is a finished Simplified Chinese H3 prompt in named fields. Keep every field name, its order, [Shot N] markers, At MM:SS.mmm times, <Subject N>, <Picture N>, <Video N> and <Audio N> tags, relationship markers, <d>...</d> blocks and double-quoted text exactly as written. A Chinese personal name, and a style or costume word with no exact English equivalent, stays in Chinese characters. Add, remove or reorder nothing.\n\nSource prompt:\n" + String(payload?.prompt || "");
+        const text = await window.NovaFlowXiaotaoArtAgent?.panel?.controller?.translateH3Online?.(rules + "\n\nReply with the English modelPrompt text only, in the same field layout. No JSON, no displayPrompt, no comment.");
         return text ? JSON.stringify({ modelPrompt: text, displayPrompt: payload.prompt }) : "";
       };
       const response = await Promise.resolve().then(() => api.promptAssistantOptimizePrompt({ ...payload, h3ReferenceFrames })).catch(() => null);

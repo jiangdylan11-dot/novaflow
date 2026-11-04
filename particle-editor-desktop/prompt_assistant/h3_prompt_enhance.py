@@ -651,7 +651,9 @@ def validate_base_fields(value, mode="", duration=None, language=None, requireme
         if inventory and not used <= set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1])):
             raise ValueError("H3 引用了未提供的素材")
     prose = re.sub(r"\bN/A\b|\bAt \d{2}:\d{2}\.\d{3}", "", literal_free(everything))
-    if language == "en" and re.search(HAN, prose):
+    han_count = len(re.findall(HAN, prose))
+    # Names and style words stay Chinese in the English text; only mostly-Chinese prose fails.
+    if language == "en" and han_count > 8 and len("".join(re.findall(r"[A-Za-z]{2,}", prose))) < han_count * 2:
         raise ValueError("H3 英文提示词中仍有未翻译的中文")
     if language == "zh":
         han = len(re.findall(HAN, prose))

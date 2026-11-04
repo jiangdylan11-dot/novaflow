@@ -213,7 +213,8 @@ test('validateBaseFields fixes the layout and rejects broken shots, media and la
     // Language: English model text keeps Chinese only in <d> and quotes; the display half must be Chinese.
     assert.equal(api.validateBaseFields(fields('[Shot 1] A sign reads "营业中" and she (S1) says: <d>出发吧。</d>'), {...t2v, language:'en'}),
       fields('[Shot 1] A sign reads "营业中" and she (S1) says: <d>[Chinese] 出发吧。</d>', 'Wind.', 'N/A'));
-    assert.throws(() => api.validateBaseFields(fields('[Shot 1] A girl 挥手 at the station.'), {...t2v, language:'en'}), /英文正文/);
+    assert.throws(() => api.validateBaseFields(fields('[Shot 1] 女孩在车站挥手告别，然后转身离开。'), {...t2v, language:'en'}), /英文正文/);
+    assert.match(api.validateBaseFields(fields('[Shot 1] 李逍遥 in a 青衫 robe waves at the station.'), {...t2v, language:'en'}), /李逍遥/);
     assert.throws(() => api.validateBaseFields(fields('[Shot 1] A girl waves at the camera while the train slowly arrives at the station.'), {...t2v, language:'zh'}), /简体中文/);
   }
 });
@@ -234,7 +235,6 @@ test('validateBaseResult checks the bilingual pair for parity and completes came
     assert.throws(pair({modelPrompt:model.replace('00:05.000', '00:04.000')}), /镜头或切换时间不一致/);
     assert.throws(pair({modelPrompt:model.replace('今天风小。', '今天风大。')}), /台词或屏幕文字不一致/);
     assert.throws(pair({modelPrompt:model.replace('at a misty dock', 'at a "Harbor" dock')}), /台词或屏幕文字不一致/);
-    assert.throws(pair({modelPrompt:model.replace('a small boat', '一艘小船')}), /英文正文/);
     assert.throws(pair({displayPrompt:model}), /简体中文/);
     // No camera anywhere: both halves get the default; a requested loop gets its closure.
     const bare = {modelPrompt:'integrated_multimodal_description: [Shot 1] Live-action, a girl waves.\n\noverall_soundscape: Wind.\n\nnon_diegetic_music: N/A', displayPrompt:'integrated_multimodal_description: [Shot 1] 写实风格，少女挥手。\n\noverall_soundscape: 风声。\n\nnon_diegetic_music: 无'};

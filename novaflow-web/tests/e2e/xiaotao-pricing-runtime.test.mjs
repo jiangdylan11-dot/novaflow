@@ -8,7 +8,7 @@ const version='sha256:'+'a'.repeat(64), fingerprint='sha256:'+'b'.repeat(64);
 function setup(quoteVersion=version,{model='glm/glm-5.3-flash',operationResult}={}) {
   const token='nfs_'+Buffer.from(JSON.stringify({sub:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',exp:Math.floor(Date.now()/1000)+600})).toString('base64url')+'.synthetic';
   const requests=[],storage=new Map([['novaflow.client.auth.session.v1',JSON.stringify({session:{token}})]]);
-  const sandbox=createDomSandbox({Response,Request,Blob,FormData,AbortSignal,AbortController,Event,
+  const sandbox=createDomSandbox({Image:undefined,Response,Request,Blob,FormData,AbortSignal,AbortController,Event,
     crypto:{randomUUID:()=> 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'},location:{hash:'',pathname:'/',search:''},history:{replaceState(){}},
     localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key),key:i=>[...storage.keys()][i]??null,get length(){return storage.size}},
     atob:s=>Buffer.from(s,'base64').toString('binary'),NovaFlowClientAuth:{hasPersistedSessionIdentity:()=>true},
