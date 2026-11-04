@@ -1459,7 +1459,7 @@
           ?animationIntent?'animation':explicitTools?'tools':explicitEffects?'effects':explicitParticle?'particle':(!specialized||uiRequest)
             ?intent?.surface==='image'?(uiRequest||intent.revision&&root.NovaFlowUiDesignDrawing?.isActive?.()?'ui':'drawing')
               :['animation','video','audio'].includes(intent?.surface)?intent.surface:null:null:null;
-        let planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0;
+        let planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0;const finishedOps=new Set();
         const enhancementNames={imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
         const namedEnhancements=Object.keys(enhancementNames).filter(name=>positiveRequest.includes(enhancementNames[name]));
         for(let round=0;round<planningLimit;round++){
@@ -1548,6 +1548,11 @@
             plan={...plan,operations:plan.operations.filter(op=>!(op.action==='media'&&op.operation.action==='import_resource'&&op.operation.target==='video'))};
             if(!plan.operations.length)plan={...plan,status:'done',reply:'新视频已生成并显示在视频工具中。'};
           }
+          // A planner that repeats a step this turn already ran has finished; running it again would export twice.
+          if(plan.status==='act'){
+            const fresh=plan.operations.filter(op=>!finishedOps.has(JSON.stringify(op)));
+            plan=fresh.length?{...plan,operations:fresh}:{...plan,status:'done',reply:summarize(receipts),operations:[]};
+          }
           state.model=data.model||state.model;
           if(plan.status!=='act'){
             const actual=summarize(receipts),done=receipts.some(r=>r.phase==='completed');
@@ -1610,7 +1615,7 @@
             if(['image_optimize','image_generate'].includes(op.action)){
               receipt=await plannerDrawingPrompt(op,message);
             } else receipt=await tools.execute(op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
-            receipts.push(receipt);
+            receipts.push(receipt);finishedOps.add(JSON.stringify(op));
             if(receipt.phase==='review'&&receipt.optimization?.reviewRequired===true){
               if(typeof receipt.prompt!=='string'||typeof receipt.modelPrompt!=='string'||typeof receipt.reviewId!=='string'||!selectionStillCurrent())fail('优化草稿或模型状态无效，未应用。');
               pendingFoartImageReview={id:receipt.reviewId,selection:initialSelection};foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;

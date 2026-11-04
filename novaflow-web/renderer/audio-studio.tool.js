@@ -2280,14 +2280,13 @@
       if(scoped&&!current())throw new Error('小桃模型选择已变化，未提交音频任务。');
       const assistantGrant=ASSISTANT_AUDIO_ACTION_ENABLED&&music&&scoped&&chosen.provider==='api'?consumeAssistantAudioGrant(assistantAudioGrant,assistantAudioPlanId,op):null;
       if(assistantGrant&&count!==1)throw new Error('在线音频仅支持确认单一任务，未提交');
-      if(scoped&&state[kind].rewrite===true&&chosen.provider==='api'&&!assistantGrant)
-        throw new Error('小桃多步操作中的在线音频文字改写暂不支持同次操作结算，未提交生成。请先单独改写并确认提示词。');
-      if(scoped&&state[kind].rewrite===true&&!assistantGrant&&(chosen.provider!=='local'||chosen.modelId!=='qwen3.5-9b-heretic'))
+      if(scoped&&state[kind].rewrite===true&&!assistantGrant&&chosen.provider!=='api'&&chosen.modelId!=='qwen3.5-9b-heretic')
         throw new Error('所选模型尚未接通音频文字改写，未切换模型或提交生成。');
       activate('audio');setMode(kind);
       Object.assign(state[kind],{text:op.prompt,optimized:'',seconds,...(music?{bpm,loop:op.loop ?? state.music.loop}:{})});
       syncDockValues();
-      let caption=music?musicCaption():sfxCaption(),reprompt=assistantGrant?false:state[kind].rewrite===true,optimization;
+      // An online brain already wrote this prompt in its plan; only the local model rewrites.
+      let caption=music?musicCaption():sfxCaption(),reprompt=assistantGrant||(scoped&&chosen.provider==='api')?false:state[kind].rewrite===true,optimization;
       if(scoped&&reprompt){
         const rewrite=window.electronAPI?.promptAssistantRewriteAudioPrompt;
         const requestId=window.crypto?.randomUUID?.();
