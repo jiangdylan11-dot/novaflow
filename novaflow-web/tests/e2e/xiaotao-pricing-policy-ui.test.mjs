@@ -122,8 +122,8 @@ test('missing, expired, disabled and unknown policies never send an explicit onl
 });
 
 test('disabled paid models explain their unavailable state without inventing a price or sending',async()=>{
-  const e=setup(()=>policy({models:[{id:'qwen/qwen3.8-flash-next',available:false},{id:'bytedance/doubao-seed-2.1-lite',available:false},{id:'openai/gpt-6.1-sol-saver',available:false}]}));
-  for(const id of ['qwen/qwen3.8-flash-next','bytedance/doubao-seed-2.1-lite']){
+  const e=setup(()=>policy({models:[{id:'deepseek/deepseek-v4.1-flash',available:false},{id:'bytedance/doubao-seed-2.1-lite',available:false},{id:'openai/gpt-6.1-sol-saver',available:false}]}));
+  for(const id of ['deepseek/deepseek-v4.1-flash','bytedance/doubao-seed-2.1-lite']){
     e.controller.setModel(id);await e.controller.refreshPricingPolicy();
     assert.match(e.controller.state.status,/线路或积分价格尚未开通验证/);
     assert.equal(e.controller.onlinePriceDetails(),'');assert.equal(await e.controller.send('你好'),false);
@@ -156,7 +156,7 @@ test('legacy option stays hidden for all price states and never migrates an acti
 
 test('browser model rates use the normalized companion configuration and never use generic fallback',()=>{
   const e=setup(), p=policy(), prices=e.sandbox.NovaFlowFeatureCreditPrices;
-  for(const model of ['qwen/qwen3.8-flash-next','bytedance/doubao-seed-2.1-lite','deepseek/deepseek-v4.1-flash','openai/gpt-6.1-sol-saver']){
+  for(const model of ['deepseek/deepseek-v4.1-flash','bytedance/doubao-seed-2.1-lite','deepseek/deepseek-v4.1-flash','openai/gpt-6.1-sol-saver']){
     const input={text:'中文测试',history:'',system:'system',files:[],outputTokens:2048,model,config:p.config};
     assert.equal(prices.estimateXiaotaoOnline(input).credits,estimateXiaotaoOnlineCredits(input).credits);
     assert.equal(prices.estimateXiaotaoOnline({...input,config:{credits_per_usd:211,xiaotao_online:{}}}),null);

@@ -8,7 +8,6 @@
 // CREDITS_PER_USD stays an internal cost coefficient, not a user-facing formula.
 
 import { artPromptLanguageSystem } from './art-prompt-language.mjs';
-import {xiaotaoOnlineModel} from './xiaotao-online-models.mjs';
 import { withXiaotaoConversationalRole } from './xiaotao-role-policy.mjs';
 import { hasXiaotaoModelRate, invalidXiaotaoTokenUsage, estimateXiaotaoModelUsage, estimateXiaotaoModelBudget, xiaotaoModelRatePolicy } from './xiaotao-model-rates.mjs';
 import {hasXiaotaoDecimalV1, exactXiaotaoTokenCost, ceilXiaotaoLedgerCredit} from './xiaotao-decimal-usage.mjs';
@@ -369,7 +368,7 @@ export function estimateXiaotaoOnlineCredits({ text = '', history = '', system, 
   const active = userChars > 0 || counts.image + counts.video + counts.audio > 0;
   const systemText = !active ? '' : system == null ? xiaotaoOnlineSystemPrompt({ vision: counts.image + counts.video + counts.audio > 0, promptLanguage }) : String(system);
   const chars = userChars + systemText.length;
-  const outputBudget = (outputTokens == null ? policy.output_tokens : clampOnlineInt(outputTokens, 0, 100000, policy.output_tokens)) + (xiaotaoOnlineModel(String(model || '').trim())?.thinkingHeadroom || 0);
+  const outputBudget = outputTokens == null ? policy.output_tokens : clampOnlineInt(outputTokens, 0, 100000, policy.output_tokens);
   const inputTokens = Math.ceil(chars / policy.chars_per_token) + fileTokens;
   const tokens = inputTokens + outputBudget;
   const grok47 = /^(?:xai\/)?grok-4\.7$/i.test(String(model || '').trim());

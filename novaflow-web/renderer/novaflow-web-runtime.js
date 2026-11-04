@@ -65,7 +65,7 @@
     try {const next=await prepareOnlineStyleImage(dataUrl,{maxSide:count>1?640:1024,type:'image/jpeg'});return next.length<dataUrl.length?next:dataUrl;}catch{return dataUrl;}
   }
   // BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)
-  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true,"thinkingHeadroom":5000},{"id":"bytedance/doubao-seed-2.1-lite","label":"豆包 Seed 2.1 Lite","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
+  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"bytedance/doubao-seed-2.1-lite","label":"豆包 Seed 2.1 Lite","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
   const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));
   const isXiaotaoOnlineModel = id => XIAOTAO_ONLINE_MODEL_IDS.includes(id);
   const isXiaotaoFlatRateModel = id => XIAOTAO_ONLINE_MODELS.some(model => model.id === id && model.flatRate);

@@ -180,7 +180,7 @@ export function responsesToChatCompletions(body, model) {
   const temperature = Number(body?.temperature);
   if (Number.isFinite(temperature)) chat.temperature = Math.max(0, Math.min(2, temperature));
   const maxTokens = Number(body?.max_output_tokens ?? body?.max_tokens);
-  if (Number.isFinite(maxTokens) && maxTokens > 0) chat.max_tokens = Math.min(8192, Math.round(maxTokens) + (xiaotaoOnlineModel(chat.model)?.thinkingHeadroom || 0));
+  if (Number.isFinite(maxTokens) && maxTokens > 0) chat.max_tokens = Math.min(8192, Math.round(maxTokens));
   const effort = body?.reasoning?.effort ?? body?.reasoning_effort;
   // Foart's ordinary chat and rewrite calls use low/default effort. Flash
   // models include thinking in max_tokens, so low can consume the entire answer

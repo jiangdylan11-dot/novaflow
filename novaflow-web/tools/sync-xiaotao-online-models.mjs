@@ -7,7 +7,7 @@ const root=new URL('../',import.meta.url);
 const TARGETS=['renderer/xiaotao-art-agent.js','renderer/novaflow-web-runtime.js','renderer/feature-credit-prices.js','renderer/novaflow-smart-ai.js'];
 const BEGIN='// BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)';
 const END='// END GENERATED xiaotao-online-models';
-const models=XIAOTAO_ONLINE_MODELS.map(({id,label,flatRate,vision,thinkingHeadroom})=>({id,label,flatRate,vision,...(thinkingHeadroom?{thinkingHeadroom}:{})}));
+const models=XIAOTAO_ONLINE_MODELS.map(({id,label,flatRate,vision})=>({id,label,flatRate,vision}));
 const block=indent=>[BEGIN,
   'const XIAOTAO_ONLINE_MODELS = Object.freeze('+JSON.stringify(models)+'.map(model => Object.freeze(model)));',
   'const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));',

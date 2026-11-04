@@ -7,13 +7,9 @@
 // through operation-level (v3) billing.
 // thinkingOff: request fields that turn the provider's thinking mode off for
 // ordinary low-effort calls, so thinking cannot eat the answer budget.
-// thinkingHeadroom: extra max_tokens, also reserved in the estimate, for a model that
-// keeps thinking anyway (Qwen sometimes runs long).
 export const XIAOTAO_ONLINE_MODELS = Object.freeze([
   Object.freeze({id:'deepseek/deepseek-v4.1-flash', label:'DeepSeek V4.1 Flash', flatRate:true, vision:true,
     thinkingOff:Object.freeze({thinking:Object.freeze({type:'disabled'})})}),
-  Object.freeze({id:'qwen/qwen3.8-flash-next', label:'千问 Qwen3.8 Flash', flatRate:true, vision:true, thinkingHeadroom:5000,
-    thinkingOff:Object.freeze({enable_thinking:false})}),
   Object.freeze({id:'bytedance/doubao-seed-2.1-lite', label:'豆包 Seed 2.1 Lite', flatRate:true, vision:true,
     thinkingOff:Object.freeze({thinking:Object.freeze({type:'disabled'})})}),
   Object.freeze({id:'xai/grok-4.7', label:'Grok 4.7', flatRate:false, vision:true, thinkingOff:null}),

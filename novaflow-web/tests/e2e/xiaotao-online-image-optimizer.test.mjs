@@ -18,7 +18,7 @@ function fixture({enabled=true,changed=false,gpt=false,failure=null,model='opena
   return {run:()=>ctx.invoke({assistantSelectionScope:'xiaotao',surface:'art',prompt:'red ball',negativePrompt:'keep existing',generationMode:'img2img',engine:gpt?'gpt-image-2.5':'qwen-2.1',supportsNegativePrompt:false,onPricingQuote:quote,confirmPricingQuote:confirm,onBillingNotice:billing,...(useImages?{images}:{})}),get calls(){return calls;},get captured(){return captured;},quote,confirm,billing,images};
 }
 test('all three online selections retain their exact model identity and a closed gate makes no call',async()=>{
-  for(const model of ['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash','qwen/qwen3.8-flash-next','bytedance/doubao-seed-2.1-lite']){
+  for(const model of ['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash','deepseek/deepseek-v4.1-flash','bytedance/doubao-seed-2.1-lite']){
     const f=fixture({model,useImages:false}),result=await f.run();assert.equal(f.calls,1);assert.equal(f.captured.assistantModelId,model);assert.equal(result.optimization.modelIdentity.id,model);
     const closed=fixture({model,enabled:false,useImages:false});await assert.rejects(closed.run());assert.equal(closed.calls,0);
   }

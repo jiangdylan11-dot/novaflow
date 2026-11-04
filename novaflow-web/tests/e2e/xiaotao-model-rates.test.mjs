@@ -219,7 +219,7 @@ test('an idempotent new-model reservation never calls the provider or settles ag
   assert.equal(calls,0);assert.equal(settled,0);assert.equal(released,0);
 });
 test('legacy provider set to a flat-rate model cannot silently use generic token pricing', async () => {
-  for(const model of ['deepseek/deepseek-v4.1-flash','qwen/qwen3.8-flash-next','bytedance/doubao-seed-2.1-lite']){
+  for(const model of ['deepseek/deepseek-v4.1-flash','deepseek/deepseek-v4.1-flash','bytedance/doubao-seed-2.1-lite']){
     let charged=0,calls=0;
     const provider={apiKey:'fixture',baseUrl:'https://llm.runninghub.ai/v1',model};
     const service=createCompanionChat({provider,charge:async()=>charged++,fetchImpl:async()=>calls++});
