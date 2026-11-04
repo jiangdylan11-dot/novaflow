@@ -77,7 +77,7 @@ const promptAssistantOptions = { analysisBackend: 'legacy-nf4', pythonPath: proc
   equal(blocked.status().analysisBackend, 'strata', 'production ignores an explicit legacy backend');
   const missed = await blocked.optimizePrompt({ prompt: 'hello', surface: 'art' });
   equal(missed.ok, false);
-  equal(missed.errorCode, 'flash-model-missing', 'a missing Flash model does not start the Python service');
+  equal(missed.errorCode, 'assistant-model-selection-required', 'unselected retired Flash does not start the Python service');
   check(blocked.running !== true, 'prompt-assistant-service.py stays down');
   await blocked.stop();
 }

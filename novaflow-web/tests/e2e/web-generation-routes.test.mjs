@@ -1,16 +1,23 @@
 // Exercise the shipped adapters with the return shapes and entry points used
 // by the art and animation panels. No paid providers or GPU are used here.
 import strictAssert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { createContext, runInContext } from 'node:vm';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createDomSandbox } from '../../worker/src/comfy/dom-shim.mjs';
 import { createWorkflowHost } from '../../worker/src/comfy/workflow-host.mjs';
 import { instrumentModule } from '../../tools/instrument-workflow-module.mjs';
 import { isAllowedWorkflowCall } from '../../packages/shared/src/workflow-modules.mjs';
 import { withReferences, assertGraphLoadsTaskInputs } from '../../worker/src/worker-core.mjs';
 import { isSafeFilename } from '../../packages/shared/src/protocol.mjs';
-import { fileURLToPath } from 'node:url';
+import { prepareComputeRenderer } from '../../tools/prepare-compute-renderer.mjs';
 
+// Exercise the current node builders without overwriting the shared generated
+// worker-renderer used by a running assistant or another development task.
+const rendererDir = await mkdtemp(join(tmpdir(), 'foart-web-generation-routes-'));
+try {
+await prepareComputeRenderer({ outputDir: rendererDir });
 const web = new URL('../../web-dist/', import.meta.url);
 let checks = 0;
 const assert = new Proxy(strictAssert, { get(target, key) {
@@ -144,7 +151,7 @@ assert.equal(withReferences(editOptions, ['task-image.png', 'task-mask.png', 'ta
 assert.equal(withReferences(editOptions, ['task-image.png', 'task-mask.png'], latentRefs.slice(0, 2), 'defaultQwenInpaintWorkflow').__args[5].latentInputName, undefined);
 
 // Cutouts run BiRefNet-general (MIT); the RMBG node (RMBG-2.0, non-commercial) is never chosen.
-const host = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: {
+const host = await createWorkflowHost({ rendererDir, objectInfo: {
   RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']], sensitivity: ['FLOAT', { default: 1 }] } } },
   BiRefNetRMBG: { input: { required: { image: ['IMAGE'], model: [['BiRefNet-general', 'BiRefNet_lite']] }, optional: { mask_blur: ['INT', { default: 0 }], background: [['Alpha', 'Color'], { default: 'Alpha' }] } } }
 } });
@@ -154,7 +161,7 @@ assert.equal(cutout['2'].class_type, 'BiRefNetRMBG');
 assert.equal(cutout['2'].inputs.model, 'BiRefNet-general');
 assert.equal(cutout['2'].inputs.background, 'Alpha');
 assert.equal(JSON.stringify(cutout['3'].inputs.images), '["2",0]');
-await assert.rejects((await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: {
+await assert.rejects((await createWorkflowHost({ rendererDir, objectInfo: {
   RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']] } } }
 } })).buildGraph({ module: 'spine-split-runtime', method: 'defaultRmbgWorkflow', options: { __args: ['', 'task-image.png', 'NovaFlow_Cutout', null] } }), /抠图组件/);
 await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'patchWorkflow', options: {} }), /not available/);
@@ -162,7 +169,6 @@ await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'p
 // the whole-head node only where the catalogue has it; without See-through it refuses.
 const seeThroughInfo = Object.fromEntries(['SeeThrough_LoadLayerDiffModel', 'SeeThrough_LoadDepthModel', 'SeeThrough_GenerateLayers', 'SeeThrough_GenerateDepth', 'SeeThrough_PostProcess', 'SeeThrough_SavePSD'].map((name) => [name, {}]));
 const splitCall = { module: 'spine-split-runtime', method: 'buildSeeThroughSplitWorkflow', options: { __args: ['http://evil.test', 'task-split.png', splitSpec] } };
-const rendererDir = fileURLToPath(new URL('../../worker-renderer/', import.meta.url));
 const split = await (await createWorkflowHost({ rendererDir, objectInfo: { ...seeThroughInfo, NovaFlowSeeThroughHeadLayer: {} } })).buildGraph(splitCall);
 assert.equal(split['1'].inputs.image, 'task-split.png');
 assert.equal(split['4'].inputs.seed, 7);
@@ -177,8 +183,8 @@ await assert.rejects((await createWorkflowHost({ rendererDir, objectInfo: { RMBG
 const io = (...names) => Object.fromEntries(names.map((name) => [name, ['*']]));
 const qwen21Info = {
   LoadImage: { input: { required: { image: [['x.png']] } } },
-  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-Q8_0.gguf']] } } },
-  CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_w4a8_heretic.safetensors']], type: [['stable_diffusion', 'qwen_image']] }, optional: { device: [['default', 'cpu']] } } },
+  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['Qwen-Image-2.1-Turbo-BF16.gguf', 'qwen-image-2.1-UC-BF16.gguf']] } } },
+  CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']], type: [['stable_diffusion', 'qwen_image']] }, optional: { device: [['default', 'cpu']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
   TextEncodeQwenImage21: { input: { required: { ...io('clip', 'prompt', 'negative_prompt'), resolution: ['INT', { default: 1024 }], images: ['COMFY_AUTOGROW_V3', {}] }, optional: io('vae') } },
   QwenImage21Cache: { input: { required: { model: ['MODEL'], device: [['auto', 'cpu']], dtype: [['default', 'int8']] } } },
@@ -186,6 +192,9 @@ const qwen21Info = {
   ImageToMask: { input: { required: { image: ['IMAGE'], channel: [['red', 'green', 'blue', 'alpha']] } } },
   SetLatentNoiseMask: { input: { required: io('samples', 'mask') } },
   KSampler: { input: { required: { ...io('model', 'positive', 'negative', 'latent_image', 'seed', 'steps', 'cfg', 'denoise'), sampler_name: [['euler']], scheduler: [['simple']] } } },
+  ManualSigmas: { input: { required: io('sigmas') } },
+  KSamplerSelect: { input: { required: io('sampler_name') } },
+  SamplerCustom: { input: { required: io('model', 'add_noise', 'noise_seed', 'cfg', 'positive', 'negative', 'latent_image', 'sampler', 'sigmas') } },
   VAEDecode: { input: { required: io('samples', 'vae') } },
   SplitImageWithAlpha: { input: { required: io('image') } },
   InvertMask: { input: { required: io('mask') } },
@@ -197,7 +206,7 @@ const qwen21Info = {
   EmptyLatentImage: { input: { required: io('width', 'height', 'batch_size') } },
   SaveImage: { input: { required: io('images', 'filename_prefix') } }
 };
-const host21 = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: qwen21Info });
+const host21 = await createWorkflowHost({ rendererDir, objectInfo: qwen21Info });
 const completionRoute = { mode: 'completion', provider: 'qwen-completion-v4', workflow: 'qwen', outputMode: 'patch', v4: true };
 const build21 = async (inputSize, extra = {}, promptText = 'leg') => {
   const call = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultQwenInpaintWorkflow', [
@@ -224,7 +233,9 @@ for (const pad of Object.values(pads)) assert.deepEqual([pad.left, pad.top, pad.
 // 智能补图 samples the whole picture on the encoder's latent like 局部编辑 (the page pastes it back
 // through the selection): the noise mask drew full legs on 0 of 9 seeds of the user's run, this on 6.
 assert.equal(byClass(g21, 'SetLatentNoiseMask').length + byClass(g21, 'VAEEncode').length + byClass(g21, 'MaskComposite').length, 0);
-assert.deepEqual(byClass(g21, 'KSampler')[0][1].inputs.latent_image, ['10', 2]);
+assert.deepEqual(byClass(g21, 'SamplerCustom')[0][1].inputs.latent_image, ['10', 2]);
+assert.equal(byClass(g21, 'ManualSigmas').length, 1);
+assert.equal(byClass(g21, 'KSamplerSelect').length, 1);
 // The reference is the padded undug crop and the hole is image 2.
 assert.deepEqual(pads[g21['10'].inputs['images.image_1'][0]].image, ['3', 0]);
 assert.deepEqual(pads[g21['10'].inputs['images.image_2'][0]].image, ['2', 0]);
@@ -240,7 +251,7 @@ assert.deepEqual(pads[g21['10'].inputs['images.image_2'][0]].image, ['2', 0]);
   assert.equal(noiseMask.class_type, 'MaskComposite');
   assert.deepEqual([noiseMask.inputs.destination, noiseMask.inputs.operation], [['8', 0], 'add']);
   assert.deepEqual(noiseMask.inputs.source, [gOld['10'].inputs['images.image_2'][0], 1]);
-  assert.deepEqual(byClass(gOld, 'KSampler')[0][1].inputs.latent_image, ['9', 0]);
+  assert.deepEqual(byClass(gOld, 'SamplerCustom')[0][1].inputs.latent_image, ['9', 0]);
 }
 const [[cropId, crop]] = byClass(g21, 'ImageCrop');
 assert.deepEqual([crop.inputs.width, crop.inputs.height, crop.inputs.x, crop.inputs.y], [450, 700, 0, 0]);
@@ -251,7 +262,7 @@ assert.deepEqual(byClass(g21, 'SaveImage')[0][1].inputs.images, [cropId, 0]);
   const editRoute = { mode: 'edit', provider: 'qwen-edit-v5', label: 'Qwen Edit V5', workflow: 'qwen', outputMode: 'patch', qwenControlMode: 1, editV5: true, v4: true };
   const gEdit = JSON.parse(JSON.stringify(await build21({ width: 450, height: 700 }, { inpaintMode: 'edit', route: editRoute }, '戴上墨镜')));
   assert.equal(byClass(gEdit, 'SetLatentNoiseMask').length + byClass(gEdit, 'VAEEncode').length + byClass(gEdit, 'MaskComposite').length, 0);
-  const editSampler = byClass(gEdit, 'KSampler')[0][1].inputs;
+  const editSampler = byClass(gEdit, 'SamplerCustom')[0][1].inputs;
   assert.deepEqual(editSampler.latent_image, ['10', 2]);
   const editPads = Object.fromEntries(byClass(gEdit, 'ImagePadForOutpaint').map(([id, node]) => [id, node.inputs]));
   // The reference is the padded undug crop, the selection is image 2, and the output is cropped back.
@@ -268,7 +279,7 @@ assert.deepEqual(byClass(g21, 'SaveImage')[0][1].inputs.images, [cropId, 0]);
 const g21Aligned = JSON.parse(JSON.stringify(await build21(undefined)));
 assert.equal(byClass(g21Aligned, 'ImagePadForOutpaint').length + byClass(g21Aligned, 'ImageCrop').length + byClass(g21Aligned, 'MaskComposite').length, 0);
 assert.deepEqual(g21Aligned['10'].inputs['images.image_1'], ['3', 0]);
-assert.deepEqual(byClass(g21Aligned, 'KSampler')[0][1].inputs.latent_image, ['10', 2]);
+assert.deepEqual(byClass(g21Aligned, 'SamplerCustom')[0][1].inputs.latent_image, ['10', 2]);
 // The 2.1 prompt is built from the user's words and the part guidance, never from the 2509 template's
 // "Transparent background." line; a merged prompt without the parts loses that line.
 const promptOf = (graph) => byClass(graph, 'TextEncodeQwenImage21')[0][1].inputs.prompt;
@@ -281,8 +292,8 @@ assert.equal(byClass(t2i, 'TextEncodeQwenImage21').length, 1);
 const t2iLatent = byClass(t2i, 'EmptyLatentImage')[0][1].inputs;
 assert.deepEqual([t2iLatent.width, t2iLatent.height], [896, 1312]);
 const t2iSampler = byClass(t2i, 'KSampler')[0][1].inputs;
-// The model card's 40 steps; CFG 1 with no negative prompt of the user's own.
-assert.deepEqual([t2iSampler.seed, t2iSampler.steps, t2iSampler.cfg], [42, 40, 1]);
+// Foart's current default is 25 steps; CFG 1 with no user's negative prompt.
+assert.deepEqual([t2iSampler.seed, t2iSampler.steps, t2iSampler.cfg], [42, 25, 1]);
 assert.equal(byClass(t2i, 'SaveImage')[0][1].inputs.filename_prefix, 'NovaFlow_Art');
 // W / H on reference 1's size (as a new reference 1 fills them): an edit on the encoder's own latent.
 const i2i = await buildArt('img2img', ['ref.png'], [{ width: 624, height: 1360 }], { width: 624, height: 1360 });
@@ -301,7 +312,7 @@ assert.equal(relayoutEncode.resolution, 0);
 const relayoutFirst = i2iRelayout[relayoutEncode['images.image_1'][0]].inputs;
 assert.ok(relayoutFirst.width * relayoutFirst.height <= 1048576);
 assert.equal(i2iRelayout[byClass(i2iRelayout, 'KSampler')[0][1].inputs.latent_image[0]].class_type, 'EmptyLatentImage');
-assert.equal(byClass(await buildArt('img2img', ['ref.png'], [], { nsfw: true }), 'TextEncodeQwenImage21').length, 0);
+await assert.rejects(buildArt('img2img', ['ref.png'], [], { nsfw: true }), /旧版 NSFW 生图路线已移除/);
 const template = ['User instruction, highest priority:', '补全腿部', '', 'Complete the masked missing area.', 'Transparent background.', '', 'Original protective context:', 'leg'].join(String.fromCharCode(10));
 const withParts = promptOf(JSON.parse(JSON.stringify(await build21(undefined, { promptParts: { user: '补全腿部，赤脚', part: 'Extend the leg.' } }, template))));
 // The user's own words lead (with the bare-feet rule they trigger); the layer's part guidance is only
@@ -350,7 +361,7 @@ const transferHost = await createWorkflowHost({ rendererDir, objectInfo: { ...qw
 const transfer = await transferHost.buildGraph({ module: 'spine-split-runtime', method: 'buildObjectTransferQwen21Workflow', options: { __args: transferArgs } });
 assert.equal(transfer['1'].inputs.image, 'nfweb-1-0-run_placement.png');
 assert.equal(transfer['2'].inputs.image, 'nfweb-1-1-run_scene.png');
-assert.equal(transfer['4'].inputs.unet_name, 'qwen-image-2.1-UC-Q8_0.gguf');
+assert.equal(transfer['4'].inputs.unet_name, 'Qwen-Image-2.1-Turbo-BF16.gguf');
 assert.equal(Object.values(transfer).find((node) => node.class_type === 'SaveImage').inputs.filename_prefix, 'run_1');
 // The guard: a graph that names a file this task did not upload is refused.
 assertGraphLoadsTaskInputs(transfer, ['nfweb-1-0-run_placement.png', 'nfweb-1-1-run_scene.png']);
@@ -364,3 +375,6 @@ assert.deepEqual([...new Uint8Array(await (await fetch(cached.path)).arrayBuffer
 await sandbox.electronAPI.aiSeqCacheReleaseOutput({ key: 'art-output' });
 await assert.rejects(fetch(cached.path));
 console.log(checks + ' passed, 0 failed: shipped image/video contracts, art intent, positional references and worker cutout');
+} finally {
+  await rm(rendererDir, { recursive: true, force: true });
+}

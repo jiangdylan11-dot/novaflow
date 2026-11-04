@@ -70,6 +70,17 @@ test('same-tick calls cannot overlap the shared lease',async()=>{const entered=d
 test('generation waits for inference and release then excludes unrelated local AI',async()=>{const gate=deferred(),entered=deferred();const {assistant}=fixture({run:async()=>{entered.resolve();await gate.promise;return {ok:true,data:{}};}});const first=assistant.optimizePrompt({});await entered.promise;let acquired=false;const reservation=assistant.acquireGeneration('draw').then(release=>{acquired=true;return release;});await new Promise(r=>setTimeout(r,10));assert.equal(acquired,false);gate.resolve();await first;const release=await reservation;assert.equal((await assistant.optimizePrompt({})).errorCode,'prompt-assistant-busy');release();assert.equal((await assistant.optimizePrompt({})).ok,true);});
 test('release failure blocks subsequent inference and generation',async()=>{const {assistant}=fixture({releaseError:true});assert.equal((await assistant.optimizePrompt({})).errorCode,'strata-release-unconfirmed');assert.equal((await assistant.optimizePrompt({})).errorCode,'strata-release-unconfirmed');await assert.rejects(assistant.acquireGeneration('draw'),/资源/);});
 test('audio shares the lease and returns only a cleaned caption after release',async()=>{const {assistant,events}=fixture();const r=await assistant.rewriteAudioPrompt({kind:'music',input:'竖琴循环',seconds:30});assert.equal(r.prompt,'Instrumental harp loop. BPM: 90');assert.equal(r.resourcesReleased,true);assert.equal(events.at(-1),'unload');});
+test('audio BPM reaches inference only for valid music and invalid values do not load a model',async()=>{
+ const requests=[],qwenSession={withSession:async callback=>({value:await callback({identity:{id:'qwen35-heretic'},infer:async request=>{requests.push(request);return {text:'Instrumental harp loop. BPM: 120',model:'qwen35-heretic'};}}),identity:{id:'qwen35-heretic'},timing:{},resourcesReleased:true,generationReady:true})};
+ const assistant=createStrataPromptAssistant({qwenSession,isolatedCommunityRuntimeForTest:true,comfyUrls:[],qwenBusinessBridge:true,qwenBusinessReady:()=>true});
+ const rewrite=request=>assistant.rewriteAudioPrompt({...request,assistantProvider:'local',assistantModelId:'qwen3.5-9b-heretic'});
+ assert.equal((await rewrite({kind:'music',input:'harp loop',seconds:30,bpm:120})).ok,true);
+ assert.match(requests[0].user,/Required tempo: 120 BPM\./);assert.match(requests[0].system,/expert musician/);
+ for(const bpm of [39,221,120.5,'120',null])assert.equal((await rewrite({kind:'music',input:'harp',seconds:30,bpm})).errorCode,'invalid-request');
+ assert.equal(requests.length,1);
+ assert.equal((await rewrite({kind:'sfx',input:'door',seconds:2,bpm:120})).ok,true);assert.doesNotMatch(requests[1].user,/Required tempo/);assert.match(requests[1].system,/sound design expert/);
+ assert.equal((await rewrite({kind:'music',input:'harp',seconds:30})).ok,true);assert.doesNotMatch(requests[2].user,/Required tempo/);await assistant.stop();
+});
 test('UI CPU compilers do not cold-load a language model',async()=>{const {assistant,events}=fixture();const r=await assistant.uiDesignCpu({surface:'ui-design',action:'native-ui-cloud'});assert.equal(r.ok,true);assert.deepEqual(events,[]);});
 
 test('native style pair bypasses old business rewriters and receives nested credentials only after release',async()=>{

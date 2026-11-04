@@ -11,6 +11,22 @@ const source=await readFile(new URL('../../renderer/xiaotao-media-agent.js',impo
 const agentSource=await readFile(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
 const uploadSource=await readFile(new URL('../../renderer/xiaotao-upload.js',import.meta.url),'utf8');
 
+test('multi-reference planning waits for native restore/removal commits and checks the visible board',async()=>{
+  const ctx=vm.createContext({console});vm.runInContext(source,ctx);
+  let refs=[],reads=0,boardId='b1',visibleIds=['image-1','video-1','audio-1'];
+  const panel={getClientRects:()=>[{}],getAttribute:()=>boardId,querySelectorAll:()=>visibleIds.map(id=>({getAttribute:()=>id}))};
+  ctx.document={querySelectorAll:()=>[panel]};
+  ctx.NovaFlowAudioStudio={isOpen:()=>true,sub:()=> 'video'};
+  ctx.NovaFlowAiSequenceGeneration={capture:()=>({boardId,mode:'minimax_h3_local',genType:'multi_reference',h3References:refs})};
+  ctx.NovaFlowH3Media={snapshot:async id=>{reads++;assert.equal(id,'b1');await Promise.resolve();refs=visibleIds.map(sourceId=>({sourceId}));}};
+  await ctx.NovaFlowMediaAgent.prepareCapture();assert.equal(reads,1);assert.equal(ctx.NovaFlowMediaAgent.capture().artContext.generation.h3References.length,3);
+  visibleIds=['image-1'];await ctx.NovaFlowMediaAgent.prepareCapture();assert.equal(refs.length,1,'The next plan must observe the completed original remove handler');
+  ctx.NovaFlowH3Media.snapshot=async()=>{refs=[];};
+  await assert.rejects(ctx.NovaFlowMediaAgent.prepareCapture(),/多参引用与当前画板尚未同步/);
+  ctx.NovaFlowH3Media.snapshot=async()=>{boardId=boardId==='b1'?'b2':'b1';};
+  await assert.rejects(ctx.NovaFlowMediaAgent.prepareCapture(),/读取期间发生变化/);
+});
+
 test('video feedback stays on its original deliverable and prompt optimization performs a write without generation',async()=>{
   const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,console,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
   for(const script of [uploadSource,source,agentSource])vm.runInContext(script,ctx);

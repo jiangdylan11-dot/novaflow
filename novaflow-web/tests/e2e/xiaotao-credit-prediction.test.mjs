@@ -14,6 +14,24 @@ const input = {text:question,history:'',files:[{kind:'image',width:96,height:96}
 const config = {credits_per_usd:211,token_billing:{markup:2},xiaotao_online:xiaotaoOnlinePolicy()};
 const sample = {model:'metered-model',eligible:true,pricingSource:'token_usage',usdCost:0.02,inputTokens:1500,outputTokens:500,totalTokens:2000,creditsPerUsd:211,markup:1.5,policy:xiaotaoOnlinePolicy()};
 
+test('decimal online estimates retain subcredit amounts only for the fully versioned policy',()=>{
+  const p=prices(), rates={input:0.177,output:0.7062,cached:0.0036};
+  const decimal={credits_per_usd:211,token_billing:{round:'ceil',min_credits_per_image:1},xiaotao_online:{
+    billing_scope:'operation',credit_amount_policy:'decimal-v1',credit_precision:6,credit_rounding:'ceil',minimum_positive_credits:0,markup:1.5,
+    model_rates:{'deepseek/deepseek-v4.1-flash':rates}}};
+  const input={text:'a',system:'',outputTokens:0,model:'deepseek/deepseek-v4.1-flash',config:decimal};
+  assert.equal(p.estimateXiaotaoOnline(input).credits,0.000057);
+  assert.equal(p.estimateXiaotaoOnline({...input,text:''}).credits,0);
+  const tiny=structuredClone(decimal);tiny.xiaotao_online.model_rates['deepseek/deepseek-v4.1-flash'].input=1e-12;
+  assert.equal(p.estimateXiaotaoOnline({...input,config:tiny}).credits,0.000001);
+  const incomplete=structuredClone(decimal);delete incomplete.xiaotao_online.credit_rounding;
+  assert.equal(p.estimateXiaotaoOnline({...input,config:incomplete}),null);
+  const contradictory=structuredClone(decimal);contradictory.xiaotao_online.minimum_positive_credits=1;
+  assert.equal(p.estimateXiaotaoOnline({...input,config:contradictory}),null);
+  const missing=structuredClone(decimal);for(const key of ['credit_amount_policy','credit_precision','credit_rounding'])delete missing.xiaotao_online[key];
+  assert.equal(p.estimateXiaotaoOnline({...input,config:missing}),null);
+});
+
 test('a brief image question forecasts less than the full-output reservation without changing it',()=>{
   const p=prices(), hold=p.estimateXiaotaoOnline(input), forecast=p.predictXiaotaoOnline(input);
   assert.equal(hold.credits,estimateXiaotaoOnlineCredits(input).credits);

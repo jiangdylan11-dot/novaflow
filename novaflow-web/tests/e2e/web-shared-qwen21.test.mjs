@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { createContext, runInContext } from 'node:vm';
 import { startLocalControlPlane } from '../../control-local/src/server.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
-import { workflowModelId } from '../../packages/shared/src/workflow-modules.mjs';
+import { workflowModelId, QWEN21_EDIT_LORA_CAPABILITY } from '../../packages/shared/src/workflow-modules.mjs';
 import { createDomSandbox } from '../../worker/src/comfy/dom-shim.mjs';
 import { createWorker } from '../../worker/src/worker-core.mjs';
 
@@ -65,12 +65,12 @@ try {
   runInContext(await readFile(new URL('../../renderer/novaflow-web-runtime.js', import.meta.url), 'utf8'), createContext(sandbox));
   equal(sandbox.NovaFlowWebRuntime.computeMode, 'shared');
   equal(sandbox.electronAPI.runtimeFeaturesSync().qwenImage21, true);
-  equal((await request('/api/web/capabilities')).body.features, { qwenImage21: false });
+  equal((await request('/api/web/capabilities')).body.features.qwenImage21, false);
   equal((await sandbox.electronAPI.runtimeFeatures()).qwenImage21, true);
 
   // A drawing node without 2.1 is the one that switches the page to the 2511 layout.
   const older = await node('2511', [{ model_id: 'qwen-image-2511', status: 'ready', detail: { lora_catalog: lora([]) } }]);
-  equal((await request('/api/web/capabilities')).body.features, { qwenImage21: false });
+  equal((await request('/api/web/capabilities')).body.features.qwenImage21, false);
   equal((await sandbox.electronAPI.runtimeFeatures()).qwenImage21, false);
   const task21 = await create(run({ localDrawEngine: 'qwen-2.1' }));
   equal(task21.body.capableWorkers, 0);
@@ -79,11 +79,34 @@ try {
   const newer = await node('2.1', ['qwen-image-2511', 'qwen-image-2.1'].map((model_id) =>
     ({ model_id, status: 'ready', detail: { lora_catalog: lora(['qwen/q21.safetensors']) } })));
   const caps = (await request('/api/web/capabilities')).body;
-  equal(caps.features, { qwenImage21: true });
+  equal(caps.features.qwenImage21, true);
   const claimed = await claim(newer);
   equal([claimed.id, claimed.model_id], [task21.body.task.id, 'qwen-image-2.1']);
   const task2511 = await create(run({}));
   equal((await claim(older)).id, task2511.body.task.id);
+
+  // Turbo alone does not prove that an older worker understands the new
+  // editing switch: it must never claim a request carrying that switch.
+  const oldTurbo = await node('old turbo', [{ model_id: 'qwen-image-2.1-turbo', status: 'ready' }]);
+  await request('/api/worker/heartbeat', 'POST', { status: 'idle' }, oldTurbo);
+  const newEdit = () => request('/api/web/tasks', 'POST', { task_type: 'renderer_workflow',
+    workflow: { module: 'spine-split-runtime', method: 'defaultQwenLoraInpaintWorkflow' },
+    parameters: { __args: ['', 'source.png', 'mask.png', 'test', 'edit', { inpaintMode: 'edit', inpaintProvider: true }] } }, token);
+  const unavailable = await newEdit();
+  equal(unavailable.status, 409);
+  assert.match(String(unavailable.body.error?.message || unavailable.body.message || unavailable.body.error), /LoRA/);
+  const legacy = await request('/api/web/tasks', 'POST', { task_type: 'renderer_workflow',
+    workflow: { module: 'spine-split-runtime', method: 'defaultQwenInpaintWorkflow' },
+    parameters: { __args: ['', 'source.png', 'mask.png', 'test', 'edit', { inpaintMode: 'edit', inpaintProvider: true }] } }, token);
+  equal(legacy.status, 400);
+  assert.match(String(legacy.body.error?.message || legacy.body.message || legacy.body.error), /退役/);
+  const capable = await node('new editor', [{ model_id: QWEN21_EDIT_LORA_CAPABILITY, status: 'ready' }]);
+  await request('/api/worker/heartbeat', 'POST', { status: 'idle' }, capable);
+  const editTask = await newEdit();
+  equal(editTask.status, 200);
+  equal(editTask.body.task.model_id, QWEN21_EDIT_LORA_CAPABILITY);
+  equal(await claim(oldTurbo), null);
+  equal((await claim(capable)).id, editTask.body.task.id);
 
   equal((await request('/api/web/loras/qwen?nsfw=false&engine=qwen-2.1', 'GET', undefined, token)).body.items,
     [{ name: 'qwen/q21.safetensors' }]);

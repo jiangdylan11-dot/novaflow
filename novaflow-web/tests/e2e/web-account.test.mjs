@@ -307,10 +307,10 @@ function loadAccount(sandbox) {
     },
     NovaFlowFeatureCreditPrices: { applyConfig(next) { appliedPrices.push(next); } },
     electronAPI: {
-      clientAuthStatus: async () => ({ ok: true, result: { authenticated: true, user: { display_name: displayName }, credits: { balance } } }),
+      clientAuthStatus: async () => ({ ok: true, result: { authenticated: true, user: { id:'fixture', display_name: displayName }, credits: { balance } } }),
       clientAuthAccountDetails: async () => ({
         ok: true,
-        result: { user: { display_name: displayName }, credits: { balance }, featureCreditPrices: { prices: { online_chat_turn: 4 } } }
+        result: { user: { id:'fixture', display_name: displayName }, credits: { balance }, featureCreditPrices: { prices: { online_chat_turn: 4 } } }
       }),
       clientAuthLogout: async () => { logoutCalls += 1; return { ok: true }; }
     }
@@ -525,7 +525,7 @@ function loadAccount(sandbox) {
   check(sandbox.NovaFlowWebAccount.seat(), true);
   await sandbox.NovaFlowWebAccount.refresh();
   check(version.nextElementSibling.id, 'novaflow-web-account-header');
-  const balanceTimers = () => [...timers.values()].filter((timer) => timer.ms === 15000);
+  const balanceTimers = () => [...timers.values()].filter((timer) => timer.ms === 60000);
   check(balanceTimers().length, 1);
   const beforeHide = refreshes;
   doc.hidden = true;
@@ -565,4 +565,135 @@ function loadAccount(sandbox) {
   check(/NovaFlowWebAccount\.open\(/.test(adminAccountTest), false);
 }
 
+{
+  const { doc, version } = headerDocument();
+  let me = {authenticated:true,user:{id:'A',display_name:'真实显示名',email:'a@example.invalid'},credits:{balance:7}};
+  let profile = {ok:true,result:{user:{id:'A',account:'真实账号',display_name:'资料显示名'},credits:{balance:0}}};
+  let duringProfile = null;
+  const sandbox = {document:doc,Intl,Promise,Number,String,Object,
+    sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}}, location:{reload(){}},
+    setTimeout:()=>0,setInterval:()=>0,clearInterval(){},addEventListener(){},removeEventListener(){},
+    electronAPI:{clientAuthStatus:async()=>({ok:true,result:me}),clientAuthAccountDetails:async()=>{if(duringProfile)duringProfile();return profile;},clientAuthLogout:async()=>({ok:true})}};
+  sandbox.window=sandbox;loadAccount(sandbox);sandbox.NovaFlowWebAccount.seat(doc.querySelector('.nf-brand'));
+  await sandbox.NovaFlowWebAccount.refresh();
+  const strip=version.nextElementSibling,name=strip.querySelector('[data-novaflow-account-name]'),credits=strip.querySelector('[data-novaflow-account-credits]'),retry=strip.querySelector('[data-novaflow-account-retry]');
+  check(name.textContent,'资料显示名');check(credits.textContent,'0 积分');check(retry.hidden,true);
+  profile={ok:true,result:{user:{id:'A',account:'真实账号',email:'a@example.invalid'},credits:0}};
+  await sandbox.NovaFlowWebAccount.refresh();check(name.textContent,'真实账号');check(credits.textContent,'0 积分');
+  profile={ok:true,result:{user:{id:'A',account:'真实账号'},credits:{balance:0,status:'unconfigured'}}};
+  await sandbox.NovaFlowWebAccount.refresh();check(credits.textContent,'积分暂不可用');check(retry.hidden,false);
+  profile.result.credits.status='error';await sandbox.NovaFlowWebAccount.refresh();check(credits.textContent,'积分暂不可用');check(retry.hidden,false);
+  profile={ok:true,result:{user:{id:'A',account:'真实账号'},credits:{balance:0,status:'connected'}}};
+  await sandbox.NovaFlowWebAccount.refresh();check(credits.textContent,'0 积分');check(retry.hidden,true);
+  me={authenticated:true,user:{id:'A'},credits:null};profile={ok:false,httpStatus:503};
+  await sandbox.NovaFlowWebAccount.refresh();check(name.textContent,'用户名待确认');check(credits.textContent,'积分暂不可用');check(retry.hidden,false);
+  profile={ok:true,result:{user:{id:'A',account:'重试账号'},credits:{balance:3}}};
+  retry.click();await new Promise(resolve=>setTimeout(resolve,10));check(name.textContent,'重试账号');check(credits.textContent,'3 积分');check(retry.hidden,true);
+  me={authenticated:true,temporarilyUnavailable:true,user:{id:'A',display_name:'缓存名称'}};profile={ok:false,httpStatus:503};
+  await sandbox.NovaFlowWebAccount.refresh();check(name.textContent,'用户名待确认');check(credits.textContent,'积分暂不可用');check(retry.hidden,false);
+  me={authenticated:true,user:{id:'A',display_name:'旧账号'},credits:{balance:20}};
+  profile={ok:true,result:{user:{id:'A',display_name:'旧资料'},credits:{balance:99}}};
+  duringProfile=()=>{me={authenticated:true,user:{id:'B',display_name:'新账号'},credits:{balance:2}};};
+  await sandbox.NovaFlowWebAccount.refresh();check(name.textContent,'新账号');check(credits.textContent,'2 积分');check(retry.hidden,false);
+  duringProfile=null;me={authenticated:false};await sandbox.NovaFlowWebAccount.refresh();check(name.hidden,true);check(credits.hidden,true);check(retry.hidden,true);
+}
+
+// A normal refresh uses one account-details read and one session check.
+// A switch while an older profile is in flight must never repaint that profile.
+{
+  const { doc, version } = headerDocument();
+  let id='A', statusCalls=0, detailsCalls=0, holdOld=null, oldStarted=null;
+  const balances={A:10,B:20};
+  const listeners={};
+  const sandbox={document:doc,Intl,Promise,Number,String,Object,
+    sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},location:{reload(){}},
+    setTimeout:()=>0,setInterval:()=>0,clearInterval(){},
+    addEventListener(type,fn){(listeners[type] ||= []).push(fn);},removeEventListener(){},
+    electronAPI:{
+      clientAuthStatus:async()=>{statusCalls++;return {ok:true,result:{authenticated:true,user:{id,display_name:id},credits:{balance:balances[id]}}};},
+      clientAuthAccountDetails:async()=>{detailsCalls++;if(holdOld){oldStarted();return await holdOld;}return {ok:true,result:{user:{id,display_name:id},credits:{balance:balances[id]}}};},
+      clientAuthLogout:async()=>({ok:true})
+    }};
+  sandbox.window=sandbox;loadAccount(sandbox);sandbox.NovaFlowWebAccount.seat(doc.querySelector('.nf-brand'));
+  await sandbox.NovaFlowWebAccount.refresh();statusCalls=0;detailsCalls=0;
+  await sandbox.NovaFlowWebAccount.refresh();check(statusCalls,1);check(detailsCalls,1);
+  let resolveOld,notifyStart;const started=new Promise(resolve=>{notifyStart=resolve;});
+  holdOld=new Promise(resolve=>{resolveOld=resolve;});oldStarted=notifyStart;
+  const pending=sandbox.NovaFlowWebAccount.refresh();await started;
+  id='B';for(const fn of listeners['novaflow-client-auth-changed']||[])fn({type:'novaflow-client-auth-changed'});
+  const strip=version.nextElementSibling;
+  check(strip.querySelector('[data-novaflow-account-name]').hidden,true);
+  holdOld=null;resolveOld({ok:true,result:{user:{id:'A',display_name:'A'},credits:{balance:10}}});
+  await pending;
+  check(strip.querySelector('[data-novaflow-account-name]').textContent,'B');
+  check(strip.querySelector('[data-novaflow-account-credits]').textContent,'20 积分');
+  // A settlement that arrives during an older read is shown immediately and
+  // cannot be overwritten by that older response while the refresh catches up.
+  const creditPart=strip.querySelector('[data-novaflow-account-credits]'),writes=[];
+  let shown=creditPart.textContent;
+  Object.defineProperty(creditPart,'textContent',{configurable:true,get(){return shown;},set(value){writes.push(value);shown=value;}});
+  let resolveStale,notifyStale;const staleStarted=new Promise(resolve=>{notifyStale=resolve;});
+  holdOld=new Promise(resolve=>{resolveStale=resolve;});oldStarted=notifyStale;
+  const pendingBalance=sandbox.NovaFlowWebAccount.refresh();await staleStarted;
+  balances.B=19;for(const fn of listeners['novaflow:account-balance']||[])fn({detail:{balance:19}});
+  check(creditPart.textContent,'19 积分');
+  holdOld=null;resolveStale({ok:true,result:{user:{id:'B',display_name:'B'},credits:{balance:20}}});
+  await pendingBalance;check(creditPart.textContent,'19 积分');check(writes.includes('20 积分'),false);
+  for(const fn of listeners['novaflow:account-balance']||[])fn({detail:{balance:0.000001}});
+  check(creditPart.textContent,'0.000001 积分');
+  for(const fn of listeners['novaflow:account-balance']||[])fn({detail:{balance:0.0000001}});
+  check(creditPart.textContent,'<0.000001 积分');
+}
+
+// Even when an old /me response matches an old bootstrap response, an account
+// change while /me was pending must block the old pricing configuration.
+{
+  const { doc } = headerDocument(), listeners={}, applied=[];
+  let id='A',holdStatus=null,statusStarted=null;
+  const sandbox={document:doc,Intl,Promise,Number,String,Object,
+    sessionStorage:{getItem:()=>null,setItem(){},removeItem(){}},location:{reload(){}},
+    setTimeout:()=>0,setInterval:()=>0,clearInterval(){},
+    addEventListener(type,fn){(listeners[type] ||= []).push(fn);},removeEventListener(){},
+    NovaFlowFeatureCreditPrices:{applyConfig(value){applied.push(value);}},
+    electronAPI:{
+      clientAuthStatus:async()=>{if(holdStatus){statusStarted();return await holdStatus;}return {ok:true,result:{authenticated:true,user:{id},credits:{balance:1}}};},
+      clientAuthAccountDetails:async()=>({ok:true,result:{user:{id},credits:{balance:1},featureCreditPrices:{owner:id}}}),
+      clientAuthLogout:async()=>({ok:true})
+    }};
+  sandbox.window=sandbox;loadAccount(sandbox);sandbox.NovaFlowWebAccount.seat(doc.querySelector('.nf-brand'));
+  await sandbox.NovaFlowWebAccount.refresh();applied.length=0;
+  let resolveOld,notifyStart;const started=new Promise(resolve=>{notifyStart=resolve;});
+  holdStatus=new Promise(resolve=>{resolveOld=resolve;});statusStarted=notifyStart;
+  const pending=sandbox.NovaFlowWebAccount.refresh();await started;
+  id='B';for(const fn of listeners['novaflow-client-auth-changed']||[])fn({type:'novaflow-client-auth-changed'});
+  holdStatus=null;resolveOld({ok:true,result:{authenticated:true,user:{id:'A'},credits:{balance:1}}});
+  await pending;check(applied.some(value=>value.owner==='A'),false);check(applied.at(-1).owner,'B');
+}
+
+// Successful responses must also be bound to the session that initiated them.
+// A stale bootstrap must never update global prices for the next account.
+{
+  let resolveBootstrap,resolveMe,startBootstrap,startMe;
+  const bootstrapStarted=new Promise(resolve=>{startBootstrap=resolve;});
+  const meStarted=new Promise(resolve=>{startMe=resolve;});
+  const bootstrapReply=new Promise(resolve=>{resolveBootstrap=resolve;});
+  const meReply=new Promise(resolve=>{resolveMe=resolve;});
+  const applied=[];
+  const sandbox=createDomSandbox({Response,Request,Blob,FormData,
+    NOVAFLOW_WEB_CONFIG:{controlUrl:'https://control.test',authUrl:'https://account.test'},
+    NovaFlowFeatureCreditPrices:{applyConfig:value=>applied.push(value)},
+    fetch:async url=>{const target=String(url);if(target.endsWith('/api/client/bootstrap')){startBootstrap();return await bootstrapReply;}
+      if(target.endsWith('/api/web/me')){startMe();return await meReply;}return new Response('{}',{status:200});}});
+  sandbox.localStorage.setItem('novaflow_web_session_v1',JSON.stringify({token:'account-A',user:{id:'A'}}));
+  runInContext(source,createContext(sandbox));
+  const details=sandbox.electronAPI.clientAuthAccountDetails();await bootstrapStarted;
+  sandbox.localStorage.setItem('novaflow_web_session_v1',JSON.stringify({token:'account-B',user:{id:'B'}}));
+  resolveBootstrap(new Response(JSON.stringify({ok:true,user:{id:'A'},credits:{balance:10},featureCreditPrices:{prices:{online_chat_turn:99}}}),{status:200}));
+  check((await details).errorCode,'account-session-changed');check(applied.length,0);
+  const statusPromise=sandbox.electronAPI.clientAuthStatus();await meStarted;
+  sandbox.localStorage.setItem('novaflow_web_session_v1',JSON.stringify({token:'account-C',user:{id:'C'}}));
+  resolveMe(new Response(JSON.stringify({user:{id:'B',display_name:'B'},credits:{balance:20}}),{status:200}));
+  const statusResult=await statusPromise;
+  check(statusResult.result.authenticated,true);check(statusResult.result.temporarilyUnavailable,true);check(statusResult.result.user,null);
+}
 console.log(checks + ' passed, 0 failed: Web account quota source, header strip, logout and live balance');

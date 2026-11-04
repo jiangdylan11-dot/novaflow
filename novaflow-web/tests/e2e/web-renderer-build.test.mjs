@@ -112,7 +112,7 @@ section('3. anything recordable is replayable');
 // ---------------------------------------------------------------------------
 section('4. the shims load last and only override transport');
 {
-  const html = await readFile(join(PATHS.WEB_OUT, 'index.html'), 'utf8');
+  const html = await readFile(join(PATHS.WEB_OUT, 'editor.html'), 'utf8');
   webFiles = await readdir(PATHS.WEB_OUT);
   const runtimeAt = html.indexOf('novaflow-web-runtime.js');
   const proxyAt = html.indexOf('proxy-electron-api.js');
@@ -513,14 +513,17 @@ section('the build is a complete site');
   for (const dir of ['assets', 'templates', 'aifx-styles', 'vendor']) {
     check(dir + '/ was carried across', files.includes(dir), files);
   }
-  const html = await readFile(join(PATHS.WEB_OUT, 'index.html'), 'utf8');
+  const html = await readFile(join(PATHS.WEB_OUT, 'editor.html'), 'utf8');
+  const home = await readFile(join(PATHS.WEB_OUT, 'index.html'), 'utf8');
   const scripts = [...html.matchAll(/<script[^>]*src="\.\/([^"?]+)/g)].map((m) => m[1]);
+  const homeScripts = [...home.matchAll(/<script[^>]*src="\.\/([^"?]+)/g)].map((m) => m[1]);
   const absent = [];
-  for (const src of scripts) {
+  for (const src of [...scripts, ...homeScripts]) {
     try { await stat(join(PATHS.WEB_OUT, src)); } catch { absent.push(src); }
   }
-  checkEqual('every script index.html references exists', absent, []);
-  check('the site loads ' + scripts.length + ' scripts', scripts.length > 85, scripts.length);
+  checkEqual('every home and editor script exists', absent, []);
+  check('the editor retains its scripts', scripts.length > 85, scripts.length);
+  check('the home does not load the editor bundle', !home.includes('assets/index-') && !home.includes('novaflow-web-capabilities.js'));
 
   // Cloudflare refuses any single file over 25 MiB; ffmpeg's 32 MB core ships in parts.
   const oversized = [];

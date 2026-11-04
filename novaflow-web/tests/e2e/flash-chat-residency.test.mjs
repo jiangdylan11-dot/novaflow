@@ -184,6 +184,27 @@ test('resource-floor guard remains active while warm and aborts only its owned l
   assert.equal(f.residency.getStatus().state, 'cold');
 });
 
+test('resource abort while idle releases the owned session without an explicit close', async () => {
+  const unloadGate = deferred(), settled = deferred(); let abort;
+  const f = resident({ unloadGate, residency: {
+    startGuard(value) { abort = value; return () => {}; },
+    onSettled(outcome) { settled.resolve(outcome); }
+  } });
+  await f.residency.run({ requestId: 'idle-resource-abort', task: nativeTask });
+  assert.equal(f.residency.getStatus().state, 'warm');
+  const owner = f.ownership.owner;
+  abort.abort(Object.assign(Error('resource floor'), { code: 'flash-resource-floor' }));
+  await tick();
+  assert.equal(f.events.at(-1).type, 'unload');
+  assert.equal(f.events.at(-1).ownerToken, owner);
+  assert.equal(f.ownership.owner, owner, 'resources remain owned until the real unload resolves');
+  unloadGate.resolve();
+  const outcome = await settled.promise;
+  assert.equal(outcome.resourcesReleased, true);
+  assert.equal(f.ownership.owner, '');
+  assert.equal(f.residency.getStatus().state, 'cold');
+});
+
 test('another coordinator cannot load or release a warm session owned by the first', async () => {
   const shared = { owner: '' }, first = coordinator({ shared }), second = coordinator({ shared });
   await first.assistant.artAgentChat(chat()); const owner = shared.owner;

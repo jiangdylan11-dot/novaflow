@@ -33,6 +33,12 @@ const qwen21Info = {
   ImageCrop: { input: { required: io('image', 'width', 'height', 'x', 'y') } },
   ImagePadForOutpaint: { input: { required: io('image','left','right','top','bottom','feathering') } },
   EmptyLatentImage: { input: { required: io('width', 'height', 'batch_size') } },
+  VAEEncode: { input: { required: io('pixels','vae') } },
+  SetLatentNoiseMask: { input: { required: io('samples','mask') } },
+  SolidMask: { input: { required: io('value','width','height') } },
+  MaskComposite: { input: { required: io('destination','source','x','y','operation') } },
+  ImageCompositeMasked: { input: { required: io('destination','source','mask','x','y','resize_source') } },
+  EmptyImage: { input: { required: io('width','height','batch_size','color') } },
   SaveImage: { input: { required: io('images', 'filename_prefix') } }
 };
 const rendererDir = fileURLToPath(new URL('../../worker-renderer/', import.meta.url));
@@ -124,6 +130,21 @@ const buildUi = async (host, names, sizes, roles, extraState = {}) => JSON.parse
     16, { taskProfile: 'ui-design', referenceRoles: roles.map((item, index) => (typeof item === 'string' ? { index, role: item } : { index, ...item })) }
   ] }
 })));
+
+// A local change must not return a VAE reconstruction of the untouched screen.
+// Keep the original as the final destination even when conditioning is neutralized.
+for (const neutralizeConditioning of [false,true]) {
+ const result=await host21.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:[
+  'local','img2img',['screen.png'],'UI_partial_exact','只将关闭按钮改为金色，其他像素不变。','','client',[{width:512,height:512}],
+  {provider:'local',mode:'img2img',width:512,height:512,seed:7,localUiEngine:'qwen-2.1',uiPreserveLayout:true,uiLayoutMode:'partial',uiRunIntent:'iteration',uiNativeEditPrompt:true},16,
+  {taskProfile:'ui-design',referenceRoles:[{index:0,role:'layout',sourceId:'base'}],uiNativeEdit:{regions:[{x:.3,y:.7,width:.4,height:.12}],baseSourceId:'base',neutralizeConditioning,fillColor:0x808080}}
+ ]}});
+ const graph=JSON.parse(JSON.stringify(result)),output=graph[byClass(graph,'SaveImage')[0][1].inputs.images[0]];
+ assert.equal(output.class_type,'ImageCompositeMasked');assert.deepEqual(output.inputs.mask,byClass(graph,'SetLatentNoiseMask')[0][1].inputs.mask);
+ const originalScale=graph[output.inputs.destination[0]];assert.equal(originalScale.class_type,'ImageScale');assert.equal(graph[originalScale.inputs.image[0]].inputs.image,'screen.png');
+ assert.equal(graph[output.inputs.source[0]].class_type,'SplitImageWithAlpha');assert.equal(output.inputs.resize_source,false);
+ if(neutralizeConditioning)assert.notDeepEqual(output.inputs.destination,byClass(graph,'TextEncodeQwenImage21')[0][1].inputs['images.image_1']);
+}
 
 // 1 style screenshot, 8 symbols and a full-screen background: every one is a reference (10, the
 // model card's limit).
@@ -453,7 +474,7 @@ await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRe
 renderer('art-generate-model.resource.js');
 const models = globalThis.NovaFlowArtGenerateModels;
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({ qwenImage21: true }), runtimeFeatures: async () => ({ qwenImage21: true }) };
-const allFields = ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'];
+const allFields = ['width', 'height', 'steps', 'cfg', 'seed', 'nsfwLora'];
 assert.deepEqual([...models.capabilityFor('local', 'txt2img', {}).fields], allFields);
 assert.deepEqual([...models.capabilityFor('local', 'img2img', {}).fields], allFields);
 assert.equal(models.capabilityFor('local', 'img2img', {}).referenceLimit, 10);
@@ -465,9 +486,9 @@ renderer('art-generate-lora.js');
 const artLora = globalThis.NovaFlowArtGenerateLora;
 assert.equal(artLora.qwen21Route({ provider: 'local', mode: 'img2img' }), true);
 assert.equal(artLora.qwen21Route({ provider: 'local', mode: 'img2img', nsfw: true }), false);
-assert.deepEqual([...models.capabilityFor('local', 'txt2img', { nsfw: true }).fields], allFields);
+assert.deepEqual([...models.capabilityFor('local', 'txt2img', { nsfw: true }).fields], ['width', 'height', 'steps', 'cfg', 'seed']);
 assert.deepEqual([...models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields], allFields);
-assert.deepEqual([...models.capabilityFor('local', 'img2img', { nsfw: true }).fields], allFields);
+assert.deepEqual([...models.capabilityFor('local', 'img2img', { nsfw: true }).fields], ['width', 'height', 'steps', 'cfg', 'seed']);
 // Route defaults: 2.1 drawing 25 steps, CFG 1 (2.5 with the user's negative); NSFW (Rapid AIO) 6 steps, CFG 1;
 // the 2511 route of a LoRA run 4 Lightning steps at CFG 1, the base 40 steps at CFG 4 with a negative.
 const pick = (sampling) => sampling && [sampling.route, sampling.steps, sampling.cfg, sampling.lightning];

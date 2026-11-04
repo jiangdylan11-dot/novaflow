@@ -60,14 +60,15 @@ function load() {
 await test('dialog filters are only the slot formats, and the IPC handler uses that same list', () => {
   const { api } = load();
   const filters = api.dialogFilters();
-  assert.equal(JSON.stringify(filters[0].extensions), JSON.stringify(['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mov', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac']));
+  assert.equal(JSON.stringify(filters[0].extensions), JSON.stringify(['atlas', 'json', 'skel', 'gif', 'avi', 'mkv', 'png', 'jpg', 'jpeg', 'webp', 'mp4', 'mov', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac']));
   assert.equal(JSON.stringify(filters.map(item => item.name)), JSON.stringify(['参考资源', '图片', '视频', '音频']));
   const main = read('particle-editor-desktop/main.js');
   const preload = read('particle-editor-desktop/preload.js');
   assert.match(main, /xiaotao-pick-uploads/);
   assert.match(main, /multiSelections/);
   assert.match(preload, /pickXiaotaoUploads:\s*\(\)\s*=>\s*ipcRenderer\.invoke\("xiaotao-pick-uploads"\)/);
-  for (const ext of filters[0].extensions) assert.match(main, new RegExp(`"${ext}"`));
+  // The maintained website uses fileAccept; old desktop IPC is not expanded.
+  for (const ext of ['png','jpg','mp4','wav']) assert.match(main, new RegExp(`"${ext}"`));
   assert.doesNotMatch(main.slice(main.indexOf('xiaotao-pick-uploads'), main.indexOf('open-spine-image')), /All Files|extensions:\s*\[\s*"\*"\s*\]/);
 });
 
@@ -83,7 +84,7 @@ await test('validation accepts slot formats and rejects extension, MIME, and siz
   assert.equal(api.inspectUpload(file('a.mp3', 'audio/mpeg')).kind, 'audio');
   assert.equal(api.inspectUpload(file('a.wav', 'audio/wav')).kind, 'audio');
   assert.equal(api.inspectUpload(file('a.m4a', 'audio/mp4')).kind, 'audio');
-  assert.equal(api.inspectUpload({ name: 'clip.gif', type: 'image/gif', size: 10 }).ok, false);
+  assert.equal(api.inspectUpload({ name: 'clip.exe', type: 'application/x-msdownload', size: 10 }).ok, false);
   assert.match(api.inspectUpload({ name: 'clip.png', type: 'audio/mpeg', size: 10 }).message, /不一致/);
   assert.match(api.inspectUpload({ name: 'big.png', type: 'image/png', size: api.IMAGE_MAX_BYTES + 1 }).message, /24MB/);
   assert.match(api.inspectUpload({ name: 'big.mp4', type: 'video/mp4', size: api.MEDIA_MAX_BYTES + 1 }).message, /64MB/);
@@ -258,14 +259,14 @@ await test('unsupported files are rejected in chat and never staged', async () =
   const env = load();
   const controller = controllerFor(env, env.api.createUploadHost(env.sandbox));
   await controller.stageUploads([
-    { name: 'clip.gif', type: 'image/gif', size: 20 },
+    { name: 'clip.exe', type: 'application/x-msdownload', size: 20 },
     { name: 'big.png', type: 'image/png', size: env.api.IMAGE_MAX_BYTES + 1 },
     { name: 'wrong.mp3', type: 'video/mp4', size: 20 }
   ]);
   assert.equal(controller.state.staged.length, 0);
   assert.equal(controller.state.messages.filter(item => item.role === 'user').length, 0);
   const text = controller.state.messages.map(item => item.content).join('\n');
-  assert.match(text, /不支持 clip.gif/);
+  assert.match(text, /不支持 clip.exe/);
   assert.match(text, /超过 24MB/);
   assert.match(text, /不一致/);
 });
@@ -473,8 +474,8 @@ await test('the web page opens a file input, stages until send, then uses the wo
     api: () => env.sandbox.electronAPI,
     uploadHost: host
   });
-  await controller.stageUploads([new File([magic('png')], 'web.png', { type: 'image/png' }), new File([magic('mp4')], 'clip.mp4', { type: 'video/mp4' })]);
   assert.equal(controller.setProvider('api'), true);
+  await controller.stageUploads([new File([magic('png')], 'web.png', { type: 'image/png' }), new File([magic('mp4')], 'clip.mp4', { type: 'video/mp4' })]);
   assert.equal(await controller.send('放进多参视频'), true);
   assert.equal(JSON.stringify(uploads.map(item => item.name)), JSON.stringify(['web.png', 'clip.mp4']));
   assert.equal(JSON.stringify(uploads.map(item => item.kind)), JSON.stringify(['image', 'video']));
@@ -562,6 +563,12 @@ await test('the worker gateway rejects a slot upload whose bytes do not match', 
   const gateway = createGateway({ workerId, dataDir: dir, getGrantKey: async () => grantKey, logger: () => {} });
   const port = await gateway.listen(0, '127.0.0.1');
   try {
+    const preflight = await fetch(`http://127.0.0.1:${port}/gw/tasks/${taskId}/input/still.png`, {
+      method:'OPTIONS',headers:{origin:'https://foart.net','access-control-request-method':'PUT','access-control-request-headers':'content-type,x-novaflow-grant,x-novaflow-upload-slot'}
+    });
+    assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-origin'),'https://foart.net');
+    const allowedHeaders=preflight.headers.get('access-control-allow-headers').split(',').map(s=>s.trim());
+    for(const name of ['content-type','x-novaflow-grant','x-novaflow-upload-slot'])assert.ok(allowedHeaders.includes(name),'browser preflight must permit '+name);
     const token = await issueGrantToken({ userId: 'user', taskId, workerId, op: GRANT_OP.UPLOAD, ttlSeconds: 60 }, grantKey);
     const rejected = await fetch(`http://127.0.0.1:${port}/gw/tasks/${taskId}/input/fake.png`, {
       method: 'PUT',
@@ -636,6 +643,19 @@ await test('natural background and loop requests choose their own references wit
  assert.equal(api.inferTask('让它动起来',[image]).surface,'video');
  assert.equal(api.planRoutes('帮我看看这张图',[image]).place.length,0);
 });
+
+await test('prohibited alternatives cannot reroute art requests into video or turn a real video edit into image generation',()=>{
+ const {api}=load(),image={name:'robot.png',kind:'image'},previous={surface:'animation',mode:'idle'};
+ for(const message of ['调用美工抠图，不生成视频','调用美工抠图，不要生成视频','调用美工抠图，保留原图，不重新生图、不AI改绘、不生成视频；导出所选图层PNG']){
+  const task=api.inferTask(message,[image],previous);assert.equal(task.surface,'image',message);assert.equal(task.mode,'img2img');assert.equal(task.discussion,false);
+  assert.ok(api.planRoutes(message,[image],previous).place.every(p=>p.destination.id==='img2img'));
+ }
+ const edit=api.inferTask('请用视频抠图处理这个片段，不要图生图',[image]);assert.equal(edit.surface,'video');assert.notEqual(edit.mode,'img2img');
+ const video=api.inferTask('做首尾帧视频，别用图生图',[image]);assert.equal(video.surface,'video');assert.equal(video.mode,'first_last');assert.ok(!video.named.includes('img2img'));
+ assert.equal(api.planRoutes('怎么在美工抠图？不要生成视频',[image]).place.length,0);
+ assert.match(api.positiveTaskText('两张分别做首帧和尾帧'),/分别做首帧和尾帧/);
+ assert.match(api.positiveTaskText('识别图里的美工风格'),/识别/);
+});
 await test('reference placement waits for React and decoded image readiness without blocking timers',async()=>{
  const env=load(),doc=documentFor();env.sandbox.document=doc;
  let opened=0,mode='text_video',occupied=false,beats=0;
@@ -644,7 +664,7 @@ await test('reference placement waits for React and decoded image readiness with
  const input=doc.slots.get('首帧').querySelector('input');input.onchange=()=>setTimeout(()=>{occupied=true;},35);
  const buttons=doc.querySelectorAll('[data-novaflow-ai-generation-mode]');for(const b of buttons)b.click=()=>setTimeout(()=>{mode=b.getAttribute('data-novaflow-ai-generation-mode');mounted=true;},25);
  env.sandbox.NovaFlowAudioStudio={open(sub){assert.equal(sub,'video');opened++;}};
- env.sandbox.NovaFlowAiSequenceGeneration={capture:()=>({genType:mode}),optimizationContext:async()=>({resources:[{key:'first_frame',occupied}]})};
+ env.sandbox.NovaFlowAiSequenceGeneration={capture:()=>({genType:mode}),optimizationContext:async()=>({resources:[{key:'first_frame',occupied,fileName:occupied?'1.png':'',sourceId:occupied?'new-reference':''}]})};
  const clock=setInterval(()=>beats++,5);try{await env.api.createUploadHost(env.sandbox).place({destination:env.api.destinationById('first_frame'),file:file('1.png','image/png'),kind:'image',name:'1.png',mimeType:'image/png'});}finally{clearInterval(clock);}
  assert.equal(opened,1);assert.equal(occupied,true);assert.ok(beats>=5);assert.equal(doc.resource.__novaflowFiles.length,0);
 });
@@ -655,6 +675,15 @@ await test('drawing preparation waits for native reference-size autofill before 
   env.runtime.render=()=>setTimeout(()=>{env.runtime.state.width=480;env.runtime.state.height=864;env.runtime.state.referenceSizeFillPending='';ready=true;},45);
   await env.api.createUploadHost(env.sandbox).place({destination:env.api.destinationById('img2img'),file:file('1.png','image/png'),kind:'image',name:'1.png',mimeType:'image/png'});
   assert.equal(ready,true);assert.equal(env.runtime.state.width,480);assert.equal(env.runtime.state.height,864);
+});
+await test('video references use the native visible picker and require a newly bound matching file',async()=>{
+ const env=load(),doc=documentFor();env.sandbox.document=doc;let sourceId='old',name='old.png',nativeCalls=0,proxyCalls=0;
+ const offscreen=doc.createElement('input');offscreen.setAttribute('data-novaflow-ai-sequence-upload-zone','参考图');offscreen.onchange=()=>{nativeCalls++;};
+ const proxy=doc.createElement('input');proxy.setAttribute('data-novaflow-ai-sequence-upload-click-proxy','1');doc.slots.get('参考图').append(proxy);proxy.onchange=()=>{proxyCalls++;sourceId='new';name='1.png';};
+ env.sandbox.NovaFlowAudioStudio={open(){}};env.sandbox.NovaFlowAiSequenceGeneration={capture:()=>({genType:'image_video'}),optimizationContext:async()=>({resources:[{key:'first_frame',occupied:true,fileName:name,sourceId}]})};
+ const request={destination:env.api.destinationById('image_video'),file:file('1.png','image/png'),kind:'image',name:'1.png',mimeType:'image/png'};
+ await env.api.createUploadHost(env.sandbox).place(request);assert.equal(proxyCalls,1);assert.equal(nativeCalls,0);
+ proxy.onchange=()=>{};await assert.rejects(env.api.createUploadHost(env.sandbox).place(request),/参考图片仍未导入完成/);
 });
 await test('global loop routing prepares both references before asking the media model',async()=>{
   const env=load(),placed=[],requests=[];
@@ -690,6 +719,36 @@ await test('video editing imports without racing the native asynchronous board l
   const destination=env.api.planRoutes('请用帧编辑倒放上传的视频',[{kind:'video',name:'clip.mp4'}]).place[0].destination;
   await env.api.createUploadHost(env.sandbox).place({destination,file:new File([magic('mp4')],'clip.mp4',{type:'video/mp4'}),kind:'video',name:'clip.mp4'});
   assert.equal(rows.length,1);assert.equal(loaded,0);
+});
+await test('multi-reference follow-up reuses identical bytes but imports a revised file with the same name',async()=>{
+ const env=load();env.sandbox.document=documentFor();
+ const original=file('same.png','image/png'),entry={kind:'image',fileName:original.name,size:original.size,blob:original,sourceId:'existing-source'};
+ env.sandbox.NovaFlowH3Media.store={get:()=>[entry]};
+ const host=env.api.createUploadHost(env.sandbox),destination=env.api.destinationById('multi_reference');
+ const reused=await host.place({destination,file:original,kind:'image',name:original.name});
+ assert.equal(reused.reused,true);assert.equal(reused.sourceId,'existing-source');assert.equal(env.imports.length,0);
+ const changed=bytes();changed[7]=1;const revised=new File([changed],original.name,{type:'image/png'});
+ const placed=await host.place({destination,file:revised,kind:'image',name:revised.name});
+ assert.equal(placed.reused,undefined);assert.equal(env.imports.length,1);
+});
+await test('multi-reference reuse waits for persisted board restoration before checking for an existing file',async()=>{
+ const env=load();env.sandbox.document=documentFor();const original=file('restored.png','image/png');let awaited=false;
+ env.sandbox.NovaFlowH3Media.store={get:()=>[]};
+ env.sandbox.NovaFlowH3Media.snapshot=async()=>{await Promise.resolve();awaited=true;return [{kind:'image',fileName:original.name,size:original.size,blob:original,sourceId:'restored-source'}];};
+ const reused=await env.api.createUploadHost(env.sandbox).place({destination:env.api.destinationById('multi_reference'),file:original,kind:'image',name:original.name});
+ assert.equal(awaited,true);assert.equal(reused.reused,true);assert.equal(reused.sourceId,'restored-source');assert.equal(env.imports.length,0);
+});
+await test('skeletal animation edits keep authoring context while sequence/video generation keeps its own route',()=>{
+ const {api}=load();const previous={surface:'animation',mode:'idle',baseRequest:'root旋转循环'};
+ assert.equal(api.inferTask('继续把这个动画中间改为35度',[],previous).surface,'animation');
+ assert.equal(api.inferTask('选中root骨骼第15帧',[],previous).surface,'animation');
+ assert.equal(api.inferTask('用动画版块新建一个骨骼工程').surface,'animation');
+ assert.equal(api.inferTask('生成一个2秒循环动画',[{kind:'image'}]).surface,'video');
+ assert.equal(api.inferTask('另外用图生视频做2秒',[],previous).surface,'video');
+ for(const text of ['只导出当前idle动画的透明WebM视频','导出这个动画为WebM','接着导出透明WebM视频']){
+  const task=api.inferTask(text,[],previous);assert.equal(task.surface,'animation',text);assert.equal(task.revision,true,text);
+ }
+ assert.equal(api.inferTask('去音视视频编辑版块导出视频',[],previous).surface,'video');
 });
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

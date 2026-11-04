@@ -1811,8 +1811,7 @@
     if ([...history.map(item => item.content), payload.message].join('\n').length > 24000)
       return { ok: false, error: '小桃AI的文字上下文过长，请发送“新对话”后重试，或缩短需求' };
     if (!currentSession()?.token) return { ok: false, error: '请先登录 Foart 后使用小桃AI云端AI' };
-    const legacyUnversioned = payload.modelId == null && payload.pricingVersion == null;
-    if (!legacyUnversioned && (!/^sha256:[a-f0-9]{64}$/.test(payload.pricingVersion || '') || !Number.isFinite(payload.pricingExpiresAt) || Date.now() >= payload.pricingExpiresAt))
+    if ((!/^sha256:[a-f0-9]{64}$/.test(payload.pricingVersion || '') || !Number.isFinite(payload.pricingExpiresAt) || Date.now() >= payload.pricingExpiresAt))
       return {ok:false,errorCode:'companion-pricing-changed',error:'在线积分价格已过期，请刷新价格后重新发送；本次未扣积分'};
     const recoveryOwner=operationV3?captureFoartBillingOwner():null;
     if(operationV3&&(!recoveryOwner||!recoveryOwner.current()))return {ok:false,providerSubmitted:false,errorCode:'operation-recovery-unavailable',error:'无法确认当前账户，操作未提交。'};
@@ -1837,7 +1836,7 @@
         ...(payload.mode==='foart'?{foartContext:payload.foartContext}:{})
       };
       let chatRequest=request, pricingQuote=null;
-      if(!legacyUnversioned) {
+      {
         // User has explicitly submitted this message. Quote the same payload on
         // our own service first; this does not invoke a model or reserve credits.
         if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未上传图片。'),{code:'assistant-selection-changed'});
@@ -1854,7 +1853,7 @@
       if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未提交模型请求。'),{code:'assistant-selection-changed'});
       let result;
       if(operationV3){
-        if(legacyUnversioned||typeof root.crypto?.randomUUID!=='function')throw Object.assign(Error('操作级计费尚不可用，本次未提交。'),{code:'operation-billing-disabled'});
+        if(typeof root.crypto?.randomUUID!=='function')throw Object.assign(Error('操作级计费尚不可用，本次未提交。'),{code:'operation-billing-disabled'});
         if(!recoveryOwner.current())throw Object.assign(Error('登录会话已变化，本次未提交。'),{code:'assistant-selection-changed'});
         const intent={mode:'chat',requestId:id,message:payload.message,history,...(payload.promptLanguage!==undefined?{promptLanguage:payload.promptLanguage}:{}),
           ...(guardedImages?{images:requestImages.map(({dataUrl,role,source})=>({dataUrl,...(role!==undefined?{role}:{}),...(source!==undefined?{source}:{})}))}:{})};
@@ -1917,7 +1916,6 @@
   const foartOperationSessions = new WeakMap();
   const foartOperationModels = new Set(['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver']);
   // Staged candidate only: a separate release gate must explicitly enable it.
-  const FOART_AUDIO_MUSIC_DRAFT_ENABLED = false;
   function foartOperationCopy(value) {
     const json=JSON.stringify(value);
     if(typeof json!=='string'||json.length>60000||/data:(?:image|audio|video)\//i.test(json))throw Error('操作上下文无效或含未开放的媒体');
@@ -1927,16 +1925,12 @@
       if(item&&typeof item==='object')for(const [name,child] of Object.entries(item))stack.push([child,name,depth+1]);}
     return copy;
   }
-  function foartMusicRequestAllowed(terms,context) {
-    return FOART_AUDIO_MUSIC_DRAFT_ENABLED===true&&terms?.operation_foart_audio_music_v3===true&&
-      decimalCreditPolicy(terms)&&context?.media?.active===true&&context.media.sub==='audio';
-  }
   function foartOperationPolicy(policy,version,expiresAt,context) {
     const p=policy?.config?.xiaotao_online;
     return policy?.version===version && /^sha256:[a-f0-9]{64}$/.test(version||'') &&
       Number.isFinite(expiresAt)&&Date.now()<expiresAt&&Number.isFinite(policy?.expiresAt)&&Date.now()<policy.expiresAt&&
       operationCreditPolicy(p)&&p.operation_text_chat_v3===true&&
-      (p.operation_foart_open_v3===true||foartMusicRequestAllowed(p,context));
+      p.operation_foart_general_v3===true;
   }
   function foartOperationHandle(record,continuationToken,previousContext,state='pending') {
     const handle=Object.freeze({});
@@ -1952,89 +1946,20 @@
   // A settled provider result is still untrusted input, not authorization to
   // edit. Bind a narrowly scoped idle-animation draft to the captured editor
   // snapshot; the editor must separately preview and require a trusted click.
-  function foartIdleContext(context) {
-    const a=context?.animation;
-    if(!a||a.active!==true||a.loaded!==true||a.mode!=='animate'||a.playing!==false||
-      typeof a.revision!=='string'||!a.revision||!Number.isSafeInteger(a.fps)||a.fps<1||a.fps>120||
-      !Array.isArray(a.animations)||a.animations.some(name=>typeof name!=='string')||
-      !Array.isArray(a.selectedBones)||a.selectedBones.length<1||a.selectedBones.length>4||
-      a.selectedBones.some(name=>typeof name!=='string'||!name||name.length>100||/^(?:__proto__|constructor|prototype)$/i.test(name))||
-      new Set(a.selectedBones).size!==a.selectedBones.length||!Array.isArray(a.bones)||
-      a.selectedBones.some(name=>a.bones.filter(bone=>bone?.name===name).length!==1))return null;
-    return a;
-  }
-  function foartIdleIntent(message) {
-    if(typeof message!=='string'||!/(?:待机|idle)/i.test(message)||!/(?:动画|animation)/i.test(message)||
-      !/(?<![\d.])(?:2(?:\.0+)?|两)\s*(?:秒|s(?:ec(?:ond)?s?)?)/i.test(message))return false;
-    // A question or a scoped negative is not authorization for a paid draft.
-    if(/(?:怎么|如何|怎样)(?:做|制作|生成|设计)|(?:能否|是否)(?:做|制作|生成|设计)|[?？]/i.test(message)||
-      /(?:不要|不用|无需|不需要|别|禁止|暂不|不必)(?:\s|帮我|给我|去|创建|生成|制作|做|设计|一个|一段|2(?:\.0+)?\s*秒){0,12}(?:待机|idle)/i.test(message)||
-      /(?:待机|idle).{0,12}(?:不要做|不要生成|无需制作|别做|暂时不做)/i.test(message))return false;
-    return true;
-  }
-  function foartIdleDraft(value,context) {
-    const exact=(item,names)=>item&&typeof item==='object'&&!Array.isArray(item)&&
-      Object.keys(item).length===names.length&&names.every(name=>Object.hasOwn(item,name));
-    const a=foartIdleContext(context);
-    if(!a||!exact(value,['action','operation','name','durationSeconds','keys'])||value.action!=='animation'||
-      value.operation!=='create_idle'||value.durationSeconds!==2||typeof value.name!=='string'||
-      value.name!==value.name.trim()||!value.name||value.name.length>100||/[\x00-\x1f\x7f]/.test(value.name)||
-      /^(?:__proto__|constructor|prototype)$/i.test(value.name)||
-      a.animations.includes(value.name)||!Array.isArray(value.keys)||value.keys.length!==a.selectedBones.length*3)return null;
-    const frames=[0,a.fps,a.fps*2],seen=new Set(),rotations=new Map();
-    for(const key of value.keys){
-      if(!exact(key,['boneName','frame','values'])||!a.selectedBones.includes(key.boneName)||
-        !frames.includes(key.frame)||!exact(key.values,['rotation'])||
-        typeof key.values.rotation!=='number'||!Number.isFinite(key.values.rotation)||Math.abs(key.values.rotation)>180)return null;
-      const id=JSON.stringify([key.boneName,key.frame]);if(seen.has(id))return null;seen.add(id);
-      if(!rotations.has(key.boneName))rotations.set(key.boneName,new Map());
-      rotations.get(key.boneName).set(key.frame,key.values.rotation);
-    }
-    let moves=false;
-    for(const bone of a.selectedBones){const values=rotations.get(bone);
-      if(!values||frames.some(frame=>!values.has(frame))||values.get(0)!==values.get(a.fps*2))return null;
-      if(values.get(a.fps)!==values.get(0))moves=true;
-    }
-    return moves?foartOperationCopy(value):null;
-  }
-  function foartOperationAction(plan,rotationEnabled,generalEnabled) {
+  function foartOperationAction(plan) {
     if(plan?.schema!=='nf.foart.tool-plan.v1'||plan.status!=='act'||typeof plan.reply!=='string'||!plan.reply.trim()||plan.reply.length>4000||
       !Array.isArray(plan.operations)||plan.operations.length!==1)return null;
-    const op=plan.operations[0],keys=(value,allowed)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(k=>allowed.includes(k));
-    if(op?.action==='open'&&keys(op,['action','surface'])&&['drawing','ui','video','audio','effects','particle','tools','animation'].includes(op.surface))return {kind:'open',surface:op.surface};
-    if(generalEnabled===true&&op&&typeof op==='object'&&!Array.isArray(op)&&typeof op.action==='string'&&op.action)return {kind:'tool',surface:'tools'};
-    if(rotationEnabled!==true||op?.action!=='animation'||typeof op.name!=='string'||!op.name||op.name.length>100)return null;
-    if(op.operation==='inspect_bones'&&keys(op,['action','operation','name','boneNames'])&&Array.isArray(op.boneNames)&&op.boneNames.length===1&&
-      typeof op.boneNames[0]==='string'&&op.boneNames[0].length>0&&op.boneNames[0].length<=100)return {kind:'inspect_bones',surface:'animation'};
-    if(op.operation==='key_bones'&&keys(op,['action','operation','name','keys'])&&Array.isArray(op.keys)&&op.keys.length===1){
-      const k=op.keys[0];if(keys(k,['boneName','frame','values'])&&typeof k.boneName==='string'&&k.boneName.length>0&&k.boneName.length<=100&&
-        Number.isSafeInteger(k.frame)&&k.frame>=0&&keys(k.values,['rotation'])&&Object.keys(k.values).length===1&&typeof k.values.rotation==='number'&&Number.isFinite(k.values.rotation))
-        return {kind:'key_bones',surface:'animation'};
-    }
-    return null;
+    const op=plan.operations[0];
+    return op&&typeof op==='object'&&!Array.isArray(op)&&typeof op.action==='string'&&op.action?{kind:'tool',surface:'tools'}:null;
   }
   // Receipts go back to the planner: no media bytes, and earlier steps stay
   // visible so the model never repeats work it already finished.
   function foartToolReceipt(incoming,steps) {
-    const media=/^(?:dataUrl|imageUrl|previewUrl|blob|bytes)$/i;
+    const media=/^(?:dataUrl|imageUrl|previewUrl|blob|bytes|context)$/i;
     const clean=value=>JSON.parse(JSON.stringify(value,(key,item)=>media.test(key)||typeof item==='string'&&/^data:/i.test(item)?undefined:item)??'null');
     const brief=row=>({...(typeof row?.action==='string'?{action:row.action}:{}),...(typeof row?.phase==='string'?{phase:row.phase}:{}),...(typeof row?.message==='string'?{message:row.message.slice(0,300)}:{})});
     const latest=clean(incoming),earlierSteps=steps.slice(-8),full={...latest,earlierSteps};
     return {receipt:JSON.stringify(full).length<=2600?full:{...brief(latest),earlierSteps},step:brief(latest)};
-  }
-  function foartMusicDraft(plan,context) {
-    if(context?.media?.active!==true||context.media.sub!=='audio'||plan?.schema!=='nf.foart.tool-plan.v1'||
-      plan.status!=='act'||typeof plan.reply!=='string'||!plan.reply.trim()||plan.reply.length>4000||
-      !Array.isArray(plan.operations)||plan.operations.length!==1)return null;
-    const wrapper=plan.operations[0],op=wrapper?.operation;
-    if(!wrapper||typeof wrapper!=='object'||Array.isArray(wrapper)||wrapper.action!=='media'||
-      Object.keys(wrapper).some(k=>!['action','operation'].includes(k))||!op||typeof op!=='object'||Array.isArray(op)||
-      Object.keys(op).some(k=>!['action','target','prompt','seconds','bpm','count','loop'].includes(k))||
-      op.action!=='generate_music'||op.target!=='audio'||typeof op.prompt!=='string'||!op.prompt.trim()||op.prompt.length>4000||op.count!==1||
-      (op.seconds!==undefined&&(!Number.isFinite(op.seconds)||op.seconds<8||op.seconds>300))||
-      (op.bpm!==undefined&&(!Number.isInteger(op.bpm)||op.bpm<40||op.bpm>220))||
-      (op.loop!==undefined&&typeof op.loop!=='boolean'))return null;
-    return foartOperationCopy(plan);
   }
   function foartOperationResult(result,record,previousContext) {
     const quota=foartOperationQuota(result?.receipt||result,record.quote,record.creditTerms);
@@ -2043,27 +1968,12 @@
       notifyAccountBalance(undefined,'companion-operation');
       if(result?.ok!==true||(result.receipt||result).outcome!=='success'||(result.receipt||result).uncollected>0)
         return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result?.errorCode||'operation-incomplete',error:(result.receipt||result).uncollected>0?incompleteSettlementMessage(result.receipt||result):'操作未完成，请查看实际扣分。'};
-      if(Object.hasOwn(result,'idleDraft')){
-        const draft=record.idleDraftEnabled===true?foartIdleDraft(result.idleDraft,record.initialContext):null;
-        if(!draft||result.toolPlan!=null)return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:'operation-invalid-result',error:'动画草稿无效，请查看实际扣分。'};
-        return {ok:true,data:{idleDraft:draft,quota}};
-      }
-      if(result?.resultKind==='audio_music_draft'||Object.hasOwn(result,'audioDraft')){
-        const plan=record.musicDraftEnabled===true&&result.audioDraft===true?foartMusicDraft(result.toolPlan,previousContext):null;
-        if(!plan||result.resultKind!=='audio_music_draft'||Object.hasOwn(result,'continuationToken'))
-          return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:'operation-invalid-result',error:'音乐草稿无效，请查看实际扣分。'};
-        // This is a settled proposal, not an executed tool or a generation task.
-        return {ok:true,data:{toolPlan:plan,quota,audioDraft:true}};
-      }
-      if(result.toolPlan?.schema!=='nf.foart.tool-plan.v1'||!['done','reply','clarify'].includes(result.toolPlan.status)||
-        typeof result.toolPlan.reply!=='string'||!result.toolPlan.reply.trim()||!Array.isArray(result.toolPlan.operations)||result.toolPlan.operations.length)
-        return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:'operation-invalid-result',error:'操作结果无效，请查看实际扣分。'};
       return {ok:true,data:{toolPlan:result.toolPlan,quota}};
     }
-    const plan=result?.toolPlan,action=foartOperationAction(plan,record.rotationEnabled,record.generalEnabled);
-    if(result?.ok===true&&result?.billing?.status==='pending'&&action&&(action.kind!=='open'||record.openEnabled===true)&&typeof result.continuationToken==='string'&&result.continuationToken.length<=4096&&
+    const plan=result?.toolPlan,action=foartOperationAction(plan);
+    if(result?.ok===true&&result?.billing?.status==='pending'&&action&&typeof result.continuationToken==='string'&&result.continuationToken.length<=4096&&
       Number.isSafeInteger(result.sequence)&&result.sequence>=1&&result.sequence<14){
-      const session=foartOperationHandle({...record,sequence:result.sequence,surface:action.surface,actionKind:action.kind,previousPlan:foartOperationCopy(plan)},result.continuationToken,previousContext);
+      const session=foartOperationHandle({...record,sequence:result.sequence,surface:action.surface,actionKind:action.kind},result.continuationToken,previousContext);
       return {ok:true,data:{toolPlan:plan,foartOperationSession:session}};
     }
     throw Object.assign(Error('操作账单状态待核对，请勿重复提交。'),{code:'operation-status-unknown'});
@@ -2087,9 +1997,6 @@
     try {
       if(!foartOperationModels.has(payload.modelId)||(payload.mode!==undefined&&payload.mode!=='foart')||(payload.provider!==undefined&&payload.provider!=='api')||
         (payload.expectedModelId!==undefined&&payload.expectedModelId!==payload.modelId)||
-        (payload.idleDraftRequested!==undefined&&typeof payload.idleDraftRequested!=='boolean')||
-        (payload.musicDraftRequested!==undefined&&typeof payload.musicDraftRequested!=='boolean')||
-        (payload.idleDraftRequested===true&&payload.musicDraftRequested===true)||
         ['images','uploads','attachments','files'].some(key=>payload[key]!=null&&(!Array.isArray(payload[key])||payload[key].length>0))||
         (payload.artContext!=null&&(typeof payload.artContext!=='object'||Array.isArray(payload.artContext)||Object.keys(payload.artContext).length>0))||
         payload.audioDataUrl||payload.videoDataUrl||typeof payload.message!=='string'||!payload.message.trim()||payload.message.length>12000||
@@ -2097,26 +2004,14 @@
         (payload.promptLanguage!==undefined&&typeof payload.promptLanguage!=='string')||typeof root.crypto?.randomUUID!=='function')throw Error('操作参数无效');
       const initialContext=foartOperationCopy(payload.foartContext);
       if(initialContext?.schema!=='nf.foart.tool-plan.v1'||!Array.isArray(initialContext.controls))throw Error('操作上下文无效');
-      if(payload.idleDraftRequested===true&&(!foartIdleIntent(payload.message)||!foartIdleContext(initialContext)))
-        throw Error('请明确要求制作 2 秒待机动画，并在动画编辑器中暂停播放及选中 1–4 根骨骼。');
-      // This non-secret intent marker is bound by the existing operation token.
-      // The server must strip it before constructing the provider prompt.
-      const originalIntent=foartOperationCopy({message:payload.message,history:payload.history,...(payload.promptLanguage!==undefined?{promptLanguage:payload.promptLanguage}:{}),
-        ...(payload.musicDraftRequested===true?{musicDraftRequested:true}:{}),
-        ...(payload.idleDraftRequested===true?{idleDraftRequested:true}:{})});
+      const originalIntent=foartOperationCopy({message:payload.message,history:payload.history,...(payload.promptLanguage!==undefined?{promptLanguage:payload.promptLanguage}:{})});
       request=foartOperationRequest(payload.requestId,payload.signal,guard);
       const policy=await companionPricing();
       if(!guard()||request.controller.signal.aborted)throw Object.assign(Error('登录会话已变化，未提交操作。'),{code:'assistant-selection-changed'});
       if(!foartOperationPolicy(policy?.policy,payload.pricingVersion,payload.pricingExpiresAt,initialContext)||!policy.policy.models?.some(x=>x.id===payload.modelId&&x.available===true))
         throw Object.assign(Error('操作级计费尚未开通或报价已变化，未提交。'),{code:'operation-billing-disabled'});
-      if(payload.musicDraftRequested===true&&!foartMusicRequestAllowed(policy.policy.config.xiaotao_online,initialContext))
-        throw Object.assign(Error('音乐操作计费未就绪，未提交。'),{code:'operation-billing-disabled'});
-      if(payload.idleDraftRequested===true&&(!decimalCreditPolicy(policy.policy.config.xiaotao_online)||
-        policy.policy.config.xiaotao_online.operation_foart_idle_draft_v3!==true))
-        throw Object.assign(Error('待机动画草稿尚未开通，未提交。'),{code:'operation-billing-disabled'});
       const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
-      const quoteIntent={...originalIntent};delete quoteIntent.musicDraftRequested;
-      const quoteRequest={requestId:payload.requestId,mode:'foart',modelId:payload.modelId,...quoteIntent,foartContext:initialContext,images:[],uploads:[],artContext:{}};
+      const quoteRequest={requestId:payload.requestId,mode:'foart',modelId:payload.modelId,...originalIntent,foartContext:initialContext,images:[],uploads:[],artContext:{}};
       const quoted=await api(base,'POST','/api/web/companion/quote',quoteRequest,65000,request.controller.signal),quote=quoted?.quote;
       if(!guard()||request.controller.signal.aborted||Date.now()>=payload.pricingExpiresAt)throw Object.assign(Error('会话或报价已变化，未提交操作。'),{code:'assistant-selection-changed'});
       if(quoted?.ok!==true||quote?.pricingVersion!==payload.pricingVersion||quote?.modelId!==payload.modelId||
@@ -2133,11 +2028,7 @@
       recoveryId=prepared.operationId;
       record={base,guard,recoveryOwner,recoveryId,modelId:payload.modelId,originalIntent,initialContext,operationToken:prepared.token,quote:pricingQuote,
         creditTerms:policy.policy.config.xiaotao_online,
-        openEnabled:policy.policy.config.xiaotao_online.operation_foart_open_v3===true,
-        musicDraftEnabled:payload.musicDraftRequested===true&&foartMusicRequestAllowed(policy.policy.config.xiaotao_online,initialContext),
-        idleDraftEnabled:payload.idleDraftRequested===true&&policy.policy.config.xiaotao_online.operation_foart_idle_draft_v3===true,
-        generalEnabled:policy.policy.config.xiaotao_online.operation_foart_general_v3===true,
-        rotationEnabled:policy.policy.config.xiaotao_online.operation_foart_rotation_v3===true};
+      };
       session=foartOperationHandle(record,'',initialContext,'unknown');
       if(!guard()||request.controller.signal.aborted||Date.now()>=payload.pricingExpiresAt)throw Object.assign(Error('会话或报价已变化，未提交操作。'),{code:'assistant-selection-changed'});
       providerSubmitted=true;
@@ -2158,21 +2049,13 @@
       const previousContext=foartOperationCopy(payload.previousContext),context=foartOperationCopy(payload.context),incoming=payload.receipt;
       if(JSON.stringify(previousContext)!==JSON.stringify(record.previousContext))throw Object.assign(Error('操作状态已变化，未提交下一步。'),{code:'assistant-selection-changed'});
       let receipt;
-      if(record.generalEnabled&&incoming&&typeof incoming==='object'&&!Array.isArray(incoming)){
-        const checked=foartToolReceipt(incoming,record.steps||[]);receipt=checked.receipt;record.steps=[...(record.steps||[]),checked.step];
-      }else if(record.actionKind==='open'&&incoming?.action==='open'&&incoming.phase==='opened'&&incoming.surface===record.surface)
-        receipt={action:'open',phase:'opened',surface:record.surface};
-      else if(record.rotationEnabled&&record.actionKind==='inspect_bones'&&incoming?.action==='animation'&&incoming.operation==='inspect_bones'&&incoming.phase==='observed'&&incoming.inspection&&typeof incoming.inspection==='object'&&!Array.isArray(incoming.inspection))
-        receipt={action:'animation',operation:'inspect_bones',phase:'observed',inspection:foartOperationCopy(incoming.inspection)};
-      else if(record.rotationEnabled&&record.actionKind==='key_bones'&&incoming?.action==='animation'&&incoming.operation==='key_bones'&&incoming.phase==='applied')
-        receipt={action:'animation',operation:'key_bones',phase:'applied'};
-      else throw Object.assign(Error('工具回执无效，未提交下一步。'),{code:'assistant-selection-changed'});
+      if(!incoming||typeof incoming!=='object'||Array.isArray(incoming))throw Object.assign(Error('工具回执无效，未提交下一步。'),{code:'assistant-selection-changed'});
+      const checked=foartToolReceipt(incoming,record.steps||[]);receipt=checked.receipt;record.steps=[...(record.steps||[]),checked.step];
       request=foartOperationRequest(payload.requestId,payload.signal,record.guard);record.state='inflight';
       if(!record.guard()||request.controller.signal.aborted)throw Object.assign(Error('登录会话已变化，未提交下一步。'),{code:'assistant-selection-changed'});
       providerSubmitted=true;
       const result=await api(record.base,'POST','/api/web/companion/operation/foart/resume',{operationToken:record.operationToken,originalIntent:record.originalIntent,
-        initialContext:record.initialContext,previousContext:record.previousContext,continuationToken:record.continuationToken,receipt,context,
-        ...(record.rotationEnabled?{previousPlan:record.previousPlan}:{})},65000,request.controller.signal);
+        initialContext:record.initialContext,previousContext:record.previousContext,continuationToken:record.continuationToken,receipt,context},65000,request.controller.signal);
       if(!record.guard())throw Object.assign(Error('登录会话已变化，账单状态待核对。'),{code:'assistant-selection-changed'});
       const value=foartOperationResult(result,record,context);record.state='closed';return value;
     } catch(error) {
@@ -2935,8 +2818,6 @@
         artBinding.check();
         if (quoted?.ok!==true || typeof quoted.quoteToken!=='string' || !quoted.quoteToken) throw new Error('生成报价不可用，未提交生成。');
         artQuoteCheck(quoted.quote,confirmedRequest);
-        if (typeof root.confirm!=='function' || root.confirm('本次生成预计 0 积分。确定开始生成吗？')!==true)
-          throw new Error('已取消，本次未提交生成。');
         artBinding.check();artQuoteCheck(quoted.quote,confirmedRequest);
         const accepted=await control('POST','/api/web/art-image/confirm',{request:confirmedRequest,quoteToken:quoted.quoteToken,accepted:true});
         artBinding.check();artQuoteCheck(quoted.quote,confirmedRequest);

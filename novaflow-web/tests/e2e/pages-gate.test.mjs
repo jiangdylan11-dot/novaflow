@@ -36,10 +36,10 @@ section('token verification matches the backend format');
 
 section('public allow-list is exactly the login shell');
 {
-  for (const p of ['/', '/index.html', '/novaflow-web-runtime.js', '/novaflow-web-account.js', '/novaflow-ui-theme.css', '/foart-button-theme.css', '/foart-button-theme.js', '/assets/logo.png', '/assets/index-abc.css', '/release.json']) {
+  for (const p of ['/', '/index.html', '/home-shell.js', '/novaflow-web-runtime.js', '/novaflow-web-account.js', '/novaflow-ui-theme.css', '/foart-button-theme.css', '/foart-button-theme.js', '/assets/logo.png', '/assets/index-abc.css', '/release.json']) {
     check('public: ' + p, isPublicPath(p) === true);
   }
-  for (const p of ['/novaflow-brand-runtime.js', '/spine-auto-bones.js', '/sweep-light.core.js', '/assets/index-abc.js', '/assets/particle-spine-export.js', '/templates/particle-bundled.json', '/vendor/ffmpeg/index.js', '/video-frame-edit.core.js']) {
+  for (const p of ['/editor.html', '/home-frame-bridge.js', '/novaflow-brand-runtime.js', '/spine-auto-bones.js', '/sweep-light.core.js', '/assets/index-abc.js', '/assets/particle-spine-export.js', '/templates/particle-bundled.json', '/vendor/ffmpeg/index.js', '/video-frame-edit.core.js']) {
     check('gated: ' + p, isPublicPath(p) === false);
   }
 }
@@ -54,6 +54,10 @@ section('gate ON: shell public, code gated');
 {
   checkEqual('login shell script is public', await served(await workerGate.fetch(req('/novaflow-web-account.js'), env)), 'ASSET:/novaflow-web-account.js');
   checkEqual('index is public', await served(await workerGate.fetch(req('/', { accept: 'text/html' }), env)), 'ASSET:/');
+  checkEqual('home shell script is public', await served(await workerGate.fetch(req('/home-shell.js'), env)), 'ASSET:/home-shell.js');
+  checkEqual('editor resource without a cookie is forbidden', (await workerGate.fetch(req('/editor.html'), env)).status, 403);
+  checkEqual('editor navigation without a cookie receives login shell', await served(await workerGate.fetch(req('/editor.html', {accept:'text/html'}), env)), 'ASSET:/index.html');
+  checkEqual('frame bridge without a cookie is forbidden', (await workerGate.fetch(req('/home-frame-bridge.js'), env)).status, 403);
 
   const noCookie = await workerGate.fetch(req('/spine-auto-bones.js'), env);
   checkEqual('gated code with no cookie is 403', noCookie.status, 403);
@@ -66,6 +70,8 @@ section('gate ON: shell public, code gated');
 
   const good = 'nf_sess=' + encodeURIComponent(await mintToken());
   checkEqual('gated code with a valid cookie is served', await served(await workerGate.fetch(req('/spine-auto-bones.js', { cookie: good }), env)), 'ASSET:/spine-auto-bones.js');
+  checkEqual('editor with a valid cookie is served', await served(await workerGate.fetch(req('/editor.html', {cookie:good}), env)), 'ASSET:/editor.html');
+  checkEqual('frame bridge with a valid cookie is served', await served(await workerGate.fetch(req('/home-frame-bridge.js', {cookie:good}), env)), 'ASSET:/home-frame-bridge.js');
   checkEqual('the React bundle with a valid cookie is served', await served(await workerGate.fetch(req('/assets/index-abc.js', { cookie: good }), env)), 'ASSET:/assets/index-abc.js');
 }
 

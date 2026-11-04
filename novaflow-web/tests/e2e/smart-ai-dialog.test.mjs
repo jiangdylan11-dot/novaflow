@@ -507,12 +507,12 @@ function referenceAnswer(engine, grading, extra = {}) {
   };
   return { ok: true, data: { prompt: REFERENCE_PROMPT, negativePrompt: '模糊', rawOutput: REFERENCE_PROMPT, qualityGateFailed: false, ...local, ...extra } };
 }
-// The 生图 panel's NSFW switch, as window.__NovaFlowArtGenerate exposes it.
+// The retired 生图 route rejects automatic activation.
 function withNsfwSwitch(p, surface, available = true) {
   p.byId.set('novaflow-art-generate-workspace', surface.workspace);
   const switched = [];
   if (available) {
-    p.context.__NovaFlowArtGenerate = { setNsfw(value) { switched.push(value); surface.workspace.setAttribute('data-novaflow-art-generate-nsfw', value ? '1' : '0'); } };
+    p.context.__NovaFlowArtGenerate = { setNsfw(value) { switched.push(value); return false; } };
   }
   return switched;
 }
@@ -529,21 +529,21 @@ async function runReference(answer, { engine, references, prompt = '成年女性
   return { p, surface, switched, label };
 }
 
-test('美工 references: adult sensitive content switches 生图 to NSFW, then writes, on both engines', async () => {
+test('美工 references: retired 生图 route cannot be automatically activated or write a prompt', async () => {
   for (const references of REFERENCE_SETS) {
     for (const engine of ['grok', 'local']) {
       const { p, surface, switched, label } = await runReference(referenceAnswer(engine, { sensitiveContent: true, explicitMinorEvidence: false }), { engine, references });
-      assert.deepEqual(switched, [true], label);
-      assert.equal(surface.workspace.getAttribute('data-novaflow-art-generate-nsfw'), '1', label);
-      assert.equal(surface.positive.value, REFERENCE_PROMPT, label);
-      assert.equal(p.api.state.message, '', label);
-      assert.equal(p.api.state.open, false, label);
+      assert.deepEqual(switched, [], label);
+      assert.equal(surface.workspace.getAttribute('data-novaflow-art-generate-nsfw'), '0', label);
+      assert.equal(surface.positive.value, '成年女性坐在窗边', label);
+      assert.equal(p.api.state.message, '分析结果尚未写入：请先确认当前生图 LoRA 设置后重新分析。', label);
+      assert.equal(p.api.state.open, true, label);
     }
   }
   // Without the panel's switch nothing is written, as on the static route.
   const { p, surface } = await runReference(referenceAnswer('grok', { sensitiveContent: true, explicitMinorEvidence: false }), { engine: 'grok', references: REFERENCE_SETS[0], nsfwSwitch: false });
   assert.equal(surface.positive.value, '成年女性坐在窗边');
-  assert.equal(p.api.state.message, '分析结果尚未写入：无法自动开启 Art NSFW 生成开关，请确认 Art 生成面板可用后重新分析。');
+  assert.equal(p.api.state.message, '分析结果尚未写入：请先确认当前生图 LoRA 设置后重新分析。');
   // Explicit minor words in the answer still stop an adult-sensitive write.
   const young = referenceAnswer('local', { sensitiveContent: true, explicitMinorEvidence: false });
   young.data.prompt = REFERENCE_PROMPT.replace('一名成年女性', '一名儿童');
@@ -655,6 +655,36 @@ test('H3 cannot use the manual as-written fallback when its separate English com
   let calls=0;const p=page({respond:()=>({ok:true,...releasedForAgent,prompt:display,...(++calls===2?{resourcesReleased:false}:{})})});
   await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',prompt:'红球滚动后停住',requirements:'固定镜头',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}}),/官方执行格式检查/);
   assert.equal(calls,2);
+});
+test('online Xiaotao uses the original online H3 optimizer and compiler without loading a local model',async()=>{
+ const display='integrated_multimodal_description: [Shot 1] 一个红色球在灰色地面向右滚动后停住，固定镜头。\noverall_soundscape: 轻微滚动声。\nnon_diegetic_music: N/A';
+ const model='integrated_multimodal_description: [Shot 1] A red ball rolls right and stops on a grey floor. The camera holds a static shot.\noverall_soundscape: Soft rolling friction.\nnon_diegetic_music: N/A';
+ let calls=0;const p=page({respond:()=>({ok:true,prompt:++calls===1?display:JSON.stringify({modelPrompt:model,displayPrompt:display})})});
+ const result=await p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',analysisProvider:'api',prompt:'红球在灰色地面向右滚动后停住，固定镜头',requirements:'保持一个红球',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}});
+ assert.equal(p.calls.local.length,0);assert.equal(p.calls.grok.length,2);assert.equal(p.calls.grok[0].purpose,'minimax-h3-prompt-enhance');assert.match(p.calls.grok[1].requirements,/H3 compile: translate-only/);assert.equal(result.optimization.protocol,'T2VA');assert.equal(result.analysisBackend,'grok');assert.equal(result.resourcesReleased,undefined);assert.match(result.prompt,/red ball/);
+});
+
+test('ambiguous stale online H3 flag is refused rather than charged or silently routed',async()=>{
+ const p=page({respond:()=>({ok:false,error:'fixture stopped after routing'})});
+ p.context.NovaFlowXiaotaoArtAgent={panel:{controller:{businessModelSnapshot:()=>({provider:'local',modelId:'qwen3.5-9b-heretic',epoch:7})}}};
+ p.context.electronAPI.qwenBusinessAvailableSync=()=>true;
+ await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',analysisProvider:'api',prompt:'A red ball rolls right',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}}));
+ assert.equal(p.calls.grok.length,0);assert.equal(p.calls.local.length,0);
+});
+test('explicit Qwen scope rejects a conflicting online H3 flag before any call',async()=>{
+ const p=page({respond:()=>({ok:false,error:'fixture stopped after routing'})});
+ p.context.NovaFlowXiaotaoArtAgent={panel:{controller:{businessModelSnapshot:()=>({provider:'local',modelId:'qwen3.5-9b-heretic',epoch:7})}}};
+ p.context.electronAPI.qwenBusinessAvailableSync=()=>true;
+ await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({assistantSelectionScope:'xiaotao',surface:'animation',analysisProvider:'api',prompt:'A red ball rolls right',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}}));
+ assert.equal(p.calls.grok.length,0);assert.equal(p.calls.local.length,0);
+});
+test('explicit Qwen scope forwards the selected model and epoch',async()=>{
+ const p=page({respond:()=>({ok:false,error:'fixture stopped after routing'})});
+ p.context.NovaFlowXiaotaoArtAgent={panel:{controller:{businessModelSnapshot:()=>({provider:'local',modelId:'qwen3.5-9b-heretic',epoch:7})}}};
+ p.context.electronAPI.qwenBusinessAvailableSync=()=>true;
+ await assert.rejects(p.context.__NovaFlowSmartAI.optimizeForAgent({assistantSelectionScope:'xiaotao',surface:'animation',analysisProvider:'local',prompt:'A red ball rolls right',videoContext:{modelId:'minimax_h3_local',mode:'text_video',durationSeconds:4,resources:[]}}));
+ assert.equal(p.calls.grok.length,0);assert.equal(p.calls.local.length,1);
+ assert.equal(p.calls.local[0].assistantProvider,'local');assert.equal(p.calls.local[0].assistantModelId,'qwen3.5-9b-heretic');assert.equal(p.calls.local[0].assistantSelectionEpoch,7);
 });
 
 test('video mode inheritance does not inject Xiaotao defaults or route retired models to generic animation rules',async()=>{

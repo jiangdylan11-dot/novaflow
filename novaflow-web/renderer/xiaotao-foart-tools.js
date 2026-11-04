@@ -4,7 +4,6 @@
   const reviewUncertain=message=>{throw Object.assign(new Error(message),{code:'foart-review-state-uncertain'});};
   let pendingImageReview=null,imageReviewUndo=null;
   // Two-image Qwen style fidelity has not passed real-model verification.
-  const QWEN_STYLE_PAIR_RELEASE_ENABLED=false;
   const ART_SETTINGS=['provider','mode','prompt','negativePrompt','width','height','steps','cfg','seed','randomSeed','count','nsfw','samplingOverrides','loras','localDrawEngine','localQwen21Variant','drawingTask','drawingAnalysisEngine','localTextQuality','localEditStrength','localUiEngine','gptQualityTxt2img','gptQualityImg2img','gptSize','gptCustomWidth','gptCustomHeight','uiRunIntent','uiPreserveLayout','uiLayoutMode','uiNativeEditPrompt','iterationReferenceCount'];
   const artSettings=state=>Object.fromEntries(ART_SETTINGS.filter(key=>state[key]!==undefined).map(key=>[key,state[key]]));
   const contract=()=>root.NovaFlowFoartToolContract;
@@ -448,13 +447,6 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       if(scopedText&&(!modelId||!Number.isSafeInteger(selected.epoch)))fail('当前模型选择无法确认，未提交或扣费。');
       modelId=selected.modelId;
     }
-    // A new decimal-priced XiaoTao operation must never silently fall back to
-    // the old per-feature integer Grok optimizer. Historic policies and the
-    // separate drawing UI retain their existing paths.
-    if(provider==='api'&&!scopedText&&!selectedOnlineArt&&['image_optimize','image_generate'].includes(op.action)&&
-      root.NovaFlowXiaotaoArtAgent?.panel?.controller?.onlineOperationDecimalConfirmed?.()===true)
-      fail('当前小数计费暂不支持此旧绘图优化路径，未提交或扣费。');
-    if(provider==='api' && modelId!=='xai/grok-4.7' && !selectedOnlineArt)fail('\u5f53\u524d\u6240\u9009\u5728\u7ebf\u6a21\u578b\u7684\u7ed8\u56fe\u4f18\u5316\u5c1a\u672a\u63a5\u901a\uff0c\u672a\u5207\u6362\u6a21\u578b\u6216\u6263\u8d39\u3002');
     if(provider==='local' && modelId==='qwen3.5-9b-heretic' && !selectedLocalArt)fail('Qwen 9B 的提示词优化节点尚未就绪，未提交或切换模型。');
     if(signal?.aborted)fail('制作已停止');
     const rt=root.__NovaFlowArtGenerate;if(!rt)fail('绘图工具尚未就绪');if(rt.state.running)fail('已有绘图任务运行中');
@@ -468,10 +460,6 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
     }
     if(scopedText&&(ui||rt.state.mode!=='txt2img'||typeof rt.references!=='function'||Array.from(rt.references()).some(Boolean)))
       fail('该入口不支持参考图片或图生图，未提交或扣费。');
-    // The old local drawing branch uses a local prompt backend. An online
-    // selection must not silently reach that path while its route is closed.
-    if(!ui&&provider==='api'&&!selectedOnlineArt&&rt.state.provider==='local')
-      fail('当前在线模型的 Qwen 绘图优化需要更新后接通；未切换本地模型或提交绘图优化，请核对此前规划回执。');
     if(!ui&&provider==='local'&&!selectedLocalArt&&rt.state.provider==='gpt')
       fail('本地小桃大脑尚未接通该绘图优化，未调用在线优化器或扣费。');
     const localReferenceSlots=Array.from(rt.references?.()||[]),localReferences=localReferenceSlots.filter(Boolean);
@@ -491,10 +479,9 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       selectionStillCurrent=()=>{try{const now=rt.captureContext();return selectedCurrent()===true&&root.__NovaFlowArtGenerate===rt&&now.state===rt.state&&rt.state.active===true&&now.generationSurface==='drawing'&&now.routeRevision===route&&now.referenceRevision===revision;}catch{return false;}};
       if(!selectionStillCurrent())fail('绘图页面或参考图已变化，未提交。');
     }
-    if(localPair&&!localImageEdit&&!QWEN_STYLE_PAIR_RELEASE_ENABLED)fail('Qwen 双图风格分析尚未通过实际模型验证，未提交或切换模型。');
+    if(localPair&&!localImageEdit)fail('当前节点的参考图优化尚未就绪，未提交。');
     if(selectedLocalArt && (ui||op.action!=='image_optimize'||!(op.generationMode==='txt2img'&&!localReferences.length||localPair||localImageEdit)))
       fail('本地节点仅在能力就绪时支持 1–3 张参考图优化；请检查图片数量和节点版本。');
-    if(ui && provider==='api' && modelId!=='xai/grok-4.7')fail('\u6240\u9009\u5728\u7ebf\u6a21\u578b\u7684 UI \u4f18\u5316\u5c1a\u672a\u5f00\u653e\uff0c\u672a\u63d0\u4ea4\u3002');
     if(!ui&&(selectedOnlineArt||selectedLocalArt)){
       if((selectedOnlineArt&&!onlineBusiness)||typeof selectionStillCurrent!=='function')fail('\u6240\u9009\u6a21\u578b\u7684\u786e\u8ba4\u7ec4\u4ef6\u4e0d\u53ef\u7528\uff0c\u672a\u63d0\u4ea4\u3002');
       const selected=root.NovaFlowXiaotaoArtAgent?.panel?.controller?.businessModelSnapshot?.(),sessionStillCurrent=root.electronAPI?.captureFoartSessionGuard?.();
@@ -627,110 +614,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       return {action:op.action,phase:'review',provider:rt.state.provider,prompt,modelPrompt,negativePrompt,optimization,reviewId,generationAvailable};
     }
     // The legacy online optimizer can finish after the model or account changes.
-    const legacySessionStillCurrent=provider==='api'?root.electronAPI?.captureFoartSessionGuard?.():null;
-    if(provider==='api'&&(typeof selectionStillCurrent!=='function'||typeof legacySessionStillCurrent!=='function'))
-      fail('模型或账号会话无法验证，未提交优化。');
-    const assertLegacyCurrent=()=>{
-      if(signal?.aborted)fail('制作已停止');
-      if(provider==='api'&&(!selectionStillCurrent()||!legacySessionStillCurrent()))fail('模型或账号会话已变化，未应用结果。');
-    };
-    assertLegacyCurrent();
-    if(!ui)await open('drawing');
-    assertLegacyCurrent();
-    const latestRequirements=String(requirements||'').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1);
-    const wantsGpt=/GPT\s*(?:Image\s*)?2[.．]5/i.test(latestRequirements),wantsQwen=/Qwen|千问/i.test(latestRequirements);
-    const requestedProvider=wantsGpt&&!wantsQwen?'gpt':wantsQwen&&!wantsGpt?'local':null;
-    if(requestedProvider&&rt.state.provider!==requestedProvider){const model=root.document.querySelector('select[aria-label="模型方式"]');if(!model)fail('当前模型选择控件尚未就绪，未改用其他模型');setControl(model,requestedProvider);await sleep(100);if(rt.state.provider!==requestedProvider)fail('未切换到用户指定的生图模型');}
-    if(op.useResult)await useResult();
-    rt.setMode(op.generationMode);await sleep(100);
-    for(let i=0;rt.state.referenceSizeFillPending&&i<100;i++){if(signal?.aborted)fail('制作已停止');await sleep(50);}
-    if(rt.state.referenceSizeFillPending)fail('参考图尺寸仍在读取，未提交旧尺寸方案');
-    const explicitSizes=[...new Set([...latestRequirements.matchAll(/\b(\d{2,4})\s*[×xX*＊]\s*(\d{2,4})\b/g)].map(match=>match[1]+'x'+match[2]))];
-    if(explicitSizes.length===1){
-      const [width,height]=explicitSizes[0].split('x').map(Number),scope='#novaflow-art-generate-workspace ';
-      if(rt.state.provider==='gpt'){
-        const size=root.document.querySelector(scope+'select[aria-label="尺寸"]');if(!size)fail('绘图尺寸控件尚未就绪');
-        const value=Array.from(size.options).some(option=>option.value===explicitSizes[0])?explicitSizes[0]:'Custom';
-        if(size.value!==value){setControl(size,value);await sleep(100);}
-      }
-      if(rt.state.provider!=='gpt'||rt.state.gptSize==='Custom'){
-        for(const [label,value] of [['W',width],['H',height]]){const input=root.document.querySelector(scope+'input[aria-label="'+label+'"]');if(!input)fail('自定义尺寸控件尚未就绪');setControl(input,value);await sleep(60);if(Number(input.value)!==value)fail('所选模型不支持要求的精确尺寸，未提交旧尺寸任务');}
-      }
-      const actual=rt.state.provider==='gpt'&&rt.state.gptSize!=='Custom'?String(rt.state.gptSize).split('x').map(Number):rt.state.provider==='gpt'?[Number(rt.state.gptCustomWidth),Number(rt.state.gptCustomHeight)]:[Number(rt.state.width),Number(rt.state.height)];
-      if(actual[0]!==width||actual[1]!==height)fail('要求的尺寸未写入原生参数，未开始生成');
-    }
-    if(op.generationMode==='img2img'&&!(rt.references?.()||[]).filter(Boolean).length)fail('图生图缺少真实参考图片');
-    const countMatch=/(?:生成|制作|画|重做|出图)[^，。；\n]{0,16}?(\d{1,2}|一|两|二|三|四|五|六|七|八|九|十)\s*张/.exec(latestRequirements),countWord=countMatch?.[1],requestedCount=countWord?({一:1,两:2,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,十:10}[countWord]??Number(countWord)):undefined;
-    const count=requestedCount??op.count??rt.state.count??1;if(!Number.isInteger(count)||count<1||count>10)fail('生成数量超出原有范围');
-    if(op.count!==undefined||requestedCount!==undefined){rt.state.count=count;rt.render?.({forceBottom:true});}
-    const capability=root.NovaFlowArtGenerateModels?.capabilityFor?.(rt.state.provider,op.generationMode,rt.state);
-    if(!ui&&rt.state.provider==='local'&&capability&&!['qwen-2.1','qwen-2.1-turbo'].includes(capability.engine)){
-      rt.state.prompt=op.prompt;rt.render?.({forceBottom:true});
-      if(op.action==='image_optimize'){
-        const button=Array.from(root.document.querySelectorAll('#novaflow-art-generate-workspace button')).find(el=>visible(el)&&/AI\s*助手|优化提示词/.test(label(el)));
-        if(!button)fail('该本地模型的原有优化入口不可用，未套用 Qwen 规则');click(button);return {action:op.action,phase:'opened',provider:'local',message:'已打开当前模型的原有提示词优化工具，尚未写入优化结果'};
-      }
-      const before=rt.selectedResult?.()?.id,sourceResultId=(rt.references?.()||[])[0]?.sourceResultId,abort=()=>{void rt.cancel?.();};signal?.addEventListener('abort',abort,{once:true});
-      try{onStatus('正在使用当前本地模型的原有绘图流程…');await rt.run();if(signal?.aborted)fail('制作已停止');if(rt.state.error)fail(rt.state.error);const result=rt.selectedResult?.();if(!result?.id||result.id===before||!result.imageUrl)fail('原有模型没有返回新成图');lastResult=result;return {action:op.action,phase:'completed',provider:'local',mode:op.generationMode,id:result.id,name:result.name,sourceResultId:op.useResult?sourceResultId:undefined,optimization:{framework:'native-selected-model'}};}finally{signal?.removeEventListener('abort',abort);}
-    }
-    if(ui){
-      // Upload previews stay as lightweight blob URLs until a real analysis
-      // request needs bytes. The native UI optimizer requires data URLs.
-      for(let i=0;i<(rt.references?.()||[]).length;i++){
-        const ref=rt.references()[i];if(!String(ref?.dataUrl||'').startsWith('blob:'))continue;
-        const dataUrl=await referenceDataUrl(ref);if(signal?.aborted)fail('UI制作已停止');
-        if(rt.references()[i]!==ref)fail('UI参考图已变化，未应用旧的图片内容');
-        rt.setReference(i,{...ref,dataUrl});
-      }
-      const selection=root.NovaFlowUiDesignDrawing.agentSelection?.();
-      const partial=root.NovaFlowUiDesignDrawing.requestIntent?.(op.prompt)==='iteration';
-      if(partial&&rt.state.provider==='gpt'&&!wantsGpt&&selection){
-        const model=root.document.querySelector('select[aria-label="模型方式"]');if(!model)fail('UI局部编辑模型选择尚未就绪');setControl(model,'local');await sleep(100);
-        rt.state.localDrawEngine='qwen-2.1';rt.state.localUiEngine='qwen-2.1';rt.render?.({forceBottom:true});
-        if(root.NovaFlowArtGenerateModels?.capabilityFor?.('local',op.generationMode,rt.state)?.engine!=='qwen-2.1')fail('原生UI局部编辑模型不可用，未退为全图生成');
-      }
-      assertLegacyCurrent();rt.state.prompt=op.prompt;if(selection)root.NovaFlowUiDesignDrawing.selectAgentBlock(selection.blockId);
-      rt.render?.({forceBottom:true});onStatus('正在使用原有 UI 设计与布局规划流程…');
-      const getCurrentContext=()=>({...rt.captureContext(),agentAnalysisEngine:provider==='api'?'grok':'local'}),prepared=await root.NovaFlowUiDesignDrawing.prepare({...getCurrentContext(),getCurrentContext});prepared.state={...prepared.state,count};
-      try{assertLegacyCurrent();prepared.assertCurrent?.();}catch(error){root.NovaFlowUiDesignDrawing.cancelPreparation?.();throw error;}
-      const nativeAssertCurrent=prepared.assertCurrent;
-      prepared.assertCurrent=()=>{assertLegacyCurrent();nativeAssertCurrent?.();};
-      if(op.action==='image_optimize'){rt.state.prompt=prepared.optimizedPrompt||prepared.promptSnapshot?.prompt||op.prompt;rt.render?.({forceBottom:true});return {action:op.action,phase:'applied',surface:'ui',prompt:rt.state.prompt,optimization:{framework:'native-ui-layout'}};}
-      const before=rt.selectedResult?.()?.id,beforeIds=new Set((rt.state.results||[]).map(r=>r.id)),sourceResultId=(rt.references?.()||[])[0]?.sourceResultId;
-      const abort=()=>{root.NovaFlowUiDesignDrawing.cancelPreparation?.();void rt.cancel?.();};signal?.addEventListener('abort',abort,{once:true});
-      try{await rt.run({uiPrepared:prepared});if(signal?.aborted)fail('UI 制作已停止');if(rt.state.error)fail(rt.state.error);const result=rt.selectedResult?.();if(!result?.id||result.id===before||!result.imageUrl)fail('UI 工具没有返回新成图');if(result.placedInSource===false)fail('UI图片已生成，但写入主画布失败，实际图片仍保留在结果列表');lastResult=result;const outputs=(rt.state.results||[]).filter(r=>!beforeIds.has(r.id)).map(({id,name,width,height,placedInSource})=>({id,name,width,height,placedInSource}));return {action:op.action,phase:'completed',surface:'ui',provider:rt.state.provider,modelLabel:rt.state.provider==='gpt'?'GPT Image 2.5':prepared.state.localUiEngine==='qwen-2.1'?'Qwen2.1':undefined,mode:op.generationMode,id:result.id,name:result.name,width:result.width,height:result.height,placedInSource:result.placedInSource,outputs:outputs.length?outputs:[{id:result.id,name:result.name}],...(prepared.nativeEdit?{editRegions:copy(prepared.nativeEdit.regions)}:{}),sourceResultId:op.useResult?sourceResultId:undefined,optimization:{framework:'native-ui-layout'}};}finally{signal?.removeEventListener('abort',abort);}
-    }
-    const beforeBinding=imageBinding(rt),before=rt.selectedResult?.()?.id;
-    const beforeIds=new Set((rt.state.results||[]).map(r=>r.id));
-    let prompt=op.prompt,modelPrompt=op.prompt,negativePrompt=rt.state.negativePrompt||'',optimization;
-    if(!ui){
-      onStatus('正在按所选生图模型优化提示词…');
-      if(rt.state.provider==='gpt'){
-        const response=await root.electronAPI?.smartAiPromptOptimize?.({surface:'art',purpose:'optimize',targetEngine:'gpt-image-2.5',completeVisualBrief:true,prompt:op.prompt,currentPrompt:op.prompt,requirements,negativePrompt:'',supportsNegativePrompt:false});
-        if(!response?.ok)fail(response?.error||'GPT 原有提示词优化未完成');
-        const result=response.result?.result||response.result?.data||response.result;
-        prompt=String(result?.prompt||result?.prompt_text||'').trim();if(!prompt)fail('GPT 原有优化器没有返回完整提示词');modelPrompt=String(result.modelPrompt||prompt);optimization={framework:'original-art-grok',provider:'gpt'};
-      }else{
-        const optimized=await root.__NovaFlowSmartAI.optimizeForAgent({surface:'art',prompt:op.prompt,negativePrompt,requirements,generationMode:op.generationMode,engine:rt.state.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1',signal,onProgress:onStatus});
-        prompt=optimized.displayPrompt||optimized.prompt;modelPrompt=optimized.prompt;negativePrompt=optimized.negativePrompt;optimization=optimized.optimization;
-      }
-    }
-    assertLegacyCurrent();if(imageBinding(rt)!==beforeBinding)fail('绘图参数或素材在优化期间变化，未写入或生成');
-    rt.state.prompt=prompt;if(rt.state.provider==='local')rt.state.negativePrompt=negativePrompt;rt.render?.({forceBottom:true});
-    if(op.action==='image_optimize')return {action:op.action,phase:'applied',provider:rt.state.provider,prompt,modelPrompt,optimization};
-    const state=copy({...artSettings(rt.state),running:false,count}),refs=op.generationMode==='txt2img'?[]:(rt.references?.()||[]).filter(Boolean),binding=imageBinding(rt);
-    const prepared={state,promptSnapshot:{prompt:modelPrompt,negativePrompt},references:refs,direct:true,agentRun:true,plan:{schema:'nf.foart.native-image.v1'},originalPrompt:op.prompt,assertCurrent:()=>{assertLegacyCurrent();if(imageBinding(rt)!==binding)fail('绘图内容已变化，本次方案已失效');},recordReview:()=>{}};
-    const abort=()=>{void rt.cancel?.();};signal?.addEventListener('abort',abort,{once:true});
-    try{
-      onStatus('正在使用'+(rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen')+'生成图片…');
-      // UI keeps its original reference/layout planning, not the ordinary-image prepared path.
-      prepared.assertCurrent();await rt.run(ui?{}:{drawingPrepared:prepared});
-      if(signal?.aborted)fail('制作已停止');if(rt.state.error)fail(rt.state.error);
-      const result=rt.selectedResult?.();if(!result?.id||result.id===before||!result.imageUrl)fail('绘图工具没有返回新的真实成图');
-      if(result.placedInSource===false)fail('图片已生成，但写入主画布失败；实际图片仍保留在结果列表，尚未完成显示');
-      const outputs=(rt.state.results||[]).filter(r=>!beforeIds.has(r.id)).map(({id,name,width,height,placedInSource})=>({id,name,width,height,placedInSource}));
-      const sourceResultId=op.useResult?refs[0]?.sourceResultId:undefined;lastResult=result;return {action:op.action,phase:'completed',provider:state.provider,mode:op.generationMode,id:result.id,name:result.name,width:result.width,height:result.height,placedInSource:result.placedInSource,sourceResultId,outputs:outputs.length?outputs:[{id:result.id,name:result.name}],prompt,modelPrompt,optimization};
-    }finally{signal?.removeEventListener('abort',abort);}
+    fail('绘图优化入口不可用，未提交或扣费。');
   }
   function activity(){
     if([...root.document.querySelectorAll('[data-novaflow-export-blocking]')].some(visible))return '原生导出';
@@ -1122,11 +1006,6 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
     if(typeof api?.[method]!=='function')fail('当前动画编辑器尚不支持安全的骨骼选择预览');
     return api[method](...args);
   }
-  const captureCommunitySelectionImage=()=>communitySelection('captureCommunityBoneSelectionImage');
-  const previewCommunitySelection=(boneName,imageToken)=>communitySelection('previewCommunityBoneSelection',boneName,imageToken);
-  const confirmCommunitySelection=(token,event)=>communitySelection('confirmCommunityBoneSelection',token,event);
-  const cancelCommunitySelection=token=>communitySelection('cancelCommunityBoneSelection',token);
-  const undoCommunitySelection=(token,event)=>communitySelection('undoCommunityBoneSelection',token,event);
   function confirmImageReview(reviewId,{attachGenerationProof=false}={}){
     const review=pendingImageReview,rt=root.__NovaFlowArtGenerate;
     if(!review||review.reviewId!==reviewId||rt!==review.rt||rt.state.running||!review.selectionStillCurrent()||!review.sessionStillCurrent()||imageBinding(rt)!==review.beforeBinding)
@@ -1233,5 +1112,5 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
     if(!pendingImageReview||pendingImageReview.reviewId!==reviewId)return false;
     pendingImageReview.uploadTransaction?.cancel();pendingImageReview=null;return true;
   }
-  root.NovaFlowFoartTools=Object.freeze({capture,captureDrawingReferenceRoles,prepareUploadReferenceTransaction,execute,images,settlePending,catalog,open,useResult,setUploads,downloadFiles,downloadFile,confirmImageReview,confirmImageReviewAndGenerate,undoImageReview,cancelImageReview,captureCommunitySelectionImage,previewCommunitySelection,confirmCommunitySelection,cancelCommunitySelection,undoCommunitySelection});
+  root.NovaFlowFoartTools=Object.freeze({capture,captureDrawingReferenceRoles,prepareUploadReferenceTransaction,execute,images,settlePending,catalog,open,useResult,setUploads,downloadFiles,downloadFile,confirmImageReview,confirmImageReviewAndGenerate,undoImageReview,cancelImageReview});
 })(typeof window!=='undefined'?window:globalThis);

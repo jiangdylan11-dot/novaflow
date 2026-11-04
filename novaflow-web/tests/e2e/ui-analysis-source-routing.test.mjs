@@ -102,6 +102,49 @@ test('selected Grok is passed to the real analysis workflow independently of loc
   const r=await e.context.NovaFlowUiDesignAssistantWorkflow.run(e.input());assert.equal(r.engine,'grok');assert.equal(e.calls.length,1);assert.equal(e.calls[0].provider,'grok');assert.equal(e.state.provider,'local');e.mounted.destroy();
 });
 
+test('independent drawing UI passes the compatibility contract on image reverse; assistant context does not',async()=>{
+  for (const agent of [false,true]) {
+    const e=environment({assistantEngine:'grok'});
+    e.state.prompt='参考布局，换成水彩风格';
+    installAnalysis(e,{ok:true,prompt:'水彩画风',uiPlan:plan()});
+    const input=e.adapter.inputFor({state:e.state,references:e.refs,referenceLimit:10,...(agent?{agentAnalysisEngine:'grok'}:{})});
+    assert.equal(input.foartUiContract,agent?undefined:'independent-ui-v263');
+    const result=await e.context.NovaFlowUiDesignAssistantWorkflow.run(input);
+    assert.equal(result.engine,'grok');assert.equal(e.calls.length,1);
+    assert.equal(e.calls[0].provider,'grok');assert.equal(e.calls[0].payload.images.length,1);
+    assert.equal(e.calls[0].payload.foartUiContract,agent?undefined:'independent-ui-v263');
+    e.mounted.destroy();
+  }
+});
+
+test('independent canvas bridge supplies its compatibility contract to the real prompt pipeline',async()=>{
+  const fixture=readFileSync(new URL('./ui-design-bridge-layout.test.mjs',import.meta.url),'utf8');
+  const begin=fixture.indexOf('function environment('),end=fixture.indexOf("\ntest('",begin);
+  assert.ok(begin>=0 && end>begin,'bridge fixture must remain available');
+  const scope={source,vm,AbortController,console,setTimeout,clearTimeout};
+  vm.runInNewContext(fixture.slice(begin,end)+'\nglobalThis.makeEnvironment=environment;',scope);
+  const e=scope.makeEnvironment({references:[{id:'only-image',role:'style',dataUrl:'data:image/png;base64,source'}]});
+  await assert.rejects(e.run(),/captured generation boundary/);
+  assert.equal(e.optimized.length,1);
+  assert.equal(e.optimized[0].foartUiContract,'independent-ui-v263');
+});
+
+test('UI assistant dialog forwards its caller compatibility contract to the workflow',async()=>{
+  const fixture=readFileSync(new URL('./ui-design-assistant-dialog.test.mjs',import.meta.url),'utf8');
+  const begin=fixture.indexOf('class FakeElement'),end=fixture.indexOf('// The shipped file',begin);
+  assert.ok(begin>=0 && end>begin,'dialog DOM fixture must remain available');
+  const scope={};vm.runInNewContext(fixture.slice(begin,end)+'\nglobalThis.makeDocument=fakeDocument;',scope);
+  const dialogScope={setTimeout,clearTimeout,Promise};
+  vm.runInNewContext(source('ui-design-assistant.dialog.js'),dialogScope);
+  let received;
+  const workflow={analysisReferenceLimit:()=>Infinity,createSession:()=>({cancel(){},run:async options=>{received=options;return {prompt:'synthetic'};}})};
+  const handle=dialogScope.NovaFlowUiDesignAssistantDialog.open({documentRef:scope.makeDocument(),workflow,
+    foartUiContract:'independent-ui-v263',getPrompt:()=> 'synthetic prompt',references:[],structure:{},apply:()=>{}});
+  assert.equal(await handle.submit(),true);
+  assert.equal(received.foartUiContract,'independent-ui-v263');
+  handle.close();
+});
+
 test('invalid analysis contracts stop with the selected provider and never invent a conservative prompt',async()=>{
   for(const engine of ['local','grok'])for(const response of [{ok:false,error:'Qwen 2.1 UI 设计规划JSON无效，本次未提交生成'},{ok:true,prompt:'some text'},{ok:true,prompt:'some text',uiPlan:{...plan(),references:[]}}]) {
     const e=environment({assistantEngine:engine});e.state.prompt='参考布局，换成水彩风格';installAnalysis(e,response);
@@ -115,7 +158,9 @@ test('analysis failure exits loading; duplicate clicks and cancellation cannot s
   installAnalysis(e,()=>new Promise(r=>{release=r;}));
   Object.assign(e.context,{ART_GENERATE_STATE:e.state,artGenerateReferences:()=>e.refs,artGenerateReferenceLimit:()=>10,captureArtGeneratePromptSnapshot(){},setArtGenerateProgress(){},setArtGenerateStatus:(text,error)=>{e.state.status=text;e.state.error=error?text:'';},resetArtGenerateProgress:(text,pct)=>{e.state.progressLabel=text;e.state.progressPct=pct;},artRequestJson:()=>{throw new Error('sampling must not be submitted');}});
   const s=source('novaflow-brand-runtime.js'),a=s.indexOf('  async function runArtGenerate(options'),z=s.indexOf('  function createArtGenerateExecutionBridge()',a);
-  e.context.pendingArtAgentPreparation=null;vm.runInContext(s.slice(a,z),e.context);
+  // The extracted production function shares this revision counter with the
+  // enclosing runtime; provide the same initial value in this isolated VM.
+  e.context.pendingArtAgentPreparation=null;e.context.pendingArtAgentRevision=0n;vm.runInContext(s.slice(a,z),e.context);
   const first=e.context.runArtGenerate();await tick();await e.context.runArtGenerate();assert.equal(e.calls.length,1);
   assert.equal(e.input().engine,'local');release({ok:false,error:'Qwen 2.1 UI 设计规划JSON无效，本次未提交生成'});await first;
   assert.equal(e.state.running,false);assert.equal(e.state.progressLabel,'分析失败，未提交生成');assert.match(e.state.error,/JSON无效/);

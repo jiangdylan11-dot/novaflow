@@ -5,15 +5,142 @@ import {createContext, runInContext} from 'node:vm';
 import {webcrypto} from 'node:crypto';
 import {deflateSync} from 'node:zlib';
 import {computeArtAgentFingerprint} from '../../worker/src/flash-art-agent.mjs';
-import {estimateXiaotaoOnlineCredits} from '../../packages/shared/src/feature-credits.mjs';
+import {estimateXiaotaoOnlineCredits,normalizeCreditConfig} from '../../packages/shared/src/feature-credits.mjs';
 
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => {let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve};};
+const mockCompanionPricing=async()=>({ok:true,policy:{version:'sha256:'+'a'.repeat(64),expiresAt:Date.now()+60000,defaultModel:'xai/grok-4.7',config:normalizeCreditConfig({}),models:[{id:'xai/grok-4.7',available:true},{id:'legacy-online',available:true},{id:'glm/glm-5.3-flash',available:false},{id:'openai/gpt-6.1-sol-saver',available:false}]}});
+
+test('negative visual constraints cannot negate a later explicit generation command',async()=>{
+  for(const [message,allowed] of [['请生成蓝色机器人，不要文字。生成后结束。',true],['请生成蓝色机器人，不要文字，并实际生成。生成后结束。',true],['请只优化机器人提示词，不要生成。',false],['请优化，不要直接生成。',false]]){
+    const e=env();let generated=0,calls=0;foartFixture(e,async()=>{generated++;return {action:'image_generate',phase:'completed',provider:'gpt',id:'actual',name:'actual.png'};});
+    const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply:'处理生成要求',operations:calls===1?[{action:'image_generate',prompt:'蓝色机器人，无文字',generationMode:'txt2img',useResult:false}]:[]}}})})});
+    controller.setProvider('api');assert.equal(await controller.send(message),allowed,controller.state.error);assert.equal(generated,allowed?1:0);
+  }
+});
 
 function foartFixture(e,execute=async()=>({action:'image_generate',phase:'completed',provider:'gpt',id:'native-output-1',name:'actual-new.png'})){
   runInContext(readFileSync(new URL('../../renderer/foart-tool-contract.js',import.meta.url),'utf8'),createContext(e.sandbox));
   e.sandbox.NovaFlowFoartTools={capture:()=>({schema:'nf.foart.tool-plan.v1',controls:[],art:{provider:'gpt',mode:'txt2img',prompt:e.state.prompt||''},media:null}),images:async()=>[],settlePending:async()=>null,setUploads(){},execute};
 }
+
+test('one published native mix grants a bounded final handoff stage while repeated mixes cannot extend planning forever',async()=>{
+ for(const finished of [true,false]){
+  const e=env();let calls=0,executed=0;
+  foartFixture(e,async()=>({action:'media',phase:'applied',results:[{action:'save_mix',target:'audio',publishedId:'actual-mix-'+(++executed)}]}));
+  const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:finished&&calls===12?'done':'act',reply:'根据实际混音收尾',operations:finished&&calls===12?[]:[{action:'media',operation:{action:'save_mix',target:'audio'}}]}}};}})});
+  const capture=e.sandbox.NovaFlowFoartTools.capture;
+  e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),media:{active:true,sub:'audio',audio:{tracks:[]},audioResources:[{id:'actual-'+executed}]}});
+  c.setProvider('api');assert.equal(await c.send('请保存混音并把实际混音放回原视频剪辑'),finished,c.state.error);
+  assert.equal(calls,finished?12:14);assert.equal(executed,finished?11:14);if(!finished)assert.match(c.state.error,/步数上限/);
+ }
+});
+
+test('a video-export continuation cannot repeat the previous Spine data export and replans before executing anything',async()=>{
+ const e=env(),executed=[],payloads=[];
+ foartFixture(e,async op=>{executed.push(op.operation);return {action:'animation',operation:op.operation,phase:'completed',outputs:[{name:'actual.webm',bytes:30}],message:'已返回实际WebM文件'};});
+ const capture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),animation:{active:true,loaded:true,exportVersion:'4.2',exportProjects:[{name:'current',exported:true}],bones:[{name:'root'}],animations:['idle']}});
+ const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async p=>{payloads.push(p);const n=payloads.length;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:n===3?'done':'act',reply:'按本轮要求导出',operations:n===3?[]:[{action:'animation',operation:n===1?'export_project':'export_media',...(n===1?{format:'json'}:{kind:'video',format:'webm',transparent:true})}]}}};}})});
+ c.setProvider('api');c.state.activeTask={executor:'foart',surface:'animation',baseRequest:'导出Spine 4.2 JSON、ATLAS及PNG打包图集',status:'completed'};
+ assert.equal(await c.send('再把当前同一个idle动画，用原生动画导出器导出透明WebM视频，保留工程和动画。不要重新导入，不改变骨骼或关键帧。返回实际文件即可。'),true,c.state.error);
+ assert.deepEqual(executed,['export_media']);assert.equal(payloads.length,3);assert.match(payloads[1].message,/上轮方案未执行/);assert.doesNotMatch(c.state.messages.at(-1).content,/Spine.*导出完成/);
+});
+
+test('native video and animation follow-ups do not re-place an old upload when the inferred mode changes',async()=>{
+ for(const surface of ['video','animation']){
+  const e=env(),placed=[];let turn=0,calls=0;
+  e.sandbox.URL={revokeObjectURL(){}};
+  e.sandbox.NovaFlowXiaotaoUpload={positiveTaskText:s=>s,planRoutes:(_message,items)=>({place:items.map(item=>({...item,destination:{label:'原片参考'}})),reject:[]}),inferTask:()=>({surface,mode:turn?'native_verify':'native_edit',revision:!!turn})};
+  foartFixture(e,async()=>({action:'open',phase:'opened',surface,message:'已打开对应原生工具'}));
+  const c=e.api.createController({bridge:e.bridge,uploadHost:{place:async item=>placed.push(item.name)},api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls%2?'act':'done',reply:'已核对原生工具',operations:calls%2?[{action:'open',surface}]:[]}}})})});
+  c.setProvider('api');c.state.staged=[{id:'original',kind:'video',name:'original.mp4',status:'ready'}];
+  assert.equal(await c.send('请打开原生视频工具'),true,c.state.error);assert.deepEqual(placed,['original.mp4']);
+  c.state.activeTask={executor:'foart',surface,mode:'native_edit',baseRequest:'用原始素材制作',status:'completed'};turn=1;
+  assert.equal(await c.send('请接着上次实际结果打开对应工具核对，不重新导入原片'),true,c.state.error);
+  assert.deepEqual(placed,['original.mp4']);assert.equal(c.state.staged.length,0);
+ }
+});
+
+test('an explicitly final art export ends the tool turn instead of reopening a finished mask',async()=>{
+ const e=env();let calls=0;const executed=[];
+ foartFixture(e,async op=>{executed.push(op.name);return {action:'art_action',name:'export',phase:'completed',fileName:'actual.png',outputs:[{name:'actual.png',downloadId:'actual-png',downloadInitiated:true}]};});
+ const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'按要求导出',operations:[{action:'art_action',name:calls===1?'export':'mask',...(calls===1?{format:'layer'}:{})}]}}};}})});
+ c.setProvider('api');assert.equal(await c.send('请导出当前处理图层PNG'),true,c.state.error);assert.equal(calls,1);assert.deepEqual(executed,['export']);assert.match(c.state.messages.at(-1).content,/actual\.png/);assert.equal(c.state.messages.at(-1).content.match(/actual\.png/g).length,1,'The same native export must not appear twice in the final reply');
+});
+
+test('after a native image edit subsequent planning inspects the real updated image instead of prioritizing the old attachment',async()=>{
+ const e=env();let calls=0;const preferences=[];
+ e.sandbox.NovaFlowXiaotaoUpload={positiveTaskText:s=>s,planRoutes:()=>({place:[],reject:[]}),inferTask:()=>({surface:'image',mode:'native_edit'})};
+ foartFixture(e,async()=>({action:'art_action',name:'mask',phase:'completed',outputs:[{id:'edited',name:'edited.png'}]}));
+ e.sandbox.NovaFlowFoartTools.images=async options=>{preferences.push(options.preferUploads);return [];};
+ const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply:'已应用实际修改',operations:calls===1?[{action:'art_action',name:'mask'}]:[]}}})})});
+ c.setProvider('api');c.state.staged=[{id:'source',kind:'image',name:'source.png',status:'ready',previewUrl:'data:image/png;base64,original'}];
+ assert.equal(await c.send('请用蒙版编辑这张图并检查结果'),true,c.state.error);assert.deepEqual(preferences,[true,false]);
+});
+
+test('an explicit native enhancement cannot accidentally open a different enhancement before replanning',async()=>{
+ const e=env(),executed=[],payloads=[];let calls=0;
+ foartFixture(e,async op=>{executed.push(op.name);return {action:'art_action',name:op.name,phase:'completed',outputs:[{id:'actual',name:'actual-outpaint.png',imageUrl:'data:image/png;base64,actual'}]};});
+ const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async payload=>{payloads.push(payload);calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:calls===3?'done':'act',reply:'按实际工具结果处理',operations:calls===1?[{action:'art_action',name:'imageUpscale'}]:calls===2?[{action:'art_action',name:'imageOutpaint',width:640,height:512,prompt:'延续原图纯白背景，保留中心主体'}]:[]}}};}})});
+ c.setProvider('api');assert.equal(await c.send('请用无限扩图扩成640×512，不要只做空白画布扩展'),true,c.state.error);assert.deepEqual(executed,['imageOutpaint']);assert.match(payloads[1].message,/上轮美工入口选择不符/);
+});
+
+test('a global art request opens its actual target before planning instead of attaching the image to the previously active skeleton editor',async()=>{
+ const e=env();let surface='animation',calls=0;const opened=[];
+ e.sandbox.NovaFlowXiaotaoUpload={positiveTaskText:s=>s,inferTask:()=>({surface:'image',mode:'img2img',discussion:false})};
+ foartFixture(e,async()=>({action:'art_action',name:'imageOutpaint',phase:'completed',outputs:[{name:'actual.png',imageUrl:'data:image/png;base64,actual'}]}));
+ e.sandbox.NovaFlowFoartTools.open=async target=>{opened.push(target);surface=target;return {action:'open',phase:'opened',surface:target,message:'已打开绘图工具'};};
+ const capture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),animation:{active:surface==='animation',loaded:false}});
+ const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async payload=>{assert.equal(payload.foartContext.animation.active,false);calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:calls===1?'act':'done',reply:'按原生扩图执行',operations:calls===1?[{action:'art_action',name:'imageOutpaint',width:640,height:512,prompt:'扩展纯白背景，保持中心原图'}]:[]}}};}})});
+ c.setProvider('api');assert.equal(await c.send('请用美工的无限扩图扩成640×512'),true,c.state.error);assert.deepEqual(opened,['drawing']);
+});
+
+test('explicit native tools and effect requests leave the unrelated skeleton file inputs before planning',async()=>{
+ for(const [message,target] of [['工具版块PNG压缩强度80','tools'],['用AI特效修改视频材质','effects'],['修改粒子系统发射率','particle']]){
+  const e=env(),opened=[];foartFixture(e,async()=>{throw Error('No fabricated operation')});
+  e.sandbox.NovaFlowFoartTools.open=async surface=>{opened.push(surface);return {action:'open',phase:'opened',surface};};
+  const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'done',reply:'已读取对应工具',operations:[]}}})})});
+  c.setProvider('api');assert.equal(await c.send(message),false);assert.match(c.state.error,/尚无实际工具回执/);assert.deepEqual(opened,[target]);
+ }
+});
+
+test('art export finalization waits for every requested format and preserves explicit work after export',async()=>{
+ for(const after of [true,false]){
+  const e=env();let calls=0;const executed=[];
+  foartFixture(e,async op=>{executed.push(op.action);return op.action==='art_action'?{action:'art_action',name:'export',phase:'completed',fileName:'actual.'+op.format,outputs:[{name:'actual.'+op.format,downloadInitiated:true}]}:{action:'activate_control',phase:'applied',control:'打开预览',message:'已打开原生预览'};});
+  const capture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),controls:[{id:'preview',kind:'button',label:'打开预览'}]});
+  const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;const op=calls===1?{action:'art_action',name:'export',format:'png'}:after?{action:'activate_control',controlId:'preview'}:{action:'art_action',name:'export',format:'psd'};return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:after&&calls===3?'done':'act',reply:'依据实际文件完成',operations:after&&calls===3?[]:[op]}}};}})});
+  c.setProvider('api');assert.equal(await c.send(after?'请导出PNG，然后打开原生预览':'请分别导出PNG和PSD'),true,c.state.error);assert.equal(calls,after?3:2);assert.deepEqual(executed,after?['art_action','activate_control']:['art_action','art_action']);
+ }
+});
+
+test('a mix revision preserves its old working sound until the real replacement is published and imported',async()=>{
+ const e=env(),executed=[];let calls=0,removed=false;
+ foartFixture(e,async op=>{const action=op.operation.action;executed.push(action);if(action==='remove')removed=true;return {action:'media',phase:'completed',results:[action==='save_mix'?{action,target:'audio',publishedId:'new-published-mix'}:action==='import_resource'?{action,target:'video',resourceId:'new-published-mix'}:{action,target:'video',clipId:'old-mix'}]};});
+ const capture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),media:{active:true,sub:'video',videoResources:[{id:'original',name:'original.mp4'},{id:'new-published-mix',name:'actual-mix.wav'}],video:{tracks:[{id:'sound',kind:'audio',clips:removed?[]:[{id:'old-mix',kind:'audio'}]}]}}});
+ const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;const operation=calls===2?{action:'save_mix',target:'audio'}:calls===3?{action:'import_resource',target:'video',resourceId:'new-published-mix'}:{action:'remove',target:'video',clipId:'old-mix'};return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:calls===5?'done':'act',reply:'按新混音实际回填结果完成',operations:calls===5?[]:[{action:'media',operation}]}}};}})});
+ c.setProvider('api');c.state.activeTask={executor:'foart',surface:'video',mode:'video_edit',baseRequest:'声音40%',status:'completed'};
+ assert.equal(await c.send('把这个视频声音改成原始音量20%，更新混音，其他不动'),true,c.state.error);assert.deepEqual(executed,['save_mix','import_resource','remove']);assert.equal(calls,5);
+});
+
+test('video finish replies name the real Foart mode and file without inventing verified motion or another model round',async()=>{
+ const e=env();let calls=0;foartFixture(e,async()=>({action:'media',phase:'completed',results:[{action:'generate_video',mode:'multi_reference',modeLabel:'多参视频',resources:[{id:'new-output',name:'actual-new.mp4',seconds:2.333}]}]}));
+ const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'调用原生多参工具',operations:[{action:'media',operation:{action:'generate_video',target:'video',prompt:'以图片外形、视频动作、音频音色为各自参考'}}]}}};}})});
+ controller.setProvider('api');assert.equal(await controller.send('调用多参视频生成一个新视频，生成后结束'),true,controller.state.error);assert.equal(calls,1);
+ const reply=controller.state.messages.at(-1).content;assert.match(reply,/已调用多参视频工具/);assert.match(reply,/actual-new\.mp4（2\.33 秒）/);assert.doesNotMatch(reply,/首尾帧|完美|运动已保留|质量已通过/);
+});
+test('unchanged native button plans stop before repeating the same no-op for a third time',async()=>{
+ const e=env();let calls=0,executed=0;foartFixture(e,async()=>{executed++;return {action:'activate_control',phase:'activated',control:'执行扩展'};});
+ const capture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),controls:[{id:'apply',kind:'button',label:'执行扩展'}]});
+ const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'确认原生工具',operations:[{action:'activate_control',controlId:'apply'}]}}};}})});
+ controller.setProvider('api');assert.equal(await controller.send('请打开美工画布工具并执行扩展'),false);assert.equal(executed,2);assert.equal(calls,3);assert.match(controller.state.error,/停止重复执行/);
+});
+test('completed native output exposes a recoverable actual-file link in its reply',async()=>{
+ const e=env();let calls=0;foartFixture(e,async()=>({action:'tool',name:'png_compress',operation:'export',phase:'completed',outputs:[{name:'actual.png',bytes:20,downloadInitiated:true,downloadId:'download-1'}],message:'已发起下载：actual.png'}));
+ const capture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),productionTools:[{name:'png_compress',active:true,busy:false}]});
+ const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply:'已发起下载',operations:calls===1?[{action:'tool',name:'png_compress',operation:'export'}]:[]}}})})});
+ controller.setProvider('api');assert.equal(await controller.send('请导出当前PNG压缩结果'),true);assert.deepEqual(plain(controller.state.messages.at(-1).downloads),['download-1']);
+});
 test('clarification can name an existing input without being stripped as a fabricated output',async()=>{
   const e=env();let calls=0;foartFixture(e,async()=>({action:'open',phase:'opened',surface:'video',message:'已打开视频工具'}));
   const originalCapture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...originalCapture(),uploads:[{id:'input-1',name:'video-image.mp4',kind:'video'}]});
@@ -21,6 +148,17 @@ test('clarification can name an existing input without being stripped as a fabri
   controller.setProvider('api');assert.equal(await controller.send('请用帧编辑处理这个视频'),true);
   assert.match(controller.state.messages.at(-1).content,/镜像补齐/);assert.equal(controller.state.status,'等待补充需求');
 });
+test('a native reference cleanup keeps its existing file names and cannot finish with a blank reply',async()=>{
+  for(const reply of ['已移除重复的 motion.mp4 引用，保留参考视频1，没有生成。','已生成 imaginary.mp4']){
+    const e=env();let calls=0;foartFixture(e,async()=>({action:'activate_control',phase:'activated',control:'移除参考视频 2 motion.mp4',message:'已操作原生控件；生成或导出结果仍以实际回执为准'}));
+    const capture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),media:{active:true,sub:'video',generation:{h3References:[{sourceId:'ref-1',name:'motion.mp4'}]}},controls:[{id:'remove',kind:'button',label:'移除参考视频 2 motion.mp4'}]});
+    const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply,operations:calls===1?[{action:'activate_control',controlId:'remove'}]:[]}}})})});
+    controller.setProvider('api');assert.equal(await controller.send('移除重复视频引用，不生成'),true,controller.state.error);
+    const content=controller.state.messages.at(-1).content;assert.ok(content.trim());assert.doesNotMatch(content,/imaginary/);
+    if(reply.includes('motion.mp4'))assert.match(content,/motion\.mp4/);
+  }
+});
+
 test('online brain executes a native tool and replies only with its real output receipt',async()=>{
   const e=env();let calls=0,executed=0;foartFixture(e,async()=>{executed++;return {action:'image_generate',phase:'completed',provider:'gpt',id:'native-output-1',name:'actual-new.png'};});
   const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async payload=>{
@@ -65,7 +203,7 @@ test('a completed native PNG export ends repeated planner exports without downlo
   const e=env();let calls=0,exports=0,finished=false;foartFixture(e,async()=>{exports++;finished=true;return {action:'art_action',name:'export',phase:'started'};});
   e.sandbox.NovaFlowFoartTools.settlePending=async()=>finished?(finished=false,{action:'art_action',name:'export',phase:'completed',fileName:'actual-transparent.png'}):null;
   const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'导出PNG',operations:[{action:'art_action',name:'export',format:'png'}]}}};}})});
-  controller.setProvider('api');assert.equal(await controller.send('请导出透明PNG'),true,controller.state.error);assert.equal(calls,2);assert.equal(exports,1);assert.match(controller.state.messages.at(-1).content,/actual-transparent.png/);
+  controller.setProvider('api');assert.equal(await controller.send('请导出透明PNG'),true,controller.state.error);assert.equal(calls,1);assert.equal(exports,1);assert.match(controller.state.messages.at(-1).content,/actual-transparent.png/);
 });
 
 test('a repeated planner generation cannot produce a second unrequested image after a real output',async()=>{
@@ -78,6 +216,13 @@ test('an explicit finish-after-generation request closes from its real receipt w
   const e=env();let calls=0;foartFixture(e);
   const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'准备生成',operations:[{action:'image_generate',generationMode:'txt2img',useResult:false,prompt:'机器人'}]}}};}})});
   controller.setProvider('api');assert.equal(await controller.send('只生成1张机器人后结束'),true,controller.state.error);assert.equal(calls,1);assert.match(controller.state.messages.at(-1).content,/actual-new.png/);
+});
+
+test('UI finish receipts explain the actual scoped work without inventing visual quality or another generation',async()=>{
+ const e=env();let calls=0;foartFixture(e,async()=>({action:'image_generate',phase:'completed',surface:'ui',provider:'local',modelLabel:'Qwen2.1',id:'new-gold',name:'actual-gold.png',width:512,height:512,placedInSource:true,editRegions:[{x:.3,y:.7,width:.4,height:.12}]}));
+ const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'准备制作',operations:[{action:'image_generate',generationMode:'img2img',useResult:false,prompt:'只改关闭按钮为金色'}]}}};}})});
+ controller.setProvider('api');assert.equal(await controller.send('只修改当前UI关闭按钮，生成后结束'),true,controller.state.error);assert.equal(calls,1);
+ const text=controller.state.messages.at(-1).content;assert.match(text,/Qwen2.1.*所选 UI 区域.*512×512/);assert.match(text,/已放到画板/);assert.match(text,/actual-gold.png/);assert.doesNotMatch(text,/已验证|金色效果|完美|完全一致/);
 });
 test('an explicit open-and-finish request needs only one planner call on either brain',async()=>{
   for(const provider of ['api','local']){
@@ -96,6 +241,34 @@ test('native background loading does not invalidate a plan, while an edited acti
     controller.setProvider('api');assert.equal(await controller.send('打开视频工具'),!manual,controller.state.error);assert.equal(executed,manual?0:1);
     if(manual)assert.match(controller.state.error,/规划期间变化/);
   }
+});
+
+test('a running native preview clock does not cancel an unrelated parameter edit',async()=>{
+  const e=env();let time='0.1',rate='10',calls=0;foartFixture(e,async op=>{rate=String(op.value);return {action:'set_control',phase:'applied',control:'发射率',value:op.value};});
+  e.sandbox.NovaFlowFoartTools.capture=()=>({schema:'nf.foart.tool-plan.v1',controls:[{id:'clock',kind:'input',label:'播放时间',value:time,volatile:true},{id:'rate',kind:'input',label:'发射率',value:rate}],particle:{config:{rate}}});
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{time='0.5';return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply:'已调整发射率',operations:calls===1?[{action:'set_control',controlId:'rate',value:20}]:[]}}};}})});
+  controller.setProvider('api');assert.equal(await controller.send('请把粒子发射率设置20'),true,controller.state.error);assert.equal(rate,'20');
+});
+
+test('video clipping binds real clip changes while ignoring unrelated generation-preview metadata enrichment',async()=>{
+ for(const manual of [false,true]){
+  const e=env();let width=512,fps='30',clipRate=1,calls=0,executed=0;
+  foartFixture(e,async()=>{executed++;clipRate=1.25;return {action:'media',phase:'applied',results:[{action:'rate',target:'video',clipId:'clip'}]}});
+  e.sandbox.NovaFlowFoartTools.capture=()=>({schema:'nf.foart.tool-plan.v1',controls:[{id:'preview-fps',kind:'input',label:'帧率',scope:'video_generation',value:fps}],media:{active:true,sub:'video',generation:{boardId:'board',width},videoResources:[{id:'source',name:'actual.mp4'}],video:{tracks:[{id:'track',clips:[{id:'clip',rate:clipRate}]}]}}});
+  const c=e.api.createController({bridge:e.bridge,api:()=>({
+   artAgentChat:async()=>{
+    calls++;if(calls===1){width=448;fps='24';if(manual)clipRate=.8;}
+    return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:calls===1?'act':'done',reply:'已调整实际片段速度',operations:calls===1?[{action:'media',operation:{action:'rate',target:'video',clipId:'clip',value:1.25}}]:[]}}};
+   }
+  })});
+  c.setProvider('api');assert.equal(await c.send('请剪辑这个片段，速度改为1.25倍。不生成新视频。'),!manual,c.state.error);assert.equal(executed,manual?0:1);if(manual)assert.match(c.state.error,/规划期间变化/);
+ }
+});
+
+test('deferring another tool does not negate a separate explicit production task',async()=>{
+ const e=env();let calls=0,opened=0;foartFixture(e,async()=>{opened++;return {action:'open',phase:'opened',surface:'tools',message:'已打开工具'};});
+ const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply:'已打开工具',operations:calls===1?[{action:'open',surface:'tools'}]:[]}}})})});
+ controller.setProvider('api');assert.equal(await controller.send('先暂不处理查看器。请打开工具压缩PNG。'),true,controller.state.error);assert.equal(opened,1);
 });
 
 test('natural result feedback is silent, result-bound and never starts an extra inference or generation',async()=>{
@@ -138,10 +311,46 @@ function env({cfg=5} = {}) {
   sandbox.__NovaFlowSmartAI={optimizeForAgent:async options=>({prompt:options.prompt,negativePrompt:options.negativePrompt,resourcesReleased:true,generationReady:true,analysisBackend:'strata',modelIdentity:{id:'flash-fixture',verification:'server-model-id'},optimization:{schema:'nf.agent.prompt-optimization.v1',framework:'ordinary-art-semantic-fusion'}})};
   runInContext(readFileSync(new URL('../../renderer/art-generate-model.resource.js',import.meta.url),'utf8'),vm);
   sandbox.NovaFlowArtGenerateModels={...sandbox.NovaFlowArtGenerateModels};
-  for (const file of ['art-direction.workflow.js', 'xiaotao-art-agent.js']) runInContext(readFileSync(new URL('../../renderer/' + file, import.meta.url), 'utf8'), vm);
+  for (const file of ['foart-tool-contract.js','art-direction.workflow.js', 'xiaotao-art-agent.js']) runInContext(readFileSync(new URL('../../renderer/' + file, import.meta.url), 'utf8'), vm);
   const api = sandbox.NovaFlowXiaotaoArtAgent, bridge = api.createBridge();
   return {api, bridge, sandbox, runtime, state, refs, saved, calls, setSurface:v => {surface = v;}, getPrepared:() => prepared};
 }
+test('model choice persists, blocks unavailable routes and pins selected Grok without changing Next', async () => {
+  const e=env(), payloads=[];
+  const storage=e.sandbox.localStorage;
+  const api=()=>({companionPricing:mockCompanionPricing,artAgentChat:async payload=>{payloads.push(payload);return {ok:true,data:{reply:'好',history:[]}};}});
+  const c=e.api.createController({bridge:e.bridge,storage,api});
+  assert.equal(c.setModel('gemma-4-12b-it'),false);
+  for (const id of ['qwen3.5-9b-heretic','deepseek/deepseek-v4.1-flash','glm/glm-5.3-flash','openai/gpt-6.1-sol-saver']) {
+    assert.equal(c.setModel(id),true); assert.equal(await c.send('你好'),false); assert.match(c.state.status,/不扣积分/);
+    assert.equal(payloads.length,0);
+  }
+  assert.equal(c.setModel('xai/grok-4.7'),true);
+  await c.refreshPricingPolicy();
+  assert.equal(await c.send('你好'),true); assert.equal(payloads[0].modelId,'xai/grok-4.7');
+  const restored=e.api.createController({bridge:e.bridge,storage,api}); assert.equal(restored.state.modelId,'xai/grok-4.7');
+  assert.equal(restored.setModel('next'),true); assert.equal(await restored.send('你好'),true); assert.equal(payloads[1].provider,'local'); assert.equal(payloads[1].modelId,undefined);
+});
+test('local model IDs are explicit and status never borrows Next residency', async () => {
+  const e=env();
+  assert.deepEqual(plain(e.api.selectedModelPayload('next')),{});
+  assert.deepEqual(plain(e.api.selectedModelPayload('legacy-online')),{});
+  for(const id of ['gemma-4-12b-it','qwen3.5-9b-heretic']) assert.deepEqual(plain(e.api.selectedModelPayload(id)),{modelId:id});
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({promptAssistantGetStatus:async()=>({ok:true,data:{chatSession:{state:'warm',modelLoaded:true},localModels:[{id:'gemma-4-12b-it',modelLoaded:false},{id:'qwen3.5-9b-heretic',modelLoaded:true}]}})})});
+  assert.equal(controller.setModel('gemma-4-12b-it'),false);
+  controller.setModel('qwen3.5-9b-heretic'); await controller.calibrateLocalStatus();
+  assert.equal(controller.state.localSession,null); assert.deepEqual(plain(controller.state.localModelStatus),{id:'qwen3.5-9b-heretic',modelLoaded:true});
+  assert.equal(await controller.send('你好'),false); assert.match(controller.state.status,/不扣积分/);
+});
+test('audio and video analysis is rejected before any inference or upload routing', async () => {
+  const e=env(); let calls=0;
+  runInContext(readFileSync(new URL('../../renderer/foart-tool-contract.js',import.meta.url),'utf8'),createContext(e.sandbox));
+  const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{calls++;}})});
+  c.state.staged=[{kind:'video',status:'ready',name:'sample.mp4'}];
+  assert.equal(await c.send('分析视频里的声音和画面'),false); assert.match(c.state.error,/尚未接入/); assert.equal(calls,0);
+  assert.equal(await c.send('这个讲了什么'),false); assert.match(c.state.error,/尚未接入/); assert.equal(calls,0);
+  assert.equal(c.state.staged.length,1);
+});
 test('an unavailable online media tool records the request and reports no execution rather than the preceding chat status',async()=>{
   const e=env();let requests=0;
   e.sandbox.NovaFlowMediaAgent={wantsMedia:()=>true};
@@ -495,20 +704,74 @@ test('same full source may preserve its airport background without being mistake
   const rejected = env(); rejected.refs[0].drawingRole = 'background'; assert.throws(() => rejected.bridge.capture(),/参考图用途/);
 });
 
-test('one companion keeps text across brain switches without reusing provider conversation IDs', async () => {
+test('brain switches isolate history and restore each model without reusing provider conversation IDs', async () => {
   const e = env(), payloads = []; e.refs.splice(0);
   const controller = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async p => {payloads.push(plain(p)); return {ok:true,data:{mode:'chat',conversationId:p.provider+'-session',reply:'已回复',history:[...p.history,{role:'user',content:p.message},{role:'assistant',content:'已回复'}]}};}})});
   await controller.send('本地聊聊'); assert.equal(payloads[0].mode,'creation'); assert.equal(controller.state.conversationId,'local-session');
-  const messages = plain(controller.state.messages); controller.setProvider('api'); assert.deepEqual(plain(controller.state.messages),messages);
-  await controller.send('API聊聊'); assert.equal(payloads[1].mode,'chat'); assert.equal(payloads[1].provider,'api'); assert.deepEqual(payloads[1].images,[]); assert.equal(payloads[1].contextFingerprint,undefined); assert.equal(payloads[1].conversationId,undefined); assert.equal(payloads[1].history[0].content,'本地聊聊');
-  controller.setProvider('local'); assert.equal(controller.state.conversationId,''); assert.equal(controller.state.history[2].content,'API聊聊');
-  await controller.send('继续'); assert.equal(payloads[2].conversationId,undefined); assert.equal(payloads[2].history[2].content,'API聊聊');
+  const messages = plain(controller.state.messages); controller.setProvider('api'); assert.deepEqual(plain(controller.state.messages),[]);
+  await controller.send('API聊聊'); assert.equal(payloads[1].mode,'chat'); assert.equal(payloads[1].provider,'api'); assert.deepEqual(payloads[1].images,[]); assert.equal(payloads[1].contextFingerprint,undefined); assert.equal(payloads[1].conversationId,undefined); assert.deepEqual(payloads[1].history,[]);
+  controller.setProvider('local'); assert.equal(controller.state.conversationId,''); assert.deepEqual(plain(controller.state.messages),messages); assert.equal(controller.state.history[0].content,'本地聊聊');
+  await controller.send('继续'); assert.equal(payloads[2].conversationId,undefined); assert.equal(payloads[2].history[0].content,'本地聊聊'); assert(!JSON.stringify(payloads[2].history).includes('API聊聊'));
 });
 
-test('opening defaults to local and retains latest text from an online archive without its backend identity', () => {
+test('model switches isolate prior task and attachments, and retain each history across reload',async()=>{
+  const e=env(),payloads=[],values=new Map();e.refs.splice(0);e.state.active=false;e.setSurface('other');
+  const storage={getItem:key=>values.get(key) ?? null,setItem:(key,value)=>values.set(key,value)};
+  const api=()=>({companionPricing:mockCompanionPricing,artAgentChat:async p=>{payloads.push(plain(p));return {ok:true,data:{reply:'完成',history:[...p.history,{role:'user',content:p.message},{role:'assistant',content:'完成'}]}};}});
+  const controller=e.api.createController({bridge:e.bridge,storage,api});
+  await controller.send('本地私有上下文');controller.state.activeTask={surface:'video',baseRequest:'本地任务',outputs:[]};
+  const staged={id:'private',kind:'image',name:'本地附件.png',status:'ready',previewUrl:'data:image/png;base64,AA=='};controller.state.staged=[staged];
+  assert.equal(controller.setModel('xai/grok-4.7'),true);await controller.refreshPricingPolicy();assert.deepEqual(plain(controller.state.history),[]);assert.equal(controller.state.activeTask,null);assert.deepEqual(plain(controller.state.staged),[]);
+  await controller.send('线上独立问题');assert.deepEqual(payloads.at(-1).history,[]);assert(!JSON.stringify(payloads.at(-1)).includes('本地私有上下文'));assert(!JSON.stringify(payloads.at(-1)).includes('本地附件.png'));
+  assert.equal(controller.setModel('legacy-online'),true);assert.deepEqual(plain(controller.state.history),[]);await controller.send('旧线路独立问题');assert.deepEqual(payloads.at(-1).history,[]);
+  assert.equal(controller.setModel('next'),true);assert.equal(controller.state.history[0].content,'本地私有上下文');assert.equal(controller.state.activeTask.baseRequest,'本地任务');assert.equal(controller.state.staged[0],staged);
+  const reloaded=e.api.createController({bridge:e.bridge,storage,api});assert.equal(reloaded.state.modelId,'next');assert.equal(reloaded.state.history[0].content,'本地私有上下文');assert.equal(reloaded.state.activeTask.baseRequest,'本地任务');assert.deepEqual(plain(reloaded.state.staged),[]);
+  reloaded.setModel('xai/grok-4.7');assert.equal(reloaded.state.history[0].content,'线上独立问题');reloaded.setModel('legacy-online');assert.equal(reloaded.state.history[0].content,'旧线路独立问题');
+});
+
+test('legacy provider archives are kept but inactive histories are not silently sent to another model',async()=>{
+  const e=env(),payloads=[],key='novaflow.xiaotao-art.chat.v1';e.refs.splice(0);e.state.active=false;e.setSurface('other');
+  const old={provider:'local',sessions:{local:{messages:[{role:'user',content:'本地私有信息'}],history:[{role:'user',content:'本地私有信息'}],conversationId:'old-local'},api:{messages:[{role:'user',content:'本地私有信息'}],history:[{role:'user',content:'本地私有信息'}],conversationId:'old-api'}}};
+  const values=new Map([[key,JSON.stringify(old)]]),storage={getItem:k=>values.get(k) ?? null,setItem:(k,v)=>values.set(k,v)};
+  const controller=e.api.createController({bridge:e.bridge,storage,api:()=>({artAgentChat:async p=>{payloads.push(plain(p));return {ok:true,data:{reply:'好',history:[]}};}})});
+  assert.equal(controller.state.messages[0].content,'本地私有信息');assert.deepEqual(plain(controller.state.history),[]);controller.setProvider('api');assert.deepEqual(plain(controller.state.history),[]);
+  await controller.send('线上新问题');assert.deepEqual(payloads[0].history,[]);assert(!JSON.stringify(payloads[0]).includes('本地私有信息'));
+  const saved=JSON.parse(values.get(key));assert.equal(saved.legacyArchive.api.history[0].content,'本地私有信息');
+  controller.setProvider('local');assert.equal(controller.state.messages[0].content,'本地私有信息');assert.deepEqual(plain(controller.state.history),[]);
+});
+
+test('legacy online history is displayed but not automatically sent when its origin is unknown',async()=>{
+  const e=env(),payloads=[];e.refs.splice(0);e.state.active=false;e.setSurface('other');
+  const saved={provider:'api',sessions:{api:{messages:[{role:'user',content:'旧会话信息'}],history:[{role:'user',content:'旧会话信息'}]},local:{messages:[],history:[]}},activeTask:{surface:'video',baseRequest:'旧任务'}};
+  const controller=e.api.createController({bridge:e.bridge,storage:{getItem:()=>JSON.stringify(saved),setItem(){}},api:()=>({artAgentChat:async p=>{payloads.push(plain(p));return {ok:true,data:{reply:'好',history:[]}};}})});
+  assert.equal(controller.state.messages[0].content,'旧会话信息');assert.deepEqual(plain(controller.state.history),[]);assert.equal(controller.state.activeTask,null);
+  await controller.send('新问题');assert.deepEqual(payloads[0].history,[]);assert(!JSON.stringify(payloads[0]).includes('旧会话信息'));assert(!JSON.stringify(payloads[0]).includes('旧任务'));
+});
+
+test('FOART planning does not send the prior local model history to a newly selected online model',async()=>{
+  const e=env(),payloads=[];e.refs.splice(0);e.state.active=false;e.setSurface('other');
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({companionPricing:mockCompanionPricing,artAgentChat:async p=>{payloads.push(plain(p));if(p.mode==='foart')return {ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'打开工具',operations:[{action:'open',surface:'audio'}]}}};return {ok:true,data:{reply:'本地回复',history:[{role:'user',content:p.message},{role:'assistant',content:'本地回复'}]}};}})});
+  await controller.send('本地私有消息');foartFixture(e,async()=>({action:'open',phase:'opened',surface:'audio',message:'已打开音频工具'}));
+  controller.setModel('xai/grok-4.7');await controller.refreshPricingPolicy();assert.equal(await controller.send('打开音频工具，打开后就结束'),true,controller.state.error);
+  const online=payloads.find(p=>p.mode==='foart');assert(online);assert.deepEqual(online.history,[]);assert(!JSON.stringify(online).includes('本地私有消息'));
+});
+
+test('model switching waits for an in-progress attachment read or destination placement',async()=>{
+  const e=env(),read=deferred(),place=deferred();e.sandbox.btoa=s=>Buffer.from(s,'binary').toString('base64');
+  e.sandbox.NovaFlowXiaotaoUpload={inspectUpload:()=>({ok:true,kind:'image',mimeType:'image/png'}),destinationById:()=>({label:'目标'}),acceptsKind:()=>true};
+  const controller=e.api.createController({bridge:e.bridge,uploadHost:{place:()=>place.promise}});
+  const reading=controller.stageUploads([{name:'private.png',type:'image/png',size:8,arrayBuffer:()=>read.promise}]);
+  assert.equal(controller.setModel('xai/grok-4.7'),false);read.resolve(new Uint8Array([1,2,3]).buffer);await reading;
+  assert.equal(controller.setModel('xai/grok-4.7'),true);assert.equal(controller.state.staged.length,0);controller.setModel('next');assert.equal(controller.state.staged[0].name,'private.png');
+  controller.state.pendingUploads=[{id:'p1',pendingId:'batch',name:'private.png',kind:'image'}];controller.state.pendingUploadId='batch';
+  const placing=controller.chooseUploadDestination('target','batch');assert.equal(controller.setModel('xai/grok-4.7'),false);place.resolve({});await placing;
+  assert.equal(controller.setModel('xai/grok-4.7'),true);assert(!JSON.stringify(controller.state.messages).includes('private.png'));controller.setModel('next');assert.match(controller.state.messages.at(-1).content,/private.png/);
+});
+
+test('opening restores the selected online brain and latest text without a stale backend identity', () => {
   const e=env(), saved={provider:'api',sessions:{local:{messages:[],history:[],conversationId:'old-local'},api:{messages:[{role:'assistant',content:'最近的回复'}],history:[{role:'assistant',content:'最近的回复'}],conversationId:'online-session'}}};
   const controller=e.api.createController({bridge:e.bridge,storage:{getItem:()=>JSON.stringify(saved)}});
-  assert.equal(controller.state.provider,'local'); assert.equal(controller.state.conversationId,''); assert.equal(controller.state.messages[0].content,'最近的回复'); assert.equal(controller.state.history[0].content,'最近的回复');
+  assert.equal(controller.state.provider,'api'); assert.equal(controller.state.conversationId,''); assert.equal(controller.state.messages[0].content,'最近的回复'); assert.deepEqual(plain(controller.state.history),[]);
 });
 
 test('current drawing results are attached as actual feedback pixels and new-conversation requests work through chat', async () => {
@@ -518,7 +781,7 @@ test('current drawing results are attached as actual feedback pixels and new-con
   await controller.send('不要评价当前成图，只聊画风'); assert.equal(payloads[1].images.length,3); assert.equal(payloads[1].images[2].dataUrl,png(25));
   controller.setProvider('api'); await controller.send('评价当前成图'); assert.equal(payloads.length,3); assert.equal(payloads[2].images[2].role,'result'); assert.equal(payloads[2].images[2].dataUrl,png(25));assert.equal(payloads[2].mode,'chat');assert.equal(payloads[2].executionApproval,undefined);
   await controller.send('新对话'); assert.equal(payloads.length,3); assert.equal(controller.state.messages.length,0); assert.equal(controller.state.history.length,0); assert.equal(controller.state.conversationId,'');
-  controller.setProvider('local'); assert.equal(controller.state.messages.length,0); assert.equal(e.calls.length,0);
+  controller.setProvider('local'); assert(controller.state.messages.some(item=>item.content==='评价当前成图')); assert.equal(e.calls.length,0);
 });
 
 test('capture, captureChat, fingerprint and companion chat send data urls for an uploaded reference', async () => {
@@ -821,6 +1084,11 @@ test('the send button stays right of a fixed estimate slot in local and online m
   let credits = 11;
   Object.assign(e.sandbox, { document: doc, innerWidth: 320, innerHeight: 640, addEventListener() {}, setTimeout() { return 0; }, setInterval() { return 0; }, clearTimeout() {}, clearInterval() {}, NovaFlowFeatureCreditPrices: { estimateXiaotaoOnline: () => ({ credits }) } });
   e.api.mount();
+  const modelOptions=nodes.filter(node=>node.tagName==='OPTION');
+  assert.match(modelOptions.find(node=>node.value==='next').textContent,/本地·免费/);
+  assert.match(modelOptions.find(node=>node.value==='qwen3.5-9b-heretic').textContent,/本地·免费/);
+  assert.equal(modelOptions.some(node=>node.value==='gemma-4-12b-it' && node.parentElement),false);
+  assert.match(e.api.panel.controller.state.status || nodes.find(node=>node.className==='nf-xiaotao-status').textContent,/对话免费.*收费生图或视频工具另按其价格计费/);
   const actions = nodes.find(node => node.className === 'nf-xiaotao-compose-actions');
   const estimate = nodes.find(node => node.className === 'nf-xiaotao-estimate');
   const send = nodes.find(node => node.className === 'nf-xiaotao-primary' && node.textContent === '发送');
@@ -830,12 +1098,12 @@ test('the send button stays right of a fixed estimate slot in local and online m
   assert.equal(estimate.getAttribute('data-idle'), '1');
   assert.equal(estimate.textContent, '');
   e.api.panel.controller.setProvider('api');
-  assert.equal(estimate.textContent, '约11分');
+  assert.equal(estimate.textContent, '预估11分');
   assert.equal(estimate.getAttribute('data-idle'), null);
   assert.equal(estimate.hidden, false);
   credits = 80;
   nodes.find(node => node.getAttribute('aria-label') === '给智能助手的消息').oninput();
-  assert.equal(estimate.textContent, '约80分');
+  assert.equal(estimate.textContent, '预估80分');
   assert.equal(actions.children.at(-2), estimate);
   assert.equal(actions.children.at(-1), send);
   e.api.panel.controller.setProvider('local');
@@ -876,7 +1144,7 @@ test('an old or foreign status reply cannot replace a stopped task or a later lo
   const controller = e.api.createController({bridge:e.bridge,timers,api:() => ({artAgentChat:async () => {if (++requests === 1) {firstEntered.resolve(); return oldReply.promise;} secondEntered.resolve(); return newReply.promise;},artAgentStop:async () => ({ok:true}),promptAssistantGetStatus:async () => ++statusCalls === 1 ? oldStatus.promise : ({ok:true,chatSession:{state:'loading',modelLoaded:false,activeRequestId:'a-different-request'}})})});
   const first = controller.send('第一条'); await firstEntered.promise; await controller.stop();
   const second = controller.send('第二条'); await secondEntered.promise; await Promise.resolve();
-  const currentStatus=controller.state.status; assert.match(currentStatus,/正在连接 Foart 算力助手|正在等待本地分析启动/);
+  const currentStatus=controller.state.status; assert.match(currentStatus,/正在连接 Foart|正在等待本地分析启动/);
   oldStatus.resolve({ok:true,chatSession:{state:'loading',modelLoaded:false}}); await Promise.resolve(); await Promise.resolve();
   assert.equal(controller.state.status,currentStatus); assert.equal(controller.state.localSession,null); assert.equal(timers.pending.size,1);
   newReply.resolve({ok:true,data:{reply:'第二条回复',history:[]}}); await second;
@@ -923,8 +1191,8 @@ test('tabs sharing localStorage keep independent conversations and refresh their
 
 test('new conversation clears previous tool claims and names drawing context only in drawing mode', () => {
   const e=env(), controller=e.api.createController({bridge:e.bridge}); controller.state.toolTrace=[{name:'get_art_context'},{name:'propose_art_direction'}];
-  controller.reset(); assert.deepEqual(plain(controller.state.toolTrace),[]); assert.equal(controller.state.status,'新对话，可以直接聊天');
-  controller.state.mode='drawing'; controller.state.toolTrace=[{name:'get_art_context'}]; controller.reset(); assert.deepEqual(plain(controller.state.toolTrace),[]); assert.equal(controller.state.status,'新对话，将使用当前绘图内容');
+  controller.reset(); assert.deepEqual(plain(controller.state.toolTrace),[]); assert.equal(controller.state.status,'当前模型的新对话，可以直接聊天');
+  controller.state.mode='drawing'; controller.state.toolTrace=[{name:'get_art_context'}]; controller.reset(); assert.deepEqual(plain(controller.state.toolTrace),[]); assert.equal(controller.state.status,'当前模型的新对话，将使用当前绘图内容');
 });
 
 test('opening calibration is one local status request, and an older calibration cannot undo a new conversation or provider change', async () => {
@@ -1096,4 +1364,20 @@ test('mounted new-dialog button clears its draft and global navigation keeps the
   e.setSurface('editing');for(const timer of intervals)if(timer.delay===500)timer.fn();assert.equal(aside.hidden,false);
   controller.setProvider('api');waiting=true;const pending=controller.send('正在等待的消息');await entered.promise;panel.open();const count=controller.state.messages.length;assert.equal(button.disabled,true);button.click();assert.equal(controller.state.messages.length,count);art.click();flush();assert.equal(aside.hidden,false);assert.equal(controller.state.pending,true);assert.equal(stops,0);assert.equal(controller.state.messages.length,count);
   gate.resolve({ok:true,data:{reply:'等待结束',history:[]}});await pending;assert.equal(button.disabled,false);button.click();assert.equal(controller.state.provider,'api');assert.equal(controller.state.messages.length,0);
+});
+
+test('planner history keeps every user word and actual result names while excluding duplicate compiled prompts',()=>{
+ const e=env(),user='只把机器人眼睛改成金色，保持2秒循环和白背景。'.repeat(60),natural='已生成 actual.mp4，2.3秒。';
+ const history=[{role:'user',content:user},{role:'assistant',content:natural+'\n实际工具回执：'+JSON.stringify({optimization:{prompt:'long execution text '.repeat(2000)}})}];
+ const snapshot=JSON.stringify(history),compact=e.api.compactFoartHistory(history);
+ assert.equal(compact[0].content,user);assert.equal(compact[1].content,natural);assert.equal(JSON.stringify(history),snapshot);
+ const receipt={action:'media',phase:'completed',results:[{action:'generate_video',mode:'multi_reference',optimization:{prompt:'x'.repeat(20000)},executedPrompt:'y'.repeat(10000),resources:[{id:'actual-id',name:'actual.mp4',seconds:2.333,width:448,height:448,url:'blob:private'}]}]};
+ const facts=plain(e.api.compactFoartReceipt(receipt));assert.equal(facts.results[0].resources[0].id,'actual-id');assert.equal(facts.results[0].resources[0].seconds,2.333);
+ assert.equal(JSON.stringify(facts).includes('optimization'),false);assert.equal(JSON.stringify(facts).includes('blob:private'),false);assert.ok(JSON.stringify(facts).length<500);
+});
+test('native animation receipts retain their own task surface instead of turning a follow-up into video generation',async()=>{
+ const e=env();let calls=0;foartFixture(e,async()=>({action:'animation',phase:'applied',operation:'seek',context:{animation:'idle',frame:15,selectedBones:['root'],selectedKeys:{root:{rotate:[{time:0,angle:0},{time:.5,angle:20},{time:1,angle:0}]}}},message:'已定位到第15帧'}));
+ const capture=e.sandbox.NovaFlowFoartTools.capture;e.sandbox.NovaFlowFoartTools.capture=()=>({...capture(),animation:{active:true,loaded:true,bones:[{name:'root'}],animations:['idle']}});
+ const c=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{toolPlan:{schema:'nf.foart.tool-plan.v1',status:++calls===1?'act':'done',reply:'已定位',operations:calls===1?[{action:'animation',operation:'seek',frame:15}]:[]}}})})});
+ c.setProvider('api');assert.equal(await c.send('请把当前骨骼动画定位到第15帧'),true,c.state.error);assert.equal(c.state.activeTask.surface,'animation');assert.equal(c.state.activeTask.mode,'idle');
 });

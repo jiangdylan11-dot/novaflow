@@ -232,3 +232,25 @@ test('agent track edits synchronize the native header controls with rendered aud
   assert.equal(Number(descendants(headers).find(n=>n.className==='nf-tl-track-gain').value),.6);
   assert.equal(descendants(headers).find(n=>n.title==='独奏').getAttribute('aria-pressed'),'true');
 });
+
+function nativeAgentAudio({optimize,signal}={}){
+ const source=readFileSyncSafe(ROOT+'renderer/audio-studio.tool.js');
+ const method=source.slice(source.indexOf('    async agentGenerate(op,'),source.indexOf('    async agentExport()')).replace(/,\s*$/, '');
+ const requests=[],submissions=[],state={music:{bpm:100,loop:true},sfx:{seconds:1,count:2,rewrite:true,category:'ui'}};
+ const sandbox={state,signal,window:{electronAPI:{smartAiPromptOptimize:async p=>{requests.push(p);return optimize?optimize(p,state):{ok:true,result:{prompt:'A short clean metallic button click, no music.'}};}}},activate(){},setMode(){},syncDockValues(){},musicCaption:()=> 'Harp instrumental, seamless loop.',sfxCaption:()=> 'Original native UI click, clean, no music.',submit:async(type,kind,label,parameters)=>{submissions.push({type,kind,label,parameters});return {ok:true,resourceId:'audio-'+submissions.length,taskId:'task-'+submissions.length,name:'Sfx_'+submissions.length,seconds:1};}};
+ const context=createContext(sandbox);runInContext('var nativeApi={'+method+'}',context);
+ return {state,requests,submissions,run:()=>sandbox.nativeApi.agentGenerate({action:'generate_sfx',prompt:'轻微金属按钮点击',count:2},{analysisProvider:'api',signal})};
+}
+test('online audio compiles once with the original SFX frame, preserves Chinese display and reuses the caption for the native batch',async()=>{
+ const f=nativeAgentAudio(),result=await f.run();
+ assert.equal(f.requests.length,1);assert.equal(f.requests[0].purpose,'audio-sfx');assert.equal(f.requests[0].prompt,'Original native UI click, clean, no music.');
+ assert.equal(f.state.sfx.text,'轻微金属按钮点击');assert.equal(f.state.sfx.rewrite,true);
+ assert.equal(f.submissions.length,2);assert.ok(f.submissions.every(s=>s.parameters.reprompt===false&&s.parameters.prompt==='A short clean metallic button click, no music.'));
+ assert.equal(result.resources.length,2);assert.equal(result.optimization.framework,'native-audio-sfx');
+});
+test('failed, cancelled or stale online audio optimization never submits generation or retries locally',async()=>{
+ for(const kind of ['failed','cancelled','stale']){
+  const abort=new AbortController();const f=nativeAgentAudio({signal:abort.signal,optimize:async(_p,state)=>{if(kind==='failed')return {ok:false,error:'service unavailable'};if(kind==='cancelled')abort.abort();if(kind==='stale')state.sfx.seconds=2;return {ok:true,result:{prompt:'A clean click.'}};}});
+  await assert.rejects(f.run());assert.equal(f.submissions.length,0);assert.equal(f.requests.length,1);
+ }
+});

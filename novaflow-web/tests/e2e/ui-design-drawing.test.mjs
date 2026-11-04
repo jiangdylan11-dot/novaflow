@@ -37,6 +37,7 @@ function environment({ ui = true, references = [{id:'default-layout',role:'layou
   sandbox.Image = class { width=16; height=16; set src(value) { this.onload(); } };
   vm.runInContext(source('ui-design.drawing.js'),sandbox);
   const brand = source('novaflow-brand-runtime.js');
+  vm.runInContext(brand.slice(brand.indexOf('  async function resolveGptDeliveredImage('),brand.indexOf('  function parseJsonOrRawText(')),sandbox);
   vm.runInContext(brand.slice(brand.indexOf('  function resolveArtGenerateReferenceInputs('), brand.indexOf('  async function runArtGenerate(')),sandbox);
   vm.runInContext(brand.slice(brand.indexOf('  async function runArtGenerate('), brand.indexOf('  function createArtGenerateExecutionBridge()')),sandbox);
   return { sandbox,state,calls,failures,builds,uploads,run:()=>sandbox.runArtGenerate(),adapter:sandbox.NovaFlowUiDesignDrawing };
@@ -541,4 +542,12 @@ test('native Qwen preserves finished screenshot copy but never diagnostic guide 
  const screenshot=p.compileQwenPlan(result,{...input,references:refs.map(r=>({...r,uiLayoutId:undefined}))});
  assert.match(screenshot.prompt,/保留画布内的原人物与物品身份、文案和功能/);
  assert.ok(screenshot.prompt.endsWith('保留未要求修改的文字与功能。'));
+});
+
+test('Xiaotao online analysis override stays scoped to its UI request and leaves manual defaults unchanged',()=>{
+ const e=environment();
+ const context={state:e.state,references:[{role:'layout',dataUrl:'data:image/png;base64,test'}],referenceLimit:1};
+ assert.equal(e.adapter.inputFor({...context,agentAnalysisEngine:'grok'}).engine,'grok');
+ assert.equal(e.adapter.inputFor({...context,agentAnalysisEngine:'local'}).engine,'local');
+ assert.equal(e.adapter.inputFor(context).engine,'local');
 });

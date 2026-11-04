@@ -65,7 +65,23 @@ test('theme scope differs from strict partial editing at the final compiled prom
   assert.ok(theme.prompt.includes('MAJOR 10,000'));
   const partial=pipeline.compileQwenPlan({prompt:'只修改按钮颜色',uiPlan:{...base,visualMode:'partial',layoutMode:'partial',layoutChanges:['只修改按钮颜色']}},{prompt:'只修改按钮颜色，所有内容和位置不变',references,generationIntent:'edit',preserveLayout:true});
   assert.match(partial.prompt,/全部操作图标及功能状态逐项保留/);
+  assert.match(partial.prompt,/除用户明确要求改动的部分外/);
+  assert.match(partial.prompt,/不得遗漏或重复/);
+  assert.match(partial.prompt,/不新增用户未要求的功能，不编造未提供的数值/);
   assert.doesNotMatch(partial.prompt,/全部人物、装饰、道具与图标外观必须/);
+});
+
+test('local revision permits a requested new control while protecting other controls', () => {
+  const pipeline=runtime().NovaFlowUiDesignPromptPipeline;
+  const references=[{role:'layout',dataUrl:'data:image/png;base64,layout'}];
+  const instruction='在顶部新增搜索按钮，其他控件保持不变';
+  const uiPlan={version:1,layoutReference:1,layoutMode:'partial',visualMode:'partial',
+    references:[{index:1,role:'layout'}],layoutChanges:[instruction],grids:[],preserve:['menu']};
+  const result=pipeline.compileQwenPlan({prompt:instruction,uiPlan},{prompt:instruction,references,generationIntent:'iteration',preserveLayout:true});
+  assert.ok(result.prompt.includes('新增搜索按钮'));
+  assert.match(result.prompt,/除用户明确要求改动的部分外，全部操作图标及功能状态逐项保留/);
+  assert.match(result.prompt,/不新增用户未要求的功能/);
+  assert.ok(result.prompt.includes('menu'));
 });
 
 test('real UI assistant and compiler retain repeated styles and unmentioned references through ten images', async () => {

@@ -29,9 +29,11 @@ app.whenReady().then(async () => {
   assert.match(await run(`document.querySelector('#policy').textContent`), /等待管理员命名/);
   assert.equal(await run(`document.querySelector('#task').textContent`), '未接收任务');
   assert.equal(await run(`document.querySelectorAll('.tabs .tab').length`), 2);
+  assert.equal(await run(`!!document.querySelector('#pauseClaims')`), false, 'maintenance pause control is not shown to users');
   assert.equal(await run(`!!document.querySelector('#tab-settings, #registrationCode, #workerName, #connection, #websiteLink, #policyLink')`), false);
   assert.equal(await run(`document.querySelector('#launcher-actions').getBoundingClientRect().bottom <= document.querySelector('main').getBoundingClientRect().bottom`), true);
-  assert.equal(await run(`document.querySelector('main').scrollHeight <= document.querySelector('main').clientHeight`), true, 'compact status including footer fits without scrolling');
+  const initialSize = await run(`({scroll:document.querySelector('main').scrollHeight,client:document.querySelector('main').clientHeight})`);
+  assert.equal(initialSize.scroll <= initialSize.client, true, 'compact status including footer fits without scrolling: ' + JSON.stringify(initialSize));
   if (process.env.NOVAFLOW_TEST_SCREENSHOT_DIR) {
     fs.mkdirSync(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, { recursive: true });
     fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, 'compute-assistant-pending.png'), (await win.webContents.capturePage()).toPNG());
@@ -53,11 +55,29 @@ app.whenReady().then(async () => {
   await run(`document.querySelector('[data-tab="status"]').click();document.querySelector('#website').click()`);
   await new Promise(resolve => setTimeout(resolve, 100));
   assert(actions.includes('website'));
-  state = { ...state, pendingApproval: false, runtimeReady: true, policy: { enabled: true, owner_enabled: true, sharing_enabled: false }, comfy: { image: true } };
+  state = { ...state, pendingApproval: false, runtimeReady: true, policy: { enabled: true, owner_enabled: true, sharing_enabled: false }, comfy: { image: true },
+    resources: {cpu:{percent:31,temperature:null}, gpu:{percent:48,temperature:55}, ram:{used:8*1024**3,total:16*1024**3}, vram:{used:4*1024**3,total:16*1024**3}} };
   win.webContents.send('compute:state', state);
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.match(await run(`document.querySelector('#status').textContent`), /节点已连接/);
   assert.match(await run(`document.querySelector('#policy').textContent`), /本人使用：已开通/);
+  assert.equal(await run(`document.querySelector('#cpuUsage').textContent`), '31% · 温度不可用');
+  assert.equal(await run(`document.querySelector('#gpuUsage').textContent`), '48% · 55°C');
+  assert.match(await run(`document.querySelector('#ramUsage').textContent`), /8\.0 \/ 16\.0 GB · 50%/);
+  assert.match(await run(`document.querySelector('#vramUsage').textContent`), /4\.0 \/ 16\.0 GB · 25%/);
+  assert.equal(await run(`document.querySelector('#freeMemory').disabled`), false);
+  win.webContents.send('compute:state', { ...state, claimsPaused: true });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.equal(await run(`document.querySelector('#activityBadge').textContent`), '接单已暂停', 'maintenance state remains visible');
+  assert.equal(await run(`!!document.querySelector('#pauseClaims')`), false);
+  win.webContents.send('compute:state', state);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.equal(await run(`document.querySelector('#activityBadge').textContent`), '空闲', 'normal operation resumes when maintenance ends');
+  win.webContents.send('compute:state', { ...state, currentTaskId:'fixture-task' });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.equal(await run(`document.querySelector('#freeMemory').disabled`), true, 'no manual release during a task');
+  win.webContents.send('compute:state', state);
+  await new Promise(resolve => setTimeout(resolve, 100));
   if (process.env.NOVAFLOW_TEST_SCREENSHOT_DIR) fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, 'compute-assistant-ready.png'), (await win.webContents.capturePage()).toPNG());
   const statusLayout = () => run(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const main=document.querySelector('main'), footer=document.querySelector('.footer-note').getBoundingClientRect(), action=document.querySelector('#website').getBoundingClientRect();

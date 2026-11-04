@@ -59,6 +59,7 @@ test('cloud UI references use UI instructions while drawing retains its existing
   const helpers=source.slice(source.indexOf('function isUiDesignPromptPayload('),source.indexOf('function buildGrokPromptOptimizeRequest('));
   const fn=helpers+source.slice(source.indexOf('function buildGrokImageReverseRequest('),source.indexOf('function isGrokResponseAttemptResultUsable('));
   const context={
+    DEFAULT_RUNNINGHUB_LLM_MODEL:'fixture-grok',
     miniMaxH3ReverseMode:()=>false,miniMaxH3ChildSensitiveRequest:()=>false,smartAiSupportsNegativePrompt:()=>true,isSmartAiAnimationPayload:()=>false,
     smartAiCurrentPrompt:p=>p.prompt,normalizeSmartAiText:v=>String(v || ''),
     selectGrokSmartAiImageScenario:p=>({scenario:'role_reference',images:p.images,sourceCount:p.images.length,targetIndex:0}),
@@ -125,6 +126,15 @@ function workbench(project) {
   const handle=globalThis.NovaFlowUiDesignWorkbench.mount({host,getProject:()=>current,getResources:()=>[{id:'r',dataUrl:'data:image/png;base64,AA=='}],getResults:()=>[],getGenerationState:()=>({provider:'local'}),onProjectChange:value=>current=value,onSelectionChange(){}});
   return {handle,project:()=>current};
 }
+test('agent layout batches use native blocks and connections while preserving unrelated modules',()=>{
+ const {handle,project}=workbench({width:512,height:512,blocks:[],graph:{nodes:[],edges:[]}});
+ handle.addBlock();const old=handle.getLayout().data.blocks[0];
+ const result=handle.applyLayout({width:512,height:512,blocks:[{name:'设置',purpose:'精确标题“设置”',x:180,y:40,width:152,height:48},{name:'音乐',x:64,y:150,width:384,height:64},{name:'音效',x:64,y:240,width:384,height:64},{name:'关闭',x:160,y:370,width:192,height:56}]});
+ assert.equal(result.data.blocks.length,5);assert.deepEqual(result.data.blocks.find(b=>b.id===old.id),old);assert.ok(project().graph.edges.some(e=>e.kind==='layout'&&e.fromNodeId===result.id));
+ const button=result.data.blocks.find(b=>b.name==='关闭');handle.applyLayout({width:512,height:512,blocks:[{id:button.id,name:'关闭',purpose:'金色按钮',x:160,y:370,width:192,height:56}]});
+ assert.equal(handle.getLayout().data.blocks.length,5);assert.equal(handle.getLayout().data.blocks.find(b=>b.id===button.id).purpose,'金色按钮');
+ const before=JSON.stringify(project());assert.throws(()=>handle.applyLayout({width:512,height:512,blocks:[{id:'invented',name:'错误',x:0,y:0,width:100,height:100}]}),/已变化/);assert.equal(JSON.stringify(project()),before);
+});
 test('optional layout draft, module edits, one reference, removal and undo preserve saved data',()=>{
   const {handle,project}=workbench({width:1024,height:1024,blocks:[],graph:{nodes:[],edges:[]}});
   assert.equal(project().graph.nodes.filter(n=>n.type==='generator').length,1);
@@ -172,4 +182,11 @@ test('legacy excluded and locked modules remain included, editable and removable
   assert.equal(handle.removeSelection(),true);
   assert.equal(handle.getLayout().data.blocks.length,0);
   handle.destroy();
+});
+
+test('assistant block selection uses the native callback without modifying saved layout geometry',()=>{
+ const f=workbench({width:512,height:512,blocks:[],graph:{nodes:[],edges:[]}});f.handle.addBlock();
+ const block=f.handle.getLayout().data.blocks[0],before=JSON.stringify(f.project());
+ const result=f.handle.selectBlock(block.id);assert.equal(result.blockId,block.id);assert.equal(f.handle.getSelection().blockId,block.id);
+ assert.equal(JSON.stringify(f.project()),before);assert.throws(()=>f.handle.selectBlock('missing'));assert.equal(f.handle.getSelection().blockId,block.id);f.handle.destroy();
 });

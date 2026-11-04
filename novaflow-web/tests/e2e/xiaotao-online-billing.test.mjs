@@ -122,11 +122,11 @@ await test('companion reserves the estimate, settles the RH amount, and releases
   });
   const result = await service.reply({
     user: { id: 'user' },
-    payload: { requestId: 'vision-fixture-123', mode: 'chat', promptLanguage: 'en', message: '看一下', history: [], images: [{ role: 'attachment', dataUrl: PNG }], uploads: [{ kind: 'video', name: 'clip.mp4' }] }
+    payload: { requestId: 'vision-fixture-123', mode: 'chat', promptLanguage: 'en', message: '看一下', history: [], images: [{ role: 'attachment', dataUrl: PNG }] }
   });
   assert.equal(events[0][0], 'reserve');
   assert.equal(events[0][1], 'xiaotao-vision');
-  assert.equal(events[0][2], estimateXiaotaoOnlineCredits({ text: '看一下\n参考视频：clip.mp4', files: [{ kind: 'image' }], system: xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' }), outputTokens: 2048 }).credits);
+  assert.equal(events[0][2], estimateXiaotaoOnlineCredits({ text: '看一下', files: [{ kind: 'image' }], system: xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' }), outputTokens: 2048 }).credits);
   assert.deepEqual(events[1], ['settle', 'xiaotao-vision', Math.ceil(0.01 * 211 * 1.5), 0.01, 'rh_consume_money']);
   assert.equal(result.quota.settled_credits, Math.ceil(0.01 * 211 * 1.5));
   assert.equal(result.quota.billing_mode, 'token');
@@ -140,10 +140,8 @@ await test('companion reserves the estimate, settles the RH amount, and releases
     }),
     fetchImpl: async () => Response.json({ id: 'cmpl-video', model: 'chat-fixture', choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '已记下视频。' } }], usage: { thirdPartyConsumeMoney: '0.0100' } })
   });
-  await videoService.reply({ user: { id: 'user' }, payload: { requestId: 'video-only-1234', mode: 'chat', promptLanguage: 'en', message: '看一下', history: [], uploads: [{ kind: 'video', name: 'clip.mp4' }] } });
-  assert.equal(videoOnly[0].feature, 'xiaotao-text');
-  assert.equal(videoOnly[0].estimatedCredits, estimateXiaotaoOnlineCredits({ text: '看一下\n参考视频：clip.mp4', files: [], system: xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' }), outputTokens: 2048 }).credits);
-  assert.ok(videoOnly[0].estimatedCredits < estimateXiaotaoOnlineCredits({ text: '看一下', files: [{ kind: 'image' }] }).credits);
+  await assert.rejects(videoService.reply({ user: { id: 'user' }, payload: { requestId: 'video-only-1234', mode: 'chat', promptLanguage: 'en', message: '看一下', history: [], uploads: [{ kind: 'video', name: 'clip.mp4' }] } }), /暂不支持分析音频或视频/);
+  assert.equal(videoOnly.length, 0, 'unsupported media must be rejected before reserving credits');
   let released = 0;
   const failing = createCompanionChat({
     provider: { baseUrl: 'https://provider.test/v1', model: 'fixture', apiKey: 'secret' },
@@ -171,7 +169,7 @@ await test('the composer estimate matches the charge-path formula and local mode
     assert.equal(sandbox.NovaFlowFeatureCreditPrices.estimateXiaotaoOnline(sample).credits, estimateXiaotaoOnlineCredits(sample).credits);
   }
   const source = readFileSync(new URL('../../renderer/xiaotao-art-agent.js', import.meta.url), 'utf8');
-  assert.match(source, /约\$\{quote\.credits\}分/);
+  assert.match(source, /预估\$\{quote\.credits\}分/);
   assert.match(source, /实扣 \$\{settled\} \$\{unit\}/);
   assert.match(source, /本次实扣 \$\{settled\} \$\{unit\}/);
   assert.match(source, /预估 \$\{estimated\}/);

@@ -75,6 +75,18 @@ test('Responses multimodal input becomes one chat completion without tools or th
   assert.doesNotMatch(JSON.stringify(chat), new RegExp(KEY));
 });
 
+test('billing integrity preserves top-level cache hits and rejects contradictory provider counters', () => {
+  const make=usage=>chatCompletionToResponses({model:'deepseek/deepseek-v4.1-flash',
+    choices:[{finish_reason:'stop',message:{content:'fixture'}}],usage},{includeBillingIntegrity:true}).usage;
+  const base={prompt_tokens:10000,completion_tokens:1000,total_tokens:11000,prompt_cache_hit_tokens:4000,prompt_cache_miss_tokens:6000};
+  const top=make(base);assert.equal(top.billing_token_usage_invalid,false);assert.equal(top.prompt_tokens_details.cached_tokens,4000);
+  const numericString=make({...base,prompt_cache_hit_tokens:'4000',prompt_cache_miss_tokens:'6000'});
+  assert.equal(numericString.billing_token_usage_invalid,false);assert.equal(numericString.prompt_tokens_details.cached_tokens,4000);
+  assert.equal(make({...base,prompt_tokens_details:{cached_tokens:4000}}).billing_token_usage_invalid,false);
+  assert.equal(make({...base,prompt_tokens_details:{cached_tokens:3999}}).billing_token_usage_invalid,true);
+  assert.equal(make({...base,prompt_cache_miss_tokens:5999}).billing_token_usage_invalid,true);
+  assert.equal(make({prompt_tokens:10000,completion_tokens:1000,prompt_cache_miss_tokens:6000}).billing_token_usage_invalid,true);
+});
 test('chat completion maps back to a completed Responses answer and hides upstream secrets', async () => {
   const mapped = chatCompletionToResponses({
     id: 'cmpl-1',
@@ -218,4 +230,14 @@ test('provider errors stay in Chinese and only busy, server and timeout failures
   let timeouts = 0;
   await assert.rejects(postRunningHubResponses({ body, config, delay: noWait, fetchImpl: async () => { timeouts++; throw Object.assign(new Error(secret), { name: 'TimeoutError' }); } }), error => error.message === '在线模型响应超时' && !error.message.includes(secret));
   assert.equal(timeouts, 3);
+});
+
+test('timeouts during connection or response body keep their category through the H3 envelope',async()=>{
+ const {miniMaxH3FailureEnvelope}=await import('../../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs');
+ const body={model:'fixture',input:[{role:'user',content:[{type:'input_text',text:'hello'}]}]};
+ for(const stage of ['connection','body']){
+  const timeout=()=>{throw Object.assign(new Error('private transport message'),{name:'TimeoutError'});};
+  const fetchImpl=async()=>stage==='connection'?timeout():{ok:true,status:200,text:async()=>timeout()};
+  await assert.rejects(postRunningHubResponses({body,config:{apiKey:KEY,model:'fixture',baseUrl:DEFAULT_RUNNINGHUB_LLM_BASE_URL},fetchImpl,maxRetries:0}),error=>error.statusCode===504&&error.code==='ETIMEDOUT'&&miniMaxH3FailureEnvelope(error).failureCategory==='timeout'&&!error.message.includes('private'));
+ }
 });

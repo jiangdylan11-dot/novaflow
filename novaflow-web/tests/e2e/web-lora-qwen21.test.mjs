@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { createContext, runInContext } from 'node:vm';
 import { createWorkerLoraCatalog } from '../../worker/src/models/lora-catalog.mjs';
+import { qwenEditLoraAvailable } from '../../worker/src/worker-core.mjs';
+import { QWEN21_EDIT_LORA_NAME } from '../../packages/shared/src/workflow-modules.mjs';
 import { startLocalServer } from '../../worker/src/local-server.mjs';
 
 const require = createRequire(import.meta.url);
@@ -167,6 +169,19 @@ try {
   check(() => assert.ok(catalogLib.compatible(split, header)));
   await assert.rejects(workerCatalog.validateGraph(graph21('qwen/for2511.safetensors')), /不兼容/);
   checks += 1;
+
+  // The versioned edit capability uses the actual catalog and validates
+  // tensor shapes against the exact Turbo model, not just the file name.
+  const turbo = join(models, 'diffusion_models', 'Qwen-Image-2.1-Turbo-BF16.gguf');
+  const target = join(models, 'loras', ...QWEN21_EDIT_LORA_NAME.split('/'));
+  await writeFile(turbo, gguf(q21Tensors));
+  await writeFile(target, safetensors(lora(q21Tensors, 'comfy')));
+  names.push(QWEN21_EDIT_LORA_NAME);
+  assert.equal(await qwenEditLoraAvailable(true, workerCatalog), true); checks += 1;
+  await writeFile(target, safetensors(broken));
+  assert.equal(await qwenEditLoraAvailable(true, workerCatalog), false); checks += 1;
+  await rm(target);
+  await rm(turbo);
 
   // A node without a 2.1 model reports why instead of an empty success.
   await rm(join(models, 'diffusion_models', 'qwen-image-2.1-test-Q8_0.gguf'));

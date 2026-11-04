@@ -73,7 +73,7 @@ test('model choices contain only providers and leave acceleration under the para
  assert.ok(select.children.every(x=>x.value!=='local-turbo'),'UI acceleration is a separate switch, not a second local provider');
 });
 
-test('the local acceleration control follows NSFW and is absent from cloud parameter fields',()=>{
+test('local acceleration and the new LoRA switch remain absent from cloud parameter fields',()=>{
  const c=createContext({NovaFlowArtGenerateModels:models});runInContext(readFileSync(new URL('../../renderer/art-generate-mode.tool.js',import.meta.url),'utf8'),c);
  const nsfw={id:'nsfw'},fast={id:'fast'};
  const fields=c.NovaFlowArtGenerateModeTool.renderParameterFields({state:{provider:'local'},createElement:()=>({}),nsfwSwitch:nsfw,accelerationSwitch:fast,renderNumber:()=>({}),renderSeedToggle:()=>({})});

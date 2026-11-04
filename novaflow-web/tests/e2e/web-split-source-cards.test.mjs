@@ -52,6 +52,8 @@ const world = () => {
   const resources = [{ id: 'A', fileName: 'a.png' }, { id: 'B', fileName: '3.png' }];
   const ctx = {
     Math, Date, String, Number, Error, JSON, atob,
+    invalidateArtAgentWorkspace() {},
+    notifyUiLayerProjectChange() {},
     log: [],
     SPLIT_SET_SOURCE_ORIGIN: 'source-tool',
     state: {

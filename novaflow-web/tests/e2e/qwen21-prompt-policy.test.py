@@ -34,6 +34,12 @@ class QwenPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compile_agent_english(request, result, lambda *a, **k: 'Two red balls and the English title Spring plan at the bottom.')
 
+    def test_ui_uses_edit_attributes_and_reference_roles_instead_of_t2i_description(self):
+        text = policy_for({"targetEngine": "qwen-2.1", "surface": "ui-design"})
+        for value in ["UI参考编辑", "修改对象和属性", "概括性保留", "文字逐字", "输出原有UI规划合同", "不新增按钮"]:
+            self.assertIn(value, text)
+        self.assertNotIn("从观察完成画面的角度", text)
+
 
 if __name__ == "__main__":
     unittest.main()
