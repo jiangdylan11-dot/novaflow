@@ -28,6 +28,67 @@
 (function (root) {
   'use strict';
 
+  // Operation-v3 can use the legacy whole-credit contract or the explicit
+  // decimal-v1 contract. Unknown or partially deployed policies never opt in.
+  function decimalCreditPolicy(terms) {
+    return terms?.credit_amount_policy==='decimal-v1' && terms?.credit_precision===6 && terms?.credit_rounding==='ceil' && terms?.minimum_positive_credits===0;
+  }
+  function operationCreditPolicy(terms) {
+    if(terms?.billing_scope!=='operation') return false;
+    const hasDecimalMarker=['credit_amount_policy','credit_precision','credit_rounding'].some(key=>Object.hasOwn(terms,key));
+    return hasDecimalMarker ? decimalCreditPolicy(terms) : terms.minimum_positive_credits===1;
+  }
+  // Parse the number's canonical decimal form rather than tolerating binary
+  // rounding error: values beyond six decimal places must fail closed.
+  function validCreditAmount(value, decimal=false) {
+    if(typeof value!=='number' || !Number.isFinite(value) || value<0) return false;
+    if(!decimal) return Number.isSafeInteger(value);
+    const match=/^(0|[1-9]\d*)(?:\.(\d{1,6}))?$/.exec(String(value));
+    if(!match) return false;
+    const micros=BigInt(match[1])*1000000n+BigInt((match[2]||'').padEnd(6,'0'));
+    return micros<=BigInt(Number.MAX_SAFE_INTEGER);
+  }
+  function validOperationQuote(value, terms) {
+    return validCreditAmount(value, decimalCreditPolicy(terms)) && (decimalCreditPolicy(terms) || value>=1);
+  }
+  function validOperationReceipt(receipt, terms) {
+    const decimal=decimalCreditPolicy(terms);
+    return receipt?.status==='settled' && ['success','cancel'].includes(receipt.outcome) &&
+      validCreditAmount(receipt.charged,decimal) && (decimal || receipt.outcome!=='success' || receipt.charged>=1) &&
+      validCreditAmount(receipt.uncollected,decimal);
+  }
+
+  const XIAOTAO_ONLINE_ART_RELEASE_ENABLED = false;
+  // H3 first/last-frame vision remains closed until real-page and ledger
+  // acceptance; its independent video and vision policies must also agree.
+  const XIAOTAO_H3_VISION_RELEASE_ENABLED = true;
+  // The selected-model text-only draft uses the existing art operation and
+  // remains independently constrained by server policy and decimal readiness.
+  const XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED = true;
+  // Scoped visual art still requires server policy, user consent and session binding.
+  const XIAOTAO_ONLINE_VISION_ART_RELEASE_ENABLED = true;
+  // The control-plane and installed worker must both support frozen reference
+  // manifests before this opt-in is changed. Existing H3 submissions remain
+  // on their original route while the capability is closed.
+  const H3_IDEMPOTENT_TASK_RELEASE_ENABLED = false;
+  // A model-proposed rotation must not use a generic or read-only node route.
+  // Availability remains false unless the authenticated control plane confirms
+  // the selected owned node and the separately enabled candidate route.
+  const QWEN_ROTATION_CANDIDATE_ID = /^fa047a0a-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const QWEN_ROTATION_REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const QWEN_PLAN_SCOPE = 'qwen-foart-plan-v1';
+  const QWEN_PLAN_REQUEST_FILE = 'qwen-foart-plan-request.json';
+  const QWEN_IMAGE_EDIT_SCOPE = 'qwen21-local-image-edit-v1';
+  const QWEN_IMAGE_EDIT_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-local-image-edit-v1';
+  const QWEN_IMAGE_EDIT_REQUEST_FILE = 'qwen21-local-image-edit-request.json';
+  function qwenImageEditLanguage(prompt,requirements){
+    const instruction=String(requirements||'').trim()||String(prompt||'');
+    const descriptive=instruction.replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|(?<![A-Za-z0-9])'[^'\r\n]+'(?![A-Za-z0-9])|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/gu,'');
+    return /[\u3400-\u9fff]/u.test(descriptive)?'zh':'en';
+  }
+  // Result objects can only acquire this binding after a server-authenticated
+  // task roundtrip; model-provided fields are never treated as task identity.
+  const qwenPlanBindings = new WeakMap();
   const CONFIG = Object.assign({
     controlUrl: 'http://127.0.0.1:4890',
     authUrl: 'https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend',
@@ -56,6 +117,12 @@
   // stack lines); only a message the node wrote for people is passed on, neutralised.
   function taskErrorText(task) {
     const raw = String((task && (task.error_message || task.error_code)) || '');
+    // Only a terminal task carrying the server's explicit confirmation may
+    // say the compute was closed. A dropped heartbeat or worker abort by
+    // itself is ambiguous and must keep its existing message.
+    if (task && ['failed','cancelled','expired'].includes(task.status) && task.error_code === 'compute_closed_confirmed') return '算力已关闭';
+    if (task && task.status === 'failed' && task.error_code === 'h3_result_unknown') return '任务结果与扣费状态待核，请勿重复提交';
+    if (task && task.status === 'failed' && task.error_code === 'compute_lease_expired') return '算力连接已失效，任务已中断';
     if (task && task.status === 'cancelled') return '任务已中止';
     if (task && task.status === 'expired') return '任务超时，请重试';
     if (/out of memory|CUDA|显存/i.test(raw)) return '算力节点显存不足，请降低分辨率或数量后重试';
@@ -75,7 +142,7 @@
   // node alone - also from a page the local assistant opened, whose own machine is the default.
   const NODE_KEY = 'novaflow.web.compute.node.v1';
   const NODE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  let computeNode = null;
+  let computeNode = null, computeNodeEpoch = 0;
   try {
     const saved = JSON.parse(root.localStorage.getItem(NODE_KEY) || 'null');
     if (saved && NODE_ID.test(String(saved.id))) computeNode = { id: String(saved.id), name: String(saved.name || '') };
@@ -94,8 +161,14 @@
   }
 
   // ---------------------------------------------------------------- session
-  let session = null;
+  let session = null, foartSessionEpoch = 0;
+  const foartSessionObservers=new Set();
+  function invalidateFoartSession(){
+    foartSessionEpoch++;
+    for(const observer of [...foartSessionObservers]){try{observer();}catch{/* Never interrupt login or logout. */}}
+  }
   function currentSession() {
+    const previousToken=session?.token || '';
     try {
       const savedRaw = root.localStorage.getItem(CLIENT_AUTH_KEY);
       const primaryRaw = root.localStorage.getItem(SESSION_KEY);
@@ -109,9 +182,125 @@
         ? { token: saved.session.token, user: saved.user || primary?.user || null }
         : primary?.token ? primary : null;
     } catch (_) { /* private mode may only retain the in-memory session */ }
+    if((session?.token||'')!==previousToken)foartSessionEpoch++;
     return session;
   }
   currentSession();
+  root.addEventListener?.('storage',event=>{
+    if(event.key===SESSION_KEY||event.key===CLIENT_AUTH_KEY||event.key===null)invalidateFoartSession();
+  });
+  root.addEventListener?.('novaflow-client-auth-changed',invalidateFoartSession);
+  function foartStoredIdentity(){
+    try {
+      const saved=JSON.parse(root.localStorage.getItem(CLIENT_AUTH_KEY)||'null');
+      const primary=JSON.parse(root.localStorage.getItem(SESSION_KEY)||'null');
+      const value=saved?.session?.token?saved.session:primary?.token?primary:null;
+      if(!value||typeof value.token!=='string'||!value.token.startsWith('nfs_'))return null;
+      if(value.refreshToken!=null&&typeof value.refreshToken!=='string')return null;
+      if(value.expiresAt!=null&&value.expiresAt!==''&&!['string','number'].includes(typeof value.expiresAt))return null;
+      return {token:value.token,refreshToken:value.refreshToken||'',expiresAt:value.expiresAt??''};
+    } catch{return null;}
+  }
+  function captureFoartSessionGuard(){
+    if(typeof root.addEventListener!=='function'||typeof root.removeEventListener!=='function')return null;
+    const persisted=()=>{try{return root.NovaFlowClientAuth?.hasPersistedSessionIdentity?.()===true;}catch{return false;}};
+    if(!persisted())return null;
+    const identity=foartStoredIdentity(),active=currentSession(),epoch=foartSessionEpoch;
+    if(!identity||active?.token!==identity.token)return null;
+    let expiresAtMs;
+    try {
+      const part=identity.token.slice(4).split('.')[0].replace(/-/g,'+').replace(/_/g,'/');
+      const exp=Number(JSON.parse(root.atob(part.padEnd(Math.ceil(part.length/4)*4,'='))).exp);
+      if(!Number.isSafeInteger(exp)||exp<=0)return null;
+      expiresAtMs=exp*1000;if(!Number.isSafeInteger(expiresAtMs))return null;
+      if(identity.expiresAt!==''){
+        const numeric=Number(identity.expiresAt);
+        const stored=Number.isFinite(numeric)&&numeric>0?(numeric<1_000_000_000_000?numeric*1000:numeric):Date.parse(String(identity.expiresAt));
+        if(!Number.isFinite(stored)||stored<=0)return null;
+        expiresAtMs=Math.min(expiresAtMs,stored);
+      }
+    } catch{return null;}
+    if(expiresAtMs<=Date.now())return null;
+    const guard=()=>{
+      const now=foartStoredIdentity(),current=currentSession();
+      return persisted()&&!!now&&current?.token===identity.token&&now.token===identity.token&&now.refreshToken===identity.refreshToken&&
+        now.expiresAt===identity.expiresAt&&foartSessionEpoch===epoch&&Date.now()<expiresAtMs;
+    };
+    Object.defineProperty(guard,'expiresAtMs',{value:expiresAtMs});return guard;
+  }
+  function captureFoartBillingOwner(){
+    const current=captureFoartSessionGuard(),token=currentSession()?.token;
+    if(typeof current!=='function'||!current()||typeof token!=='string')return null;
+    try {
+      const part=token.slice(4).split('.')[0].replace(/-/g,'+').replace(/_/g,'/');
+      const owner=JSON.parse(root.atob(part.padEnd(Math.ceil(part.length/4)*4,'=')))?.sub;
+      return typeof owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(owner) ? {owner,current} : null;
+    }catch{return null;}
+  }
+  // Only a non-secret operation identifier and label survive refresh. Tickets,
+  // prompts, pictures and project context stay in memory and are never stored.
+  const operationRecoveryPrefix='novaflow.xiaotao-operation-recovery.v1:';
+  const operationRecoveryId=id=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const operationRecoveryModel=id=>['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver'].includes(id);
+  function operationRecoveryList(binding) {
+    try {
+      const storage=root.localStorage;
+      if(!binding?.current?.()||!storage||!Number.isSafeInteger(storage.length)||typeof storage.key!=='function'||
+        typeof storage.getItem!=='function'||typeof storage.setItem!=='function'||typeof storage.removeItem!=='function')return null;
+      const prefix=operationRecoveryPrefix+binding.owner+':',rows=[];
+      for(let i=0;i<storage.length;i++){
+        const key=storage.key(i);if(typeof key!=='string'||!key.startsWith(prefix))continue;
+        const id=key.slice(prefix.length),row=JSON.parse(storage.getItem(key));
+        if(!operationRecoveryId(id)||!row||row.operationId!==id||!operationRecoveryModel(row.modelId)||
+          Object.keys(row).sort().join(',')!=='modelId,operationId')return null;
+        rows.push({operationId:id,modelId:row.modelId});
+      }
+      return binding.current()?rows:null;
+    }catch{return null;}
+  }
+  function operationRecoveryRemember(binding,operationId,modelId,allowExisting=false) {
+    try {
+      const rows=operationRecoveryList(binding);
+      if(!rows||!operationRecoveryId(operationId)||!operationRecoveryModel(modelId))return false;
+      const key=operationRecoveryPrefix+binding.owner+':'+operationId,value=JSON.stringify({operationId,modelId});
+      const existing=root.localStorage.getItem(key);
+      if(existing!==null)return allowExisting===true&&existing===value&&binding.current();
+      if(allowExisting===true)return false;
+      if(rows.length>=100)return false;
+      root.localStorage.setItem(key,value);
+      return binding.current()&&root.localStorage.getItem(key)===value;
+    }catch{return false;}
+  }
+  function operationRecoveryForget(binding,operationId) {
+    try {
+      if(!binding?.current?.()||!operationRecoveryId(operationId))return false;
+      const key=operationRecoveryPrefix+binding.owner+':'+operationId;
+      if(!operationRecoveryList(binding)?.some(row=>row.operationId===operationId))return false;
+      root.localStorage.removeItem(key);return binding.current()&&root.localStorage.getItem(key)===null;
+    }catch{return false;}
+  }
+  async function operationRecoveryStatus(operationId,forgetSettled=false) {
+    const binding=captureFoartBillingOwner();
+    if(!binding||!operationRecoveryId(operationId)||!operationRecoveryList(binding)?.some(row=>row.operationId===operationId))
+      return {ok:false,error:'登录会话或待核记录不可用。'};
+    try {
+      const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
+      const response=await api(base,'POST','/api/web/companion/operation/status',{operationId},20000);
+      if(!binding.current())return {ok:false,error:'登录会话已变化，请重新查询。'};
+      const value=response?.operation,status=value?.status;
+      if(response?.ok!==true||value?.operationId!==operationId||!['pending-reconciliation','pending-settlement','in-progress','settled','unknown'].includes(status))throw Error();
+      // Use this operation's own immutable pricing snapshot, never today's
+      // global policy: legacy receipts carry none of the four markers.
+      if(status==='settled'){
+        const hasMarker=['credit_amount_policy','credit_precision','credit_rounding','minimum_positive_credits'].some(key=>Object.hasOwn(value,key));
+        if(hasMarker&&!decimalCreditPolicy(value))throw Error();
+        if(!['success','cancel'].includes(value.outcome)||!validCreditAmount(value.charged,hasMarker)||!validCreditAmount(value.uncollected,hasMarker))throw Error();
+      }
+      if(forgetSettled&&(status!=='settled'||value.uncollected!==0))return {ok:false,error:'账单尚未完整结算，记录会继续保留。'};
+      if(forgetSettled&&!operationRecoveryForget(binding,operationId))throw Error();
+      return {ok:true,operation:{operationId,status,...(status==='settled'?{outcome:value.outcome,charged:value.charged,uncollected:value.uncollected}:{})}};
+    }catch{return {ok:false,error:'账单状态暂时无法查询，请稍后再试；不要重复提交。'};}
+  }
 
   // The published site can run behind a Cloudflare Pages gate (deploy/_worker.js)
   // that serves the application code only to a logged-in browser. A <script src>
@@ -131,6 +320,7 @@
   }
 
   function saveSession(next) {
+    invalidateFoartSession();
     session = next;
     try {
       if (next) root.localStorage.setItem(SESSION_KEY, JSON.stringify(next));
@@ -210,11 +400,14 @@
     if (/\/api\/client\/bootstrap$|\/api\/web\/me$/.test(clean)) return;
     const balance = balanceFromPayload(parsed);
     if (balance == null || balance === '') return;
-    notifyAccountBalance(balance, 'charge');
+    // The response can belong to an older account/session, including when a
+    // cross-tab storage event has not yet been delivered. Refresh the current
+    // account instead of painting a balance from this response.
+    if (currentSession()?.token) notifyAccountBalance(undefined, 'charge');
   }
 
   async function localControl(method, path, body, timeoutMs = 30000) {
-    if (!CONFIG.localAssistant) throw new Error('请从 Foart 官网进入工作区，并连接 Foart 算力助手');
+    if (!CONFIG.localAssistant) throw new Error('请从 Foart 官网进入工作区，并连接 Foart');
     const res = await fetch(CONFIG.localOrigin + path, { method,
       headers: { 'content-type': 'application/json', 'x-novaflow-local': localKey },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
@@ -231,7 +424,754 @@
   const PROMPT_ASSISTANT_TIMEOUT_MS = 16 * 60 * 1000;
   const pooledPromptRequests = new Map();
   const pooledConversationNodes = new Map();
-  async function localPromptAssistant(action, payload) {
+  // Capture the selected brain from this tab only. No fallback to another
+  // local model or a paid provider when the selection is unavailable.
+  async function selectedBusinessPrompt(action, payload = {}) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {ok:false,errorCode:'invalid-request',error:'请求格式不正确。'};
+    if (Object.hasOwn(payload,'assistantSelectionScope') && payload.assistantSelectionScope !== 'xiaotao') return {ok:false,errorCode:'invalid-request',error:'模型选择范围无效，本次未提交。'};
+    const scoped = payload.assistantSelectionScope === 'xiaotao' || Object.hasOwn(payload,'assistantProvider') || Object.hasOwn(payload,'assistantModelId') || Object.hasOwn(payload,'assistantSelectionEpoch');
+    if (!scoped) return localPromptAssistant(action,payload);
+    const {assistantSelectionScope,assistantSelectionEpoch,...request} = payload;
+    const nodeEpoch=computeNodeEpoch;
+    const controller = root.NovaFlowXiaotaoArtAgent?.panel?.controller;
+    const read = controller?.businessModelSnapshot;
+    const selected = typeof read === 'function' ? read() : null;
+    if (!selected || typeof selected.modelId !== 'string' || typeof selected.provider !== 'string' || !Number.isSafeInteger(selected.epoch))
+      return {ok:false,errorCode:'assistant-selection-unavailable',error:'请先打开小桃并选择模型，再使用此功能。'};
+    if (payload.assistantSelectionEpoch !== undefined && payload.assistantSelectionEpoch !== selected.epoch)
+      return {ok:false,errorCode:'assistant-selection-mismatch',error:'模型选择已变化，请重新操作。'};
+    if(selected.provider==='api'&&action==='video-draft-prompt')return selectedOnlineVideoDraft(payload,selected,controller);
+    if(action==='video-draft-prompt')return {ok:false,errorCode:'video-draft-unavailable',error:'当前模型尚未接通视频文字草稿，未提交或扣费。'};
+    if(selected.provider==='api'&&action==='ui-draft-prompt')return selectedOnlineUiDraft(payload,selected,controller);
+    if(selected.provider==='local'&&selected.modelId==='qwen3.5-9b-heretic'&&action==='ui-draft-prompt')return selectedQwenUiDraft(payload,selected,controller);
+    if(selected.provider==='api'&&action==='rewrite-audio-prompt')return selectedOnlineAudioRewrite(payload,selected,controller);
+    if(selected.provider==='api'&&action==='describe-art-style')return selectedOnlineStyleAnalysis(payload,selected,controller);
+    if(selected.provider==='local'&&selected.modelId==='qwen3.5-9b-heretic'&&action==='describe-art-style')return selectedQwenStyleAnalysis(payload,selected,controller);
+    if(selected.provider==='api')return selectedOnlineBusinessPrompt(action,payload,selected,controller);
+    if(!qwenBusinessAvailable())return {ok:false,errorCode:'qwen-business-unavailable',error:'本地业务试用未开放或当前节点未就绪，未提交。'};
+    if (selected.provider !== 'local' || selected.modelId !== 'qwen3.5-9b-heretic')
+      return {ok:false,errorCode:'assistant-business-model-unavailable',error:'所选模型暂未接通此功能；没有切换模型或扣费。'};
+    if ((payload.assistantProvider !== undefined && payload.assistantProvider !== selected.provider)
+      || (payload.assistantModelId !== undefined && payload.assistantModelId !== selected.modelId))
+      return {ok:false,errorCode:'assistant-selection-mismatch',error:'模型选择已变化，请重新发起。'};
+    if(action==='optimize-prompt' && payload.localImageEdit===true)
+      return selectedQwenImageEdit(payload,selected,controller);
+    // The installed Qwen business trial currently supports only two text
+    // tasks. Reject media before creating or uploading a task, not after the
+    // node receives private inputs.
+    const textOnlyFailure={ok:false,errorCode:'qwen-business-text-only',error:'当前 Qwen 仅支持纯文字绘图、视频提示词优化和音频文字改写；图片或音视频素材分析尚未开放，本次未提交。'};
+    if (!['optimize-prompt','rewrite-audio-prompt'].includes(action)) return textOnlyFailure;
+    const artText=payload.surface==='art' && payload.purpose==='optimize' && payload.targetEngine==='qwen-2.1' && payload.qwenPromptMode==='txt2img';
+    const h3Text=payload.surface==='animation' && payload.purpose==='minimax-h3-prompt-enhance' &&
+      ['text_video','image_video','first_last','multi_reference'].includes(payload.h3Mode);
+    if (action==='optimize-prompt' && !artText && !h3Text) return textOnlyFailure;
+    if (action==='optimize-prompt' && h3Text && !qwen21NativeRewriteV3Available())
+      return {ok:false,errorCode:'qwen-h3-node-unavailable',error:'当前本人节点尚未确认支持视频文字优化，请更新算力助手后重试。'};
+    const mediaKeys=new Set(['uploads','attachments','files','images','image','imageurl','imageurls','imagedata','imagedataurl','imagedataurls','photo','photos','picture','pictures','references','referenceimages','referenceimage','referenceimageurl','referenceimageurls','referenceframes','h3referenceframes','videoframes','audio','video','audiodataurl','videodataurl','media','mediadataurl']);
+    const stack=[[payload,0]],seen=new Set();let nodes=0;
+    while(stack.length){
+      const [value,depth]=stack.pop();if(++nodes>1000 || depth>16)return textOnlyFailure;
+      if(typeof value==='string'){if(/data:(?:image|audio|video)\//i.test(value)||/<image\s*\d+>|@(?:参考图|reference\s*image)\s*\d+|__NOVAFLOW_RESOURCE_MENTION_[A-Z0-9_:-]+__/i.test(value))return textOnlyFailure;continue;}
+      if(!value || typeof value!=='object')continue;
+      if(seen.has(value))return textOnlyFailure;seen.add(value);
+      if(Array.isArray(value)){for(const item of value)stack.push([item,depth+1]);continue;}
+      for(const [key,item] of Object.entries(value)){const normalized=key.toLowerCase().replace(/[_-]/g,'');
+        if(mediaKeys.has(normalized) && item!=null && item!=='' && (!Array.isArray(item)||item.length>0))return textOnlyFailure;
+        if((normalized==='type'||normalized==='kind') && typeof item==='string' && /^(?:image|audio|video)(?:\/|$)/i.test(item))return textOnlyFailure;
+        stack.push([item,depth+1]);}
+    }
+    const sessionGuard=taskMode()==='local'?null:captureFoartSessionGuard();
+    if(taskMode()!=='local'&&(!sessionGuard||typeof root.setTimeout!=='function'||typeof root.clearTimeout!=='function'))
+      return {ok:false,errorCode:'assistant-session-unavailable',error:'账号会话无法核验或已过期，本次未提交。'};
+    const isCurrent=()=>{
+      if(computeNodeEpoch!==nodeEpoch || root.NovaFlowXiaotaoArtAgent?.panel?.controller!==controller || (sessionGuard&&!sessionGuard()))return false;
+      const current=read();return current?.provider===selected.provider && current?.modelId===selected.modelId && current?.epoch===selected.epoch;
+    };
+    if(typeof controller?.subscribeBusinessModel!=='function')return {ok:false,errorCode:'assistant-selection-unavailable',error:'模型状态不可核验，未提交。'};
+    const requestId=typeof request.requestId==='string' && request.requestId ? request.requestId : root.crypto?.randomUUID?.();
+    if(!requestId)return {ok:false,errorCode:'invalid-request',error:'无法创建请求编号，未提交。'};
+    let cancelPromise=null,notifyChanged,sessionInvalidated=false,sessionTimer=null;
+    const changed=new Promise(resolve=>{notifyChanged=resolve;});
+    const onChange=()=>{if(!cancelPromise){cancelPromise=cancelPromptAssistantRequest({requestId});notifyChanged();}};
+    const onSessionChange=()=>{
+      if(sessionGuard&&!sessionGuard()){sessionInvalidated=true;onChange();}
+    };
+    const checkSessionExpiry=()=>{
+      if(!sessionGuard)return;
+      if(!sessionGuard()){sessionInvalidated=true;onChange();return;}
+      sessionTimer=root.setTimeout(checkSessionExpiry,Math.min(2_147_483_647,Math.max(1,sessionGuard.expiresAtMs-Date.now())));
+      sessionTimer?.unref?.();
+    };
+    const unsubscribe=controller.subscribeBusinessModel(onChange);
+    if(typeof root.addEventListener==='function')root.addEventListener('novaflow:compute-node',onChange);
+    if(sessionGuard){foartSessionObservers.add(onSessionChange);checkSessionExpiry();}
+    try {
+      if(!isCurrent())return sessionGuard&&!sessionGuard()
+        ? {ok:false,errorCode:'assistant-session-unavailable',error:'账号会话已变化或过期，本次未提交。'}
+        : {ok:false,errorCode:'assistant-selection-changed',error:'模型选择已变化，未提交。'};
+      const work=localPromptAssistant(action,{...request,requestId,assistantProvider:selected.provider,assistantModelId:selected.modelId},{isCurrent});
+      const result=await Promise.race([work,changed.then(()=>null)]);
+      if(sessionGuard&&!sessionGuard()){sessionInvalidated=true;onChange();}
+      if(!isCurrent() || cancelPromise){
+        const cancellation=cancelPromise ? await cancelPromise : null;
+        if(sessionInvalidated)return {ok:false,errorCode:'assistant-session-cancel-unconfirmed',error:'账号会话已变化或过期，旧任务取消和资源释放尚未确认，请核对节点状态。'};
+        return {ok:false,errorCode: cancellation && cancellation.ok===false ? 'assistant-selection-cancel-unconfirmed':'assistant-selection-changed',
+          error:cancellation && cancellation.ok===false ? '模型或节点已切换；取消未确认，请核对节点状态。' : '模型或节点已切换，正在尝试取消旧任务；停止和资源释放尚未确认。'};
+      }
+      return result;
+    } finally {unsubscribe();if(sessionTimer!==null)root.clearTimeout(sessionTimer);if(typeof root.removeEventListener==='function'){
+      root.removeEventListener('novaflow:compute-node',onChange);
+      if(sessionGuard)foartSessionObservers.delete(onSessionChange);
+    }}
+  }
+  async function selectedQwenImageEdit(payload,selected,controller) {
+    const fail=message=>({ok:false,errorCode:'qwen-image-edit-unavailable',error:message});
+    if(!qwen21LocalImageEditAvailable() || selected.provider!=='local' || selected.modelId!=='qwen3.5-9b-heretic')
+      return fail('当前本人节点尚未确认支持参考图优化，请更新算力助手后重试。');
+    const images=payload.images,roles=['subject','style','pose','background','material','color','composition','lighting','object','result','output','attachment','reference'];
+    if(payload.surface!=='art'||payload.purpose!=='optimize'||payload.targetEngine!=='qwen-2.1'||payload.qwenPromptMode!=='img2img'||payload.nsfw===true||
+      !Array.isArray(images)||images.length<1||images.length>3||images.some(image=>!image||!roles.includes(image.role)||typeof image.dataUrl!=='string'||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image.dataUrl))||
+      typeof payload.currentPrompt!=='string'||!payload.currentPrompt.trim()||payload.currentPrompt.length>4000||
+      typeof payload.requirements!=='string'||payload.requirements.length>2000||typeof payload.negativePrompt!=='string'||payload.negativePrompt.length>12000||
+      typeof payload.isImageInputCurrent!=='function'||typeof payload.selectionStillCurrent!=='function'||!QWEN_ROTATION_REQUEST_ID.test(String(payload.requestId||'')))
+      return fail('参考图优化输入无效，请检查 1–3 张图片和提示词。');
+    const originals=images.map(image=>({role:image.role,dataUrl:image.dataUrl}));
+    const epoch=computeNodeEpoch,session=captureFoartSessionGuard(),node=computeNode?.id;
+    if(typeof session!=='function'||session()!==true||!node||typeof controller?.subscribeBusinessModel!=='function')return fail('当前账号或节点无法确认。');
+    const current=()=>{try {const now=controller.businessModelSnapshot();return !payload.signal?.aborted && session()===true && computeNodeEpoch===epoch && computeNode?.id===node &&
+      qwen21LocalImageEditAvailable() && root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller && now?.provider===selected.provider && now?.modelId===selected.modelId && now?.epoch===selected.epoch &&
+      payload.isImageInputCurrent()===true && payload.selectionStillCurrent()===true && images.length===originals.length && originals.every((image,index)=>images[index]?.role===image.role&&images[index]?.dataUrl===image.dataUrl);}catch{return false;}};
+    if(!current())return fail('图片、模型或节点已变化，请重试。');
+    const request={requestId:payload.requestId,mode:'image-edit',images:originals,currentPrompt:payload.currentPrompt,
+      requirements:payload.requirements,negativePrompt:payload.negativePrompt,promptContract:'qwen21-native-rewrite-v3'};
+    if(new TextEncoder().encode(JSON.stringify(request)).byteLength>16*1024*1024)
+      return fail('参考图片和文字合计超过 16 MiB，请缩小图片后重试。');
+    if(typeof root.Image!=='function')return fail('无法读取参考图尺寸，请刷新页面后重试。');
+    let cancelled=false,notifyChanged,timer=null;
+    const changed=new Promise(resolve=>{notifyChanged=resolve;});
+    const cancel=()=>{if(!cancelled){cancelled=true;void Promise.resolve(cancelPromptAssistantRequest({requestId:request.requestId})).catch(()=>{});notifyChanged();}};
+    const sessionChanged=()=>{if(session()!==true)cancel();};
+    const watchExpiry=()=>{if(session()!==true){cancel();return;}timer=root.setTimeout(watchExpiry,Math.min(2_147_483_647,Math.max(1,session.expiresAtMs-Date.now())));timer?.unref?.();};
+    if(typeof root.addEventListener!=='function'||typeof root.removeEventListener!=='function'||typeof root.setTimeout!=='function'||typeof root.clearTimeout!=='function'||!Number.isSafeInteger(session.expiresAtMs))
+      return fail('当前会话无法持续核验，未提交。');
+    const unsubscribe=controller.subscribeBusinessModel(cancel);
+    root.addEventListener('novaflow:compute-node',cancel);foartSessionObservers.add(sessionChanged);watchExpiry();
+    payload.signal?.addEventListener('abort',cancel,{once:true});
+    try {
+      const work=(async()=>{
+        for(const image of originals){
+          const size=await new Promise((resolve,reject)=>{const decoded=new root.Image();
+            decoded.onload=()=>resolve({width:decoded.naturalWidth,height:decoded.naturalHeight});
+            decoded.onerror=()=>reject(new Error('参考图无法解码，请重新选择。'));decoded.src=image.dataUrl;});
+          if(!current())throw new Error('图片、模型或节点已变化，请重试。');
+          if(!Number.isSafeInteger(size.width)||!Number.isSafeInteger(size.height)||size.width<1||size.height<1||size.width>8192||size.height>8192||size.width*size.height>24000000)
+            throw new Error('单张参考图不得超过 8192×8192 或 2400 万像素。');
+        }
+        return pooledPromptAssistant('optimize-prompt',request,{qwenImageEdit:true,isCurrent:current});
+      })();
+      const result=await Promise.race([work,changed.then(()=>null)]);
+      if(cancelled||!current())return fail('图片、模型、节点或会话已变化，正在尝试取消旧任务；资源释放尚未确认。');
+      return result;
+    }
+    catch(error){return fail(String(error?.message||error));}
+    finally {if(timer!==null)root.clearTimeout(timer);unsubscribe?.();root.removeEventListener('novaflow:compute-node',cancel);foartSessionObservers.delete(sessionChanged);payload.signal?.removeEventListener('abort',cancel);}
+  }
+
+  // Standalone text rewrite only. Never call this inside a multi-step tool operation.
+  function incompleteSettlementMessage(receipt) {
+    return `本次已扣 ${receipt.charged} 积分，另有 ${receipt.uncollected} 积分未结算，请核对账单。`;
+  }
+  async function selectedQwenStyleAnalysis(payload,selected,controller) {
+    const no=(errorCode,error)=>({ok:false,errorCode,error});
+    const keys=['requestId','name','purpose','dataUrl','supplement','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','confirmNodeUpload','isInputCurrent'];
+    if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||typeof payload.isInputCurrent!=='function'||typeof controller?.subscribeBusinessModel!=='function')
+      return no('style-analysis-unavailable','模型或素材状态检查不可用，未提交。');
+    const id=payload.requestId,kind=payload.purpose||'style',hasImage=kind!=='aifx-supplement';
+    if(!NODE_ID.test(String(id||''))||!['style','aifx-material','aifx-supplement'].includes(kind))return no('invalid-request','风格分析请求无效，未提交。');
+    if(hasImage&&(typeof payload.confirmNodeUpload!=='function'||typeof payload.name!=='string'||payload.name.length>120||typeof payload.dataUrl!=='string'||payload.dataUrl.length>Math.ceil(20*1024*1024/3)*4+128||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(payload.dataUrl)||payload.supplement!==undefined))
+      return no('style-reference-invalid','请选择一张有效的参考图并确认发送，未提交。');
+    if(!hasImage&&(payload.dataUrl!==undefined||payload.name!==undefined||typeof payload.supplement!=='string'||!payload.supplement.trim()||payload.supplement.length>20000))return no('invalid-request','补充说明无效，未提交。');
+    const request={mode:'style-analysis',kind,assistantProvider:'local',assistantModelId:selected.modelId,requestId:id,...(hasImage?{image:{role:kind==='style'?'style':'material',name:payload.name,dataUrl:payload.dataUrl}}:{supplement:Array.from(payload.supplement.replace(/\s+/g,' ').trim()).slice(0,400).join('')})};
+    const nodeId=computeNode?.id||'',nodeEpoch=computeNodeEpoch,sessionGuard=captureFoartSessionGuard();
+    if(taskMode()!=='shared'||!NODE_ID.test(nodeId)||!sessionGuard||!sessionGuard())return no('style-node-required','请选择当前账号自己的在线节点并登录，未提交。');
+    let cancelled=false,cancelPromise=null,timer=null;
+    const current=()=>{try{const x=controller.businessModelSnapshot();return !cancelled&&!payload.signal?.aborted&&sessionGuard()&&payload.isInputCurrent()===true&&root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch&&computeNodeEpoch===nodeEpoch&&computeNode?.id===nodeId;}catch{return false;}};
+    const onChange=()=>{cancelled=true;if(!cancelPromise)cancelPromise=cancelPromptAssistantRequest({requestId:id});};
+    const unsubscribe=controller.subscribeBusinessModel(onChange);if(typeof unsubscribe!=='function')return no('style-analysis-unavailable','模型状态不可核验，未提交。');
+    root.addEventListener('novaflow:compute-node',onChange);foartSessionObservers.add(onChange);payload.signal?.addEventListener?.('abort',onChange,{once:true});
+    timer=root.setTimeout(onChange,Math.min(2147483647,Math.max(1,sessionGuard.expiresAtMs-Date.now())));
+    try {
+      const ownNode=async()=>{const response=await control('GET','/api/web/nodes');if(!current())return null;const nodes=(response?.nodes||[]).filter(n=>n?.id===nodeId&&n.is_owner===true&&n.can_use===true&&n.online===true);return nodes.length===1?nodes[0]:null;};
+      const node=await ownNode();if(!node)return no('style-node-unavailable','所选节点不是当前账号可用的自有节点，未提交。');
+      const caps=await control('GET','/api/web/capabilities');if(!current()||caps?.features?.qwen35StyleAnalysisKinds?.[kind]!==true||caps?.features?.qwen35StyleOwnerLeaseBound!==true)return no('style-analysis-unavailable','当前节点尚不支持此类 Qwen 风格分析，未提交。');
+      if(hasImage){const name=String(node.name||'未命名节点').replace(/[\u0000-\u001f\u007f]/g,'').slice(0,80);
+        if(await payload.confirmNodeUpload({nodeName:name,nodeIdSuffix:nodeId.slice(-8),count:1,retentionHours:24,retentionGuarantee:false,storage:'owned-node-task-directory'})!==true||!current())return no('style-upload-declined','已取消参考图发送，未提交。');
+        const confirmed=await ownNode();if(!confirmed||String(confirmed.name||'未命名节点').replace(/[\u0000-\u001f\u007f]/g,'').slice(0,80)!==name||!current())return no('style-node-changed','节点状态已变化，请重新确认，未提交。');}
+      const result=await pooledPromptAssistant('describe-art-style',request,{isCurrent:current});
+      if(!current())return no('style-selection-changed','模型、节点或素材已变化，结果未显示。');
+      if(result?.ok!==true||result.modelIdentity?.id!=='qwen35-heretic'||result.modelIdentity?.verification!=='server-weight-path'||result.resourcesReleased!==true)
+        return no('style-analysis-incomplete',result?.error||'风格分析未完成，未应用结果。');
+      if(kind==='style'&&(typeof result.style!=='string'||!result.style.trim()))return no('style-analysis-incomplete','风格分析结果不完整。');
+      if(kind==='aifx-material'&&(!result.material||typeof result.material!=='object'))return no('style-analysis-incomplete','材质分析结果不完整。');
+      if(kind==='aifx-supplement'&&(typeof result.supplement!=='string'||!result.supplement.trim()))return no('style-analysis-incomplete','补充说明结果不完整。');
+      return {...result,free:true};
+    }catch(error){return no('style-analysis-failed',String(error?.message||error));}
+    finally{if(timer!==null)root.clearTimeout(timer);unsubscribe();root.removeEventListener('novaflow:compute-node',onChange);foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);}
+  }
+  async function selectedQwenUiDraft(payload,selected,controller) {
+    const no=(errorCode,error)=>({ok:false,errorCode,error});
+    const keys=['request','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','confirmNodeUpload','isInputCurrent'];
+    if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||
+      payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
+      typeof payload.confirmNodeUpload!=='function'||typeof payload.isInputCurrent!=='function'||typeof controller?.subscribeBusinessModel!=='function')
+      return no('ui-draft-unavailable','节点确认或状态检查不可用，未提交。');
+    let request;try{request=structuredClone(payload.request);}catch{return no('invalid-request','UI 草稿输入无效，未提交。');}
+    const refs=request?.references,id=request?.requestId;
+    if(!NODE_ID.test(String(id||''))||!Array.isArray(refs)||refs.length<1||refs.length>3||
+      !refs.every(x=>x&&typeof x.dataUrl==='string')||refs.reduce((n,x)=>n+x.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256)
+      return no('ui-reference-limit','UI 草稿最多 3 张参考图、合计 20 MiB，未提交。');
+    const nodeId=computeNode?.id||'',nodeEpoch=computeNodeEpoch,sessionGuard=captureFoartSessionGuard();
+    if(taskMode()!=='shared'||!NODE_ID.test(nodeId)||!sessionGuard||!sessionGuard())
+      return no('ui-node-required','请选择当前账号自己的算力节点并登录，未提交。');
+    let cancelled=false,cancelPromise=null,timer=null;
+    const current=()=>{try{const x=controller.businessModelSnapshot();return !cancelled&&!payload.signal?.aborted&&sessionGuard()&&payload.isInputCurrent()===true&&
+      root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch&&
+      computeNodeEpoch===nodeEpoch&&computeNode?.id===nodeId;}catch{return false;}};
+    const onChange=()=>{cancelled=true;if(!cancelPromise)cancelPromise=cancelPromptAssistantRequest({requestId:id});};
+    const unsubscribe=controller.subscribeBusinessModel(onChange);
+    if(typeof unsubscribe!=='function')return no('ui-draft-unavailable','模型状态不可核验，未提交。');
+    root.addEventListener('novaflow:compute-node',onChange);foartSessionObservers.add(onChange);
+    payload.signal?.addEventListener?.('abort',onChange,{once:true});
+    timer=root.setTimeout(onChange,Math.min(2147483647,Math.max(1,sessionGuard.expiresAtMs-Date.now())));
+    try{
+      const ownNode=async()=>{const response=await control('GET','/api/web/nodes');if(!current())return null;
+        const nodes=(response?.nodes||[]).filter(n=>n?.id===nodeId&&n.is_owner===true&&n.can_use===true&&n.online===true);
+        return nodes.length===1?nodes[0]:null;};
+      const node=await ownNode();if(!node)return no('ui-node-unavailable','所选节点不是当前账号可用的自有节点，未提交。');
+      const caps=await control('GET','/api/web/capabilities');
+      if(!current()||caps?.features?.qwen35UiDraft!==true||caps?.features?.qwen35UiOwnerLeaseBound!==true)return no('ui-draft-unavailable','该自有节点尚未支持 Qwen UI 草稿，未提交。');
+      const name=String(node.name||'未命名节点').replace(/[\u0000-\u001f\u007f]/g,'').slice(0,80);
+      if(await payload.confirmNodeUpload({nodeName:name,nodeIdSuffix:nodeId.slice(-8),count:refs.length})!==true||!current())
+        return no('ui-upload-declined','已取消参考图发送，未提交。');
+      const confirmed=await ownNode();
+      if(!confirmed||String(confirmed.name||'未命名节点').replace(/[\u0000-\u001f\u007f]/g,'').slice(0,80)!==name||!current())
+        return no('ui-node-changed','节点状态已变化，请重新确认，未提交。');
+      const result=await pooledPromptAssistant('reverse-image-prompt',{mode:'ui-draft',epoch:selected.epoch,request,requestId:id},{isCurrent:current});
+      if(!current())return no('ui-selection-changed','模型、节点或 UI 已变化，未采用结果。');
+      if(result?.ok!==true||result.draft?.status!=='preview-only'||result.draft?.applyAvailable!==false)
+        return no('ui-draft-incomplete',result?.error||'UI 草稿未完成，未应用。');
+      return {ok:true,draft:result.draft,modelIdentity:{id:selected.modelId},free:true};
+    }catch(error){return no('ui-draft-failed',String(error?.message||error));}
+    finally{if(timer!==null)root.clearTimeout(timer);unsubscribe();root.removeEventListener('novaflow:compute-node',onChange);
+      foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);}
+  }
+  async function selectedOnlineVideoDraft(payload,selected,controller) {
+    let submitted=false,settled=false,recoveryId='';
+    const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!settled?{billingUnknown:true}:{}),...extra});
+    const keys=['request','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isInputCurrent'];
+    if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
+       typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof payload.isInputCurrent!=='function'||typeof controller?.subscribeBusinessModel!=='function')
+      return no('video-draft-unavailable','视频草稿确认或状态检查不可用，未提交。');
+    let intent;try{intent=structuredClone(payload.request);}catch{return no('invalid-request','视频草稿输入无效，未提交。');}
+    const id=intent?.requestId,fields=['mode','requestId','h3Mode','durationSeconds','prompt','requirements','references','images'];
+    if(!intent||typeof intent!=='object'||Array.isArray(intent)||Object.keys(intent).some(k=>!fields.includes(k))||intent.mode!=='video-rewrite'||!operationRecoveryId(id)||
+      !['text_video','image_video','first_last','multi_reference'].includes(intent.h3Mode)||typeof intent.durationSeconds!=='number'||!Number.isFinite(intent.durationSeconds)||intent.durationSeconds<1||intent.durationSeconds>30||
+      typeof intent.prompt!=='string'||!intent.prompt.trim()||intent.prompt.length>1500||(intent.requirements!==undefined&&(typeof intent.requirements!=='string'||intent.requirements.length>1000))||
+      /data:(?:image|audio|video)\//i.test(intent.prompt+' '+(intent.requirements||''))||!Array.isArray(intent.references)||intent.references.length>15||
+      !intent.references.every(ref=>ref&&typeof ref==='object'&&!Array.isArray(ref)&&Object.keys(ref).every(k=>['key','kind','sourceId'].includes(k))&&typeof ref.key==='string'&&ref.key.length>0&&ref.key.length<=80&&['image','video','audio'].includes(ref.kind)&&typeof ref.sourceId==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(ref.sourceId)))
+      return no('invalid-request','视频文字草稿输入无效，未提交。');
+    const hasImages=Object.hasOwn(intent,'images');
+    if(hasImages&&(XIAOTAO_H3_VISION_RELEASE_ENABLED!==true||intent.h3Mode!=='first_last'||typeof payload.confirmImageUpload!=='function'||
+      !Array.isArray(intent.images)||intent.images.length!==2||intent.images.some((image,index)=>!image||typeof image!=='object'||Array.isArray(image)||
+        Object.keys(image).some(key=>!['key','dataUrl'].includes(key))||image.key!==['first_frame','last_frame'][index]||typeof image.dataUrl!=='string'||
+        !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image.dataUrl))||
+      intent.images.reduce((total,image)=>total+image.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256))
+      return no('video-vision-unavailable','首尾帧图片分析尚未开通或素材无效，未上传或扣费。');
+    if(!operationRecoveryModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+      return no('assistant-business-unavailable','所选模型或请求不可用，未提交。');
+    const imageStamp=hasImages?JSON.stringify(intent.images):'';
+    const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
+    if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录状态不可用，未提交。');
+    const abort=new AbortController();let cancelled=false;
+    const current=()=>{try{const x=controller.businessModelSnapshot();return (!hasImages||JSON.stringify(intent.images)===imageStamp)&&!cancelled&&!abort.signal.aborted&&!payload.signal?.aborted&&owner.current()&&guard()&&payload.isInputCurrent()===true&&root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch;}catch{return false;}};
+    const onChange=()=>{cancelled=true;abort.abort();};
+    const unsubscribe=controller.subscribeBusinessModel(onChange);if(typeof unsubscribe!=='function')return no('assistant-selection-unavailable','模型状态不可用，未提交。');
+    foartSessionObservers.add(onChange);payload.signal?.addEventListener?.('abort',onChange,{once:true});
+    let timer;const expiry=setTimeout(onChange,Math.min(2147483647,Math.max(1,guard.expiresAtMs-Date.now())));
+    companionCloudRequests.set(id,abort);
+    try {
+      if(!current())return no('assistant-selection-changed','模型、会话或视频内容已变化，未提交。');
+      const pricing=await companionPricing(),policy=pricing?.policy,terms=policy?.config?.xiaotao_online;
+      if(!current()||pricing?.ok!==true||!/^sha256:[a-f0-9]{64}$/.test(policy?.version||'')||!Number.isFinite(policy.expiresAt)||Date.now()>=policy.expiresAt||
+        terms?.operation_video_rewrite_v3!==true||!operationCreditPolicy(terms)||
+        !Array.isArray(policy.models)||!policy.models.some(m=>m.id===selected.modelId&&m.available===true))
+        return no('video-draft-unavailable','所选模型的视频文字草稿未开通或价格不可用，未提交。');
+      if(hasImages&&(terms.operation_vision_chat_v3!==true||!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(selected.modelId)))
+        return no('video-vision-unavailable','所选模型尚未开通首尾帧图片分析，未上传或扣费。');
+      // prepare already transmits the signed image intent to the server, so
+      // explicit user upload consent must occur before that first request.
+      if(hasImages&&(await payload.confirmImageUpload({count:2,images:intent.images,roles:['first_frame','last_frame']})!==true||!current()))
+        return no('assistant-business-upload-declined','已取消首尾帧上传，未提交或扣费。');
+      if(Date.now()>=policy.expiresAt)return no('companion-pricing-changed','在线价格已过期，请重新发送；本次未上传或扣费。');
+      timer=setTimeout(onChange,180000);
+      const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
+      const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
+      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
+        !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==1200||Date.now()>=policy.expiresAt)
+        return no('companion-pricing-changed','报价或视频内容已变化，未执行。');
+      const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
+      if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消报价或内容已变化，未执行。');
+      if(!operationRecoveryRemember(owner,op.operationId,selected.modelId))return no('operation-recovery-unavailable','无法保存对账记录，未执行。');
+      recoveryId=op.operationId;if(!current())return no('assistant-selection-changed','请求状态已变化，未执行。');
+      submitted=true;companionCloudUsed.add(id);
+      const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
+      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
+      if(!validOperationReceipt(receipt,terms))
+        return no('operation-status-unknown','账单状态待核对，请勿重复提交。');
+      const quota={status:'settled',settled_credits:receipt.charged,quote_estimated_credits:op.estimatedCredits,...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
+      if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
+      let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
+      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
+      if(settled&&owner.current())operationRecoveryForget(owner,recoveryId);
+      if(!current())return no('assistant-selection-changed','模型或视频内容已变化，草稿未显示。',{quota});
+      const draft=result?.videoDraft;
+      if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0||!draft||draft.textOnly!==!hasImages||draft.h3Mode!==intent.h3Mode||draft.durationSeconds!==intent.durationSeconds||
+        typeof draft.displayPrompt!=='string'||!draft.displayPrompt.trim()||draft.displayPrompt.length>12000||typeof draft.modelPrompt!=='string'||!draft.modelPrompt.trim()||draft.modelPrompt.length>12000) {
+        // Only translate known server codes after the receipt and account guard
+        // were verified; never show untrusted server text or retry a paid call.
+        let message='视频草稿未通过校验，未回填或生成；已产生的费用按回执结算。';
+        if(receipt.uncollected>0)message=incompleteSettlementMessage(receipt);
+        else if(result.ok===false&&result.errorCode==='operation-video-draft-invalid'&&receipt.outcome==='cancel')message='模型已返回，但视频草稿未通过内容或格式校验；已产生的费用按回执结算，未回填或生成。';
+        else if(result.ok===false&&result.errorCode==='operation-provider-output-invalid'&&receipt.outcome==='cancel')message='模型没有返回可用的视频草稿；已产生的费用按回执结算，未回填或生成。';
+        else if(result.ok===false&&result.errorCode==='operation-cancelled-after-dispatch'&&receipt.outcome==='cancel')message='请求提交后被取消，草稿未应用；已产生的费用按回执结算。';
+        return no('video-draft-incomplete',message,{quota});
+      }
+      return {ok:true,draft:{displayPrompt:draft.displayPrompt,modelPrompt:draft.modelPrompt,h3Mode:draft.h3Mode,durationSeconds:draft.durationSeconds,textOnly:!hasImages,status:'preview-only',applyAvailable:false},modelIdentity:{id:selected.modelId},quota};
+    }catch{return no('operation-unknown',submitted?'请求结果待核对，请勿重复提交。':'请求未执行，请稍后重试。');}
+    finally {if(!submitted&&recoveryId&&owner.current())operationRecoveryForget(owner,recoveryId);clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
+  }
+
+  async function selectedOnlineUiDraft(payload,selected,controller) {
+    let submitted=false,settled=false,recoveryId='';
+    const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!settled?{billingUnknown:true}:{}),...extra});
+    const keys=['request','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isInputCurrent'];
+    if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
+       typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof payload.isInputCurrent!=='function'||typeof controller?.subscribeBusinessModel!=='function')
+      return no('ui-draft-unavailable','UI 草稿确认或状态检查不可用，未提交。');
+    let request;try {request=structuredClone(payload.request);}catch{return no('invalid-request','UI 草稿输入无效，未提交。');}
+    const id=request?.requestId,refs=request?.references;
+    if(!operationRecoveryId(id)||!Array.isArray(refs)||refs.length>3||!refs.every(x=>x&&typeof x.dataUrl==='string')||(refs.length&&typeof payload.confirmImageUpload!=='function')||
+       refs.reduce((sum,x)=>sum+x.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256)
+      return no('ui-reference-limit','UI 草稿最多 3 张参考图、合计 20 MiB，未提交。');
+    if(!operationRecoveryModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+      return no('assistant-business-unavailable','所选模型或请求不可用，未提交。');
+    const referencesStamp=JSON.stringify(refs);
+    const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
+    if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录状态不可用，未提交。');
+    const abort=new AbortController();let cancelled=false;
+    const current=()=>{try{const x=controller.businessModelSnapshot();return JSON.stringify(refs)===referencesStamp&&!cancelled&&!abort.signal.aborted&&!payload.signal?.aborted&&owner.current()&&guard()&&payload.isInputCurrent()===true&&root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch;}catch{return false;}};
+    const onChange=()=>{cancelled=true;abort.abort();};
+    const unsubscribe=controller.subscribeBusinessModel(onChange);if(typeof unsubscribe!=='function')return no('assistant-selection-unavailable','模型状态不可用，未提交。');
+    foartSessionObservers.add(onChange);payload.signal?.addEventListener?.('abort',onChange,{once:true});
+    const timer=setTimeout(onChange,180000),expiry=setTimeout(onChange,Math.min(2147483647,Math.max(1,guard.expiresAtMs-Date.now())));
+    companionCloudRequests.set(id,abort);
+    try {
+      if(!current())return no('assistant-selection-changed','模型、会话或 UI 已变化，未提交。');
+      const pricing=await companionPricing(),policy=pricing?.policy,terms=policy?.config?.xiaotao_online;
+      if(!current()||pricing?.ok!==true||!/^sha256:[a-f0-9]{64}$/.test(policy?.version||'')||!Number.isFinite(policy.expiresAt)||Date.now()>=policy.expiresAt||
+        terms?.operation_ui_draft_v3!==true||(refs.length>0&&terms?.operation_vision_chat_v3!==true)||!operationCreditPolicy(terms)||
+        !Array.isArray(policy.models)||!policy.models.some(m=>m.id===selected.modelId&&m.available===true))return no('ui-draft-unavailable','所选模型的 UI 草稿未开通或价格不可用，未提交。');
+      if(refs.length&&(await payload.confirmImageUpload({count:refs.length,images:refs})!==true||!current()))return no('assistant-business-upload-declined','已取消参考图上传，未提交。');
+      const intent={mode:'ui-draft',epoch:selected.epoch,request};
+      const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
+      const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
+      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
+        !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==2048||Date.now()>=policy.expiresAt)
+        return no('companion-pricing-changed','报价或上下文已变化，未执行。');
+      const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
+      if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消报价或上下文已变化，未执行。');
+      if(!operationRecoveryRemember(owner,op.operationId,selected.modelId))return no('operation-recovery-unavailable','无法保存账单核对记录，未执行。');
+      recoveryId=op.operationId;if(!current())return no('assistant-selection-changed','上下文已变化，未执行。');
+      submitted=true;companionCloudUsed.add(id);
+      const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
+      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
+      if(!validOperationReceipt(receipt,terms))
+        return no('operation-status-unknown','账单状态待核对，请勿重复提交。');
+      const quota={status:'settled',settled_credits:receipt.charged,quote_estimated_credits:op.estimatedCredits,...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
+      if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
+      let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
+      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单提示未更新，请核对账单。',{quota});
+      if(settled&&owner.current())operationRecoveryForget(owner,recoveryId);
+      if(!current())return no('assistant-selection-changed','模型或 UI 已变化，草稿未显示。',{quota});
+      if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0||result.uiDraft?.status!=='preview-only'||result.uiDraft?.applyAvailable!==false)
+        return no('ui-draft-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'草稿未完成，请核对实际结算。',{quota});
+      return {ok:true,draft:result.uiDraft,modelIdentity:{id:selected.modelId},quota};
+    } catch {return no('operation-unknown',submitted?'请求结果待核对，请勿重复提交。':'请求未执行，请稍后再试。');}
+    finally {if(!submitted&&recoveryId&&owner.current())operationRecoveryForget(owner,recoveryId);clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
+  }
+
+  async function prepareOnlineStyleImage(dataUrl) {
+    return await new Promise((resolve,reject)=>{
+      const img=new root.Image();
+      img.onerror=()=>reject(new Error('image-decode-failed'));
+      img.onload=()=>{try{
+        const width=img.naturalWidth||img.width,height=img.naturalHeight||img.height;
+        if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>40000000)throw Error('image-size-invalid');
+        const scale=Math.min(1,768/Math.max(width,height)),canvas=root.document.createElement('canvas');
+        canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
+        const context=canvas.getContext('2d');if(!context)throw Error('image-canvas-unavailable');
+        context.drawImage(img,0,0,canvas.width,canvas.height);
+        const result=canvas.toDataURL('image/png');if(!/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(result))throw Error('image-encode-failed');
+        resolve(result);
+      }catch(error){reject(error);}};
+      img.src=dataUrl;
+    });
+  }
+  async function selectedOnlineStyleAnalysis(payload,selected,controller) {
+    let submitted=false,settled=false,recoveryId='';
+    const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!settled?{billingUnknown:true}:{}),...extra});
+    const keys=['requestId','name','purpose','dataUrl','supplement','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isInputCurrent'];
+    if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
+       typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof payload.isInputCurrent!=='function'||typeof controller?.subscribeBusinessModel!=='function')
+      return no('style-analysis-unavailable','风格分析确认或状态检查不可用，未提交。');
+    const id=payload.requestId,kind=payload.purpose||'style',hasImage=kind!=='aifx-supplement',combined=kind==='aifx-material-supplement';
+    if(!operationRecoveryId(id)||!['style','aifx-material','aifx-supplement','aifx-material-supplement'].includes(kind)||!operationRecoveryModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+      return no('invalid-request','风格分析请求或模型不可用，未提交。');
+    if(hasImage&&(typeof payload.confirmImageUpload!=='function'||typeof payload.dataUrl!=='string'||payload.dataUrl.length>Math.ceil(20*1024*1024/3)*4+128||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(payload.dataUrl)||typeof payload.name!=='string'||payload.name.length>120||(!combined&&payload.supplement!==undefined)))
+      return no('style-reference-invalid','请选择一张有效的 PNG、JPEG 或 WebP 参考图，未提交。');
+    if((!hasImage||combined)&&((!hasImage&&(payload.dataUrl!==undefined||payload.name!==undefined))||typeof payload.supplement!=='string'||!payload.supplement.trim()||payload.supplement.length>20000))
+      return no('invalid-request','补充说明无效，未提交。');
+    const intent={mode:'style-analysis',requestId:id,kind,...(hasImage?{images:[{role:kind==='style'?'style':'material',dataUrl:payload.dataUrl}]}:{}),...(!hasImage||combined?{supplement:Array.from(payload.supplement.replace(/\s+/g,' ').trim()).slice(0,400).join('')}:{})};
+    const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
+    if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录状态不可用，未提交。');
+    const abort=new AbortController();let cancelled=false;
+    const current=()=>{try{const x=controller.businessModelSnapshot();return !cancelled&&!abort.signal.aborted&&!payload.signal?.aborted&&owner.current()&&guard()&&payload.isInputCurrent()===true&&root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch;}catch{return false;}};
+    const onChange=()=>{cancelled=true;abort.abort();};
+    const unsubscribe=controller.subscribeBusinessModel(onChange);if(typeof unsubscribe!=='function')return no('assistant-selection-unavailable','模型状态不可用，未提交。');
+    foartSessionObservers.add(onChange);payload.signal?.addEventListener?.('abort',onChange,{once:true});
+    const timer=setTimeout(onChange,180000),expiry=setTimeout(onChange,Math.min(2147483647,Math.max(1,guard.expiresAtMs-Date.now())));
+    companionCloudRequests.set(id,abort);
+    try {
+      if(!current())return no('assistant-selection-changed','模型、会话或素材已变化，未提交。');
+      if(hasImage){try{intent.images[0].dataUrl=await prepareOnlineStyleImage(intent.images[0].dataUrl);}catch{return no('style-reference-invalid','参考图无法安全解码和缩放，未提交。');}if(!current())return no('assistant-selection-changed','模型、会话或素材已变化，未提交。');Object.freeze(intent.images[0]);Object.freeze(intent.images);}
+      Object.freeze(intent);
+      const pricing=await companionPricing(),policy=pricing?.policy,terms=policy?.config?.xiaotao_online;
+      if(!current()||pricing?.ok!==true||!/^sha256:[a-f0-9]{64}$/.test(policy?.version||'')||!Number.isFinite(policy.expiresAt)||Date.now()>=policy.expiresAt||
+         terms?.operation_style_v3!==true||!operationCreditPolicy(terms)||
+         (hasImage&&(terms?.operation_vision_chat_v3!==true||!Array.isArray(terms?.operation_style_vision_models)||!terms.operation_style_vision_models.includes(selected.modelId)))||
+         !Array.isArray(policy.models)||!policy.models.some(m=>m.id===selected.modelId&&m.available===true))
+        return no('style-analysis-unavailable','所选模型的风格分析或图片能力尚未开通，未提交。');
+      if(hasImage&&(await payload.confirmImageUpload({count:1,images:intent.images})!==true||!current()))return no('assistant-business-upload-declined','已取消参考图上传，未提交。');
+      const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
+      const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
+      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
+         !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==(combined?420:kind==='aifx-material'?300:120)||Date.now()>=policy.expiresAt)
+        return no('companion-pricing-changed','报价或模型状态已变化，未执行。');
+      const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
+      if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消报价或状态已变化，未执行。');
+      if(!operationRecoveryRemember(owner,op.operationId,selected.modelId))return no('operation-recovery-unavailable','无法保存账单核对记录，未执行。');
+      recoveryId=op.operationId;if(!current())return no('assistant-selection-changed','上下文已变化，未执行。');
+      submitted=true;companionCloudUsed.add(id);
+      const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
+      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
+      if(!validOperationReceipt(receipt,terms))
+        return no('operation-status-unknown','账单状态待核对，请勿重复提交。');
+      const quota={status:'settled',settled_credits:receipt.charged,quote_estimated_credits:op.estimatedCredits,...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
+      if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
+      let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
+      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
+      if(settled&&owner.current())operationRecoveryForget(owner,recoveryId);
+      if(!current())return no('assistant-selection-changed','模型或素材已变化，结果未显示。',{quota});
+      if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0)
+        return no('style-analysis-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'分析未完成，请核对实际结算。',{quota});
+      const value=result.styleResult,only=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).every(k=>keys.includes(k)),text=(v,max)=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
+      if(kind==='style'&&only(value,['style','rawStyle'])&&text(value.style,400)&&typeof value.rawStyle==='string')return {ok:true,style:value.style,rawStyle:value.rawStyle,model:selected.modelId,quota};
+      if(kind==='aifx-supplement'&&only(value,['supplement'])&&text(value.supplement,600))return {ok:true,supplement:value.supplement,model:selected.modelId,quota};
+      if(combined&&only(value,['material','rawMaterial','supplement'])&&text(value.supplement,600)&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,supplement:value.supplement,model:selected.modelId,quota};
+      if(kind==='aifx-material'&&only(value,['material','rawMaterial'])&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,model:selected.modelId,quota};
+      return no('style-analysis-incomplete','分析结果不符合所需格式，请核对实际结算。',{quota});
+    }catch{return no('operation-unknown',submitted?'结果和账单待核对，请勿重复提交。':'请求未执行，请稍后重试。');}
+    finally {if(!submitted&&recoveryId&&owner.current())operationRecoveryForget(owner,recoveryId);clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
+  }
+  async function selectedOnlineAudioRewrite(payload,selected,controller) {
+    let submitted=false, finalReceipt=false, recoveryId='';
+    const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!finalReceipt?{billingUnknown:true}:{}),...extra});
+    const allowed=['requestId','kind','input','seconds','bpm','requirements','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload'];
+    const id=payload.requestId;
+    if(Object.keys(payload).some(k=>!allowed.includes(k))||!operationRecoveryId(id)||!['music','sfx'].includes(payload.kind)||
+      typeof payload.input!=='string'||!payload.input.trim()||payload.input.length>1500||/data:(?:image|audio|video)\//i.test(payload.input)||
+      !Number.isSafeInteger(payload.seconds)||payload.seconds<(payload.kind==='music'?8:1)||payload.seconds>(payload.kind==='music'?300:30)||
+      (payload.bpm!==undefined&&(payload.kind!=='music'||!Number.isSafeInteger(payload.bpm)||payload.bpm<40||payload.bpm>220))||
+      (payload.requirements!==undefined&&(typeof payload.requirements!=='string'||payload.requirements.length>1000||/data:(?:image|audio|video)\//i.test(payload.requirements)))||
+      payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
+      typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof controller?.subscribeBusinessModel!=='function')
+      return no('invalid-request','音频文字改写请求无效，未提交。');
+    if(!operationRecoveryModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+      return no('assistant-business-unavailable','所选模型或请求不可用，未提交。');
+    const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
+    if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录会话不可用，未提交。');
+    const abort=new AbortController();let cancelled=false;
+    const current=()=>{const x=controller.businessModelSnapshot();return !cancelled&&!abort.signal.aborted&&!payload.signal?.aborted&&owner.current()&&guard()&&root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch;};
+    const onChange=()=>{cancelled=true;abort.abort();};
+    const unsubscribe=controller.subscribeBusinessModel(onChange);if(typeof unsubscribe!=='function')return no('assistant-selection-unavailable','模型状态不可用，未提交。');foartSessionObservers.add(onChange);
+    payload.signal?.addEventListener?.('abort',onChange,{once:true});
+    const timer=setTimeout(onChange,180000),expiry=setTimeout(onChange,Math.min(2147483647,Math.max(1,guard.expiresAtMs-Date.now())));
+    companionCloudRequests.set(id,abort);
+    try {
+      if(!current())return no('assistant-selection-changed','会话或模型已变，未提交。');
+      const pricing=await companionPricing(),policy=pricing?.policy,terms=policy?.config?.xiaotao_online;
+      const rates=selected.modelId==='xai/grok-4.7'?terms?.grok_4_7_rates:terms?.model_rates?.[selected.modelId];
+      const rateValid=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0;
+      if(!current()||pricing?.ok!==true||!/^sha256:[a-f0-9]{64}$/.test(policy?.version||'')||!Number.isFinite(policy.expiresAt)||Date.now()>=policy.expiresAt||
+        terms?.operation_audio_rewrite_v3!==true||!operationCreditPolicy(terms)||!Array.isArray(policy.models)||!policy.models.some(m=>m.id===selected.modelId&&m.available===true)||
+        !rates||!rateValid(rates.input)||!rateValid(rates.output)||(selected.modelId==='xai/grok-4.7'?!rateValid(rates.cached_input):!rateValid(rates.cached))||
+        (selected.modelId==='deepseek/deepseek-v4.1-flash'&&(rates.input<=0||rates.output<=0||terms.operation_text_chat_v3!==true)))
+        return no('online-business-unavailable','所选模型的文字改写尚未开放或价格不可用，未提交。');
+      const intent={mode:'audio-rewrite',requestId:id,kind:payload.kind,input:payload.input,seconds:payload.seconds,...(payload.bpm!==undefined?{bpm:payload.bpm}:{}),...(payload.requirements!==undefined?{requirements:payload.requirements}:{})};
+      const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
+      const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
+      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
+        !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==400||Date.now()>=policy.expiresAt)
+        return no('companion-pricing-changed','报价已变化或不可用，未提交。');
+      const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
+      if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消或会话已变，未提交。');
+      if(!operationRecoveryRemember(owner,op.operationId,selected.modelId))return no('operation-recovery-unavailable','无法保存待核对账单，未提交。');
+      recoveryId=op.operationId;
+      if(!current())return no('assistant-selection-changed','会话已变，未提交。');
+      submitted=true;companionCloudUsed.add(id);
+      const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},65000,abort.signal),receipt=result?.receipt;
+      if(!current())return no('assistant-selection-changed','会话已变，请核对账单，请勿重复提交。');
+      if(!validOperationReceipt(receipt,terms))
+        return no('operation-status-unknown','结算状态待核对，请勿重复提交。');
+      notifyAccountBalance(undefined,'companion-operation');
+      const quota={status:'settled',settled_credits:receipt.charged,quote_estimated_credits:op.estimatedCredits,...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
+      if(receipt.uncollected===0)finalReceipt=true;
+      let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
+      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
+      if(finalReceipt&&owner.current())operationRecoveryForget(owner,recoveryId);
+      if(!current())return no('assistant-selection-changed','模型或会话已变化，结果未应用。',{quota});
+      if(result.ok!==true||receipt.outcome!=='success'||receipt.uncollected>0||result.model!==selected.modelId||typeof result.reply!=='string'||!result.reply.trim()||result.reply.length>4000)
+        return no('operation-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):`本次改写未完成或身份待核对，实际扣 ${receipt.charged} 积分。`,{quota});
+      return {ok:true,result:{prompt:result.reply,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota}};
+    }catch(error){return no('operation-unknown',submitted?'结果待核对，请勿重复提交。':'请求未提交，请稍后再试。');}
+    finally {if(!submitted&&recoveryId&&owner.current())operationRecoveryForget(owner,recoveryId);clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
+  }
+
+  // Online art is intentionally closed until billing and real-page acceptance.
+  async function selectedOnlineBusinessPrompt(action,payload,selected,controller) {
+    const no=(errorCode,error)=>({ok:false,errorCode,error});
+    const textOnly=payload.currentDrawingTextOnly===true && typeof XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED!=='undefined' && XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED===true;
+    const visionOnly=payload.currentDrawingVisionOnly===true && XIAOTAO_ONLINE_VISION_ART_RELEASE_ENABLED===true;
+    if(payload.currentDrawingTextOnly!==undefined && (payload.currentDrawingTextOnly!==true || !textOnly || payload.assistantSelectionScope!=='xiaotao' || payload.qwenPromptMode!=='txt2img' || !Array.isArray(payload.images) || payload.images.length!==0))
+      return no('online-business-unavailable','当前仅支持纯文字生图提示词优化，未提交或扣费。');
+    if(payload.currentDrawingVisionOnly!==undefined&&(payload.currentDrawingVisionOnly!==true||!visionOnly||payload.currentDrawingTextOnly!==undefined||payload.assistantSelectionScope!=='xiaotao'||!['txt2img','img2img'].includes(payload.qwenPromptMode)||!Array.isArray(payload.images)||payload.images.length<1||payload.images.length>3))return no('online-business-unavailable','当前图片提示词优化尚未开通，未上传或扣费。');
+    if((typeof XIAOTAO_ONLINE_ART_RELEASE_ENABLED==='undefined'||!XIAOTAO_ONLINE_ART_RELEASE_ENABLED)&&!textOnly&&!visionOnly)return no('online-business-unavailable','\u5728\u7ebf\u7f8e\u5de5\u5c1a\u672a\u5f00\u901a\uff0c\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
+    if(!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(selected.modelId) || action!=='optimize-prompt' || payload.surface!=='art')return no('assistant-business-model-unavailable','\u6240\u9009\u6a21\u578b\u5c1a\u672a\u63a5\u901a\u6b64\u4e1a\u52a1\uff0c\u672a\u5207\u6362\u6216\u6263\u8d39\u3002');
+    if((payload.assistantProvider!==undefined&&payload.assistantProvider!==selected.provider)||(payload.assistantModelId!==undefined&&payload.assistantModelId!==selected.modelId))return no('assistant-selection-mismatch','\u6a21\u578b\u9009\u62e9\u5df2\u53d8\u5316\u3002');
+    if(typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof controller?.subscribeBusinessModel!=='function')return no('assistant-business-quote-unavailable','\u62a5\u4ef7\u6216\u6a21\u578b\u72b6\u6001\u4e0d\u53ef\u7528\uff0c\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
+    return selectedOnlineArtBusiness(payload,selected,controller);
+  }
+
+  async function selectedOnlineArtBusiness(payload,selected,controller) {
+    let v3Submitted=false,v3FinalSettled=false,lastFailure=null,englishSubmitted=false,parentRequestId='';
+    const no=(errorCode,error,extra={})=>(lastFailure={ok:false,errorCode,error,...(v3Submitted&&!v3FinalSettled?{billingUnknown:true}:{}),...extra});
+    const gptImage=payload.targetEngine==='gpt-image-2.5';
+    const nativeQwen=payload.targetEngine==='qwen-2.1'&&['qwen21-native-rewrite-v2','qwen21-native-rewrite-v3'].includes(payload.promptContract);
+    const nativeEdit=nativeQwen&&payload.promptContract==='qwen21-native-rewrite-v3'&&payload.qwenPromptMode==='img2img';
+    const allowed=['requestId','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','currentDrawingTextOnly','currentDrawingVisionOnly',
+      'onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isImageInputCurrent','images','signal','surface','purpose','prompt','currentPrompt',
+      'negativePrompt','requirements','targetEngine','qwenPromptMode','agentModelLanguage','supportsNegativePrompt','promptSchema','promptContract','nsfw'];
+    if(Object.keys(payload).some(k=>!allowed.includes(k)) || !['qwen-2.1','gpt-image-2.5'].includes(payload.targetEngine) ||
+      (!gptImage&&!nativeQwen&&(payload.promptSchema!=='nf.art.prompt.v1' || payload.agentModelLanguage!=='en')) ||
+      (payload.promptContract!==undefined&&!nativeQwen) ||
+      (gptImage&&(payload.promptSchema!==undefined||payload.supportsNegativePrompt===true||payload.nsfw===true)) ||
+      !['txt2img','img2img'].includes(payload.qwenPromptMode))
+      return no('assistant-business-context-unavailable','当前美工输入尚不支持此模型，未提交或扣费。');
+    const requestId=typeof payload.requestId==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(payload.requestId)?payload.requestId:'';
+    // The existing business request UUID is the stable intent for every
+    // retry/quote of this action, not a fresh identifier for each attempt.
+    const intentId=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)?requestId:'';
+    const session=currentSession()?.token;
+    const sessionGuard=captureFoartSessionGuard();
+    if(!requestId||!intentId||!session||typeof sessionGuard!=='function'||typeof AbortController!=='function')
+      return no('assistant-selection-unavailable','会话或请求编号不可用，未提交或扣费。');
+    if(companionCloudRequests.size||companionCloudUsed.has(requestId)||companionCloudUsed.size>=1024)
+      return no('assistant-business-busy','已有在线请求，或此请求已使用。');
+    const input={currentPrompt:String(payload.currentPrompt||payload.prompt||''),requirements:String(payload.requirements||''),
+      negativePrompt:gptImage?'':String(payload.negativePrompt||''),supportsNegativePrompt:gptImage?false:payload.supportsNegativePrompt===true,
+      nsfw:payload.nsfw===true,qwenPromptMode:payload.qwenPromptMode,...(gptImage?{targetEngine:'gpt-image-2.5'}:nativeQwen?{targetEngine:'qwen-2.1',promptContract:payload.promptContract}:{})};
+    if(!input.currentPrompt.trim()||input.currentPrompt.length>20000||input.requirements.length>4000||input.negativePrompt.length>12000||
+      (payload.prompt&&payload.currentPrompt&&payload.prompt!==payload.currentPrompt)||
+      (payload.nsfw!==undefined&&typeof payload.nsfw!=='boolean')||
+      (payload.supportsNegativePrompt!==undefined&&typeof payload.supportsNegativePrompt!=='boolean'))
+      return no('invalid-request','美工输入无效，未提交或扣费。');
+    if(payload.images!==undefined&&!Array.isArray(payload.images))return no('invalid-request','参考图片格式无效，未提交或扣费。');
+    const images=[];let imageBytes=0;
+    if((payload.images||[]).length>3)return no('invalid-request','最多支持三张参考图，未提交或扣费。');
+    for(const image of payload.images||[]){
+      if(!image||!['subject','style','pose','background','material','color','composition','lighting','object','result','output','attachment','reference'].includes(image.role)||typeof image.dataUrl!=='string')
+        return no('invalid-request','参考图片角色或格式无效，未提交或扣费。');
+      if(image.dataUrl.length>Math.ceil(20*1024*1024/3)*4+64)return no('invalid-request','参考图片超过大小限制，未提交或扣费。');
+      const match=/^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(image.dataUrl);
+      if(!match||match[1].length%4!==0)return no('invalid-request','参考图片格式无效，未提交或扣费。');
+      imageBytes+=match[1].length/4*3-(match[1].endsWith('==')?2:match[1].endsWith('=')?1:0);
+      images.push(Object.freeze({role:image.role,dataUrl:image.dataUrl}));
+    }
+    if(images.length>3||imageBytes>20*1024*1024)return no('invalid-request','最多支持三张参考图且总计不超过 20 MiB，未提交或扣费。');
+    if(images.length&&(typeof payload.confirmImageUpload!=='function'||typeof payload.isImageInputCurrent!=='function'))return no('assistant-business-consent-unavailable','参考图片上传确认或当前选择校验不可用，未提交或扣费。');
+    if(images.length&&selected.modelId==='deepseek/deepseek-v4.1-flash'&&payload.currentDrawingVisionOnly!==true)return no('model-vision-unavailable','当前模型尚未确认支持参考图片，请选择支持图片的模型；未上传或扣费。');
+    Object.freeze(images);
+    const abort=new AbortController();let cancelled=false,submitted=false,lastQuota=null,stageToken='',pendingId='',recoveryOwner=null,recoveryId='',operationTerms=null;
+    const current=()=>{const x=controller.businessModelSnapshot();return !cancelled&&!payload.signal?.aborted&&
+      sessionGuard()===true&&currentSession()?.token===session&&root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&
+      x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch&&
+      (!images.length||payload.isImageInputCurrent()===true);};
+    const onChange=()=>{cancelled=true;abort.abort();};
+    const unsubscribe=controller.subscribeBusinessModel(onChange);
+    foartSessionObservers.add(onChange);
+    const expiryTimer=Number.isFinite(sessionGuard.expiresAtMs)?setTimeout(onChange,Math.min(2147483647,Math.max(1,sessionGuard.expiresAtMs-Date.now()))):null;
+    if(payload.signal?.aborted)onChange();else payload.signal?.addEventListener?.('abort',onChange,{once:true});
+    let timer;companionCloudRequests.set(requestId,abort);
+    const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
+    const notice=(id,quota,unknown)=>{try{return payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown})===true;}catch{return false;}};
+    try {
+      if(!current())return no('assistant-selection-changed','模型或会话已变，未提交。');
+      // The server's hashed policy is the trusted discriminator; omitting both
+      // quote fields must never silently downgrade an enabled v3 art operation.
+      const pricing=await companionPricing(),policy=pricing?.policy;
+      if(!current())return no('assistant-selection-changed','模型或会话已变，未提交。');
+      if(pricing?.ok!==true||!/^sha256:[a-f0-9]{64}$/.test(policy?.version||'')||!Number.isFinite(policy?.expiresAt)||Date.now()>=policy.expiresAt||
+        !policy.config?.xiaotao_online||typeof policy.config.xiaotao_online!=='object')
+        return no('companion-pricing-changed','在线积分策略不可用，本次未提交。');
+      operationTerms=policy.config.xiaotao_online;
+      const operationArtV3=operationTerms.operation_art_v3===true;
+      if(!operationArtV3 || !operationCreditPolicy(operationTerms) || ((payload.currentDrawingTextOnly===true||payload.currentDrawingVisionOnly===true)&&!decimalCreditPolicy(operationTerms)) ||
+        (payload.currentDrawingVisionOnly===true&&(operationTerms.operation_vision_chat_v3!==true||!images.length)) ||
+        !Array.isArray(policy.models) || !policy.models.some(m=>m.id===selected.modelId&&m.available===true))
+        return no('online-business-unavailable','\u5728\u7ebf\u7f8e\u5de5\u8ba1\u8d39\u7b56\u7565\u672a\u5f00\u901a\uff0c\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
+      if(images.length){
+        const accepted=await payload.confirmImageUpload({count:images.length,images});
+        if(!current())return no('assistant-selection-changed','模型或会话已变，未提交。');
+        if(accepted!==true)return no('assistant-business-upload-declined','已取消参考图片上传，未提交或扣费。');
+      }
+      if(Date.now()>=policy.expiresAt)return no('companion-pricing-changed','在线价格已过期，请重新发送；本次未提交或扣费。');
+      timer=setTimeout(onChange,180000);
+      for(const stage of (gptImage||nativeQwen?['structure']:['structure','english'])){
+        if(!current())return no('assistant-selection-changed',submitted?'模型或会话已变，请核对已提交账单。':'模型或会话已变，未提交。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:submitted&&!lastQuota});
+        const body=stage==='structure'?{stage,modelId:selected.modelId,input,intentId,epoch:selected.epoch,...(images.length?{images}:{})}
+          :{stage,stageToken,epoch:selected.epoch};
+        const quoted=await api(base,'POST','/api/web/companion/art/quote',body,20000,abort.signal);
+        if(!current())return no('assistant-selection-changed','模型或会话已变，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+        const quote=quoted?.quote;
+        if(quoted?.ok!==true||quote?.stage!==stage||quote?.model!==selected.modelId||
+          !/^[A-Za-z0-9_-]{8,100}$/.test(quote?.requestId||'')||
+          !/^sha256:[a-f0-9]{64}$/.test(quote?.pricingVersion||'')||quote.pricingVersion!==policy.version||
+          !validOperationQuote(quote?.estimatedCredits,operationTerms)||
+          (stage==='structure'&&quote.maxOutputTokens!==(gptImage?1536:nativeEdit?2048:nativeQwen?4096:6144))||
+          typeof quote?.quoteToken!=='string'||quote.quoteToken.length>180000||
+          (stage==='structure'&&images.length&&quote.imageCount!==images.length))
+          return no('assistant-business-quote-unavailable','本阶段报价不可用，未提交。',{...(lastQuota?{quota:lastQuota}:{})});
+        const hasScope=Object.hasOwn(quote,'billingScope'),hasRecoveryId=Object.hasOwn(quote,'recoveryOperationId');
+        if(hasScope!==hasRecoveryId||(operationArtV3?(!hasScope||quote.billingScope!=='operation-v3'||!operationRecoveryId(quote.recoveryOperationId)):(hasScope||hasRecoveryId))||
+          (operationArtV3&&recoveryId&&recoveryId!==quote.recoveryOperationId))
+          return no('assistant-business-quote-unavailable','操作计费信息不匹配，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+        payload.onPricingQuote({...quote,quoteToken:undefined,stage});
+        if(!current())return no('assistant-selection-changed','模型或会话已变，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+        if(await payload.confirmPricingQuote({...quote,quoteToken:undefined,stage})!==true)
+          return no('assistant-business-quote-declined','已取消当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+        if(!current())return no('assistant-selection-changed','模型或会话已变，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+        if(operationArtV3){
+          recoveryOwner=recoveryOwner||captureFoartBillingOwner();
+          if(!recoveryOwner?.current?.()||!operationRecoveryRemember(recoveryOwner,quote.recoveryOperationId,selected.modelId,stage==='english'&&recoveryId===quote.recoveryOperationId))
+            return no('billing-record-unavailable','无法保存待核对账单，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+          recoveryId=quote.recoveryOperationId;
+        } else if(!notice(quote.requestId,null,true))return no('billing-record-unavailable','无法保存待核对账单，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+        pendingId=quote.requestId;
+        if(!current())return no('assistant-selection-changed','模型或会话已变，请核对账单记录。',{...(lastQuota?{quota:lastQuota}:{})});
+        submitted=true;if(operationArtV3)v3Submitted=true;if(stage==='english')englishSubmitted=true;companionCloudUsed.add(requestId);
+        const result=await api(base,'POST','/api/web/companion/art/execute',{quoteToken:quote.quoteToken,epoch:selected.epoch,...(stage==='structure'&&images.length?{images}:{})},180000,abort.signal);
+        const stagePending=operationArtV3&&stage==='structure'&&!gptImage&&result?.ok===true&&result.stage==='structure'&&result.settlement?.requestId===quote.requestId&&result.settlement?.status==='pending'&&typeof result.stageToken==='string'&&result.stageToken.length>0&&result.stageToken.length<=180000;
+        const settled=result?.settlement?.requestId===quote.requestId&&validCreditAmount(result.settlement.settledCredits,decimalCreditPolicy(operationTerms))&&
+          (operationArtV3?(result.settlement.status==='settled'&&(result.settlement.uncollectedCredits===undefined||validCreditAmount(result.settlement.uncollectedCredits,decimalCreditPolicy(operationTerms)))):
+            result.settlement.pricingSource==='token_rate_estimate'&&typeof result.settlement.cacheKnown==='boolean');
+        const quota=settled?{status:'settled',settled_credits:result.settlement.settledCredits,...(!operationArtV3?{pricing_source:'token_rate_estimate',cache_known:result.settlement.cacheKnown,pricing_note:result.settlement.cacheKnown?'\u6309\u63a5\u53e3\u7528\u91cf\u548c\u76ee\u5f55\u8d39\u7387\u8ba1\u7b97\uff0c\u975e\u4f9b\u5e94\u5546\u5b9e\u8d26':'\u6309\u63a5\u53e3\u7528\u91cf\u548c\u76ee\u5f55\u8d39\u7387\u8ba1\u7b97\uff1b\u7f13\u5b58\u7528\u91cf\u672a\u77e5\uff0c\u975e\u4f9b\u5e94\u5546\u5b9e\u8d26'}:{}),
+          ...(result.settlement.balanceShort?{balance_short:true}:{}),...(result.settlement.uncollectedCredits?{uncollected_credits:result.settlement.uncollectedCredits}:{})}:null;
+        if(settled){
+          lastQuota=quota;
+          if(operationArtV3&&!(result.settlement.uncollectedCredits>0)){v3FinalSettled=true;if(recoveryOwner?.current?.())operationRecoveryForget(recoveryOwner,recoveryId);}
+          if(!notice(quote.requestId,quota,false))
+            return no('billing-record-unavailable','本阶段已结算，但账单记录未能更新，请核对实际扣费。',{quota,billingUnknown:true});
+          pendingId='';
+        }
+        if(stagePending){stageToken=result.stageToken;parentRequestId=quote.requestId;if(!current())return no('assistant-selection-changed','模型或会话已变，请核对账单。');continue;}
+        if(!current())return no('assistant-selection-changed',settled?'模型或会话已变，本阶段已结算，请核对账单。':'模型或会话已变，账单状态待核对。',{...(quota?{quota}:{}),billingUnknown:!settled});
+        if(operationArtV3&&settled&&result.settlement.uncollectedCredits>0)
+          return no('operation-incomplete',incompleteSettlementMessage({charged:result.settlement.settledCredits,uncollected:result.settlement.uncollectedCredits}),{quota,billingUnknown:true});
+        if(result?.ok!==true||!settled){
+          console.warn('[NovaFlow] Xiaotao art phase rejected',stage,result?.errorCode||'assistant-business-invalid-result',result?.validationIssue||'');
+          const message=({'structure-invalid':'模型返回的绘图提示词未通过完整性校验。','english-invalid':'模型返回的英文执行稿未通过校验。','provider-incomplete':'模型回复未完整返回。'})[result?.errorCode]||'本阶段未完成。';
+          return no(result?.errorCode||'assistant-business-invalid-result',settled?message:'本阶段未完成，账单状态待核对。',{...(quota?{quota}:{}),billingUnknown:!settled});
+        }
+        if(stage==='structure'){
+          if(nativeQwen){
+            if(result.releaseEligible!==true||result.reviewRequired!==true||result.targetEngine!=='qwen-2.1'||result.promptContract!==payload.promptContract||
+              result.modelPromptPolicy!==payload.promptContract||(nativeEdit?!['zh','en'].includes(result.modelPromptLanguage):result.modelPromptLanguage!=='en')||result.translationValidation!==(nativeEdit?'native-edit-and-literals':'paired-prose-and-literals')||
+              typeof result.displayPrompt!=='string'||!result.displayPrompt.trim()||typeof result.modelPrompt!=='string'||!result.modelPrompt.trim())
+              return no('assistant-business-invalid-result','绘图提示词未通过验证，请查看实际扣费。',{quota});
+            console.info('[NovaFlow] Qwen 2.1 rewrite timing',JSON.stringify(result.timings||{}));
+            return {...result,prompt:result.displayPrompt,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota};
+          }
+          if(gptImage){
+            if(result.releaseEligible!==true||result.reviewRequired!==true||result.targetEngine!=='gpt-image-2.5'||
+              result.promptContract!=='gpt-image-semantic-fusion-v1'||typeof result.displayPrompt!=='string'||!result.displayPrompt.trim()||
+              result.modelPrompt!==result.displayPrompt)
+              return no('assistant-business-invalid-result','绘图提示词未通过验证，请查看实际扣费。',{quota});
+            return {...result,prompt:result.displayPrompt,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota};
+          }
+          if(typeof result.stageToken!=='string'||!result.stageToken)return no('assistant-business-invalid-result','结构化结果无效，请核对账单。',{...(quota?{quota}:{}),billingUnknown:!settled});
+          stageToken=result.stageToken;
+        } else {
+          if(result.releaseEligible!==true||result.reviewRequired!==true||result.translationValidation!=='structure-and-literals'||result.modelPromptPolicy!=='qwen21-task-policy-v1'||
+            result.editContract!=='structured-recompile-v1'||result.promptSchema!=='nf.art.prompt.v1'||
+            result.modelPromptLanguage!=='en'||typeof result.modelPrompt!=='string'||!result.modelPrompt.trim()||
+            typeof result.displayPrompt!=='string'||!result.displayPrompt.trim())
+            return no('assistant-business-invalid-result','英文结果尚未完成验证，请查看实际扣费。',{...(quota?{quota}:{})});
+          return {...result,prompt:result.displayPrompt,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota};
+        }
+      }
+      return no('assistant-business-invalid-result','在线美工结果未完成，请核对账单。');
+    } catch(error){
+      return no(error?.code||'assistant-business-unavailable',pendingId?'在线请求中断，账单状态待核对。':String(error?.message||'在线美工暂不可用，未提交当前阶段。'),
+        {...(lastQuota?{quota:lastQuota}:{}),billingUnknown:Boolean(pendingId)});
+    } finally {
+      // A known first stage can be closed without issuing another provider
+      // request. Once English dispatch begins its result may be unknown, so
+      // leave its durable recovery record for reconciliation instead.
+      if(stageToken && parentRequestId && !englishSubmitted && !v3FinalSettled &&
+        sessionGuard()===true && currentSession()?.token===session && recoveryOwner?.current?.()) {
+        try {
+          const cancelled=await api(base,'POST','/api/web/companion/art/cancel',{stageToken,epoch:selected.epoch},10000);
+          const settled=cancelled?.errorCode==='operation-cancelled' && cancelled.settlement?.requestId===parentRequestId &&
+            cancelled.settlement?.status==='settled' && validCreditAmount(cancelled.settlement.settledCredits,decimalCreditPolicy(operationTerms)) &&
+            (cancelled.settlement.uncollectedCredits===undefined || cancelled.settlement.uncollectedCredits===0);
+          if(settled){
+            const quota={status:'settled',settled_credits:cancelled.settlement.settledCredits};
+            if(lastFailure){lastFailure.quota=quota;lastFailure.billingUnknown=false;}
+            if(notice(parentRequestId,quota,false) && recoveryOwner.current())operationRecoveryForget(recoveryOwner,recoveryId);
+          } else if(cancelled?.errorCode==='operation-cancelled'&&cancelled.settlement?.requestId===parentRequestId&&cancelled.settlement?.status==='settled'&&
+            validCreditAmount(cancelled.settlement.settledCredits,decimalCreditPolicy(operationTerms))&&
+            validCreditAmount(cancelled.settlement.uncollectedCredits,decimalCreditPolicy(operationTerms))&&cancelled.settlement.uncollectedCredits>0&&lastFailure){
+            lastFailure.quota={status:'settled',settled_credits:cancelled.settlement.settledCredits,uncollected_credits:cancelled.settlement.uncollectedCredits};
+            lastFailure.error=incompleteSettlementMessage({charged:cancelled.settlement.settledCredits,uncollected:cancelled.settlement.uncollectedCredits});
+            lastFailure.billingUnknown=true;
+          }
+        } catch (_) { /* Keep the recovery record if closure is unknown. */ }
+      }
+      clearTimeout(timer);if(expiryTimer!==null)clearTimeout(expiryTimer);foartSessionObservers.delete(onChange);companionCloudRequests.delete(requestId);unsubscribe?.();payload.signal?.removeEventListener?.('abort',onChange);
+    }
+  }
+
+  async function localPromptAssistant(action, payload, guard={}) {
     if (taskMode() === 'local') {
       try { return await localControl('POST', '/local/prompt-assistant/' + action, payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS); }
       catch (error) { return { ok: false, error: String(error.message || error) }; }
@@ -239,52 +1179,217 @@
     // The shared pool: every compute node is a full copy of the desktop runtime, so
     // the same service answers from one of them - as a prompt_assistant task whose
     // request is one uploaded JSON file and whose reply is one output file.
-    try { return await pooledPromptAssistant(action, payload || {}); }
+    try { return await pooledPromptAssistant(action, payload || {}, guard); }
     catch (error) { return { ok: false, error: String(error.message || error) }; }
   }
-  async function pooledPromptAssistant(action, payload) {
+  async function qwenCandidatePayloadDigest(bytes) {
+    if(!root.crypto?.subtle || typeof root.crypto.subtle.digest!=='function' || !bytes || !Number.isSafeInteger(bytes.byteLength))
+      throw new Error('无法验证候选请求摘要，未提交。');
+    const digest=await root.crypto.subtle.digest('SHA-256',bytes);
+    return Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
+  }
+  async function pooledPromptAssistant(action, payload, guard={}) {
+    const qwenImageEdit=guard.qwenImageEdit===true;
+    const qwenNativeV3=!qwenImageEdit && payload?.promptContract==='qwen21-native-rewrite-v3';
+    const qwenH3Text=action==='optimize-prompt'&&payload?.surface==='animation'&&payload?.purpose==='minimax-h3-prompt-enhance';
+    const qwenBoundBusiness=qwenNativeV3||qwenH3Text;
+    const rotationStage=payload?.foartAnimationStage==='rotation_candidate';
+    const qwenPlan=action==='art-agent-chat' && rotationStage && guard.qwenPlan===true;
+    const qwenRotationCandidate=action==='art-agent-chat' && rotationStage && !qwenPlan;
+    if(guard.qwenPlan===true && !qwenPlan)throw new Error('Qwen 动画规划请求范围无效，未提交。');
+    if(rotationStage && ((!qwenRotationCandidate && !qwenPlan) || taskMode()!=='shared' || payload?.provider!=='local' ||
+        payload?.modelId!=='qwen3.5-9b-heretic' || payload?.mode!=='foart' ||
+        !Array.isArray(payload.images) || payload.images.length!==0 ||
+        typeof guard.isCurrent!=='function' || guard.isCurrent()!==true))
+      throw new Error('Qwen 动画候选尚未安全开放，未提交或修改作品。');
+    if(qwenRotationCandidate || qwenPlan || qwenImageEdit)candidateSecureBase(CONFIG.controlUrl);
+    const candidateSession=qwenRotationCandidate || qwenPlan || qwenImageEdit?captureFoartSessionGuard():null;
+    if((qwenRotationCandidate || qwenPlan || qwenImageEdit) && (typeof candidateSession!=='function' || candidateSession()!==true || !computeNode?.id))
+      throw new Error('候选任务需要当前登录会话和已选本人节点，未提交。');
     const requestId = typeof payload.requestId === 'string' ? payload.requestId : '';
-    const owned = { taskId:'', cancelled:false,startedAt:Date.now(),stage:action==='art-agent-chat'?'analysis':/H3 compile: translate-only/.test(payload.requirements || '')?'compile':'optimize' };
+    const owned = { taskId:'', cancelled:false,startedAt:Date.now(),candidate:qwenRotationCandidate,qwenPlan,candidateSession,stage:action==='art-agent-chat'?'analysis':/H3 compile: translate-only/.test(payload.requirements || '')?'compile':'optimize' };
+    if(guard.isCurrent){if(typeof AbortController!=='function')throw new Error('无法安全取消素材上传，未提交。');owned.inputAbort=new AbortController();}
+    const taskNodeEpoch=computeNodeEpoch;
+    if (requestId && guard.isCurrent && pooledPromptRequests.has(requestId)) throw new Error('请求编号正在使用，请重新发起。');
     if (requestId) pooledPromptRequests.set(requestId, owned);
-    const check = () => { if (owned.cancelled) throw new Error('本次提示词分析已取消'); };
+    const check = () => { if (owned.cancelled) throw new Error('本次提示词分析已取消'); if ((qwenBoundBusiness && !qwen21NativeRewriteV3Available()) || (qwenImageEdit&&!qwen21LocalImageEditAvailable()) || (guard.isCurrent && (computeNodeEpoch!==taskNodeEpoch || !guard.isCurrent() || ((qwenRotationCandidate || qwenPlan || qwenImageEdit) && !candidateSession())))) throw new Error('模型、节点或会话已变化，任务未继续。'); };
     try {
-    const conversationNode=action==='art-agent-chat' && !computeNode ? pooledConversationNodes.get(payload.conversationId) : '';
-    const caps = await control('GET', '/api/web/capabilities'+(conversationNode?'?worker='+encodeURIComponent(conversationNode):''));
+    const selectedNode=computeNode?.id || '';
+    const conversationNode=action==='art-agent-chat' && !selectedNode ? pooledConversationNodes.get(payload.conversationId) : '';
+    // For this owner-bound scope, ask about the exact captured node. Calling
+    // control() here would implicitly append the current picker value; use the
+    // same authenticated API directly so a later node change cannot silently
+    // change the query or add a duplicate worker parameter.
+    const caps = qwenPlan || qwenBoundBusiness || qwenImageEdit
+      ? await api(CONFIG.controlUrl,'GET','/api/web/capabilities?worker='+encodeURIComponent(selectedNode))
+      : await control('GET', '/api/web/capabilities'+(conversationNode?'?worker='+encodeURIComponent(conversationNode):''));
     check();
+    if ((computeNode?.id || '') !== selectedNode) throw new Error('算力节点已切换，请重新发送本次请求');
     const type = (caps && caps.taskTypes || []).find((t) => t.task_type === 'prompt_assistant');
-    if (!type || !(type.available_workers > 0)) throw new Error(action==='art-agent-chat'
+    const qwenStyle=action==='describe-art-style'&&payload.mode==='style-analysis';
+    if(qwenStyle && (!selectedNode || caps?.features?.qwen35StyleAnalysisKinds?.[payload.kind]!==true || caps?.features?.qwen35StyleOwnerLeaseBound!==true)) throw new Error('Qwen style analysis is not enabled for this owned node.');
+    const qwenBusiness = !qwenStyle && ['optimize-prompt','reverse-image-prompt','describe-art-style','rewrite-audio-prompt'].includes(action) && payload.assistantProvider === 'local' && payload.assistantModelId === 'qwen3.5-9b-heretic';
+    if(qwenNativeV3 && (action!=='optimize-prompt' || !qwenBusiness || payload.surface!=='art' || payload.targetEngine!=='qwen-2.1' || payload.qwenPromptMode!=='txt2img' || typeof guard.isCurrent!=='function' || !selectedNode || !qwen21NativeRewriteV3Available() || caps?.features?.qwen21NativeRewriteV3!==true))
+      throw new Error('当前节点未确认支持绘图优化，请重新选择节点后重试。');
+    if(qwenH3Text && (!qwenBusiness || !['text_video','image_video','first_last','multi_reference'].includes(payload.h3Mode) || typeof guard.isCurrent!=='function' || !selectedNode || !qwen21NativeRewriteV3Available() || caps?.features?.qwen21NativeRewriteV3!==true))
+      throw new Error('当前本人节点未确认支持视频文字优化，请更新算力助手后重试。');
+    if(qwenImageEdit && (action!=='optimize-prompt'||payload.mode!=='image-edit'||typeof guard.isCurrent!=='function'||!selectedNode||
+      caps?.features?.qwen21LocalImageEdit!==true||caps?.features?.qwen21LocalImageEditOwnerLeaseBound!==true))
+      throw new Error('当前本人节点未确认支持参考图优化，请更新算力助手后重试。');
+    const qwenTrial = action === 'art-agent-chat' && payload.modelId === 'qwen3.5-9b-heretic';
+    if(qwenRotationCandidate && (!selectedNode || caps?.features?.qwen35FoartRotationCandidate!==true ||
+        caps?.features?.qwen35FoartRotationOwnerLeaseBound!==true))
+      throw new Error('当前自有节点尚未提供安全动画候选能力，未提交。');
+    if(qwenPlan && (!selectedNode || caps?.features?.qwen35FoartPlan!==true || caps?.features?.qwen35FoartPlanOwnerBound!==true))
+      throw new Error('当前自有节点尚未提供安全动画规划能力，未提交。');
+    const qwenUi = action==='reverse-image-prompt' && payload.mode==='ui-draft';
+    const uiCpu = action==='reverse-image-prompt' && payload.surface==='ui-design' && payload.uiPlanner==='grok-vision-cpu-v1' && ['capabilities','grok-vision-job','compile-grok-vision','native-ui-cloud','native-ui-compile'].includes(payload.action);
+    if(qwenUi && (!selectedNode || caps?.features?.qwen35UiDraft!==true || caps?.features?.qwen35UiOwnerLeaseBound!==true)) throw new Error('Qwen UI draft is not enabled for this owned node.');
+    if (qwenBusiness && caps?.features?.qwen35BusinessTrial !== true) throw new Error('当前没有支持该功能的 Qwen 节点，任务未提交。');
+    if (qwenTrial && !qwenPlan && caps?.features?.qwen35CpuTrial !== true) throw new Error('当前算力节点没有可用的 Qwen3.5 9B 本地服务，未提交任务');
+    if (!qwenImageEdit && !qwenTrial && !qwenBusiness && !qwenStyle && !qwenUi && !uiCpu && (!type || !(type.available_workers > 0))) throw new Error(action==='art-agent-chat'
       ? '当前算力节点没有就绪的小桃模型服务，请检查节点助手的模型状态；机器开机不代表模型服务已就绪'
       : PROMPT_ASSISTANT_REFUSAL + '：当前算力池没有带本地模型的节点');
     const bytes = new TextEncoder().encode(JSON.stringify(payload));
-    const created = await control('POST', '/api/web/tasks', {
+    let created,qwenPlanDigest=null,qwenImageDigest=null;
+    if(qwenRotationCandidate){
+      if(!QWEN_ROTATION_REQUEST_ID.test(requestId) || bytes.byteLength<1 || bytes.byteLength>262144 ||
+        typeof AbortSignal==='undefined' || typeof AbortSignal.any!=='function' || typeof AbortSignal.timeout!=='function')
+        throw new Error('候选请求编号或大小无效，未提交。');
+      const sha256=await qwenCandidatePayloadDigest(bytes);check();
+      let response;
+      try { response=await fetch(candidateSecureBase(CONFIG.controlUrl)+'/api/web/qwen-rotation/tasks',{
+        method:'POST',headers:authHeaders(),body:JSON.stringify({requestId,workerId:selectedNode,sha256,bytes:bytes.byteLength}),
+        redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.any([owned.inputAbort.signal,AbortSignal.timeout(20000)])
+      }); } catch {throw new Error('候选创建结果未确认，请核对任务状态后再试。');}
+      if(!response.ok)throw new Error(response.status>=500?'候选创建结果未确认，请核对任务状态后再试。':'候选任务创建未通过。');
+      try {created=await response.json();} catch {throw new Error('候选创建结果未确认，请核对任务状态后再试。');}
+      if(created?.ok!==true || !QWEN_ROTATION_CANDIDATE_ID.test(String(created?.task?.id||'')) || !Object.hasOwn(created.task,'assigned_worker_id') ||
+        !['queued','assigned','uploading'].includes(created.task.status) || !Number.isSafeInteger(created.task.attempt_count) ||
+        created.task.attempt_count<0 || (created.task.assigned_worker_id!=null && created.task.assigned_worker_id!==selectedNode))
+        throw new Error('候选创建结果不匹配，请核对任务状态后再试。');
+    } else if(qwenPlan){
+      if(!QWEN_ROTATION_REQUEST_ID.test(requestId) || bytes.byteLength<1 || bytes.byteLength>262144 ||
+        typeof AbortSignal==='undefined' || typeof AbortSignal.any!=='function' || typeof AbortSignal.timeout!=='function')
+        throw new Error('动画规划请求编号或大小无效，未提交。');
+      const sha256=await qwenCandidatePayloadDigest(bytes);qwenPlanDigest=sha256;check();
+      created=await control('POST','/api/web/tasks',{
+        task_type:'prompt_assistant',target_worker_id:selectedNode,
+        parameters:{action,model_id:'qwen3.5-9b-heretic',assistant_tool_scope:QWEN_PLAN_SCOPE,
+          request_id:requestId,request_sha256:sha256,request_bytes:bytes.byteLength},
+        references:[{name:QWEN_PLAN_REQUEST_FILE,kind:'json',bytes:bytes.byteLength}]
+      });
+      if(created?.ok!==true || !NODE_ID.test(String(created?.task?.id||'')) || QWEN_ROTATION_CANDIDATE_ID.test(String(created.task.id).toLowerCase()) ||
+        !['created','queued','assigned','uploading'].includes(created.task.status) || !Number.isSafeInteger(created.task.attempt_count) ||
+        created.task.attempt_count<0 || (created.task.assigned_worker_id!=null && created.task.assigned_worker_id!==selectedNode))
+        throw new Error('动画规划任务创建结果不匹配，请核对任务状态后再试。');
+    } else if(qwenImageEdit){
+      if(bytes.byteLength>16*1024*1024)throw new Error('参考图片和文字合计超过 16 MiB，请缩小图片后重试。');
+      if(!QWEN_ROTATION_REQUEST_ID.test(requestId)||bytes.byteLength<1||
+        typeof AbortSignal==='undefined'||typeof AbortSignal.any!=='function'||typeof AbortSignal.timeout!=='function')
+        throw new Error('参考图优化请求编号或大小无效，未提交。');
+      qwenImageDigest=await qwenCandidatePayloadDigest(bytes);check();
+      created=await control('POST','/api/web/tasks',{task_type:'prompt_assistant',target_worker_id:selectedNode,
+        parameters:{action,model_id:'qwen3.5-9b-heretic',assistant_tool_scope:QWEN_IMAGE_EDIT_SCOPE,request_id:requestId,
+          request_sha256:qwenImageDigest,request_bytes:bytes.byteLength},references:[{name:QWEN_IMAGE_EDIT_REQUEST_FILE,kind:'json',bytes:bytes.byteLength}]});
+      if(created?.ok!==true||!NODE_ID.test(String(created?.task?.id||''))||QWEN_ROTATION_CANDIDATE_ID.test(String(created.task.id).toLowerCase())||
+        !['created','queued','assigned','uploading'].includes(created.task.status)||!Number.isSafeInteger(created.task.attempt_count)||created.task.attempt_count<0||
+        (created.task.assigned_worker_id!=null&&created.task.assigned_worker_id!==selectedNode))throw new Error('参考图任务创建结果不匹配，请核对任务状态。');
+    } else created = await control('POST', '/api/web/tasks', {
       task_type: 'prompt_assistant',
-      ...(conversationNode ? {target_worker_id:conversationNode} : {}),
-      parameters: { action },
+      ...(qwenBoundBusiness ? {target_worker_id:selectedNode} : conversationNode ? {target_worker_id:conversationNode} : {}),
+      parameters: { action, ...(uiCpu ? {ui_scope:'cpu-v1'} : {}), ...(qwenUi ? {ui_scope:'qwen-ui-draft-v1',model_id:'qwen3.5-9b-heretic'} : {}), ...(qwenStyle ? {style_scope:'qwen-style-analysis-v1',style_kind:payload.kind,model_id:'qwen3.5-9b-heretic',...(payload.kind!=='aifx-supplement'?{image_upload_confirmed:true}:{})} : {}), ...(qwenTrial ? {model_id:'qwen3.5-9b-heretic'} : {}), ...(qwenRotationCandidate ? {assistant_tool_scope:'qwen-foart-rotation-candidate-v1'} : {}), ...(qwenBusiness ? {assistant_selection_scope:'xiaotao',assistant_model_id:payload.assistantModelId} : {}) },
       references: [{ name: 'request.json', kind: 'json', bytes: bytes.length }]
     });
     if (!created || !created.task) throw new Error((created && created.error) || '提示词任务创建失败');
     owned.taskId = created.task.id;
+    if(qwenRotationCandidate)taskModes.set(created.task.id,'shared');
     tasks.set(created.task.id, created.task);
+    let assignedPlanAttempt=null;
     try {
       check();
-      await putTaskInput(created.task.id, 'request.json', bytes);
+      const assigned=await putTaskInput(created.task.id, qwenImageEdit?QWEN_IMAGE_EDIT_REQUEST_FILE:qwenPlan?QWEN_PLAN_REQUEST_FILE:'request.json', bytes, undefined, guard.isCurrent ? {assertCurrent:check,signal:owned.inputAbort.signal,
+        ...(qwenRotationCandidate?{candidate:true,expectedNodeId:selectedNode}:qwenPlan||qwenImageEdit?{qwenPlan:true,expectedNodeId:selectedNode}:qwenBoundBusiness?{expectedNodeId:selectedNode}:{})} : undefined);
+      if(qwenPlan||qwenImageEdit){
+        if(assigned?.id!==created.task.id || assigned.assigned_worker_id!==selectedNode || !Number.isSafeInteger(assigned.attempt_count) || assigned.attempt_count<1 || assigned.attempt_count>20)
+          throw new Error('动画规划任务节点或尝试次数不匹配，未修改作品。');
+        assignedPlanAttempt=assigned.attempt_count;
+      }
       check();
     } catch (error) {
       // The browser has stopped waiting or could not upload; leave no queued
       // request for the worker to claim after the user has gone away.
-      await control('POST', '/api/web/tasks/' + created.task.id + '/cancel').catch(() => {});
+      if(qwenRotationCandidate) {
+        if(candidateSession())await cancelQwenRotationTask(created.task.id,candidateSession).catch(()=>{});
+      } else await control('POST', '/api/web/tasks/' + created.task.id + '/cancel').catch(() => {});
       throw error;
     }
-    const finished = await waitForTaskEnd(created.task.id, PROMPT_ASSISTANT_TIMEOUT_MS);
-    const reply = await fetchTaskOutput(finished, 'result.json');
+    const finished = await waitForTaskEnd(created.task.id, PROMPT_ASSISTANT_TIMEOUT_MS,qwenRotationCandidate||qwenPlan||qwenBoundBusiness||qwenImageEdit?check:undefined);
+    if(qwenBoundBusiness && finished?.assigned_worker_id!==selectedNode)throw new Error('优化结果所属节点已变化，未应用。');
+    if(qwenPlan){
+      const files=finished?.output_manifest?.files,expected='qwen-foart-plan-result-'+assignedPlanAttempt+'.json';
+      if(finished.id!==created.task.id || finished.assigned_worker_id!==selectedNode || finished.attempt_count!==assignedPlanAttempt ||
+        finished.result_expired!==false || !Array.isArray(files) || files.length!==1 || files[0]?.name!==expected || files[0]?.kind!=='json' ||
+        !Number.isSafeInteger(files[0]?.bytes) || files[0].bytes<1 || files[0].bytes>262144)
+        throw new Error('动画规划结果所属节点、尝试或文件已变化，未修改作品。');
+    }
+    if(qwenImageEdit){
+      const files=finished?.output_manifest?.files,expected='qwen21-local-image-edit-result-'+assignedPlanAttempt+'.json';
+      if(finished.id!==created.task.id||finished.assigned_worker_id!==selectedNode||finished.attempt_count!==assignedPlanAttempt||finished.result_expired!==false||
+        !Array.isArray(files)||files.length!==1||files[0]?.name!==expected||files[0]?.kind!=='json'||!Number.isSafeInteger(files[0]?.bytes)||files[0].bytes<1||files[0].bytes>262144)
+        throw new Error('参考图结果的节点、尝试或文件已变化，未应用。');
+    }
+    const reply = await fetchTaskOutput(finished, qwenImageEdit?'qwen21-local-image-edit-result-'+assignedPlanAttempt+'.json':qwenPlan?'qwen-foart-plan-result-'+assignedPlanAttempt+'.json':'result.json',qwenRotationCandidate?{candidate:true,expectedNodeId:selectedNode,assertCurrent:check,signal:owned.inputAbort.signal}:qwenPlan||qwenImageEdit?{qwenPlan:true,expectedNodeId:selectedNode,assertCurrent:check,signal:owned.inputAbort.signal}:undefined);
     check();
+    if(qwenImageEdit && reply.byteLength!==finished.output_manifest.files[0].bytes)throw new Error('参考图结果文件大小不匹配，未应用。');
     const result=JSON.parse(new TextDecoder().decode(reply));
+    if(qwenImageEdit){
+      const proof=result?.imageEditBinding,data=result?.data;
+      if(result?.ok!==true||!proof||Object.keys(proof).sort().join(',')!=='attempt,requestId,requestSha256,taskId,workerId'||
+        proof.taskId!==created.task.id||proof.workerId!==selectedNode||proof.attempt!==assignedPlanAttempt||proof.requestId!==requestId||proof.requestSha256!==qwenImageDigest||
+        !data||data.analysisBackend!=='qwen-cpu'||data.modelIdentity?.id!=='qwen35-heretic'||!['server-model-id','server-weight-path'].includes(data.modelIdentity?.verification)||
+        data.resourcesReleased!==true||data.generationReady!==true||data.promptContract!=='qwen21-native-rewrite-v3'||data.modelPromptPolicy!=='qwen21-native-rewrite-v3'||
+        data.translationValidation!=='native-edit-and-literals'||data.modelPromptLanguage!==qwenImageEditLanguage(payload.currentPrompt,payload.requirements)||
+        typeof data.displayPrompt!=='string'||data.displayPrompt.trim().length<2||data.modelPrompt!==data.displayPrompt||data.negativePrompt!==payload.negativePrompt)
+        throw new Error('参考图优化结果与请求或模型不匹配，未应用。');
+      const latest=(await control('GET','/api/web/tasks/'+encodeURIComponent(created.task.id)))?.task;check();
+      const files=latest?.output_manifest?.files,expected='qwen21-local-image-edit-result-'+assignedPlanAttempt+'.json';
+      if(latest?.id!==created.task.id||latest.model_id!==QWEN_IMAGE_EDIT_CAPABILITY||latest.status!=='completed'||latest.assigned_worker_id!==selectedNode||latest.attempt_count!==assignedPlanAttempt||
+        latest.parameters?.assistant_tool_scope!==QWEN_IMAGE_EDIT_SCOPE||latest.parameters?.request_id!==requestId||latest.parameters?.request_sha256!==qwenImageDigest||latest.parameters?.request_bytes!==bytes.byteLength||
+        latest.result_expired!==false||!Array.isArray(files)||files.length!==1||files[0]?.name!==expected||files[0]?.kind!=='json'||files[0]?.bytes!==reply.byteLength)
+        throw new Error('参考图任务已变化或结果已过期，未应用。');
+    }
+    if(qwenPlan){
+      if(!result || typeof result!=='object' || Array.isArray(result))throw new Error('动画规划结果无效，未修改作品。');
+      const proof=result.planBinding;
+      if(!proof || typeof proof!=='object' || Array.isArray(proof) ||
+        Object.keys(proof).sort().join(',')!=='attempt,requestId,requestSha256,taskId,workerId' ||
+        proof.taskId!==created.task.id || proof.workerId!==selectedNode || proof.attempt!==assignedPlanAttempt ||
+        proof.requestId!==requestId || proof.requestSha256!==qwenPlanDigest)
+        throw new Error('动画规划结果与已提交的任务不匹配，未修改作品。');
+      qwenPlanBindings.set(result,{taskId:created.task.id,nodeId:selectedNode,attempt:assignedPlanAttempt,
+        requestId,requestSha256:qwenPlanDigest,requestBytes:bytes.byteLength,resultBytes:reply.byteLength,check,session:candidateSession});
+      if(!await verifyQwenPlanResponse(result))throw new Error('动画规划任务或会话已失效，未修改作品。');
+    }
     if(action==='art-agent-chat' && result?.data?.conversationId && finished.assigned_worker_id){
       pooledConversationNodes.set(result.data.conversationId,finished.assigned_worker_id);
       if(pooledConversationNodes.size>128)pooledConversationNodes.delete(pooledConversationNodes.keys().next().value);
     }
     return result;
     } finally { if (requestId && pooledPromptRequests.get(requestId) === owned) pooledPromptRequests.delete(requestId); }
+  }
+  async function cancelQwenRotationTask(taskId,sessionGuard) {
+    if(typeof sessionGuard!=='function' || sessionGuard()!==true)throw new Error('登录会话已变化，无法确认候选取消。');
+    const current=await control('GET','/api/web/tasks/'+encodeURIComponent(taskId));
+    if(sessionGuard()!==true)throw new Error('登录会话已变化，无法确认候选取消。');
+    const task=current?.task;
+    if(!task || task.id!==taskId || !Number.isSafeInteger(task.attempt_count) || task.attempt_count<0)
+      throw new Error('候选任务状态未确认，无法取消。');
+    if(task.status==='cancelled')return {ok:true,cancelled:true};
+    if(['completed','failed','expired'].includes(task.status))return {ok:true,cancelled:false,terminal:true};
+    const result=await control('POST','/api/web/tasks/'+encodeURIComponent(taskId)+'/qwen-rotation-cancel',{attempt:task.attempt_count});
+    if(sessionGuard()!==true || result?.ok!==true || result.cancelled!==true)throw new Error('候选取消结果未确认。');
+    return result;
   }
   async function cancelPromptAssistantRequest(payload={}) {
     const requestId=typeof payload.requestId==='string' && payload.requestId.length<=160 ? payload.requestId : '';
@@ -296,8 +1401,15 @@
     const owned=pooledPromptRequests.get(requestId);
     if (!owned) return {ok:true,cancelled:true,matched:false};
     owned.cancelled=true;
+    owned.inputAbort?.abort();
     if (owned.taskId) {
-      try { await control('POST','/api/web/tasks/'+encodeURIComponent(owned.taskId)+'/cancel',{}); }
+      try {
+        if(owned.candidate){
+          const result=await cancelQwenRotationTask(owned.taskId,owned.candidateSession);
+          return {ok:true,cancelled:result.cancelled===true,matched:true,...(result.terminal?{terminal:true}:{})};
+        }
+        await control('POST','/api/web/tasks/'+encodeURIComponent(owned.taskId)+'/cancel',{});
+      }
       catch(error) { return {ok:false,error:String(error.message || error)}; }
     }
     return {ok:true,cancelled:true,matched:true};
@@ -313,13 +1425,17 @@
         return {ok:true,result:{available:true,reason:'compute-node',operation:{requestId,phase,stage:match?.[2] || owned.stage,source:'pool',taskId:owned.taskId,startedAt:owned.startedAt}}};
       }
       const caps=await control('GET','/api/web/capabilities');
-      return {ok:true,result:{available:(caps.taskTypes || []).some(t=>t.task_type==='prompt_assistant' && t.available_workers>0),reason:'compute-node'}};
+      return {ok:true,result:{available:(caps.taskTypes || []).some(t=>t.task_type==='prompt_assistant' && t.available_workers>0),reason:'compute-node',features:{qwen35CpuTrial:caps?.features?.qwen35CpuTrial === true,
+        qwen35FoartPlan:!!computeNode?.id && caps?.features?.qwen35FoartPlan===true && caps?.features?.qwen35FoartPlanOwnerBound===true,
+        qwen35FoartRotationCandidate:!!computeNode?.id && caps?.features?.qwen35FoartRotationCandidate===true && caps?.features?.qwen35FoartRotationOwnerLeaseBound===true}}};
     }catch(error){return {ok:false,error:String(error.message || error)};}
   }
-  async function waitForTaskEnd(taskId, timeoutMs) {
+  async function waitForTaskEnd(taskId, timeoutMs, assertCurrent) {
     const started = Date.now();
     for (;;) {
+      assertCurrent?.();
       const res = await control('GET', '/api/web/tasks/' + taskId);
+      assertCurrent?.();
       const task = (res && res.task) || {};
       tasks.set(taskId,task);
       if (task.status === 'completed') { tasks.set(taskId, task); return task; }
@@ -329,6 +1445,25 @@
       if (Date.now() - started > timeoutMs) throw new Error('提示词助手等待超时，请检查算力节点后重试');
       await new Promise((r) => setTimeout(r, 1000));
     }
+  }
+  async function verifyQwenPlanResponse(result) {
+    const binding=result && typeof result==='object' ? qwenPlanBindings.get(result) : null;
+    if(!binding)return false;
+    try {
+      binding.check();
+      if(!binding.session() || computeNode?.id!==binding.nodeId)return false;
+      const value=await control('GET','/api/web/tasks/'+encodeURIComponent(binding.taskId));
+      binding.check();
+      const task=value?.task, expected='qwen-foart-plan-result-'+binding.attempt+'.json';
+      const files=task?.output_manifest?.files;
+      return binding.session()===true && computeNode?.id===binding.nodeId && task?.id===binding.taskId &&
+        task.model_id==='qwen3.5-9b-heretic-foart-plan-v1' && task.status==='completed' && task.result_expired===false &&
+        task.assigned_worker_id===binding.nodeId && task.attempt_count===binding.attempt && Array.isArray(files) &&
+        task.parameters?.assistant_tool_scope===QWEN_PLAN_SCOPE && task.parameters?.request_id===binding.requestId &&
+        task.parameters?.request_sha256===binding.requestSha256 && task.parameters?.request_bytes===binding.requestBytes &&
+        files.length===1 && files[0]?.name===expected && files[0]?.kind==='json' &&
+        Number.isSafeInteger(files[0]?.bytes) && files[0].bytes===binding.resultBytes;
+    } catch {return false;}
   }
   if (CONFIG.localAssistant) root.addEventListener?.('load', async () => {
     try {
@@ -348,7 +1483,7 @@
           const panel = root.document.createElement('div');
           panel.setAttribute('role', 'status');
           panel.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:#151515;color:#eee;font:16px system-ui;padding:32px;text-align:center';
-          panel.textContent = '旧本地工作台入口已停止维护，请在 foart.net 使用官网并连接 Foart 算力助手。';
+          panel.textContent = '旧本地工作台入口已停止维护，请在 foart.net 使用官网并连接 Foart。';
           root.document.body.appendChild(panel);
           root.close?.();
           return;
@@ -560,12 +1695,14 @@
     state() { return [...waits.entries()].map(([key, w]) => Object.assign({ key }, w)); }
   };
 
-  async function control(method, path, body) {
+  async function control(method, path, body, options) {
     const taskId = /^\/api\/web\/tasks\/([^/]+)/.exec(path)?.[1];
-    const mode = taskModes.get(taskId) || taskMode();
+    const recoveryMode=options?.assistantRecoveryMode;
+    if(recoveryMode!==undefined&&(recoveryMode!=='shared'||method!=='GET'||!/^\/api\/web\/tasks\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(path)))throw Error('Invalid assistant recovery route');
+    const mode = recoveryMode==='shared' ? 'shared' : taskModes.get(taskId) || taskMode();
     const isCompute = /^\/api\/web\/(tasks|capabilities|workers|loras)(?:[/?]|$)/.test(path);
     if (mode === 'shared' && computeNode) {
-      if (path === '/api/web/tasks' && method === 'POST') body = Object.assign({}, body || {}, { target_worker_id: computeNode.id });
+      if (path === '/api/web/tasks' && method === 'POST' && body?.art_image_binding_scope !== 'art-image-binding-v1') body = Object.assign({}, body || {}, { target_worker_id: computeNode.id });
       if (/^\/api\/web\/capabilities(?:\?|$)/.test(path)) path += (path.includes('?') ? '&' : '?') + 'worker=' + encodeURIComponent(computeNode.id);
     }
     const value = mode === 'local' && isCompute ? await localControl(method, path, body) : await api(CONFIG.controlUrl, method, path, body);
@@ -625,15 +1762,41 @@
   // estimate; the charge is settled from provider usage. Local chat never comes here.
   const companionCloudRequests = new Map();
   const companionCloudUsed = new Set();
+  async function companionPricing() {
+    if (!currentSession()?.token) return {ok:false,error:'请先登录 Foart 后查看在线积分价格'};
+    try {
+      const base = CONFIG.companionUrl || CONFIG.authUrl.replace(/\/novaflow-backend\/?$/, '/novaflow-companion');
+      const result = await api(base, 'GET', '/api/web/companion/pricing');
+      return result?.ok === true && result.policy ? result : {ok:false,error:'在线积分价格暂不可用'};
+    } catch (error) {return {ok:false,error:String(error.message || error)};}
+  }
   async function companionCloudChat(payload = {}) {
     const id = payload.requestId;
     if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(id) || !['chat','foart'].includes(payload.mode)
       || typeof payload.message !== 'string' || !payload.message.trim() || payload.message.length > 12000)
       return { ok: false, error: '小桃AI对话请求格式无效' };
+    const operationV3=payload.operationBillingV3===true;
+    const visionV3=operationV3 && payload.operationVisionBillingV3===true;
+    // A trusted pricing policy can separately opt in to image-only chat.
+    // Never fall back to the legacy billed route for tools, time media, or
+    // editor context when the operation contract was selected.
+    if(operationV3 && (payload.mode!=='chat' || !payload.modelId || payload.modelId!==payload.expectedModelId ||
+      (Array.isArray(payload.images)&&payload.images.length&&!visionV3) ||
+      (Array.isArray(payload.uploads)&&payload.uploads.some(item=>item?.kind!=='image')) ||
+      (Array.isArray(payload.uploads)&&payload.uploads.length>(Array.isArray(payload.images)?payload.images.length:0)) ||
+      (payload.artContext && Object.keys(payload.artContext).length)))
+      return {ok:false,providerSubmitted:false,errorCode:'operation-text-only',error:'当前操作级计费尚不支持此次工具、媒体或作品上下文，本次未提交。'};
     if (companionCloudRequests.size) return { ok: false, error: '小桃AI正在回复，请等待当前对话完成' };
     if (companionCloudUsed.has(id) || companionCloudUsed.size >= 1024)
       return { ok: false, error: '这次对话已发送，请刷新后使用新的请求编号' };
     if(payload.images!==undefined&&(!Array.isArray(payload.images)||payload.images.length>3))return {ok:false,error:'一次最多分析三张完整图片'};
+    const foartImages=payload.mode==='foart'&&Array.isArray(payload.images)&&payload.images.length>0;
+    const guardedImages=foartImages||(visionV3&&Array.isArray(payload.images)&&payload.images.length>0);
+    const requestImages=guardedImages?payload.images.map(image=>image&&Object.freeze({...image})):payload.images||[];
+    const imageSessionGuard=guardedImages?payload.imageSessionGuard:null;
+    if(guardedImages&&(typeof payload.confirmImageUpload!=='function'||typeof imageSessionGuard!=='function'))
+      return {ok:false,providerSubmitted:false,errorCode:'assistant-business-consent-unavailable',error:'参考图片上传确认不可用，未提交。'};
+    const safeImageCurrent=()=>{if(!guardedImages)return true;try{return imageSessionGuard()===true;}catch{return false;}};
     const history = payload.history || [];
     if (!Array.isArray(history) || history.length > 12 || history.some(item => !item
       || !['user', 'assistant'].includes(item.role) || typeof item.content !== 'string' || item.content.length > 12000))
@@ -648,31 +1811,394 @@
     if ([...history.map(item => item.content), payload.message].join('\n').length > 24000)
       return { ok: false, error: '小桃AI的文字上下文过长，请发送“新对话”后重试，或缩短需求' };
     if (!currentSession()?.token) return { ok: false, error: '请先登录 Foart 后使用小桃AI云端AI' };
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60000);
+    const legacyUnversioned = payload.modelId == null && payload.pricingVersion == null;
+    if (!legacyUnversioned && (!/^sha256:[a-f0-9]{64}$/.test(payload.pricingVersion || '') || !Number.isFinite(payload.pricingExpiresAt) || Date.now() >= payload.pricingExpiresAt))
+      return {ok:false,errorCode:'companion-pricing-changed',error:'在线积分价格已过期，请刷新价格后重新发送；本次未扣积分'};
+    const recoveryOwner=operationV3?captureFoartBillingOwner():null;
+    if(operationV3&&(!recoveryOwner||!recoveryOwner.current()))return {ok:false,providerSubmitted:false,errorCode:'operation-recovery-unavailable',error:'无法确认当前账户，操作未提交。'};
+    const controller = new AbortController();let providerSubmitted=false,recoveryId='';
+    const onFoartSessionChange=()=>controller.abort();
+    if(guardedImages)foartSessionObservers.add(onFoartSessionChange);
+    let timer;
     companionCloudUsed.add(id); companionCloudRequests.set(id, controller);
     try {
       const base = CONFIG.companionUrl || CONFIG.authUrl.replace(/\/novaflow-backend\/?$/, '/novaflow-companion');
-      const result = await api(base, 'POST', '/api/web/companion/chat', {
+      if(guardedImages){
+        if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未上传图片。'),{code:'assistant-selection-changed'});
+        const accepted=await payload.confirmImageUpload({count:requestImages.length,images:requestImages});
+        if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未上传图片。'),{code:'assistant-selection-changed'});
+        if(accepted!==true)throw Object.assign(Error('已取消图片上传，未提交。'),{code:'assistant-business-upload-declined'});
+      }
+      timer = setTimeout(() => controller.abort(), 60000);
+      const request = {
         requestId: id, mode: payload.mode, promptLanguage: payload.promptLanguage, message: payload.message,
-        history, images: payload.images || [], uploads, artContext: context,
+        ...(payload.modelId != null ? {modelId: payload.modelId} : {}),
+        history, images: requestImages, uploads, artContext: context,
         ...(payload.mode==='foart'?{foartContext:payload.foartContext}:{})
-      }, 65000, controller.signal);
+      };
+      let chatRequest=request, pricingQuote=null;
+      if(!legacyUnversioned) {
+        // User has explicitly submitted this message. Quote the same payload on
+        // our own service first; this does not invoke a model or reserve credits.
+        if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未上传图片。'),{code:'assistant-selection-changed'});
+        const quoted = await api(base, 'POST', '/api/web/companion/quote', request, 65000, controller.signal);
+        if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未提交模型请求。'),{code:'assistant-selection-changed'});
+        if (quoted?.ok !== true || quoted.quote?.pricingVersion !== payload.pricingVersion || quoted.quote?.modelId !== payload.expectedModelId || !/^sha256:[a-f0-9]{64}$/.test(quoted.quote?.quoteFingerprint || '') || !validCreditAmount(quoted.quote?.estimatedCredits,operationV3))
+          throw Object.assign(Error('在线积分价格已变化，请刷新价格后重新发送；本次未扣积分'),{code:'companion-pricing-changed'});
+        if (Date.now() >= payload.pricingExpiresAt) throw Object.assign(Error('在线积分价格已过期，请刷新价格后重新发送；本次未扣积分'),{code:'companion-pricing-changed'});
+        if(controller.signal.aborted)throw Error('请求已停止');
+        pricingQuote={requestId:id,estimatedCredits:quoted.quote.estimatedCredits};
+        if(typeof payload.onPricingQuote==='function')payload.onPricingQuote(pricingQuote);
+        chatRequest={...request,pricingVersion:payload.pricingVersion,quoteFingerprint:quoted.quote.quoteFingerprint};
+      }
+      if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未提交模型请求。'),{code:'assistant-selection-changed'});
+      let result;
+      if(operationV3){
+        if(legacyUnversioned||typeof root.crypto?.randomUUID!=='function')throw Object.assign(Error('操作级计费尚不可用，本次未提交。'),{code:'operation-billing-disabled'});
+        if(!recoveryOwner.current())throw Object.assign(Error('登录会话已变化，本次未提交。'),{code:'assistant-selection-changed'});
+        const intent={mode:'chat',requestId:id,message:payload.message,history,...(payload.promptLanguage!==undefined?{promptLanguage:payload.promptLanguage}:{}),
+          ...(guardedImages?{images:requestImages.map(({dataUrl,role,source})=>({dataUrl,...(role!==undefined?{role}:{}),...(source!==undefined?{source}:{})}))}:{})};
+        const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:payload.expectedModelId,intent},65000,controller.signal);
+        const op=prepared?.operation;
+        if(prepared?.ok!==true||op?.model!==payload.expectedModelId||op?.policyVersion!==payload.pricingVersion||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096)
+          throw Object.assign(Error('操作级计费信息不匹配，本次未提交。'),{code:'companion-pricing-changed'});
+        if(controller.signal.aborted||Date.now()>=payload.pricingExpiresAt)throw Object.assign(Error('在线积分价格已过期，本次未提交。'),{code:'companion-pricing-changed'});
+        if(!recoveryOwner.current()||!operationRecoveryRemember(recoveryOwner,op.operationId,payload.expectedModelId))
+          throw Object.assign(Error('无法保存账单状态，本次未提交。'),{code:'operation-recovery-unavailable'});
+        recoveryId=op.operationId;
+        if(!recoveryOwner.current()||controller.signal.aborted)throw Object.assign(Error('登录会话已变化，本次未提交。'),{code:'assistant-selection-changed'});
+        providerSubmitted=true;
+        result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},65000,controller.signal);
+        if(!recoveryOwner.current())throw Object.assign(Error('登录会话已变化，请核对原账户账单。'),{code:'assistant-selection-changed'});
+        const receipt=result?.receipt;
+        if(receipt?.status!=='settled'||!['success','cancel'].includes(receipt.outcome)||!validCreditAmount(receipt.charged,true)||
+          !validCreditAmount(receipt.uncollected,true))
+          throw Object.assign(Error('结算状态待核对，请勿重复提交。'),{code:'operation-status-unknown'});
+        const quota={status:'settled',settled_credits:receipt.charged,billing_mode:'token',
+          ...(pricingQuote?{quote_estimated_credits:pricingQuote.estimatedCredits}:{}),...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
+        if(receipt.uncollected===0&&recoveryOwner.current())operationRecoveryForget(recoveryOwner,op.operationId);
+        // A v3 receipt does not contain a balance. Ask the account component
+        // to refresh it rather than deriving one from the charge.
+        notifyAccountBalance(undefined,'companion-operation');
+        if(result.ok!==true||receipt.outcome!=='success'||receipt.uncollected>0){
+          return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result.errorCode||'operation-incomplete',
+            error:receipt.uncollected>0?incompleteSettlementMessage(receipt):'本次回复未完成，已按实际用量结算。'};
+        }
+        result={...result,quota};
+      } else {
+        providerSubmitted=true;
+        result=await api(base, 'POST', '/api/web/companion/chat', chatRequest, 65000, controller.signal);
+      }
+      if(!safeImageCurrent())throw Object.assign(Error('会话或参考素材已变化，请核对已提交请求的账单。'),{code:'assistant-selection-changed'});
       if (result?.ok !== true || typeof result.reply !== 'string' || !result.reply.trim()) throw Error('在线回复未完成，本次未自动重试');
       const hasMedia = Boolean(payload.images?.length || uploads.length);
       return { ok: true, data: { mode: payload.mode, provider: 'api', reply: result.reply,...(result.toolPlan?{toolPlan:result.toolPlan}:{}),
         conversationId: typeof payload.conversationId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(payload.conversationId) ? payload.conversationId : root.crypto.randomUUID(),
         history: [...history, { role: 'user', content: payload.message }, { role: 'assistant', content: result.reply }].slice(-12),
         model: result.model || '云端API', toolTrace: [], capabilities: { textOnly: !hasMedia, vision: hasMedia, tools: payload.mode==='foart' },
-        quota: result.quota } };
-    } catch (error) { return { ok: false, error: controller.signal.aborted ? '本次在线回复等待已结束；用量以服务器实际结算为准' : String(error.message || error) }; }
-    finally { clearTimeout(timer); companionCloudRequests.delete(id); }
+        ...(result.billingSample ? {billingSample:result.billingSample} : {}), quota: pricingQuote ? {...result.quota,quote_estimated_credits:pricingQuote.estimatedCredits} : result.quota } };
+    } catch (error) {
+      if(operationV3&&!providerSubmitted&&recoveryId&&recoveryOwner.current())operationRecoveryForget(recoveryOwner,recoveryId);
+      if(operationV3&&providerSubmitted)return {ok:false,providerSubmitted:true,billingUnknown:true,errorCode:error.code||'operation-status-unknown',error:'模型请求已提交，积分状态待核对，请勿重复发送。'};
+      return { ok: false, ...((guardedImages||operationV3)&&!providerSubmitted?{providerSubmitted:false}:{}), ...(error.code ? {errorCode:error.code} : {}), error: controller.signal.aborted ? ((!guardedImages&&!operationV3)||providerSubmitted?'本次在线回复等待已结束；用量以服务器实际结算为准':'本次请求已停止，尚未提交模型。') : String(error.message || error) };
+    }
+    finally { clearTimeout(timer); companionCloudRequests.delete(id);if(guardedImages)foartSessionObservers.delete(onFoartSessionChange); }
   }
   function stopCompanionCloud(payload = {}) {
     const operation = companionCloudRequests.get(payload.requestId);
     if (!operation) return { ok: true, idle: true };
     operation.abort();
     return { ok: true, waitingCancelled: true, providerRequestAlreadySent: true };
+  }
+
+  // Foart operation-level billing is default closed and requires an explicit
+  // server policy. Session handles are opaque, in-memory and account-bound;
+  // neither tickets nor project snapshots are written to browser storage.
+  const foartOperationSessions = new WeakMap();
+  const foartOperationModels = new Set(['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver']);
+  // Staged candidate only: a separate release gate must explicitly enable it.
+  const FOART_AUDIO_MUSIC_DRAFT_ENABLED = false;
+  function foartOperationCopy(value) {
+    const json=JSON.stringify(value);
+    if(typeof json!=='string'||json.length>60000||/data:(?:image|audio|video)\//i.test(json))throw Error('操作上下文无效或含未开放的媒体');
+    const copy=JSON.parse(json),stack=[[copy,'',0]];
+    while(stack.length){const [item,key,depth]=stack.pop();if(depth>64)throw Error('操作上下文无效');
+      if(typeof item==='string'&&(/^data:/i.test(item)||(/^(?:dataUrl|imageUrl|previewUrl|blob|bytes)$/i.test(key)&&item)))throw Error('操作上下文含未开放的媒体');
+      if(item&&typeof item==='object')for(const [name,child] of Object.entries(item))stack.push([child,name,depth+1]);}
+    return copy;
+  }
+  function foartMusicRequestAllowed(terms,context) {
+    return FOART_AUDIO_MUSIC_DRAFT_ENABLED===true&&terms?.operation_foart_audio_music_v3===true&&
+      decimalCreditPolicy(terms)&&context?.media?.active===true&&context.media.sub==='audio';
+  }
+  function foartOperationPolicy(policy,version,expiresAt,context) {
+    const p=policy?.config?.xiaotao_online;
+    return policy?.version===version && /^sha256:[a-f0-9]{64}$/.test(version||'') &&
+      Number.isFinite(expiresAt)&&Date.now()<expiresAt&&Number.isFinite(policy?.expiresAt)&&Date.now()<policy.expiresAt&&
+      operationCreditPolicy(p)&&p.operation_text_chat_v3===true&&
+      (p.operation_foart_open_v3===true||foartMusicRequestAllowed(p,context));
+  }
+  function foartOperationHandle(record,continuationToken,previousContext,state='pending') {
+    const handle=Object.freeze({});
+    foartOperationSessions.set(handle,{...record,continuationToken,previousContext:foartOperationCopy(previousContext),state});
+    return handle;
+  }
+  function foartOperationQuota(receipt,quote,terms) {
+    if(receipt?.status!=='settled'||!['success','cancel'].includes(receipt.outcome)||
+      !validCreditAmount(receipt.charged,decimalCreditPolicy(terms))||!validCreditAmount(receipt.uncollected,decimalCreditPolicy(terms)))return null;
+    return {status:'settled',settled_credits:receipt.charged,billing_mode:'token',
+      ...(quote?{quote_estimated_credits:quote.estimatedCredits}:{}),...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
+  }
+  // A settled provider result is still untrusted input, not authorization to
+  // edit. Bind a narrowly scoped idle-animation draft to the captured editor
+  // snapshot; the editor must separately preview and require a trusted click.
+  function foartIdleContext(context) {
+    const a=context?.animation;
+    if(!a||a.active!==true||a.loaded!==true||a.mode!=='animate'||a.playing!==false||
+      typeof a.revision!=='string'||!a.revision||!Number.isSafeInteger(a.fps)||a.fps<1||a.fps>120||
+      !Array.isArray(a.animations)||a.animations.some(name=>typeof name!=='string')||
+      !Array.isArray(a.selectedBones)||a.selectedBones.length<1||a.selectedBones.length>4||
+      a.selectedBones.some(name=>typeof name!=='string'||!name||name.length>100||/^(?:__proto__|constructor|prototype)$/i.test(name))||
+      new Set(a.selectedBones).size!==a.selectedBones.length||!Array.isArray(a.bones)||
+      a.selectedBones.some(name=>a.bones.filter(bone=>bone?.name===name).length!==1))return null;
+    return a;
+  }
+  function foartIdleIntent(message) {
+    if(typeof message!=='string'||!/(?:待机|idle)/i.test(message)||!/(?:动画|animation)/i.test(message)||
+      !/(?<![\d.])(?:2(?:\.0+)?|两)\s*(?:秒|s(?:ec(?:ond)?s?)?)/i.test(message))return false;
+    // A question or a scoped negative is not authorization for a paid draft.
+    if(/(?:怎么|如何|怎样)(?:做|制作|生成|设计)|(?:能否|是否)(?:做|制作|生成|设计)|[?？]/i.test(message)||
+      /(?:不要|不用|无需|不需要|别|禁止|暂不|不必)(?:\s|帮我|给我|去|创建|生成|制作|做|设计|一个|一段|2(?:\.0+)?\s*秒){0,12}(?:待机|idle)/i.test(message)||
+      /(?:待机|idle).{0,12}(?:不要做|不要生成|无需制作|别做|暂时不做)/i.test(message))return false;
+    return true;
+  }
+  function foartIdleDraft(value,context) {
+    const exact=(item,names)=>item&&typeof item==='object'&&!Array.isArray(item)&&
+      Object.keys(item).length===names.length&&names.every(name=>Object.hasOwn(item,name));
+    const a=foartIdleContext(context);
+    if(!a||!exact(value,['action','operation','name','durationSeconds','keys'])||value.action!=='animation'||
+      value.operation!=='create_idle'||value.durationSeconds!==2||typeof value.name!=='string'||
+      value.name!==value.name.trim()||!value.name||value.name.length>100||/[\x00-\x1f\x7f]/.test(value.name)||
+      /^(?:__proto__|constructor|prototype)$/i.test(value.name)||
+      a.animations.includes(value.name)||!Array.isArray(value.keys)||value.keys.length!==a.selectedBones.length*3)return null;
+    const frames=[0,a.fps,a.fps*2],seen=new Set(),rotations=new Map();
+    for(const key of value.keys){
+      if(!exact(key,['boneName','frame','values'])||!a.selectedBones.includes(key.boneName)||
+        !frames.includes(key.frame)||!exact(key.values,['rotation'])||
+        typeof key.values.rotation!=='number'||!Number.isFinite(key.values.rotation)||Math.abs(key.values.rotation)>180)return null;
+      const id=JSON.stringify([key.boneName,key.frame]);if(seen.has(id))return null;seen.add(id);
+      if(!rotations.has(key.boneName))rotations.set(key.boneName,new Map());
+      rotations.get(key.boneName).set(key.frame,key.values.rotation);
+    }
+    let moves=false;
+    for(const bone of a.selectedBones){const values=rotations.get(bone);
+      if(!values||frames.some(frame=>!values.has(frame))||values.get(0)!==values.get(a.fps*2))return null;
+      if(values.get(a.fps)!==values.get(0))moves=true;
+    }
+    return moves?foartOperationCopy(value):null;
+  }
+  function foartOperationAction(plan,rotationEnabled,generalEnabled) {
+    if(plan?.schema!=='nf.foart.tool-plan.v1'||plan.status!=='act'||typeof plan.reply!=='string'||!plan.reply.trim()||plan.reply.length>4000||
+      !Array.isArray(plan.operations)||plan.operations.length!==1)return null;
+    const op=plan.operations[0],keys=(value,allowed)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(k=>allowed.includes(k));
+    if(op?.action==='open'&&keys(op,['action','surface'])&&['drawing','ui','video','audio','effects','particle','tools','animation'].includes(op.surface))return {kind:'open',surface:op.surface};
+    if(generalEnabled===true&&op&&typeof op==='object'&&!Array.isArray(op)&&typeof op.action==='string'&&op.action)return {kind:'tool',surface:'tools'};
+    if(rotationEnabled!==true||op?.action!=='animation'||typeof op.name!=='string'||!op.name||op.name.length>100)return null;
+    if(op.operation==='inspect_bones'&&keys(op,['action','operation','name','boneNames'])&&Array.isArray(op.boneNames)&&op.boneNames.length===1&&
+      typeof op.boneNames[0]==='string'&&op.boneNames[0].length>0&&op.boneNames[0].length<=100)return {kind:'inspect_bones',surface:'animation'};
+    if(op.operation==='key_bones'&&keys(op,['action','operation','name','keys'])&&Array.isArray(op.keys)&&op.keys.length===1){
+      const k=op.keys[0];if(keys(k,['boneName','frame','values'])&&typeof k.boneName==='string'&&k.boneName.length>0&&k.boneName.length<=100&&
+        Number.isSafeInteger(k.frame)&&k.frame>=0&&keys(k.values,['rotation'])&&Object.keys(k.values).length===1&&typeof k.values.rotation==='number'&&Number.isFinite(k.values.rotation))
+        return {kind:'key_bones',surface:'animation'};
+    }
+    return null;
+  }
+  // Receipts go back to the planner: no media bytes, and earlier steps stay
+  // visible so the model never repeats work it already finished.
+  function foartToolReceipt(incoming,steps) {
+    const media=/^(?:dataUrl|imageUrl|previewUrl|blob|bytes)$/i;
+    const clean=value=>JSON.parse(JSON.stringify(value,(key,item)=>media.test(key)||typeof item==='string'&&/^data:/i.test(item)?undefined:item)??'null');
+    const brief=row=>({...(typeof row?.action==='string'?{action:row.action}:{}),...(typeof row?.phase==='string'?{phase:row.phase}:{}),...(typeof row?.message==='string'?{message:row.message.slice(0,300)}:{})});
+    const latest=clean(incoming),earlierSteps=steps.slice(-8),full={...latest,earlierSteps};
+    return {receipt:JSON.stringify(full).length<=2600?full:{...brief(latest),earlierSteps},step:brief(latest)};
+  }
+  function foartMusicDraft(plan,context) {
+    if(context?.media?.active!==true||context.media.sub!=='audio'||plan?.schema!=='nf.foart.tool-plan.v1'||
+      plan.status!=='act'||typeof plan.reply!=='string'||!plan.reply.trim()||plan.reply.length>4000||
+      !Array.isArray(plan.operations)||plan.operations.length!==1)return null;
+    const wrapper=plan.operations[0],op=wrapper?.operation;
+    if(!wrapper||typeof wrapper!=='object'||Array.isArray(wrapper)||wrapper.action!=='media'||
+      Object.keys(wrapper).some(k=>!['action','operation'].includes(k))||!op||typeof op!=='object'||Array.isArray(op)||
+      Object.keys(op).some(k=>!['action','target','prompt','seconds','bpm','count','loop'].includes(k))||
+      op.action!=='generate_music'||op.target!=='audio'||typeof op.prompt!=='string'||!op.prompt.trim()||op.prompt.length>4000||op.count!==1||
+      (op.seconds!==undefined&&(!Number.isFinite(op.seconds)||op.seconds<8||op.seconds>300))||
+      (op.bpm!==undefined&&(!Number.isInteger(op.bpm)||op.bpm<40||op.bpm>220))||
+      (op.loop!==undefined&&typeof op.loop!=='boolean'))return null;
+    return foartOperationCopy(plan);
+  }
+  function foartOperationResult(result,record,previousContext) {
+    const quota=foartOperationQuota(result?.receipt||result,record.quote,record.creditTerms);
+    if(quota){
+      if((result?.receipt||result).uncollected===0&&record.recoveryOwner?.current?.())operationRecoveryForget(record.recoveryOwner,record.recoveryId);
+      notifyAccountBalance(undefined,'companion-operation');
+      if(result?.ok!==true||(result.receipt||result).outcome!=='success'||(result.receipt||result).uncollected>0)
+        return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result?.errorCode||'operation-incomplete',error:(result.receipt||result).uncollected>0?incompleteSettlementMessage(result.receipt||result):'操作未完成，请查看实际扣分。'};
+      if(Object.hasOwn(result,'idleDraft')){
+        const draft=record.idleDraftEnabled===true?foartIdleDraft(result.idleDraft,record.initialContext):null;
+        if(!draft||result.toolPlan!=null)return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:'operation-invalid-result',error:'动画草稿无效，请查看实际扣分。'};
+        return {ok:true,data:{idleDraft:draft,quota}};
+      }
+      if(result?.resultKind==='audio_music_draft'||Object.hasOwn(result,'audioDraft')){
+        const plan=record.musicDraftEnabled===true&&result.audioDraft===true?foartMusicDraft(result.toolPlan,previousContext):null;
+        if(!plan||result.resultKind!=='audio_music_draft'||Object.hasOwn(result,'continuationToken'))
+          return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:'operation-invalid-result',error:'音乐草稿无效，请查看实际扣分。'};
+        // This is a settled proposal, not an executed tool or a generation task.
+        return {ok:true,data:{toolPlan:plan,quota,audioDraft:true}};
+      }
+      if(result.toolPlan?.schema!=='nf.foart.tool-plan.v1'||!['done','reply','clarify'].includes(result.toolPlan.status)||
+        typeof result.toolPlan.reply!=='string'||!result.toolPlan.reply.trim()||!Array.isArray(result.toolPlan.operations)||result.toolPlan.operations.length)
+        return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:'operation-invalid-result',error:'操作结果无效，请查看实际扣分。'};
+      return {ok:true,data:{toolPlan:result.toolPlan,quota}};
+    }
+    const plan=result?.toolPlan,action=foartOperationAction(plan,record.rotationEnabled,record.generalEnabled);
+    if(result?.ok===true&&result?.billing?.status==='pending'&&action&&(action.kind!=='open'||record.openEnabled===true)&&typeof result.continuationToken==='string'&&result.continuationToken.length<=4096&&
+      Number.isSafeInteger(result.sequence)&&result.sequence>=1&&result.sequence<14){
+      const session=foartOperationHandle({...record,sequence:result.sequence,surface:action.surface,actionKind:action.kind,previousPlan:foartOperationCopy(plan)},result.continuationToken,previousContext);
+      return {ok:true,data:{toolPlan:plan,foartOperationSession:session}};
+    }
+    throw Object.assign(Error('操作账单状态待核对，请勿重复提交。'),{code:'operation-status-unknown'});
+  }
+  function foartOperationRequest(id,signal,guard) {
+    if(typeof id!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(id)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+      throw Object.assign(Error('请求已发送或另一操作正在运行。'),{code:'operation-busy'});
+    const controller=new AbortController(),abort=()=>controller.abort();
+    if(signal?.aborted)abort();else signal?.addEventListener?.('abort',abort,{once:true});
+    foartSessionObservers.add(abort);
+    const timer=setTimeout(abort,65000),expiryTimer=Number.isFinite(guard.expiresAtMs)?setTimeout(abort,Math.min(2147483647,Math.max(1,guard.expiresAtMs-Date.now()))):null;
+    companionCloudUsed.add(id);companionCloudRequests.set(id,controller);
+    return {controller,close(){clearTimeout(timer);if(expiryTimer!==null)clearTimeout(expiryTimer);foartSessionObservers.delete(abort);signal?.removeEventListener?.('abort',abort);companionCloudRequests.delete(id);}};
+  }
+  async function foartOperationStart(payload={}) {
+    const guard=captureFoartSessionGuard(),recoveryOwner=captureFoartBillingOwner();
+    if(typeof guard!=='function'||!guard()||!recoveryOwner?.current?.())return {ok:false,providerSubmitted:false,errorCode:'assistant-selection-unavailable',error:'登录会话不可用，操作未提交。'};
+    let request,record,providerSubmitted=false,session,recoveryId='';
+    try {
+      if(!foartOperationModels.has(payload.modelId)||(payload.mode!==undefined&&payload.mode!=='foart')||(payload.provider!==undefined&&payload.provider!=='api')||
+        (payload.expectedModelId!==undefined&&payload.expectedModelId!==payload.modelId)||
+        (payload.idleDraftRequested!==undefined&&typeof payload.idleDraftRequested!=='boolean')||
+        (payload.musicDraftRequested!==undefined&&typeof payload.musicDraftRequested!=='boolean')||
+        (payload.idleDraftRequested===true&&payload.musicDraftRequested===true)||
+        ['images','uploads','attachments','files'].some(key=>payload[key]!=null&&(!Array.isArray(payload[key])||payload[key].length>0))||
+        (payload.artContext!=null&&(typeof payload.artContext!=='object'||Array.isArray(payload.artContext)||Object.keys(payload.artContext).length>0))||
+        payload.audioDataUrl||payload.videoDataUrl||typeof payload.message!=='string'||!payload.message.trim()||payload.message.length>12000||
+        !Array.isArray(payload.history)||payload.history.length>12||payload.history.some(x=>!x||!['user','assistant'].includes(x.role)||typeof x.content!=='string'||x.content.length>12000)||
+        (payload.promptLanguage!==undefined&&typeof payload.promptLanguage!=='string')||typeof root.crypto?.randomUUID!=='function')throw Error('操作参数无效');
+      const initialContext=foartOperationCopy(payload.foartContext);
+      if(initialContext?.schema!=='nf.foart.tool-plan.v1'||!Array.isArray(initialContext.controls))throw Error('操作上下文无效');
+      if(payload.idleDraftRequested===true&&(!foartIdleIntent(payload.message)||!foartIdleContext(initialContext)))
+        throw Error('请明确要求制作 2 秒待机动画，并在动画编辑器中暂停播放及选中 1–4 根骨骼。');
+      // This non-secret intent marker is bound by the existing operation token.
+      // The server must strip it before constructing the provider prompt.
+      const originalIntent=foartOperationCopy({message:payload.message,history:payload.history,...(payload.promptLanguage!==undefined?{promptLanguage:payload.promptLanguage}:{}),
+        ...(payload.musicDraftRequested===true?{musicDraftRequested:true}:{}),
+        ...(payload.idleDraftRequested===true?{idleDraftRequested:true}:{})});
+      request=foartOperationRequest(payload.requestId,payload.signal,guard);
+      const policy=await companionPricing();
+      if(!guard()||request.controller.signal.aborted)throw Object.assign(Error('登录会话已变化，未提交操作。'),{code:'assistant-selection-changed'});
+      if(!foartOperationPolicy(policy?.policy,payload.pricingVersion,payload.pricingExpiresAt,initialContext)||!policy.policy.models?.some(x=>x.id===payload.modelId&&x.available===true))
+        throw Object.assign(Error('操作级计费尚未开通或报价已变化，未提交。'),{code:'operation-billing-disabled'});
+      if(payload.musicDraftRequested===true&&!foartMusicRequestAllowed(policy.policy.config.xiaotao_online,initialContext))
+        throw Object.assign(Error('音乐操作计费未就绪，未提交。'),{code:'operation-billing-disabled'});
+      if(payload.idleDraftRequested===true&&(!decimalCreditPolicy(policy.policy.config.xiaotao_online)||
+        policy.policy.config.xiaotao_online.operation_foart_idle_draft_v3!==true))
+        throw Object.assign(Error('待机动画草稿尚未开通，未提交。'),{code:'operation-billing-disabled'});
+      const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
+      const quoteIntent={...originalIntent};delete quoteIntent.musicDraftRequested;
+      const quoteRequest={requestId:payload.requestId,mode:'foart',modelId:payload.modelId,...quoteIntent,foartContext:initialContext,images:[],uploads:[],artContext:{}};
+      const quoted=await api(base,'POST','/api/web/companion/quote',quoteRequest,65000,request.controller.signal),quote=quoted?.quote;
+      if(!guard()||request.controller.signal.aborted||Date.now()>=payload.pricingExpiresAt)throw Object.assign(Error('会话或报价已变化，未提交操作。'),{code:'assistant-selection-changed'});
+      if(quoted?.ok!==true||quote?.pricingVersion!==payload.pricingVersion||quote?.modelId!==payload.modelId||
+        !/^sha256:[a-f0-9]{64}$/.test(quote?.quoteFingerprint||'')||!validCreditAmount(quote?.estimatedCredits,decimalCreditPolicy(policy.policy.config.xiaotao_online)))
+        throw Object.assign(Error('操作报价不可用，未提交。'),{code:'companion-pricing-changed'});
+      const pricingQuote={requestId:payload.requestId,estimatedCredits:quote.estimatedCredits};
+      if(typeof payload.onPricingQuote==='function')payload.onPricingQuote(pricingQuote);
+      if(!guard()||request.controller.signal.aborted)throw Object.assign(Error('会话已变化，未提交操作。'),{code:'assistant-selection-changed'});
+      const prepared=await api(base,'POST','/api/web/companion/operation/foart/prepare',{nonce:root.crypto.randomUUID(),model:payload.modelId,originalIntent,initialContext},65000,request.controller.signal);
+      if(prepared?.ok!==true||prepared.model!==payload.modelId||prepared.policyVersion!==payload.pricingVersion||!operationRecoveryId(prepared.operationId)||typeof prepared.token!=='string'||prepared.token.length>4096)
+        throw Object.assign(Error('操作票据与报价不一致，未提交。'),{code:'companion-pricing-changed'});
+      if(!guard()||!recoveryOwner.current()||!operationRecoveryRemember(recoveryOwner,prepared.operationId,payload.modelId))
+        throw Object.assign(Error('无法保存账单状态，本次未提交。'),{code:'operation-recovery-unavailable'});
+      recoveryId=prepared.operationId;
+      record={base,guard,recoveryOwner,recoveryId,modelId:payload.modelId,originalIntent,initialContext,operationToken:prepared.token,quote:pricingQuote,
+        creditTerms:policy.policy.config.xiaotao_online,
+        openEnabled:policy.policy.config.xiaotao_online.operation_foart_open_v3===true,
+        musicDraftEnabled:payload.musicDraftRequested===true&&foartMusicRequestAllowed(policy.policy.config.xiaotao_online,initialContext),
+        idleDraftEnabled:payload.idleDraftRequested===true&&policy.policy.config.xiaotao_online.operation_foart_idle_draft_v3===true,
+        generalEnabled:policy.policy.config.xiaotao_online.operation_foart_general_v3===true,
+        rotationEnabled:policy.policy.config.xiaotao_online.operation_foart_rotation_v3===true};
+      session=foartOperationHandle(record,'',initialContext,'unknown');
+      if(!guard()||request.controller.signal.aborted||Date.now()>=payload.pricingExpiresAt)throw Object.assign(Error('会话或报价已变化，未提交操作。'),{code:'assistant-selection-changed'});
+      providerSubmitted=true;
+      const result=await api(base,'POST','/api/web/companion/operation/foart/start',{operationToken:record.operationToken,originalIntent,initialContext},65000,request.controller.signal);
+      if(!guard())throw Object.assign(Error('登录会话已变化，账单状态待核对。'),{code:'assistant-selection-changed'});
+      return foartOperationResult(result,record,initialContext);
+    } catch(error) {
+      if(!providerSubmitted&&recoveryId&&recoveryOwner.current())operationRecoveryForget(recoveryOwner,recoveryId);
+      return {ok:false,providerSubmitted,billingUnknown:providerSubmitted,...(providerSubmitted&&session?{session}:{}),errorCode:error?.code||'operation-unavailable',error:providerSubmitted?'操作结果或账单状态待核对，请勿重复提交。':String(error?.message||'操作未提交。')};
+    } finally {request?.close();}
+  }
+  async function foartOperationResume(payload={}) {
+    const record=payload.session&&foartOperationSessions.get(payload.session);
+    if(!record||record.state!=='pending')return {ok:false,providerSubmitted:false,errorCode:'operation-session-unavailable',error:'操作会话不可用，请核对账单。'};
+    if(!record.guard())return {ok:false,providerSubmitted:false,billingUnknown:true,session:payload.session,errorCode:'operation-session-unavailable',error:'登录会话已变化，请核对未结算账单。'};
+    let request,providerSubmitted=false;
+    try {
+      const previousContext=foartOperationCopy(payload.previousContext),context=foartOperationCopy(payload.context),incoming=payload.receipt;
+      if(JSON.stringify(previousContext)!==JSON.stringify(record.previousContext))throw Object.assign(Error('操作状态已变化，未提交下一步。'),{code:'assistant-selection-changed'});
+      let receipt;
+      if(record.actionKind==='open'&&incoming?.action==='open'&&incoming.phase==='opened'&&incoming.surface===record.surface){
+        receipt={action:'open',phase:'opened',surface:record.surface};record.steps=[...(record.steps||[]),receipt];
+      }else if(record.generalEnabled&&record.actionKind==='tool'&&incoming&&typeof incoming==='object'&&!Array.isArray(incoming)){
+        const checked=foartToolReceipt(incoming,record.steps||[]);receipt=checked.receipt;record.steps=[...(record.steps||[]),checked.step];
+      }
+      else if(record.rotationEnabled&&record.actionKind==='inspect_bones'&&incoming?.action==='animation'&&incoming.operation==='inspect_bones'&&incoming.phase==='observed'&&incoming.inspection&&typeof incoming.inspection==='object'&&!Array.isArray(incoming.inspection))
+        receipt={action:'animation',operation:'inspect_bones',phase:'observed',inspection:foartOperationCopy(incoming.inspection)};
+      else if(record.rotationEnabled&&record.actionKind==='key_bones'&&incoming?.action==='animation'&&incoming.operation==='key_bones'&&incoming.phase==='applied')
+        receipt={action:'animation',operation:'key_bones',phase:'applied'};
+      else throw Object.assign(Error('工具回执无效，未提交下一步。'),{code:'assistant-selection-changed'});
+      request=foartOperationRequest(payload.requestId,payload.signal,record.guard);record.state='inflight';
+      if(!record.guard()||request.controller.signal.aborted)throw Object.assign(Error('登录会话已变化，未提交下一步。'),{code:'assistant-selection-changed'});
+      providerSubmitted=true;
+      const result=await api(record.base,'POST','/api/web/companion/operation/foart/resume',{operationToken:record.operationToken,originalIntent:record.originalIntent,
+        initialContext:record.initialContext,previousContext:record.previousContext,continuationToken:record.continuationToken,receipt,context,
+        ...(record.rotationEnabled?{previousPlan:record.previousPlan}:{})},65000,request.controller.signal);
+      if(!record.guard())throw Object.assign(Error('登录会话已变化，账单状态待核对。'),{code:'assistant-selection-changed'});
+      const value=foartOperationResult(result,record,context);record.state='closed';return value;
+    } catch(error) {
+      record.state=providerSubmitted?'unknown':'pending';
+      return {ok:false,providerSubmitted,billingUnknown:true,session:payload.session,errorCode:error?.code||'operation-unavailable',error:providerSubmitted?'操作结果或账单状态待核对，请勿重复提交。':String(error?.message||'下一步未提交，请核对前一阶段账单。')};
+    } finally {request?.close();}
+  }
+  async function foartOperationCancel(payload={}) {
+    const record=payload.session&&foartOperationSessions.get(payload.session);
+    if(!record||!['pending','unknown'].includes(record.state))return {ok:false,providerSubmitted:false,errorCode:'operation-session-unavailable',error:'操作会话不可用，请核对账单。'};
+    if(!record.guard())return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-session-unavailable',error:'登录会话已变化，请核对未结算账单。'};
+    if(companionCloudRequests.size)return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-busy',error:'操作仍在处理中，请核对账单。'};
+    let request;
+    try {
+      if(typeof root.crypto?.randomUUID!=='function')throw Error('操作不可用');
+      request=foartOperationRequest('cancel_'+root.crypto.randomUUID(),null,record.guard);record.state='inflight';
+      if(!record.guard()||request.controller.signal.aborted)throw Error('会话已变化');
+      const result=await api(record.base,'POST','/api/web/companion/operation/foart/cancel',{operationToken:record.operationToken,originalIntent:record.originalIntent,initialContext:record.initialContext},65000,request.controller.signal);
+      if(!record.guard())throw Error('会话已变化');
+      const quota=foartOperationQuota(result,record.quote,record.creditTerms);
+      if(!quota)throw Error('操作状态未知');
+      if(result.uncollected===0&&record.recoveryOwner?.current?.())operationRecoveryForget(record.recoveryOwner,record.recoveryId);
+      record.state='closed';notifyAccountBalance(undefined,'companion-operation');
+      if(result.uncollected>0)return {ok:false,billingConfirmed:true,data:{quota},errorCode:'operation-incomplete',error:incompleteSettlementMessage(result)};
+      return {ok:true,billingConfirmed:true,data:{quota}};
+    } catch(error){record.state='unknown';return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-status-unknown',error:'操作账单状态待核对，请勿重复提交。'};}
+    finally{request?.close();}
   }
 
   // ------------------------------------------------------- workflow intents
@@ -737,6 +2263,116 @@
   const grants = new Map();     // taskId -> download grant
   const uploads = new Map();    // filename -> { taskId, name }
   const pendingUploads = [];
+  // Contains only this page session's unfinished guarded H3 submission. In
+  // particular, raw reference bytes are never persisted across login/reload.
+  let pendingH3Submission = null;
+  // Account-specific locks live only in this page. An auth event discards staged
+  // bytes, but must not forget an already dispatched request.
+  const uncertainH3Owners = new Set();
+  foartSessionObservers.add(() => { pendingH3Submission = null; });
+  // Scoped art input candidate. An opaque ticket owns immutable bytes for one
+  // confirmed action; it never persists in browser storage.
+  const artBindingTickets = new WeakMap();
+  const ART_BINDING_ROLES = new Set(['auto','subject','style','pose','background','material','color','composition','lighting','object','reference','result','output','attachment']);
+  async function artImageBindingAvailable() {
+    const guard=captureFoartSessionGuard(),epoch=computeNodeEpoch,nodeId=computeNode?.id||'';
+    if (taskMode()!=='shared' || typeof guard!=='function' || !guard()) return false;
+    try {
+      const caps=await control('GET','/api/web/capabilities');
+      return guard() && taskMode()==='shared' && epoch===computeNodeEpoch && nodeId===(computeNode?.id||'') && caps?.features?.artImageBindingV1===true;
+    } catch {return false;}
+  }
+  async function prepareArtImageBinding({references,isCurrent,signal}={}) {
+    if (!Array.isArray(references) || references.length<1 || references.length>20 || typeof isCurrent!=='function' ||
+        !signal || typeof signal.addEventListener!=='function' || !root.crypto?.subtle || typeof root.crypto.randomUUID!=='function')
+      throw new Error('参考图绑定不可用，未提交生成');
+    // Capture strings synchronously: caller mutation during a capability
+    // request must not change the values for which the user gave approval.
+    const snapshot=references.map(item=>Object.freeze({dataUrl:item?.dataUrl,role:item?.role}));
+    const guard=captureFoartSessionGuard(),epoch=computeNodeEpoch,nodeId=computeNode?.id||'';
+    if (typeof guard!=='function' || !guard()) throw new Error('账户会话不可验证，未提交生成');
+    const abort=new AbortController(),stop=()=>abort.abort();let committed=false;
+    const dispose=()=>{signal.removeEventListener('abort',stop);foartSessionObservers.delete(stop);
+      root.removeEventListener('novaflow:compute-node',stop);root.removeEventListener('pagehide',stop);};
+    signal.addEventListener('abort',stop,{once:true});foartSessionObservers.add(stop);
+    root.addEventListener('novaflow:compute-node',stop);root.addEventListener('pagehide',stop);
+    try {
+    const check=()=>{if(signal.aborted || abort.signal.aborted || !guard() || taskMode()!=='shared' || epoch!==computeNodeEpoch || nodeId!==(computeNode?.id||'') || isCurrent()!==true)
+      throw new Error('账户或参考图已变化，未继续提交');};
+    check();if(!await artImageBindingAvailable())throw new Error('当前节点安全协议尚未启用，未提交生成');check();
+    const requestId=String(root.crypto.randomUUID()).toLowerCase();
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestId))throw new Error('生成标识无效');
+    const files=[],refs=[];let total=0;
+    for(const [i,item] of snapshot.entries()) {
+      check();
+      if(!item || typeof item.dataUrl!=='string' || !ART_BINDING_ROLES.has(item.role))throw new Error('参考图角色或内容不支持，未提交生成');
+      const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(item.dataUrl);
+      if(!match || match[2].length>Math.ceil(64*1024*1024/3)*4+4)throw new Error('参考图格式或大小无效，未提交生成');
+      let binary;try{binary=root.atob(match[2]);}catch{throw new Error('参考图解码失败，未提交生成');}
+      if(!binary.length || binary.length>64*1024*1024 || (total+=binary.length)>256*1024*1024)throw new Error('参考图过大，未提交生成');
+      const bytes=new Uint8Array(binary.length);for(let j=0;j<binary.length;j++)bytes[j]=binary.charCodeAt(j);
+      const digest=await root.crypto.subtle.digest('SHA-256',bytes);check();
+      const name=`artbind-${requestId}-${i+1}.${match[1]==='jpeg'?'jpg':match[1]}`;
+      refs.push(Object.freeze({name,kind:'image',bytes:bytes.byteLength,sha256:Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join(''),role:item.role}));
+      files.push({bytes,mimeType:'image/'+match[1]});
+    }
+    const ticket=Object.freeze({});const binding={ticket,taskId:requestId,targetWorkerId:nodeId||null,refs:Object.freeze(refs),files,check,sessionCurrent:guard,signal:abort.signal,dispose,staged:new Set(),submitted:false};
+    artBindingTickets.set(ticket,binding);committed=true;return Object.freeze({ticket,names:Object.freeze(refs.map(ref=>ref.name))});
+    } finally {if(!committed)dispose();}
+  }
+  function stageArtBoundReference(ticket,index) {
+    const binding=artBindingTickets.get(ticket);
+    if(!binding || !Number.isSafeInteger(index) || index<0 || index>=binding.refs.length || binding.staged.has(index) || binding.submitted)
+      throw new Error('参考图绑定已失效，未提交生成');
+    binding.check();const ref=binding.refs[index],file=binding.files[index];
+    if(uploads.has(ref.name))throw new Error('参考图名称冲突，未提交生成');
+    uploads.set(ref.name,{bytes:file.bytes,mimeType:file.mimeType,kind:'image',slot:'img2img',artBinding:binding});
+    pendingUploads.push(ref);binding.staged.add(index);return {ok:true,result:{name:ref.name}};
+  }
+  function discardArtImageBinding(ticket) {
+    const binding=artBindingTickets.get(ticket);if(!binding)return false;
+    for(const ref of binding.refs){if(uploads.get(ref.name)?.artBinding===binding)uploads.delete(ref.name);
+      for(let i=pendingUploads.length-1;i>=0;i--)if(pendingUploads[i]===ref)pendingUploads.splice(i,1);}
+    binding.dispose();binding.files.length=0;artBindingTickets.delete(ticket);return true;
+  }
+
+  // The server signs and revalidates the zero-price quote; browser state only
+  // decides whether to ask for a confirmation and whether to send the request.
+  function canonicalArtQuoteValue(value) {
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (Array.isArray(value)) return value.map(canonicalArtQuoteValue);
+    if (!value || typeof value !== 'object') throw new Error('绘图参数无效，未提交生成。');
+    const result = {};
+    for (const key of Object.keys(value).sort()) {
+      if (['__proto__','constructor','prototype'].includes(key) || /^(authorization|access_?token|refresh_?token|session_?token|confirmationToken|quoteToken)$/i.test(key)) throw new Error('绘图参数无效，未提交生成。');
+      result[key] = canonicalArtQuoteValue(value[key]);
+    }
+    return result;
+  }
+  function artQuoteSame(a,b) {return JSON.stringify(canonicalArtQuoteValue(a)) === JSON.stringify(canonicalArtQuoteValue(b));}
+  function artQuoteCheck(q,request) {
+    if (!q || q.task_id !== request.taskId || q.target_worker_id !== request.targetWorkerId || q.count !== 1 ||
+        q.credit_cost !== 0 || q.source !== 'novaflow_web_self_hosted_v1' || !Number.isSafeInteger(q.expiry_epoch) ||
+        q.expiry_epoch <= Math.floor(Date.now()/1000) || !/^[a-f0-9]{64}$/.test(q.quote_fingerprint || '') ||
+        typeof q.model_id !== 'string' || !q.model_id || !artQuoteSame(q.workflow,request.workflow) ||
+        !artQuoteSame(q.parameters,request.parameters) || !Array.isArray(q.references) || q.references.length!==request.references.length)
+      throw new Error('生成报价不可用或已变化，未提交生成。');
+    for (let i=0;i<request.references.length;i++) {
+      const ref=request.references[i],quoted=q.references[i];
+      const mime=/\.png$/.test(ref.name)?'image/png':/\.webp$/.test(ref.name)?'image/webp':'image/jpeg';
+      if (!quoted || quoted.index!==i || quoted.mime!==mime ||
+          !artQuoteSame({name:quoted.name,kind:quoted.kind,bytes:quoted.bytes,sha256:quoted.sha256,role:quoted.role},ref))
+        throw new Error('参考图报价已变化，未提交生成。');
+    }
+  }
+  function hasUnsafeArtPayload(value) {
+    if (typeof value === 'string') return /^(?:data:image\/|blob:)/i.test(value);
+    if (Array.isArray(value)) return value.some(hasUnsafeArtPayload);
+    if (!value || typeof value!=='object') return false;
+    return Object.keys(value).some(key => /^(authorization|access_?token|refresh_?token|session_?token|confirmationToken|quoteToken)$/i.test(key) || hasUnsafeArtPayload(value[key]));
+  }
+
   // Session-only metadata for the existing H3 output-resource adapter. Its
   // legacy "local" schema is backed by signed Worker downloads on the Web.
   const videoOutputs = new Map();
@@ -754,7 +2390,81 @@
     }
   }
 
-  async function grantFor(task, op) {
+  function checkCandidateTransport(options) {
+    if(!options || typeof options.assertCurrent!=='function' || !options.signal || options.signal.aborted || options.assertCurrent()===false)
+      throw new Error('候选任务或登录状态已变化，未继续提交。');
+  }
+  function candidateSecureBase(raw) {
+    try {const endpoint=new URL(String(raw||''));
+      if(endpoint.username || endpoint.password || endpoint.search || endpoint.hash ||
+        !(endpoint.protocol==='https:' || (endpoint.protocol==='http:' && ['127.0.0.1','localhost','[::1]'].includes(endpoint.hostname))))throw new Error('unsafe');
+      return endpoint.href.replace(/\/+$/,'');
+    } catch {throw new Error('候选服务地址不安全，未提交。');}
+  }
+  async function candidateGrantFor(task,op,{assertCurrent,signal,expectedNodeId}={}) {
+    if(taskMode()!=='shared' ||
+      !QWEN_ROTATION_CANDIDATE_ID.test(String(task?.id||'')) || !['upload','download'].includes(op) ||
+      typeof expectedNodeId!=='string' || !expectedNodeId || task?.assigned_worker_id!==expectedNodeId ||
+      typeof assertCurrent!=='function' || !signal || typeof AbortSignal==='undefined' || typeof AbortSignal.any!=='function' || typeof AbortSignal.timeout!=='function')
+      throw new Error('候选任务授权不可用，未提交。');
+    checkCandidateTransport({assertCurrent,signal});
+    const res=await fetch(candidateSecureBase(CONFIG.controlUrl)+'/api/web/tasks/'+task.id+'/qwen-rotation-proof',{
+      method:'POST',headers:authHeaders(),body:JSON.stringify({op}),redirect:'error',cache:'no-store',credentials:'omit',
+      signal:AbortSignal.any([signal,AbortSignal.timeout(20000)])
+    });
+    if(!res.ok)throw Object.assign(new Error('候选任务授权未通过。'),{status:res.status});
+    const value=await res.json();checkCandidateTransport({assertCurrent,signal});const g=value?.grant,p=value?.proof;
+    if(value?.ok!==true || typeof p!=='string' || !p.startsWith('nfr_') || p.length>8192 ||
+      !g || typeof g.token!=='string' || !g.token.startsWith('nfg_') || g.token.length>8192 ||
+      g.taskId!==task.id || g.workerId!==expectedNodeId || g.op!==op || !Number.isFinite(Date.parse(g.expiresAt)) || Date.parse(g.expiresAt)<=Date.now())
+      throw new Error('候选任务授权响应不匹配，未提交。');
+    return {...g,endpoint:candidateSecureBase(g.endpoint),candidateProof:p};
+  }
+  async function grantFor(task, op, options={}) {
+    const marked=QWEN_ROTATION_CANDIDATE_ID.test(String(task?.id||'').toLowerCase());
+    if(options.qwenPlan===true){
+      if(marked || taskMode()!=='shared' || !NODE_ID.test(String(task?.id||'')) ||
+        !['upload','download'].includes(op) || task.assigned_worker_id!==options.expectedNodeId ||
+        !Number.isSafeInteger(task.attempt_count) || task.attempt_count<1 || task.attempt_count>20 ||
+        typeof options.assertCurrent!=='function' || !options.signal ||
+        typeof AbortSignal==='undefined' || typeof AbortSignal.any!=='function' || typeof AbortSignal.timeout!=='function')
+        throw new Error('动画规划任务授权不可用，未提交。');
+      checkCandidateTransport(options);
+      const res=await fetch(candidateSecureBase(CONFIG.controlUrl)+'/api/web/tasks/'+task.id+'/grant',{
+        method:'POST',headers:authHeaders(),body:JSON.stringify({op,attempt:task.attempt_count}),
+        redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.any([options.signal,AbortSignal.timeout(20000)])
+      });
+      if(!res.ok)throw Object.assign(new Error('动画规划任务授权未通过。'),{status:res.status});
+      const value=await res.json();checkCandidateTransport(options);const g=value?.grant;
+      if(value?.ok!==true || !g || typeof g.token!=='string' || !g.token.startsWith('nfg_') || g.token.length>8192 ||
+        g.taskId!==task.id || g.workerId!==options.expectedNodeId || g.op!==op ||
+        !Number.isFinite(Date.parse(g.expiresAt)) || Date.parse(g.expiresAt)<=Date.now())
+        throw new Error('动画规划任务授权响应不匹配，未提交。');
+      return {...g,endpoint:candidateSecureBase(g.endpoint)};
+    }
+    if(marked || options.candidate===true){
+      if(!marked || task.id!==task.id.toLowerCase() || options.candidate!==true)throw new Error('候选任务授权范围不匹配。');
+      return await candidateGrantFor(task,op,options);
+    }
+    if(task?.h3_idempotency_scope==='h3-idempotent-v1' && op==='download'){
+      const filename=options.h3Filename, guard=captureFoartSessionGuard(), taskId=String(task.id||'');
+      const files=Array.isArray(task.output_manifest?.files)?task.output_manifest.files:[];
+      if(!NODE_ID.test(taskId))throw new Error('视频任务标识无效，请重新打开结果。');
+      const expected=new RegExp('^h3-'+taskId+'-result-[1-8]\\.(mp4|webm)$');
+      if(typeof filename!=='string'||!expected.test(filename)||
+         files.filter(file=>file?.name===filename).length!==1||typeof guard!=='function'||!guard())
+        throw new Error('视频文件或登录状态不可用，请重新打开结果。');
+      // Each H3 token is bound to one output and one live session. Never use
+      // the legacy per-task cache across filenames or account changes.
+      const res=await control('POST','/api/web/tasks/'+task.id+'/grant',{op:'download',name:filename});
+      if(!guard())throw new Error('登录状态已变化，请重新打开视频结果。');
+      const grant=res?.grant;
+      if(res?.ok!==true||!grant||typeof grant.token!=='string'||!grant.token.startsWith('nfg_')||
+         grant.taskId!==task.id||grant.workerId!==task.assigned_worker_id||grant.op!=='download'||
+         !Number.isFinite(Date.parse(grant.expiresAt))||Date.parse(grant.expiresAt)<=Date.now())
+        throw new Error('视频授权已失效，请重新打开结果。');
+      return grant;
+    }
     const cached = grants.get(task.id);
     if (cached && op === 'download' && Date.parse(cached.expiresAt) - Date.now() > 60000) return cached;
     const res = await control('POST', '/api/web/tasks/' + task.id + '/grant', { op: op });
@@ -837,10 +2547,37 @@
   // against that worker.
   // Two minutes, the same the node then gives the browser to upload: a node that claims late
   // (a 60s limit gave up just before the claim) must still find the upload coming.
-  async function waitForAssignment(taskId, { timeoutMs = 120000, onWait } = {}) {
+  async function waitForAssignment(taskId, { timeoutMs = 120000, onWait, assertCurrent, signal } = {}) {
     const started = Date.now();
+    let consecutiveNetworkFailures = 0;
+    const check = () => {
+      if (signal?.aborted) throw Object.assign(new Error('本次请求已取消'), {name:'AbortError'});
+      if (assertCurrent) assertCurrent();
+    };
+    const pause = ms => new Promise((resolve, reject) => {
+      if (signal?.aborted) return reject(Object.assign(new Error('本次请求已取消'), {name:'AbortError'}));
+      let timer;
+      const abort = () => {clearTimeout(timer);signal?.removeEventListener('abort', abort);reject(Object.assign(new Error('本次请求已取消'), {name:'AbortError'}));};
+      timer = setTimeout(() => {signal?.removeEventListener('abort', abort);resolve();}, ms);
+      signal?.addEventListener('abort', abort, {once:true});
+    });
     for (;;) {
-      const res = await control('GET', '/api/web/tasks/' + taskId);
+      check();
+      if (Date.now() - started > timeoutMs) throw new Error('等不到空闲算力节点，参考图没能送出');
+      let res;
+      try {
+        res = await control('GET', '/api/web/tasks/' + taskId);
+      } catch (error) {
+        check();
+        const transient = !error?.status && error?.name !== 'AbortError' &&
+          (error?.name === 'TimeoutError' || /failed to fetch|fetch failed|network|load failed/i.test(String(error?.message || error)));
+        if (!transient || consecutiveNetworkFailures >= 3 || Date.now() - started >= timeoutMs) throw error;
+        const delay = Math.min(600 * (2 ** consecutiveNetworkFailures++), Math.max(0, timeoutMs - (Date.now() - started)));
+        await pause(delay);check();
+        continue;
+      }
+      check();
+      consecutiveNetworkFailures = 0;
       const task = res.task || {};
       tasks.set(taskId, task);
       if (task.assigned_worker_id) return task;
@@ -856,21 +2593,26 @@
       if (Date.now() - started > timeoutMs) {
         throw new Error('等不到空闲算力节点，参考图没能送出');
       }
-      await new Promise((r) => setTimeout(r, 700));
+      await pause(700);
     }
   }
 
-  async function putReferences(taskId, refs) {
+  async function putReferences(taskId, refs, artBinding=null) {
     // Panels that submit through the /prompt shim have no callback to pass; they listen for this.
     const task = await waitForAssignment(taskId, {
-      onWait: (seconds) => root.dispatchEvent && root.dispatchEvent(new CustomEvent('novaflow:web-task-wait', { detail: { taskId, seconds } }))
+      onWait: (seconds) => root.dispatchEvent && root.dispatchEvent(new CustomEvent('novaflow:web-task-wait', { detail: { taskId, seconds } })),
+      ...(artBinding ? {assertCurrent:artBinding.check} : {})
     });
+    if (artBinding) artBinding.check();
     const grant = await grantFor(task, 'upload');
+    if (artBinding) artBinding.check();
     const base = String(grant.endpoint || '').replace(/\/+$/, '');
     if (!base) throw new Error('算力节点没有可用地址');
 
     for (const ref of refs) {
+      if (artBinding) artBinding.check();
       const held = uploads.get(ref.name);
+      if (artBinding && held?.artBinding !== artBinding) throw new Error('参考图会话已变化，未继续上传');
       if (!held) throw new Error('找不到 ' + ref.name + ' 的图像数据');
       const res = await fetch(
         base + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(ref.name),
@@ -881,9 +2623,11 @@
             'x-novaflow-grant': grant.token,
             ...(held.slot ? { 'x-novaflow-upload-slot': held.slot } : {})
           },
-          body: held.bytes
+          body: held.bytes,
+          ...(artBinding ? {signal:artBinding.signal,redirect:'error',credentials:'omit'} : {})
         }
       );
+      if (artBinding) artBinding.check();
       if (!res.ok) {
         let message = ref.name + ' 上传返回 ' + res.status;
         try { const body = await res.json(); if (body && body.error) message = String(body.error); } catch (_) {}
@@ -901,22 +2645,33 @@
   // needs wait-for-worker / mint-grant / PUT without the staging. Same wire
   // format, same tunnel, same grant - only the source of the bytes differs.
   async function putTaskInput(taskId, name, bytes, onWait, options = {}) {
-    const task = await waitForAssignment(taskId, { onWait: onWait });
-    const attempts = options.retryConnection ? 3 : 1;
+    const check=()=>options.candidate===true || options.qwenPlan===true ? checkCandidateTransport(options) : options.assertCurrent?.();
+    check();
+    if(options.candidate===true || options.qwenPlan===true)candidateSecureBase(CONFIG.controlUrl);
+    const task = await waitForAssignment(taskId, { onWait: onWait, assertCurrent: check, signal: options.signal });
+    check();
+    if(options.expectedNodeId && task?.assigned_worker_id!==options.expectedNodeId)throw new Error('任务分配节点不匹配，未上传。');
+    const attempts = options.candidate===true || options.qwenPlan===true ? 1 : options.retryConnection ? 3 : 1;
     for (let attempt = 0; attempt < attempts; attempt++) {
       try {
         // The same task/file PUT is safe to repeat. Refresh the grant on each
         // attempt because restarting a node can change its tunnel address.
-        const grant = await grantFor(task, 'upload');
+        check();
+        const grant = await grantFor(task, 'upload',options);
+        check();
         const base = String(grant.endpoint || '').replace(/\/+$/, '');
         if (!base) throw new Error('算力节点没有可用地址');
         const headers = { 'content-type': mimeFor(name), 'x-novaflow-grant': grant.token };
+        if(options.candidate===true)headers['x-novaflow-candidate-proof']=grant.candidateProof;
         if (options.slot) headers['x-novaflow-upload-slot'] = String(options.slot);
         const res = await fetch(base + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(name), {
           method: 'PUT',
           headers,
-          body: bytes
+          body: bytes,
+          ...(options.candidate===true || options.qwenPlan===true ? {redirect:'error',cache:'no-store',credentials:'omit'} : {}),
+          ...(options.signal ? {signal:options.signal} : {})
         });
+        check();
         if (!res.ok) throw Object.assign(new Error(name + ' 上传返回 ' + res.status), { status: res.status });
         return task;
       } catch (error) {
@@ -930,14 +2685,21 @@
   }
 
   /** One finished output file, as raw bytes. The warehouse is the caller's business. */
-  async function fetchTaskOutput(task, filename) {
-    const grant = await grantFor(task, 'download');
+  async function fetchTaskOutput(task, filename, options={}) {
+    const check=()=>options.candidate===true || options.qwenPlan===true ? checkCandidateTransport(options) : options.assertCurrent?.();
+    check();
+    const grant = await grantFor(task, 'download',{...options,h3Filename:filename});
+    check();
     const url = grant.endpoint.replace(/\/+$/, '') +
       '/gw/tasks/' + task.id + '/output/' + encodeURIComponent(filename) +
-      '?grant=' + encodeURIComponent(grant.token);
-    const res = await fetch(url);
+      (options.candidate===true || options.qwenPlan===true ? '' : '?grant=' + encodeURIComponent(grant.token));
+    const res = options.candidate===true || options.qwenPlan===true ? await fetch(url,{headers:{'x-novaflow-grant':grant.token,
+      ...(options.candidate===true?{'x-novaflow-candidate-proof':grant.candidateProof}:{})},signal:options.signal,redirect:'error',cache:'no-store',credentials:'omit'}) : await fetch(url);
+    check();
     if (!res.ok) throw new Error('取回 ' + filename + ' 失败：' + res.status);
-    return new Uint8Array(await res.arrayBuffer());
+    const bytes=new Uint8Array(await res.arrayBuffer());check();
+    if(options.qwenPlan===true && (bytes.length<1 || bytes.length>262144))throw new Error('动画规划结果大小无效，未修改作品。');
+    return bytes;
   }
 
   // A file stored as octet-stream is fine for an <img>, which sniffs, and not
@@ -955,6 +2717,160 @@
   // ------------------------------------------------------------- submission
   const originOf = (baseUrl) => { try { return new URL(String(baseUrl)).origin; } catch (_) { return String(baseUrl || ''); } };
 
+  // Opt-in only after the control plane AND installed worker advertise the
+  // same scoped contract. Never retry a submission whose outcome is unknown.
+  async function submitIdempotentH3(intent, baseUrl) {
+    if (taskMode() !== 'shared') throw new Error('当前节点不支持安全的视频任务提交。');
+    const guard = captureFoartSessionGuard(), nodeEpoch = computeNodeEpoch, nodeId = computeNode?.id || '';
+    const billingOwner = captureFoartBillingOwner();
+    if (!billingOwner || !billingOwner.current()) throw new Error('登录状态无法验证，未提交。');
+    if (uncertainH3Owners.has(billingOwner.owner)) throw new Error('上一次视频任务状态待核，请勿重复提交。');
+    if (typeof guard !== 'function' || !guard()) throw new Error('登录状态无法验证，未提交视频任务。');
+    const studio = root.NovaFlowAudioStudio, gen = root.NovaFlowAiSequenceGeneration;
+    const route = root.__NovaFlowArtGenerate?.captureContext?.()?.routeRevision;
+    const mediaRoute = studio?.routeRevision?.(), board = gen?.boardIdentity?.(), snapshot = gen?.capture?.();
+    if (studio?.isOpen?.() !== true || studio?.sub?.() !== 'video' ||
+        !Number.isSafeInteger(route) || route < 0 || !Number.isSafeInteger(mediaRoute) || mediaRoute < 0 ||
+        typeof board !== 'symbol' || !Number.isSafeInteger(snapshot?.boardRevision) || snapshot.boardRevision < 0 ||
+        snapshot.mode !== 'minimax_h3_local' || snapshot.genType !== 'first_last')
+      throw new Error('无法确认当前视频画板，未提交视频任务。');
+    const expectedSnapshot = JSON.stringify(snapshot);
+    const check = () => {
+      if (!guard() || taskMode() !== 'shared' || computeNodeEpoch !== nodeEpoch || (computeNode?.id || '') !== nodeId ||
+          root.NovaFlowAudioStudio !== studio || studio.routeRevision?.() !== mediaRoute || studio.isOpen?.() !== true || studio.sub?.() !== 'video' ||
+          root.__NovaFlowArtGenerate?.captureContext?.()?.routeRevision !== route ||
+          root.NovaFlowAiSequenceGeneration?.boardIdentity?.() !== board || JSON.stringify(root.NovaFlowAiSequenceGeneration?.capture?.()) !== expectedSnapshot)
+        throw new Error('账号、节点或视频画板已变化；如任务已提交，请勿重复提交。');
+    };
+    const originals = intent.options?.images;
+    if (!Array.isArray(originals) || originals.length !== 2 || originals.some(name => typeof name !== 'string' || !name) || originals[0] === originals[1])
+      throw new Error('首尾帧素材不完整，未提交视频任务。');
+    if (!root.crypto?.subtle || typeof root.crypto.randomUUID !== 'function') throw new Error('当前浏览器无法安全绑定视频素材，未提交。');
+    const options = JSON.parse(JSON.stringify(intent.options));
+    const staged = [];
+    for (const name of originals) {
+      check();
+      const ref = [...pendingUploads].reverse().find(item => item.name === name), held = uploads.get(name);
+      if (!ref || !held || held.kind !== 'image') throw new Error('找不到首尾帧素材，未提交视频任务。');
+      const source = held.bytes;
+      const sourceLength = source?.byteLength ?? source?.size;
+      if (!Number.isSafeInteger(sourceLength) || sourceLength < 1 || sourceLength > 64 * 1024 * 1024 || ref.bytes !== sourceLength)
+        throw new Error('视频素材大小无效，未提交。');
+      let bytes;
+      if (source instanceof ArrayBuffer) bytes = new Uint8Array(source.slice(0));
+      else if (ArrayBuffer.isView(source)) bytes = new Uint8Array(source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength));
+      else if (source && typeof source.arrayBuffer === 'function') bytes = new Uint8Array(await source.arrayBuffer());
+      else throw new Error('视频素材格式无效，未提交。');
+      check();
+      if (!bytes.length || bytes.byteLength > 64 * 1024 * 1024 || ref.bytes !== bytes.byteLength || uploads.get(name) !== held) throw new Error('视频素材大小无效或已变化，未提交。');
+      const digest = new Uint8Array(await root.crypto.subtle.digest('SHA-256', bytes));
+      check();
+      if (uploads.get(name) !== held) throw new Error('视频素材已变化，未提交。');
+      const sha256 = [...digest].map(value => value.toString(16).padStart(2, '0')).join('');
+      const ext = /\.([A-Za-z0-9]{1,8})$/.exec(name)?.[1]?.toLowerCase();
+      if (!['png','jpg','jpeg','webp'].includes(ext)) throw new Error('首尾帧格式不支持，未提交。');
+      staged.push({ original: name, ref, held, bytes, sha256, ext });
+    }
+    const fingerprint = JSON.stringify({options, nodeId, refs: staged.map(item => ({name:item.original, bytes:item.bytes.byteLength, sha256:item.sha256}))});
+    let operation = pendingH3Submission;
+    if (operation) {
+      throw new Error(operation.busy ? '视频任务正在提交，请稍候。' : '上一次视频任务状态待核，请勿重复提交。');
+    } else {
+      const id = String(root.crypto.randomUUID()).toLowerCase();
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) throw new Error('无法创建安全的视频任务标识。');
+      const names = staged.map((item, index) => 'h3-' + id + '-' + (index === 0 ? 'first' : 'last') + '.' + item.ext);
+      const translated = JSON.parse(JSON.stringify(options));
+      translated.images = names;
+      // Some workflow profiles accept these synonymous fields; translate
+      // only exact filename references, never prompt text or arbitrary values.
+      for (const [field, index] of [['firstFrame',0],['firstImage',0],['lastFrame',1],['lastImage',1]]) {
+        if (translated[field] === originals[index]) translated[field] = names[index];
+      }
+      if (Array.isArray(translated.referenceImages)) translated.referenceImages = translated.referenceImages.map(name => name === originals[0] ? names[0] : name === originals[1] ? names[1] : name);
+      const refs = staged.map((item, index) => ({name:names[index],bytes:item.bytes.byteLength,kind:'image',sha256:item.sha256}));
+      operation = {id, fingerprint, current:check, busy:false, task:null, staged, refs,
+        body:{task_type:'renderer_workflow',workflow:{module:intent.module,method:intent.method},parameters:translated,references:refs,video_request_id:id}};
+      pendingH3Submission = operation;
+    }
+    operation.busy = true;
+    try {
+      const finish = task => {
+        // Do not delete a replacement staged after this submission.
+        // Do not delete a later replacement with the same display filename.
+        for (const item of [...operation.staged, ...staged]) {
+          const index = pendingUploads.indexOf(item.ref);
+          if (index >= 0) pendingUploads.splice(index, 1);
+          if (uploads.get(item.original) === item.held) uploads.delete(item.original);
+        }
+        root.NovaFlowWebRuntime.lastTask = task;
+        if (pendingH3Submission === operation) pendingH3Submission = null;
+        uncertainH3Owners.delete(billingOwner.owner);
+        return {prompt_id:operation.id,number:tasks.size,node_errors:{}};
+      };
+      if (!operation.task) {
+        let result;
+        operation.current();
+        uncertainH3Owners.add(billingOwner.owner);
+        try { result = await control('POST', '/api/web/tasks', operation.body); operation.current(); }
+        catch (error) {
+          operation.current();
+          if (error?.status && ![502,503,504].includes(error.status)) throw error;
+          throw new Error('视频任务状态待核，请勿重复提交。');
+        }
+        if (!result?.task || result.task.id !== operation.id) throw new Error('视频任务返回的标识不匹配，未继续上传。');
+        operation.task = result.task;
+        tasks.set(operation.id, result.task); taskOrigins.set(operation.id, originOf(baseUrl));
+      }
+      const started = Date.now();
+      let assigned;
+      for (;;) {
+        operation.current();
+        let res;
+        try { res = await control('GET', '/api/web/tasks/' + operation.id); }
+        catch { operation.current(); throw new Error('视频任务状态待核，请勿重复提交。'); }
+        operation.current();
+        assigned = res.task || {};
+        if (assigned.id !== operation.id) throw new Error('视频任务状态不匹配，已停止上传。');
+        tasks.set(operation.id, assigned);
+        if (assigned.status === 'completed') return finish(assigned);
+        if (['failed','cancelled','expired'].includes(assigned.status)) {
+          if (assigned.error_code === 'h3_result_unknown') throw new Error('视频任务结果与扣费状态待核，请勿重复提交。');
+          // The server has positively identified the same request as terminal.
+          // Keep the staged inputs for an explicit new submission; never retry
+          // a new task automatically or modify the old task's accounting.
+          if (pendingH3Submission === operation) pendingH3Submission = null;
+          uncertainH3Owners.delete(billingOwner.owner);
+          throw new Error('视频任务已结束：' + taskErrorText(assigned));
+        }
+        if (assigned.assigned_worker_id) {
+          if (nodeId && assigned.assigned_worker_id !== nodeId) throw new Error('视频任务分配节点已变化，未上传素材。');
+          break;
+        }
+        if (Date.now() - started > 120000) throw new Error('视频任务状态待核，请勿重复提交。');
+        await new Promise(resolve => setTimeout(resolve, 700));
+      }
+      operation.current();
+      const grant = await grantFor(assigned, 'upload');
+      operation.current();
+      const base = String(grant.endpoint || '').replace(/\/+$/, '');
+      if (!base) throw new Error('算力节点没有可用地址，未继续上传。');
+      for (let index = 0; index < operation.refs.length; index++) {
+        operation.current();
+        const ref = operation.refs[index], item = operation.staged[index];
+        let res;
+        try {
+          res = await fetch(base + '/gw/tasks/' + operation.id + '/input/' + encodeURIComponent(ref.name), {
+            method:'PUT', headers:{'content-type':item.held.mimeType || mimeFor(ref.name),'x-novaflow-grant':grant.token}, body:item.bytes
+          });
+        } catch { operation.current(); throw new Error('视频素材上传状态待核，请勿重复提交。'); }
+        operation.current();
+        if (!res.ok) throw new Error('视频素材上传状态待核，请勿重复提交。');
+      }
+      operation.current();
+      return finish(assigned);
+    } finally { operation.busy = false; }
+  }
+
   async function submitPrompt(body, baseUrl) {
     const intent = intentFrom(body && body.prompt);
     if (!intent) {
@@ -966,6 +2882,9 @@
         '该功能的图构建尚未迁移到算力节点，请在 docs/LIMITATIONS.md 查看已迁移的功能。'
       );
     }
+
+    if (H3_IDEMPOTENT_TASK_RELEASE_ENABLED && intent.module === 'NovaFlowAiSequenceMiniMaxH3Workflow' &&
+        intent.method === 'buildWorkflow' && intent.options?.mode === 'fl2v') return submitIdempotentH3(intent, baseUrl);
 
     // Other panels may prepare uploads without submitting a task. Attach only
     // filenames actually used by this intent, otherwise an earlier inpaint
@@ -986,14 +2905,62 @@
       } else i += 1;
     }
     const refs = [...selected.values()];
+    const artBindings = refs.map(ref=>uploads.get(ref.name)?.artBinding).filter(Boolean);
+    let artBinding = null;
+    if (artBindings.length || refs.some(ref=>ref.name.startsWith('artbind-')) || [...usedNames].some(name=>/^artbind-/i.test(name))) {
+      artBinding = artBindings[0];
+      if (!artBinding || artBindings.length!==refs.length || artBindings.some(x=>x!==artBinding) ||
+          intent.module!=='novaflow-brand-runtime' || intent.method!=='buildArtGenerateRunWorkflow' ||
+          JSON.stringify(refs)!==JSON.stringify(artBinding.refs) ||
+          JSON.stringify(intent.options?.__args?.[2])!==JSON.stringify(artBinding.refs.map(ref=>ref.name)))
+        throw new Error('参考图绑定不完整，未提交生成');
+      const roles=intent.options?.__args?.[10]?.referenceRoles;
+      if (roles===undefined ? artBinding.refs.some(ref=>ref.role!=='auto') :
+          JSON.stringify(roles)!==JSON.stringify(artBinding.refs.map(ref=>ref.role)))
+        throw new Error('参考图角色已变化，未提交生成');
+      artBinding.check();
+      if (artBinding.submitted) throw new Error('此生成请求已提交，请勿重复提交');
+      artBinding.submitted=true;
+    }
 
-    const task = await control('POST', '/api/web/tasks', {
+    let confirmedRequest=null, confirmationToken=null;
+    if (artBinding) {
+      try {
+        artBinding.check();
+        confirmedRequest=JSON.parse(JSON.stringify({taskId:artBinding.taskId,count:1,targetWorkerId:artBinding.targetWorkerId,
+          workflow:{module:intent.module,method:intent.method},parameters:intent.options || {},references:artBinding.refs}));
+        if (hasUnsafeArtPayload(confirmedRequest.parameters)) throw new Error('绘图参数包含不能提交的内容。');
+        const quoted=await control('POST','/api/web/art-image/quote',{request:confirmedRequest});
+        artBinding.check();
+        if (quoted?.ok!==true || typeof quoted.quoteToken!=='string' || !quoted.quoteToken) throw new Error('生成报价不可用，未提交生成。');
+        artQuoteCheck(quoted.quote,confirmedRequest);
+        if (typeof root.confirm!=='function' || root.confirm('本次生成预计 0 积分。确定开始生成吗？')!==true)
+          throw new Error('已取消，本次未提交生成。');
+        artBinding.check();artQuoteCheck(quoted.quote,confirmedRequest);
+        const accepted=await control('POST','/api/web/art-image/confirm',{request:confirmedRequest,quoteToken:quoted.quoteToken,accepted:true});
+        artBinding.check();artQuoteCheck(quoted.quote,confirmedRequest);
+        if (accepted?.ok!==true || typeof accepted.confirmationToken!=='string' || !accepted.confirmationToken)
+          throw new Error('生成确认失败，未提交生成。');
+        confirmationToken=accepted.confirmationToken;
+      } catch (error) {
+        discardArtImageBinding(artBinding.ticket);
+        throw error;
+      }
+    }
+    let task;
+    try { task = await control('POST', '/api/web/tasks', artBinding ? {
+      art_image_binding_scope:'art-image-binding-v1',request:confirmedRequest,confirmationToken
+    } : {
       task_type: 'renderer_workflow',
       workflow: { module: intent.module, method: intent.method },
       parameters: intent.options || {},
       references: refs
-    });
+    }); } catch (error) {
+      if (artBinding) { discardArtImageBinding(artBinding.ticket); throw new Error('任务创建结果未确认，请核对任务状态后再试'); }
+      throw error;
+    }
 
+    if (artBinding && task?.task?.id !== artBinding.taskId) { discardArtImageBinding(artBinding.ticket); throw new Error('任务创建结果待核对，请勿重复提交。'); }
     const promptId = task.task.id;
     tasks.set(promptId, task.task);
     taskOrigins.set(promptId, originOf(baseUrl));
@@ -1009,17 +2976,26 @@
     // references, which is why every run that was ever verified worked.
     if (refs.length) {
       try {
-        await putReferences(promptId, refs);
+        if (artBinding) artBinding.check();
+        await putReferences(promptId, refs, artBinding);
+        if (artBinding) artBinding.check();
       } catch (error) {
         // Say which step failed. "timed out waiting for the browser to upload"
         // arrives from the worker two minutes later and points at the wrong
         // side of the wire. Cancel the task too: otherwise a node claims it later and sits two
         // minutes waiting for bytes this page will never send, failing every run queued behind it.
-        await control('POST', '/api/web/tasks/' + promptId + '/cancel').catch(() => {});
+        // A new account must never cancel a task belonging to the prior one.
+        if (artBinding) {
+          let cancelled=false;
+          if (artBinding.sessionCurrent()) try { const value=await control('POST', '/api/web/tasks/' + promptId + '/cancel'); cancelled=value?.task?.status==='cancelled'; } catch {}
+          discardArtImageBinding(artBinding.ticket);
+          if (!cancelled) throw new Error('任务停止状态待核对，未继续上传');
+        } else await control('POST', '/api/web/tasks/' + promptId + '/cancel').catch(() => {});
         throw new Error('参考图上传失败：' + String(error.message || error));
       }
     }
 
+    if (artBinding) discardArtImageBinding(artBinding.ticket);
     return { prompt_id: promptId, number: tasks.size, node_errors: {} };
   }
 
@@ -1054,6 +3030,20 @@
   // empty pool says nothing about the node that will take the run. Only a
   // drawing node that lacks 2.1 switches it to the 2511 layout.
   let runtimeFeatureCache = taskMode() === 'shared' ? { qwenImage21: true } : {};
+  let runtimeFeatureSequence = 0, qwenBusinessVerified = false, qwenNativeV3Binding = null, qwenImageEditBinding = null;
+  function qwenBusinessAvailable(){return CONFIG.xiaotaoQwenBusinessEnabled===true && qwenBusinessVerified;}
+  function qwen21NativeRewriteV3Available(){
+    const binding=qwenNativeV3Binding;
+    return !!binding && taskMode()==='shared' && computeNodeEpoch===binding.epoch && (computeNode?.id||'')===binding.nodeId && binding.sessionGuard()===true && qwenBusinessAvailable();
+  }
+  function qwen21LocalImageEditAvailable(){
+    const binding=qwenImageEditBinding;
+    return !!binding && taskMode()==='shared' && computeNodeEpoch===binding.epoch && (computeNode?.id||'')===binding.nodeId && binding.sessionGuard()===true && qwenBusinessAvailable();
+  }
+  function setRuntimeFeatureCache(next){
+    const changed=JSON.stringify(next)!==JSON.stringify(runtimeFeatureCache);runtimeFeatureCache=next;
+    if(changed && typeof root.dispatchEvent==='function' && typeof root.CustomEvent==='function')root.dispatchEvent(new root.CustomEvent('novaflow:runtime-features',{detail:{...next}}));
+  }
   function drawingNodeOnline(caps) {
     const types = caps && Array.isArray(caps.taskTypes) ? caps.taskTypes : [];
     return types.some((t) => t && t.kind === 'image' && Number(t.available_workers) > 0);
@@ -1084,7 +3074,9 @@
     async runtimeGetSystemStats(payload) {
       try {
         const video = /:8189(?:\/|$)/.test(String(payload && payload.baseUrl || ''));
-        const count = await poolHas(video ? 'h3_i2v' : 'qwen_t2i');
+        const probeType = video ? 'h3_i2v' : selectedImageProbeType();
+        const count = await poolHas(probeType);
+        if (!video && probeType!==selectedImageProbeType()) return {ok:false,status:409,error:'绘图模型已变化，请重试'};
         if (!count) return { ok: false, status: 503, error: video ? '当前无可用视频节点，请稍后重试' : '当前无可用生图节点，请稍后重试' };
         return {
           ok: true,
@@ -1186,6 +3178,7 @@
         // surfaced raw in three different panels, none of which told anyone to
         // log in. Say the thing that can be acted on.
         const status = error.status || 500;
+        if(root.NovaFlowWebRuntime)root.NovaFlowWebRuntime.lastFailure={at:Date.now(),path:clean,status,message:String(error.message||error)};
         if (status === 401 || /session token|unauthor/i.test(String(error.message || ''))) {
           return {
             ok: false,
@@ -1214,14 +3207,21 @@
         // Straight from the worker's disk. grant.endpoint is its tunnel
         // address when it has one, so this reaches the machine that made the
         // file from anywhere - without the bytes passing through any storage.
-        const grant = await grantFor(entry, 'download');
+        const scoped=entry.h3_idempotency_scope==='h3-idempotent-v1';
+        const h3Guard=scoped?captureFoartSessionGuard():null;
+        if(scoped && (typeof h3Guard!=='function'||!h3Guard()))throw new Error('登录状态已变化，请重新打开视频结果。');
+        const grant = await grantFor(entry, 'download',{h3Filename:filename});
+        if(scoped && !h3Guard())throw new Error('登录状态已变化，请重新打开视频结果。');
         const url = grant.endpoint.replace(/\/+$/, '') +
           '/gw/tasks/' + entry.id + '/output/' + encodeURIComponent(filename) +
           '?grant=' + encodeURIComponent(grant.token);
         const res = await fetch(url);
         if (!res.ok) return { ok: false, error: '取回结果失败：' + res.status };
         const buffer = await res.arrayBuffer();
-        if (root.NovaFlowWebWarehouse && !splitTasks.has(entry.id)) {
+        if(scoped && !h3Guard())throw new Error('登录状态已变化，请重新打开视频结果。');
+        // The shared legacy warehouse is not account-scoped. Do not copy a
+        // session-bound video into that store when the account can change.
+        if (!scoped && root.NovaFlowWebWarehouse && !splitTasks.has(entry.id)) {
           await root.NovaFlowWebWarehouse.save({ blob: new Blob([buffer], { type: mimeFor(filename) }), name: filename });
         }
         const bytes = new Uint8Array(buffer);
@@ -1250,7 +3250,7 @@
         (t) => ((t.output_manifest && t.output_manifest.files) || []).some((f) => f.name === filename)
       );
       if (!entry) return '';
-      const grant = await grantFor(entry, 'download');
+      const grant = await grantFor(entry, 'download',{h3Filename:filename});
       return grant.endpoint.replace(/\/+$/, '') +
         '/gw/tasks/' + entry.id + '/output/' + encodeURIComponent(filename) +
         '?grant=' + encodeURIComponent(grant.token);
@@ -1336,6 +3336,13 @@
           throw new Error('账号校验服务地址未配置');
         }
         const me = await control('GET', '/api/web/me');
+        // A successful old response must not be displayed after an account
+        // switch while the request was in flight.
+        const latest = currentSession();
+        if (!latest?.token) return { ok: true, result: { authenticated: false } };
+        if (latest.token !== checkedSession.token) {
+          return { ok: true, result: { authenticated: true, user: null, temporarilyUnavailable: true } };
+        }
         return {
           ok: true,
           result: { authenticated: true, user: me.user, credits: me.credits }
@@ -1344,7 +3351,7 @@
         if (error.status === 401 || error.status === 403) {
           const latest = currentSession();
           if (latest?.token && latest.token !== checkedSession.token) {
-            return { ok: true, result: { authenticated: true, user: latest.user || null } };
+            return { ok: true, result: { authenticated: true, user: null, temporarilyUnavailable: true } };
           }
           saveSession(null);
           try { root.localStorage.removeItem(CLIENT_AUTH_KEY); } catch (_) {}
@@ -1386,13 +3393,15 @@
     // Header balance: the account service's credit snapshot, not the compute
     // control plane's capability snapshot. The header re-reads this after charges.
     async clientAuthAccountDetails() {
-      if (!currentSession()) return { ok: false, httpStatus: 401, error: '请先登录账号' };
+      const checkedSession = currentSession();
+      if (!checkedSession) return { ok: false, httpStatus: 401, error: '请先登录账号' };
       try {
         const profile = await auth('GET', '/api/client/bootstrap');
+        if (currentSession()?.token !== checkedSession.token)
+          return { ok: false, errorCode: 'account-session-changed', error: '登录状态已变化，请重新刷新账号信息' };
         if (profile.ok === false) return { ok: false, error: profile.error || '账户信息读取失败' };
-        if (profile.featureCreditPrices && root.NovaFlowFeatureCreditPrices && typeof root.NovaFlowFeatureCreditPrices.applyConfig === 'function') {
-          root.NovaFlowFeatureCreditPrices.applyConfig(profile.featureCreditPrices);
-        }
+        // The header applies returned prices only after its independently
+        // authenticated /me response matches this profile's account ID.
         return { ok: true, result: { user: profile.user, credits: profile.credits, providerQuotas: profile.providerQuotas, featureCreditPrices: profile.featureCreditPrices || null } };
       } catch (error) {
         return { ok: false, httpStatus: error.status, error: String(error.message || error) };
@@ -1401,19 +3410,36 @@
 
     async runtimeFeatures() {
       runtimeFeatureCheckedAt = Date.now();
+      const epoch=computeNodeEpoch,nodeId=computeNode?.id || '',mode=taskMode(),sequence=++runtimeFeatureSequence;
+      const sessionGuard=captureFoartSessionGuard();
+      const current=()=>epoch===computeNodeEpoch && nodeId===(computeNode?.id || '') && mode===taskMode() && sequence===runtimeFeatureSequence;
       let answered = false;
       try {
         const caps = await control('GET', '/api/web/capabilities');
         const next = caps && caps.features && typeof caps.features === 'object' ? { ...caps.features } : {};
+        const hasBusiness=Object.hasOwn(next,'qwen35BusinessTrial');
+        if(current()){
+          qwenBusinessVerified=next.qwen35BusinessTrial===true;
+          qwenNativeV3Binding=mode==='shared' && !!nodeId && typeof sessionGuard==='function' && sessionGuard() && next.qwen21NativeRewriteV3===true ? {nodeId,epoch,sessionGuard} : null;
+          qwenImageEditBinding=mode==='shared' && !!nodeId && typeof sessionGuard==='function' && sessionGuard() && next.qwen21LocalImageEdit===true && next.qwen21LocalImageEditOwnerLeaseBound===true ? {nodeId,epoch,sessionGuard} : null;
+        }
+        delete next.qwen21NativeRewriteV3;
+        delete next.qwen21LocalImageEdit; delete next.qwen21LocalImageEditOwnerLeaseBound;
+        // Only the new business field gets strict source/sequence ordering.
+        // Existing capability fields retain their previous response semantics.
+        delete next.qwen35BusinessTrial;
+        if(qwenBusinessVerified || hasBusiness)next.qwen35BusinessTrial=qwenBusinessVerified;
         if (taskMode() === 'shared' && next.qwenImage21 !== true && !drawingNodeOnline(caps)) next.qwenImage21 = true;
         else answered = true;
-        const changed = JSON.stringify(next) !== JSON.stringify(runtimeFeatureCache);
-        runtimeFeatureCache = next;
-        // Panels drawn before the answer arrived (drawing controls, UI-design limits) redraw on this.
-        if (changed && typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') {
-          root.dispatchEvent(new root.CustomEvent('novaflow:runtime-features', { detail: { ...next } }));
+        setRuntimeFeatureCache(next);
+      } catch (_) {
+        if(current()){
+          qwenBusinessVerified=false;
+          qwenNativeV3Binding=null;
+          qwenImageEditBinding=null;
+          const next={...runtimeFeatureCache};delete next.qwen35BusinessTrial;setRuntimeFeatureCache(next);
         }
-      } catch (_) { /* keep the last answer */ }
+      }
       if (answered && runtimeFeatureCache.qwenImage21 === true) runtimeFeatureRetries = 0;
       else scheduleRuntimeFeatureRetry();
       return { ...runtimeFeatureCache };
@@ -1421,6 +3447,27 @@
     runtimeFeaturesSync() {
       return { ...runtimeFeatureCache };
     },
+    qwenBusinessAvailableSync(){return qwenBusinessAvailable();},
+    qwen21NativeRewriteV3AvailableSync(){return qwen21NativeRewriteV3Available();},
+    qwen21LocalImageEditAvailableSync(){return qwen21LocalImageEditAvailable();},
+    onlineBusinessAvailableSync(){return XIAOTAO_ONLINE_ART_RELEASE_ENABLED;},
+    onlineTextArtAvailableSync(){return XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED;},
+    onlineVisionArtAvailableSync(){return XIAOTAO_ONLINE_VISION_ART_RELEASE_ENABLED;},
+    onlineVideoVisionAvailableSync(){return XIAOTAO_H3_VISION_RELEASE_ENABLED;},
+    captureFoartSessionGuard,
+    artImageBindingAvailable,
+    prepareArtImageBinding,
+    stageArtBoundReference,
+    discardArtImageBinding,
+    verifyQwenPlanResponse,
+    captureFoartNodeGuard(){
+      const id=computeNode?.id,epoch=computeNodeEpoch,mode=taskMode();
+      return id && mode==='shared' ? ()=>taskMode()===mode && computeNode?.id===id && computeNodeEpoch===epoch : null;
+    },
+    captureFoartBillingOwner,
+    listCompanionOperationRecovery(){const binding=captureFoartBillingOwner();return binding?operationRecoveryList(binding):[];},
+    checkCompanionOperationRecovery:operationId=>operationRecoveryStatus(operationId,false),
+    dismissCompanionOperationRecovery:operationId=>operationRecoveryStatus(operationId,true),
 
     async clientAuthBootstrap() {
       try {
@@ -1452,31 +3499,39 @@
     promptAssistantGetStatus: async (payload={}) => taskMode() === 'local' && !pooledPromptRequests.has(payload.requestId)
       ? localControl('GET', '/local/prompt-assistant/status').catch(error => ({ ok: false, enabled: false, error: String(error.message || error) }))
       : pooledPromptStatus(payload),
-    promptAssistantOptimizePrompt: async (payload) => localPromptAssistant('optimize-prompt', payload),
+    promptAssistantOptimizePrompt: async (payload) => selectedBusinessPrompt('optimize-prompt', payload),
     promptAssistantUiDesignCpu: async (payload) => {
       // The old node rejects the deliberately empty image record during normalization, before any model work.
       // Reuse the supported task action, without adding a control-plane permission.
       const scope={surface:'ui-design',uiPlanner:'grok-vision-cpu-v1'};
       const hello=await localPromptAssistant('reverse-image-prompt',{...scope,action:'capabilities',images:[{dataUrl:''}]});
-      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新 Foart 算力助手后使用完整在线分析；本次未调用云模型或本地推理'};
+      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新 Foart后使用完整在线分析；本次未调用云模型或本地推理'};
       if(payload?.action==='capabilities')return hello;
       return localPromptAssistant('reverse-image-prompt',{...payload,...scope});
     },
-    promptAssistantReverseImagePrompt: async (payload) => localPromptAssistant('reverse-image-prompt', payload),
+    promptAssistantReverseImagePrompt: async (payload) => selectedBusinessPrompt('reverse-image-prompt', payload),
     promptAssistantCancelRequest: async (payload) => cancelPromptAssistantRequest(payload),
     async artKnowledgeState(){if(CONFIG.artKnowledgeEnabled!==true)return {ok:true,enabled:false};try{const consent=await artKnowledgeRequest('GET','/consent');return {ok:true,enabled:true,allowed:consent.allowed,publisher:false};}catch(error){return {ok:false,enabled:true,error:String(error.message||error)};}},
     artKnowledgeConsent:allow=>artKnowledgeRequest('POST','/consent',{allow}),
     artLearning: artLearningCommand,
-    artAgentChat: async (payload) => payload?.provider === 'api' ? companionCloudChat(payload) : taskMode() === 'local'
+    companionPricing,
+    foartOperationStart,
+    foartOperationResume,
+    foartOperationCancel,
+    artAgentChat: async (payload, guard={}) => payload?.foartAnimationStage==='rotation_candidate' && (taskMode()!=='shared' || payload?.provider!=='local' || payload?.modelId!=='qwen3.5-9b-heretic' || payload?.mode!=='foart' || !Array.isArray(payload?.images) || payload.images.length!==0 || typeof guard.isCurrent!=='function' || guard.isCurrent()!==true)
+      ? {ok:false,error:'Qwen 动画候选尚未安全开放，未提交或修改作品。'} : payload?.provider === 'api' ? companionCloudChat(payload) : taskMode() === 'local'
       ? localControl('POST', '/local/prompt-assistant/art-agent-chat', {...payload,accountId:currentSession()?.user?.id || '',accountToken:currentSession()?.token || ''}, PROMPT_ASSISTANT_TIMEOUT_MS)
           .catch(error => ({ ok: false, error: String(error.message || error) }))
-      : localPromptAssistant('art-agent-chat',payload || {}),
+      : localPromptAssistant('art-agent-chat',payload || {},guard),
     artAgentStop: async (payload) => payload?.provider === 'api' ? stopCompanionCloud(payload) : !pooledPromptRequests.has(payload?.requestId) && taskMode() === 'local'
       ? localControl('POST', '/local/prompt-assistant/art-agent-stop', payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS)
           .catch(error => ({ ok: false, error: String(error.message || error) }))
       : cancelPromptAssistantRequest(payload || {}),
     // 万物迁移 names the scene's style from this when it exists and paints without it otherwise.
-    promptAssistantDescribeArtStyle: async (payload) => localPromptAssistant('describe-art-style', payload),
+    promptAssistantDescribeArtStyle: async (payload) => selectedBusinessPrompt('describe-art-style', payload),
+    promptAssistantRewriteAudioPrompt: async (payload) => selectedBusinessPrompt('rewrite-audio-prompt', {...payload,assistantSelectionScope:'xiaotao'}),
+    promptAssistantUiDraft: async (payload) => selectedBusinessPrompt('ui-draft-prompt', {...payload,assistantSelectionScope:'xiaotao'}),
+    promptAssistantVideoDraft: async (payload) => selectedBusinessPrompt('video-draft-prompt', {...payload,assistantSelectionScope:'xiaotao'}),
 
     async smartAiPromptOptimize(payload) {
       try { return { ok: true, result: await auth('POST', '/api/client/grok/prompt-optimize', payload, SMART_AI_TIMEOUT_MS) }; }
@@ -1486,17 +3541,31 @@
       try { return { ok: true, result: await auth('POST', '/api/client/grok/image-reverse', payload, SMART_AI_TIMEOUT_MS) }; }
       catch (error) { return { ok: false, error: String(error.message || error) }; }
     },
-    async runningHubGptImageQuote(payload) {
-      try { return { ok: true, result: await auth('POST', '/api/client/runninghub/gpt-image/quote', payload || {}, 20000) }; }
-      catch (error) { return { ok: false, error: String(error.message || error) }; }
+    // Disabled until the corresponding server contract and auth are deployed.
+    confirmedArtImageAvailableSync(){return false;},
+    async runningHubGptImageQuote(payload, options={}) {
+      try {
+        if(payload?.contract==='confirmed-reference-v1'){
+          const signal=options.signal;
+          if(!signal || typeof AbortSignal?.any!=='function'||typeof AbortSignal?.timeout!=='function')throw Error('confirmed-art-cancellation-unavailable');
+          return {ok:true,result:await api(CONFIG.authUrl,'POST','/api/client/runninghub/gpt-image/quote',payload,20000,AbortSignal.any([signal,AbortSignal.timeout(20000)]))};
+        }
+        return {ok:true,result:await auth('POST','/api/client/runninghub/gpt-image/quote',payload||{},20000)};
+      }catch(error){return {ok:false,error:String(error.message||error)};}
     },
-    async runningHubGptImage(payload) {
-      try { return { ok: true, result: await auth('POST', '/api/client/runninghub/gpt-image', payload || {}, 180000) }; }
-      catch (error) { return { ok: false, error: String(error.message || error) }; }
+    async runningHubGptImage(payload, options={}) {
+      try {
+        if(payload?.contract==='confirmed-reference-v1'){
+          const signal=options.signal;
+          if(!signal || typeof AbortSignal?.any!=='function'||typeof AbortSignal?.timeout!=='function')throw Error('confirmed-art-cancellation-unavailable');
+          return {ok:true,result:await api(CONFIG.authUrl,'POST','/api/client/runninghub/gpt-image',payload,180000,AbortSignal.any([signal,AbortSignal.timeout(180000)]))};
+        }
+        return {ok:true,result:await auth('POST','/api/client/runninghub/gpt-image',payload||{},180000)};
+      }catch(error){return {ok:false,error:String(error.message||error)};}
     },
 
     async qwenLoraCatalog(payload = {}) {
-      try { return await control('GET', '/api/web/loras/qwen?nsfw=' + (payload.nsfw === true) + (payload.engine === 'qwen-2.1' ? '&engine=qwen-2.1' : '')); }
+      try { return await control('GET', '/api/web/loras/qwen?nsfw=' + (payload.nsfw === true) + (payload.engine === 'qwen-2.1' ? '&engine=qwen-2.1' : '') + (payload.variant === 'turbo' ? '&variant=turbo' : '')); }
       catch (error) { return { ok: false, error: String(error.message || error), items: [] }; }
     },
     async minimaxH3LoraCatalog(payload = {}) {
@@ -1556,16 +3625,33 @@
   const LOCAL_RUNTIME = /^https?:\/\/(?:127\.0\.0\.1|localhost):(8188|8189)(\/|$)/i;
   const PORT_TASK_TYPE = { 8188: 'qwen_t2i', 8189: 'h3_i2v' };
 
+  function selectedImageProbeType() {
+    const state=root.__NovaFlowArtGenerate?.state;
+    if(!state?.active || state.provider!=='local')return 'qwen_t2i';
+    let engine='';
+    try {engine=root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider,state.mode,state)?.engine || state.localDrawEngine || '';} catch {return 'qwen_t2i';}
+    if(engine!=='qwen-2.1')return 'qwen_t2i';
+    return state.localQwen21Variant==='turbo' ? 'qwen21-turbo' : 'qwen21-standard';
+  }
   let capsCache = { at: 0, byTaskType: {} };
   async function poolHas(taskType) {
-    if (Date.now() - capsCache.at > 8000) {
+    const epoch=computeNodeEpoch,nodeId=computeNode?.id || '',mode=taskMode(),token=currentSession()?.token || '';
+    const current=()=>epoch===computeNodeEpoch && nodeId===(computeNode?.id || '') && mode===taskMode() && token===(currentSession()?.token || '');
+    const old=capsCache.context;
+    if (Date.now() - capsCache.at > 8000 || !old || old.epoch!==epoch || old.nodeId!==nodeId || old.mode!==mode || old.token!==token) {
+      const context={epoch,nodeId,mode,token};
       try {
         const caps = await control('GET', '/api/web/capabilities');
+        if(!current())return 0;
         const byTaskType = {};
         for (const t of caps.taskTypes || []) byTaskType[t.task_type] = Number(t.available_workers || 0);
-        capsCache = { at: Date.now(), byTaskType };
+        const features=caps.features || {};
+        byTaskType['qwen21-standard']=Number.isSafeInteger(features.qwenImage21Workers) && features.qwenImage21Workers>=0 ? features.qwenImage21Workers : features.qwenImage21===true ? 1 : 0;
+        byTaskType['qwen21-turbo']=Number.isSafeInteger(features.qwenImage21TurboWorkers) && features.qwenImage21TurboWorkers>=0 ? features.qwenImage21TurboWorkers : features.qwenImage21Turbo===true ? 1 : 0;
+        capsCache = { at: Date.now(), byTaskType, context };
       } catch (_) {
-        capsCache = { at: Date.now(), byTaskType: {} };
+        if(current())capsCache = { at: Date.now(), byTaskType: {}, context };
+        else return 0;
       }
     }
     return Number(capsCache.byTaskType[taskType] || 0);
@@ -1621,7 +3707,9 @@
     }
 
     if (path === '/system_stats' || path === '/') {
-      const workers = await poolHas(taskType);
+      const probeType = taskType==='qwen_t2i' ? selectedImageProbeType() : taskType;
+      const workers = await poolHas(probeType);
+      if(taskType==='qwen_t2i' && probeType!==selectedImageProbeType()) return new Response(JSON.stringify({ok:false,error:'绘图模型已变化，请重试'}),{status:409,headers:{'content-type':'application/json'}});
       if (!workers) {
         // Fail the probe, so the panel does not offer to generate on compute
         // that is not there. The wording the panel shows is rewritten for the
@@ -1696,6 +3784,11 @@
   root.NovaFlowWebRuntime = {
     config: CONFIG,
     version: '0.2.0',
+    // Aliases to the same guarded helpers already exposed on electronAPI.
+    artImageBindingAvailable,
+    prepareArtImageBinding,
+    stageArtBoundReference,
+    discardArtImageBinding,
 
     /** Called by every redacted graph builder. */
     serverOnly(module, fn, args) {
@@ -1779,6 +3872,7 @@
     // Pin work to one pool node (null: back to the launcher's default). Remembered per browser.
     setComputeNode(node) {
       const next = node && NODE_ID.test(String(node.id)) ? { id: String(node.id), name: String(node.name || '') } : null;
+      computeNodeEpoch++;
       computeNode = next;
       try {
         if (next) root.localStorage.setItem(NODE_KEY, JSON.stringify(next));
@@ -1787,6 +3881,8 @@
       // Every cached answer spoke for the previous source.
       capsCache = { at: 0, byTaskType: {} };
       runtimeFeatureCache = taskMode() === 'shared' ? { qwenImage21: true } : {};
+      qwenBusinessVerified=false;
+      qwenNativeV3Binding=null;
       runtimeFeatureRetries = 0;
       electronAPI.runtimeFeatures();
       if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') {
@@ -1801,8 +3897,8 @@
   };
   // Warm the feature snapshot so panels that size themselves synchronously
   // (the UI-design reference limit) see the node's answer; runs re-check it.
-  electronAPI.runtimeFeatures();
-  if (typeof root.addEventListener === 'function') {
+  if (root.NOVAFLOW_LIGHT_HOME !== true) electronAPI.runtimeFeatures();
+  if (root.NOVAFLOW_LIGHT_HOME !== true && typeof root.addEventListener === 'function') {
     root.addEventListener('focus', () => {
       if (Date.now() - runtimeFeatureCheckedAt > 10000) electronAPI.runtimeFeatures();
     });

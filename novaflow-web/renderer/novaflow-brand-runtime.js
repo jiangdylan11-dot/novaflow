@@ -6559,6 +6559,17 @@
     return sanitizeNovaflowManualExportName(input instanceof HTMLInputElement ? input.value : "", "");
   }
 
+  // Typed Xiaotao exports may name this already-authorized native dialog.
+  // Manual input still requires its existing trusted-user-intent path.
+  window.NovaFlowExportDialogAgent = Object.freeze({setName(input, value) {
+    const modal=input?.closest?.('[data-novaflow-export-modal-root="1"]');
+    if(window.NovaFlowAgentExportSession?.purpose!=='particle-export'||!(modal instanceof HTMLElement)||getNovaflowExportContextKind(modal)!=='particle'||input!==findNovaflowExportNameInput(modal))return false;
+    const name=sanitizeNovaflowManualExportName(String(value||''),'');if(!name)throw new Error('请输入有效的导出名称');
+    setNovaflowInputValue(input,name);input.__novaflowExportManualNameUserEdited=true;
+    modal.__novaflowExportManualNameUserEdited=true;modal.__novaflowExportManualNameValue=name;
+    syncNovaflowExportModalActionButtons(modal);return true;
+  }});
+
   function removeNovaflowExportTimestampNote(root) {
     const dialog = getNovaflowExportDialog(root);
     if (!(dialog instanceof HTMLElement)) return;
@@ -30488,6 +30499,26 @@
     return pos >= 0 && pos < PRIMARY_RAIL_ORDER.length ? PRIMARY_RAIL_ORDER[pos] : pos;
   }
 
+  // Extra rail cells deliberately opt out of the broad runtime observer.  A
+  // cell can therefore appear after the first layout without moving the
+  // existing entries unless its insertion is observed separately.
+  let PRIMARY_EXTRA_RAIL_OBSERVER = null;
+  function observePrimaryExtraRail() {
+    if (PRIMARY_EXTRA_RAIL_OBSERVER || !document.body || typeof MutationObserver !== "function") return;
+    PRIMARY_EXTRA_RAIL_OBSERVER = new MutationObserver((mutations) => {
+      const changed = mutations.some((mutation) =>
+        [...mutation.addedNodes, ...mutation.removedNodes].some((node) =>
+          node instanceof HTMLElement && node.matches('[data-novaflow-primary-extra-cell="1"]')
+        )
+      );
+      if (!changed) return;
+      const buttons = PRIMARY_ENTRY_LABELS.map(findPrimaryEntryButton);
+      if (buttons.some((button) => !button)) return;
+      updatePrimarySidebarLayout(buttons, buttons.length >= 2 ? findCommonParent(buttons) : null);
+    });
+    PRIMARY_EXTRA_RAIL_OBSERVER.observe(document.body, { childList: true });
+  }
+
   function updatePrimarySidebarLayout(buttons, rail) {
     ensurePrimarySidebarBackdrop();
     removeRuntimeNode(LEFT_SEAM_BACKDROP_ID);
@@ -39496,6 +39527,11 @@
     if (!PRIMARY_ANIMATION_ENTRY_TRANSACTION) return false;
     return PRIMARY_ANIMATION_ENTRY_TRANSACTION.isPending(expectedToken);
   }
+
+  // Read-only handoff state for home navigation; never cancel an editor transaction here.
+  window.NovaFlowPrimaryAnimationEntrySettling = () => Boolean(
+    isPrimaryAnimationEntryTransactionPending() || PRIMARY_ANIMATION_ENTRY_ROLLBACK_PENDING || PRIMARY_ANIMATION_ENTRY_REPLAY_PROMISE
+  );
 
   function resolvePrimaryAnimationPublishedIndex(requestedIndex) {
     if (!PRIMARY_ANIMATION_ENTRY_TRANSACTION) return Number(requestedIndex);
@@ -79941,10 +79977,8 @@
   const ART_GENERATE_EMPTY_QUEUE_FAIL_MS = 10000;
   const ART_GENERATE_EMPTY_QUEUE_FAIL_COUNT = 4;
 
-  // Only the NSFW (Rapid AIO) drawing graphs are templates; everything else is built for Qwen-Image-2.1.
+  // Retired drawing templates remain absent; legacy requests fail closed.
   const ART_GENERATE_WORKFLOW_TEMPLATES = {
-    txt2imgNsfw: `{"1":{"inputs":{"ckpt_name":"Qwen-Rapid-AIO-NSFW-v20.safetensors"},"class_type":"CheckpointLoaderSimple","_meta":{"title":"Checkpoint\\u52a0\\u8f7d\\u5668\\uff08\\u7b80\\u6613\\uff09"}},"2":{"inputs":{"seed":130320976182154,"steps":4,"cfg":1,"sampler_name":"euler","scheduler":"simple","denoise":1,"model":["1",0],"positive":["3",0],"negative":["4",0],"latent_image":["9",0]},"class_type":"KSampler","_meta":{"title":"K\\u91c7\\u6837\\u5668"}},"3":{"inputs":{"prompt":"\\u4e00\\u4e2a\\u7f8e\\u5973\\u62b1\\u7740\\u4e00\\u53ea\\u732b\\u5750\\u5728\\u6c99\\u53d1\\u4e0a\\uff0c\\u8fea\\u58eb\\u5c3c\\u98ce\\u683c\\uff0c\\u9ad8\\u6e05","clip":["1",1],"vae":["1",2]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Input Prompt"}},"4":{"inputs":{"prompt":"Vibrant colors, overexposed, blurred details, poor composition, image, overall gray, worst quality, low quality, ugly, imperfect, extra fingers, poor hand drawing, poor face drawing, deformed, disfigured, deformed limbs, fused fingers, static image, cluttered background, three legs, many people in the background,oversaturated","clip":["1",1],"vae":["1",2]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Negative (leave blank)"}},"5":{"inputs":{"samples":["2",0],"vae":["1",2]},"class_type":"VAEDecode","_meta":{"title":"VAE\\u89e3\\u7801"}},"9":{"inputs":{"width":720,"height":1280,"batch_size":1},"class_type":"EmptyLatentImage","_meta":{"title":"Final Image Size"}},"13":{"inputs":{"filename_prefix":"ComfyUI","images":["5",0]},"class_type":"SaveImage","_meta":{"title":"\\u4fdd\\u5b58\\u56fe\\u50cf"}}}`,
-    img2imgNsfw: `{"1":{"inputs":{"ckpt_name":"Qwen-Rapid-AIO-NSFW-v20.safetensors"},"class_type":"CheckpointLoaderSimple","_meta":{"title":"Checkpoint\\u52a0\\u8f7d\\u5668\\uff08\\u7b80\\u6613\\uff09"}},"2":{"inputs":{"seed":896290897812950,"steps":8,"cfg":1,"sampler_name":"euler","scheduler":"simple","denoise":1,"model":["1",0],"positive":["3",0],"negative":["4",0],"latent_image":["16",0]},"class_type":"KSampler","_meta":{"title":"K\\u91c7\\u6837\\u5668"}},"3":{"inputs":{"prompt":"\\u56fe1\\u7684\\u5973\\u4eba\\u6362\\u4e00\\u4e2a\\u6027\\u611f\\u7ad9\\u52bf\\uff0c\\u540c\\u65f6\\u4fdd\\u6301\\u4eba\\u7269\\u4e00\\u81f4\\u6027\\uff0c\\u8138\\u90e8\\u7279\\u5f81\\u4e00\\u81f4\\u6027\\uff0c\\u80cc\\u666f\\u4e0d\\u53d8","clip":["1",1],"vae":["1",2],"image1":["10",0]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Input Prompt"}},"4":{"inputs":{"prompt":"Vibrant colors, overexposed, blurred details, poor composition, image, overall gray, worst quality, low quality, ugly, imperfect, extra fingers, poor hand drawing, poor face drawing, deformed, disfigured, deformed limbs, fused fingers, static image, cluttered background, three legs, many people in the background,oversaturated","clip":["1",1],"vae":["1",2]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Negative (leave blank)"}},"5":{"inputs":{"samples":["2",0],"vae":["1",2]},"class_type":"VAEDecode","_meta":{"title":"VAE\\u89e3\\u7801"}},"9":{"inputs":{"width":1536,"height":2720,"batch_size":1},"class_type":"EmptyLatentImage","_meta":{"title":"Final Image Size"}},"10":{"inputs":{"image":"ComfyUI_00212_.png"},"class_type":"LoadImage","_meta":{"title":"Optional Input Image"}},"13":{"inputs":{"filename_prefix":"ComfyUI","images":["5",0]},"class_type":"SaveImage","_meta":{"title":"\\u4fdd\\u5b58\\u56fe\\u50cf"}},"15":{"inputs":{"upscale_method":"lanczos","megapixels":1,"resolution_steps":1,"image":["10",0]},"class_type":"ImageScaleToTotalPixels","_meta":{"title":"\\u7f29\\u653e\\u56fe\\u50cf\\uff08\\u50cf\\u7d20\\uff09"}},"16":{"inputs":{"pixels":["15",0],"vae":["1",2]},"class_type":"VAEEncode","_meta":{"title":"VAE\\u7f16\\u7801"}},"22":{"inputs":{"rgthree_comparer":{"images":[{"name":"A","selected":true,"url":"/api/view?filename=rgthree.compare._temp_huhrx_00003_.png&type=temp&subfolder=&rand=0.6706113575006749"},{"name":"B","selected":true,"url":"/api/view?filename=rgthree.compare._temp_huhrx_00004_.png&type=temp&subfolder=&rand=0.3979363499997244"}]},"image_a":["10",0],"image_b":["5",0]},"class_type":"Image Comparer (rgthree)","_meta":{"title":"\\u56fe\\u50cf\\u6bd4\\u8f83\\u5668"}}}`
   };
 
   const ART_GENERATE_DRAWING_SAMPLING_STORAGE_KEY = 'novaflow.drawing.qwen21.sampling.v1';
@@ -79979,6 +80013,9 @@
     googleAspectRatioImg2img: "1:1",
     googleResolution: "1K",
     nsfw: false,
+    nsfwLoraEnabled: false,
+    nsfwLoraName: '',
+    nsfwLoraChecking: false,
     prompt: "",
     negativePrompt: "",
     width: 1024,
@@ -82744,6 +82781,7 @@
     renderArtGenerateSurfaces({ forceBottom: true });
   }
 
+  let pendingConfirmedCloudRun=null;
   function beginArtGenerateRun() {
     const token = Math.max(0, Number(ART_GENERATE_STATE.runToken) || 0) + 1;
     ART_GENERATE_STATE.runToken = token;
@@ -82767,9 +82805,12 @@
   }
 
   async function cancelArtGenerateRun() {
+    if(artBoundAbort)artBoundAbort.abort();
     if (window.NovaFlowUiDesignDrawing?.cancelPreparation?.()) return;
     if (window.NovaFlowArtDirection?.cancelPreparation?.()) return;
     if (!ART_GENERATE_STATE.running) return;
+    const confirmed=pendingConfirmedCloudRun?.token===ART_GENERATE_STATE.runToken?pendingConfirmedCloudRun:null;
+    if(confirmed)confirmed.controller.abort();
     const cancelToken = Math.max(0, Number(ART_GENERATE_STATE.runToken) || 0) + 1;
     const baseUrl = ART_GENERATE_STATE.activeBaseUrl || String(localStorage.getItem(ART_GENERATE_LAST_RUNTIME_KEY) || "").trim();
     const promptId = ART_GENERATE_STATE.activePromptId || ART_GENERATE_STATE.progressPromptId || "";
@@ -82779,8 +82820,13 @@
     ART_GENERATE_STATE.running = false;
     // pct is already batch-wide; drop the batch first so the cancel message is not mapped a second time.
     clearArtGenerateBatch();
-    setArtGenerateProgress("\u5df2\u4e2d\u6b62", pct, { promptId });
-    setArtGenerateStatus("\u5df2\u4e2d\u6b62", false);
+    const cancelMessage = confirmed?.dispatched ? "\u5df2\u8bf7\u6c42\u505c\u6b62\uff0c\u7ed3\u679c\u5f85\u6838\u5bf9" : "\u5df2\u4e2d\u6b62";
+    setArtGenerateProgress(cancelMessage, pct, { promptId });
+    setArtGenerateStatus(cancelMessage, false);
+    if (confirmed) {
+      clearArtGenerateRunIfCurrent(cancelToken);
+      return;
+    }
     if (!baseUrl || !promptId) {
       clearArtGenerateRunIfCurrent(cancelToken);
       return;
@@ -82984,7 +83030,7 @@
     }
     bindArtGeneratePromptHistorySurfaceEvents(root);
     root.className = "novaflow-app novaflow-art-generate-shell";
-    root.setAttribute("data-novaflow-art-generate-nsfw", artGenerateModelState().nsfw ? "1" : "0");
+    root.setAttribute("data-novaflow-art-generate-nsfw", ART_GENERATE_STATE.provider === 'local' && !window.NovaFlowUiDesignDrawing?.isActive?.() && ART_GENERATE_STATE.nsfwLoraEnabled ? "1" : "0");
     Object.assign(root.style, {
       left: `${rect.left}px`,
       top: `${rect.top}px`,
@@ -83400,11 +83446,53 @@
   }
 
   function setArtGenerateNsfwEnabled(enabled) {
+    if (enabled === true) {
+      setArtGenerateStatus("旧版 NSFW 生图路线已移除，未切换模型或提交任务。", true);
+      return false;
+    }
     const next = enabled === true;
     if (ART_GENERATE_STATE.nsfw === next) return true;
     ART_GENERATE_STATE.nsfw = next;
     renderArtGenerateSurfaces({ forceBottom: true });
     return ART_GENERATE_STATE.nsfw === next;
+  }
+
+  async function verifyArtNsfwLora() {
+    const lora = window.NovaFlowArtGenerateLora;
+    if (!lora?.verifiedNsfwName || typeof window.electronAPI?.qwenLoraCatalog !== 'function') throw new Error('无法验证 NSFW LoRA，请检查本地算力节点；未提交任务');
+    const info = await window.electronAPI.qwenLoraCatalog({nsfw:false, engine:'qwen-2.1', variant:ART_GENERATE_STATE.localQwen21Variant});
+    const name = lora.verifiedNsfwName(info);
+    // Browser validates manual entries; the node resolves and revalidates the feature.
+    lora.selection(ART_GENERATE_STATE.loras);
+    return name;
+  }
+
+  async function setArtGenerateNsfwLoraEnabled(enabled) {
+    if (ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfwLoraChecking) return false;
+    if (!enabled) {
+      ART_GENERATE_STATE.nsfwLoraEnabled = false;
+      ART_GENERATE_STATE.nsfwLoraName = '';
+      renderArtGenerateSurfaces({forceBottom:true});
+      return true;
+    }
+    if (ART_GENERATE_STATE.provider !== 'local' || ART_GENERATE_STATE.nsfw === true || window.NovaFlowUiDesignDrawing?.isActive?.()) {
+      setArtGenerateStatus('当前路线不能使用此 LoRA；未切换模型。', true); return false;
+    }
+    const mode = ART_GENERATE_STATE.mode, variant = ART_GENERATE_STATE.localQwen21Variant;
+    ART_GENERATE_STATE.nsfwLoraChecking = true;
+    renderArtGenerateSurfaces({forceBottom:true});
+    try {
+      const name = await verifyArtNsfwLora();
+      if (ART_GENERATE_STATE.running || ART_GENERATE_STATE.provider !== 'local' || ART_GENERATE_STATE.mode !== mode || ART_GENERATE_STATE.localQwen21Variant !== variant || window.NovaFlowUiDesignDrawing?.isActive?.()) throw new Error('模型或模式已变化，请重新开启 NSFW');
+      ART_GENERATE_STATE.nsfwLoraName = name;
+      ART_GENERATE_STATE.nsfwLoraEnabled = true;
+      return true;
+    } catch (error) {
+      setArtGenerateStatus(String(error?.message || error), true); return false;
+    } finally {
+      ART_GENERATE_STATE.nsfwLoraChecking = false;
+      renderArtGenerateSurfaces({forceBottom:true});
+    }
   }
 
   function renderArtGenerateCountField() {
@@ -83416,12 +83504,15 @@
   }
 
   function renderArtGenerateParamRow() {
-    const nsfwSwitch = window.NovaFlowUiDesignDrawing?.isActive?.() ? null : createArtEl("div", { className: "novaflow-art-generate-param" }, [
-      createArtEl("span", { text: "NSFW" }),
-      renderArtGenerateToggleButton(ART_GENERATE_STATE.nsfw, "NSFW", () => {
-        setArtGenerateNsfwEnabled(!ART_GENERATE_STATE.nsfw);
-      })
+    const nsfwSwitch = window.NovaFlowUiDesignDrawing?.isActive?.() ? null : createArtEl('div', {className:'novaflow-art-generate-param'}, [
+      createArtEl('span', {text:'NSFW'}),
+      renderArtGenerateToggleButton(ART_GENERATE_STATE.nsfwLoraEnabled, 'NSFW', () => { void setArtGenerateNsfwLoraEnabled(!ART_GENERATE_STATE.nsfwLoraEnabled); })
     ]);
+    if (nsfwSwitch) {
+      nsfwSwitch.title = '为当前 Qwen 2.1 添加或移除指定 LoRA，不切换底模';
+      const toggle = nsfwSwitch.querySelector('button');
+      if (toggle) toggle.disabled = !!(ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfwLoraChecking);
+    }
     // UI has no NSFW control; a flag left on from 绘图 must not hide or lock 加速 there.
     const uiSurface = Boolean(window.NovaFlowUiDesignDrawing?.isActive?.());
     const nsfwBlocksAcceleration = !uiSurface && ART_GENERATE_STATE.nsfw === true;
@@ -83432,7 +83523,7 @@
       renderArtGenerateSurfaces({ forceBottom: true });
     });
     accelerationToggle.disabled = !!(ART_GENERATE_STATE.running || nsfwBlocksAcceleration);
-    accelerationToggle.title = nsfwBlocksAcceleration ? '关闭 NSFW 后可用' : '开启使用 Turbo 8 步，关闭使用普通版 25 步';
+    accelerationToggle.title = nsfwBlocksAcceleration ? '旧版生图路线已移除，请刷新页面后重新选择模型' : '开启使用 Turbo 8 步，关闭使用普通版 25 步';
     const accelerationSwitch = createArtEl('div', {
       className: 'novaflow-art-generate-param', 'data-novaflow-art-generate-acceleration': '1'
     }, [createArtEl('span', {text:'加速'}), accelerationToggle]);
@@ -83451,7 +83542,7 @@
       "data-novaflow-generate-icon": "1",
       title: idleSubmitTitle || null,
       disabled: ART_GENERATE_STATE.running ? "disabled" : null,
-      onclick: () => runArtGenerate().catch((error) => {
+      onclick: (event) => runArtGenerate({artConfirmationTicket: captureArtConfirmation(event)}).catch((error) => {
         ART_GENERATE_STATE.running = false;
         setArtGenerateStatus(String(error && error.message || error || "\u751f\u6210\u5931\u8d25"), true);
       })
@@ -83596,6 +83687,9 @@
     return Math.max(1, Math.min(ART_GENERATE_MAX_REFERENCES, limit));
   }
 
+  // Monotonic reference changes invalidate in-flight single-image requests,
+  // including changing a reference and then restoring the original image.
+  let ART_GENERATE_REFERENCE_REVISION = 0;
   function artGenerateReferences() {
     const refs = Array.isArray(ART_GENERATE_STATE.references) ? ART_GENERATE_STATE.references.slice() : [];
     while (refs.length < ART_GENERATE_BASE_REFERENCE_SLOTS) refs.push(null);
@@ -83627,6 +83721,7 @@
   }
 
   function setArtGenerateReference(index, value) {
+    ART_GENERATE_REFERENCE_REVISION += 1;
     const refs = artGenerateReferences();
     const target = Math.max(0, Math.min(ART_GENERATE_MAX_REFERENCES - 1, Number(index) || 0));
     while (refs.length <= target) refs.push(null);
@@ -84002,6 +84097,7 @@
         }, "\u00d7"),
         renderArtGenerateReferenceSizeBadge(index, current),
         !window.NovaFlowUiDesignDrawing?.isActive?.() && window.NovaFlowArtDirection?.referenceControl?.(createArtEl, current, index + 1, role => {
+          ART_GENERATE_REFERENCE_REVISION += 1;
           current.drawingRole = role;
           renderArtGenerateSurfaces({ forceBottom: true });
         })
@@ -84948,7 +85044,7 @@
     }
     if (owned.cancelPromise) return owned.cancelPromise;
     const cancel = window.electronAPI?.promptAssistantCancelRequest;
-    if (typeof cancel !== "function") return { ok: false, error: "当前算力助手不支持中止这次提示词分析，请更新 Foart 算力助手" };
+    if (typeof cancel !== "function") return { ok: false, error: "当前版本不支持中止这次提示词分析，请更新 Foart" };
     owned.cancelPromise = (async () => {
       try {
         const result = await cancel.call(window.electronAPI, { requestId: owned.requestId });
@@ -85289,7 +85385,7 @@
     });
   }
 
-  async function placeArtGenerateResultIntoSource(result) {
+  async function placeArtGenerateResultIntoSource(result, options = {}) {
     if (!result || !result.imageUrl) return false;
     const bridge = window.NovaFlowSpineSplitBridge;
     if (!bridge) return false;
@@ -85297,10 +85393,11 @@
       if (typeof bridge.addSourceDataUrlResource === "function") {
         return !!(await bridge.addSourceDataUrlResource(result.name || "novaflow_generate.png", result.imageUrl, {
           message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90",
-          generationElapsedSec: result.generationElapsedSec
+          generationElapsedSec: result.generationElapsedSec,
+          isCurrent: options.isCurrent
         }));
       }
-      if (typeof bridge.importSourceDataUrl !== "function") return false;
+      if (options.isCurrent || typeof bridge.importSourceDataUrl !== "function") return false;
       return !!(await bridge.importSourceDataUrl(result.name || "novaflow_generate.png", result.imageUrl, {
         message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90",
         generationElapsedSec: result.generationElapsedSec
@@ -85309,6 +85406,23 @@
       console.warn("[NovaFlow] Art generate source placement failed", error);
       return false;
     }
+  }
+
+  async function resolveGptDeliveredImage(imageUrl, settings) {
+    const image=await loadNovaflowArtExportImage(imageUrl);
+    let width=image.naturalWidth||image.width,height=image.naturalHeight||image.height;
+    const requestedWidth=Math.round(Number(settings.gptCustomWidth)||0),requestedHeight=Math.round(Number(settings.gptCustomHeight)||0);
+    // RunningHub accepts resolution tiers rather than exact custom dimensions.
+    // A matching aspect can be resampled without cropping or distorting content.
+    const custom=settings.gptSize==='Custom'&&requestedWidth>=480&&requestedHeight>=480;
+    const sameAspect=custom&&Math.abs(width/height-requestedWidth/requestedHeight)<0.001;
+    let customSizeApplied=false;
+    if(sameAspect&&(width!==requestedWidth||height!==requestedHeight)){
+      const canvas=document.createElement('canvas');canvas.width=requestedWidth;canvas.height=requestedHeight;
+      const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(image,0,0,canvas.width,canvas.height);
+      imageUrl=canvas.toDataURL('image/png');width=canvas.width;height=canvas.height;customSizeApplied=true;
+    }
+    return {imageUrl,width,height,...(custom?{requestedWidth,requestedHeight,customSizeApplied}:{} )};
   }
 
   function parseJsonOrRawText(text) {
@@ -85415,8 +85529,8 @@
   }
 
   function artWorkflowKeyForState(state = ART_GENERATE_STATE) {
-    if (state.mode === "img2img") return state.nsfw ? "img2imgNsfw" : "img2img";
-    return state.nsfw ? "txt2imgNsfw" : "txt2img";
+    if (state.provider === 'local' && state.nsfw === true) throw new Error("旧版 NSFW 生图路线已移除，未提交任务；请刷新页面后重新选择模型。");
+    return state.mode === "img2img" ? "img2img" : "txt2img";
   }
 
   function artWorkflowKey() {
@@ -86007,10 +86121,10 @@
     if (nativeEdit && (mode !== "img2img" || !preserveNativeLayout || state?.uiRunIntent !== "iteration" || !Array.isArray(editRegions) || !editRegions.length || editRegions.length > 8 || editRegions.some(r => !r || [r.x,r.y,r.width,r.height].some(n => !Number.isFinite(n)) || r.x < 0 || r.y < 0 || r.x >= 1 || r.y >= 1 || r.width <= 0 || r.height <= 0 || r.x + r.width > 1.000001 || r.y + r.height > 1.000001 || r.width * r.height >= .999))) throw new Error("局部修改范围无效，任务未提交");
     const runtime = artQwen21Runtime(uiTurbo ? { localQwen21Variant: 'turbo' } : undefined);
     const info = runtime?.info || {};
-    const required = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha", ...(nativeEdit ? ["VAEEncode", "SetLatentNoiseMask", "SolidMask", "MaskComposite", ...(nativeEdit.neutralizeConditioning ? ["EmptyImage", "ImageCompositeMasked"] : [])] : [])];
+    const required = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha", ...(nativeEdit ? ["VAEEncode", "SetLatentNoiseMask", "SolidMask", "MaskComposite", "ImageCompositeMasked", ...(nativeEdit.neutralizeConditioning ? ["EmptyImage"] : [])] : [])];
     const missing = required.filter((type) => !info[type]);
     if (!runtime || missing.length) {
-      throw new Error("当前算力节点缺少所需的模型或节点，无法按多参考图生成 UI。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试");
+      throw new Error("当前算力节点缺少所需的模型或节点，无法按多参考图生成 UI。请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试");
     }
     const names = (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean);
     if (names.length > QWEN21_UI_MAX_REFERENCES) {
@@ -86138,7 +86252,7 @@
       }
       encode[`images.image_${index + 1}`] = image;
     });
-    let nativeLatent = null;
+    let nativeLatent = null, nativeEditBase = null, nativeEditMask = null;
     if (nativeEdit) {
       const baseImage = encode["images.image_1"];
       workflow["400"] = { class_type: "VAEEncode", inputs: { pixels: baseImage, vae: ["3",0] } };
@@ -86154,7 +86268,7 @@
         mask = [composite,0];
       });
       workflow["402"] = { class_type: "SetLatentNoiseMask", inputs: { samples: ["400",0], mask } };
-      nativeLatent = ["402",0];
+      nativeLatent = ["402",0]; nativeEditBase = baseImage; nativeEditMask = mask;
       if (nativeEdit.neutralizeConditioning) {
         const color = Number(nativeEdit.fillColor);
         if (!Number.isInteger(color) || color < 0 || color > 0xffffff) throw new Error("局部修改参考背景无效");
@@ -86171,7 +86285,12 @@
     workflow["9"] = { class_type: "SplitImageWithAlpha", inputs: { image: ["8", 0] } };
     workflow["10"] = { class_type: "ImageScale", inputs: { image: ["9", 0], upscale_method: "lanczos", width: requested.width, height: requested.height, crop: "disabled" } };
     workflow["11"] = { class_type: "SaveImage", inputs: { images: ["10", 0], filename_prefix: String(outputPrefix || "NovaFlow_UI") } };
-    if (nativeEdit) { workflow["11"].inputs.images = ["9",0]; delete workflow["10"]; }
+    if (nativeEdit) {
+      // A latent noise mask still passes the untouched image through the VAE.
+      // Paste only the edited pixels onto the original reference at output.
+      workflow["412"] = { class_type: "ImageCompositeMasked", inputs: { destination: nativeEditBase, source: ["9",0], mask: nativeEditMask, x: 0, y: 0, resize_source: false } };
+      workflow["11"].inputs.images = ["412",0]; delete workflow["10"];
+    }
     return finishUiQwen21(workflow);
   }
 
@@ -86191,9 +86310,11 @@
     const providerOptions = arguments.length > 10 && arguments[10] && typeof arguments[10] === "object"
       ? arguments[10]
       : {};
+    const uiDesignRun = String(providerOptions?.taskProfile || '').toLowerCase() === 'ui-design';
+    if (provider === 'local' && state?.nsfw === true && !uiDesignRun) throw new Error('旧版 NSFW 生图路线已移除，未提交任务；请刷新页面后重新选择模型。');
     if (String(providerOptions?.taskProfile || '').toLowerCase() === 'ui-design' && state?.uiLayoutMode === 'partial' && !providerOptions.uiNativeEdit) throw new Error('局部UI任务缺少原生选区，禁止退为全图编辑');
     if (window.NovaFlowWebRuntime) {
-      const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
+      const stateKeys = ['mode', 'provider', 'nsfw', 'nsfwLoraEnabled', 'nsfwLoraName', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
         'samplingOverrides', 'negativePrompt', 'localQwen21Variant',
         'uiRunIntent', 'uiPreserveLayout', 'uiLayoutMode', 'uiNativeEditPrompt', 'iterationReferenceCount', 'localUiEngine',
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
@@ -86217,7 +86338,7 @@
       ? window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, state?.negativePrompt, route, 'drawing', providerOptions) || null
       : null);
     let localWorkflow = null;
-    let localModelKey = artWorkflowKeyForState(state);
+    let localModelKey = artWorkflowKeyForState(uiDesignRun ? { ...state, nsfw: false } : state);
     const uiQwen21 = provider === "local"
       && String(providerOptions?.taskProfile || "").toLowerCase() === "ui-design"
       && state?.localUiEngine === "qwen-2.1";
@@ -86233,13 +86354,13 @@
     // Asked for 2.1 on a node that cannot build it: an error, never a 2511 graph that keeps three of
     // the references and other steps than the panel showed.
     if ((drawQwen21 || uiQwen21) && !qwen21Build) {
-      throw new Error("当前算力节点无法生成（缺少模型或节点），请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试");
+      throw new Error("当前算力节点无法生成（缺少模型或节点），请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试");
     }
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;
       localModelKey = qwen21Build.modelKey;
       // The drawing panel's 2.1 LoRAs go between the model loader and the 2.1 cache.
-      if (drawQwen21 && Array.isArray(state.loras) && state.loras.length) {
+      if (drawQwen21 && (state.nsfwLoraEnabled || Array.isArray(state.loras) && state.loras.length)) {
         const loraApi = window.NovaFlowArtGenerateLora;
         if (!loraApi) throw new Error("LoRA 模块未就绪，请刷新后重试");
         localWorkflow = loraApi.apply(localWorkflow, { ...state, provider, mode });
@@ -86418,14 +86539,127 @@
   }
 
   let pendingArtAgentPreparation = null;
+  let pendingArtAgentRevision = 0n;
+  const pendingArtAgentSnapshots = new WeakMap();
+  const pendingArtAgentUndos = new WeakMap();
+
+  function captureAgentPreparedSnapshot() {
+    if (ART_GENERATE_STATE.running) throw new Error('当前正在生成，不能修改准备状态');
+    const handle = Object.freeze({});
+    pendingArtAgentSnapshots.set(handle, { revision: pendingArtAgentRevision, prepared: pendingArtAgentPreparation });
+    return handle;
+  }
+
+  // UI reference drafts must never install or overwrite a drawing preparation.
+  function isAgentPreparedSnapshotEmptyAndCurrent(handle) {
+    const snapshot = pendingArtAgentSnapshots.get(handle);
+    return Boolean(snapshot && !ART_GENERATE_STATE.running && snapshot.prepared === null &&
+      snapshot.revision === pendingArtAgentRevision && pendingArtAgentPreparation === null);
+  }
+
+  function replaceAgentPrepared(handle, prepared) {
+    const snapshot = pendingArtAgentSnapshots.get(handle);
+    if (!snapshot) throw new Error('准备状态快照无效或已使用');
+    pendingArtAgentSnapshots.delete(handle);
+    if (ART_GENERATE_STATE.running || snapshot.revision !== pendingArtAgentRevision || snapshot.prepared !== pendingArtAgentPreparation) {
+      throw new Error('准备状态已变化，请重新操作');
+    }
+    if (typeof prepared?.assertCurrent !== 'function') throw new Error('准备状态无效');
+    const checked = prepared.assertCurrent();
+    if (checked && typeof checked.then === 'function') throw new Error('准备状态检查必须同步完成');
+    if (ART_GENERATE_STATE.running || snapshot.revision !== pendingArtAgentRevision || snapshot.prepared !== pendingArtAgentPreparation) {
+      throw new Error('准备状态已变化，请重新操作');
+    }
+    pendingArtAgentPreparation = prepared;
+    pendingArtAgentRevision += 1n;
+    const undo = Object.freeze({});
+    pendingArtAgentUndos.set(undo, { revision: pendingArtAgentRevision, prepared, previous: snapshot.prepared });
+    return undo;
+  }
+
+  function isAgentPreparedReplacementCurrent(handle) {
+    const undo = pendingArtAgentUndos.get(handle);
+    return Boolean(undo && !ART_GENERATE_STATE.running &&
+      undo.revision === pendingArtAgentRevision && undo.prepared === pendingArtAgentPreparation);
+  }
+
+  function restoreAgentPrepared(handle) {
+    const undo = pendingArtAgentUndos.get(handle);
+    if (!undo) throw new Error('撤销凭据无效或已使用');
+    pendingArtAgentUndos.delete(handle);
+    if (ART_GENERATE_STATE.running || undo.revision !== pendingArtAgentRevision || undo.prepared !== pendingArtAgentPreparation) {
+      throw new Error('准备状态已变化，无法撤销');
+    }
+    pendingArtAgentPreparation = undo.previous;
+    pendingArtAgentRevision += 1n;
+    return true;
+  }
+
+  // The ticket is minted only synchronously by the native generation button.
+  // Ordinary non-agent generation retains its previous behavior.
+  const artConfirmations=new WeakSet();let artBoundAbort=null;
+  function captureArtConfirmation(event){
+    try {
+      const owner=event?.view,button=event?.currentTarget;
+      const native=Object.getOwnPropertyDescriptor(new owner.MouseEvent('click'),'isTrusted')?.get;
+      if(owner!==window || !(event instanceof owner.MouseEvent) || event.type!=='click' || typeof native!=='function' || native.call(event)!==true ||
+         owner.navigator?.userActivation?.isActive!==true || !button?.isConnected || button.ownerDocument!==owner.document ||
+         button.getAttribute('data-novaflow-art-generate-submit')!=='1' || !button.contains(event.target)) return null;
+      const ticket=Object.freeze({});artConfirmations.add(ticket);return ticket;
+    } catch {return null;}
+  }
+  let artOwnerPreparationEpoch = 0;
   async function runArtGenerate(options = {}) {
     if (ART_GENERATE_STATE.running) return;
+    // Preserve the initiating session through asynchronous preparation.
+    let ownerGuard = options.ownerGuard || null;
+    if (!ownerGuard) {
+      try { ownerGuard = window.electronAPI?.captureFoartSessionGuard?.() || null; }
+      catch { ownerGuard = null; }
+    }
+    const ownerPreparationEpoch = ++artOwnerPreparationEpoch;
+    const ownerPreparationRunToken = ART_GENERATE_STATE.runToken;
+    const ownerCurrent = () => { try { return !ownerGuard || ownerGuard() === true; } catch { return false; } };
+    const initialProvider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(
+      options.uiPrepared?.state?.provider || options.drawingPrepared?.state?.provider || ART_GENERATE_STATE.provider
+    ) || "local";
+    if (initialProvider === "gpt" && (typeof ownerGuard !== 'function' || !ownerCurrent())) {
+      setArtGenerateStatus("当前账号状态无法验证，未提交生成", true); return;
+    }
+    const releaseStalePreparation = () => {
+      if (ownerPreparationEpoch === artOwnerPreparationEpoch &&
+          ART_GENERATE_STATE.runToken === ownerPreparationRunToken) ART_GENERATE_STATE.running = false;
+    };
+    if (ART_GENERATE_STATE.nsfwLoraChecking) { setArtGenerateStatus('正在检查 NSFW LoRA，请稍候', true); return; }
+    if (ART_GENERATE_STATE.provider === 'local' && ART_GENERATE_STATE.nsfw === true && !window.NovaFlowUiDesignDrawing?.isActive?.()) {
+      setArtGenerateStatus('旧版 NSFW 生图路线已移除，未提交任务；请刷新页面后重新选择模型。', true);
+      return;
+    }
+    if (ART_GENERATE_STATE.provider === 'local' && ART_GENERATE_STATE.nsfwLoraEnabled && !window.NovaFlowUiDesignDrawing?.isActive?.()) {
+      const before = JSON.stringify({provider:ART_GENERATE_STATE.provider,mode:ART_GENERATE_STATE.mode,variant:ART_GENERATE_STATE.localQwen21Variant,enabled:ART_GENERATE_STATE.nsfwLoraEnabled,name:ART_GENERATE_STATE.nsfwLoraName,loras:ART_GENERATE_STATE.loras});
+      ART_GENERATE_STATE.nsfwLoraChecking = true;
+      try {
+        const name = await verifyArtNsfwLora();
+        const after = JSON.stringify({provider:ART_GENERATE_STATE.provider,mode:ART_GENERATE_STATE.mode,variant:ART_GENERATE_STATE.localQwen21Variant,enabled:ART_GENERATE_STATE.nsfwLoraEnabled,name:ART_GENERATE_STATE.nsfwLoraName,loras:ART_GENERATE_STATE.loras});
+        if (before !== after || name !== ART_GENERATE_STATE.nsfwLoraName || ART_GENERATE_STATE.running || window.NovaFlowUiDesignDrawing?.isActive?.()) throw new Error('模型或 LoRA 已变化，请重新提交');
+      } catch (error) { setArtGenerateStatus(String(error?.message || error), true); return; }
+      finally { ART_GENERATE_STATE.nsfwLoraChecking = false; }
+    }
+    pendingArtAgentRevision += 1n;
     if (!options.uiPrepared && !options.drawingPrepared && pendingArtAgentPreparation) {
       const agentPrepared = pendingArtAgentPreparation;
+      if(window.NovaFlowWebRuntime && agentPrepared?.agentRun===true && agentPrepared.promptOnlyOptimization!==true && agentPrepared.state?.provider==='local' && agentPrepared.references?.length &&
+         (!options.artConfirmationTicket || !artConfirmations.has(options.artConfirmationTicket))){
+        setArtGenerateStatus('请在绘图界面确认后点击生成。',true);return;
+      }
       pendingArtAgentPreparation = null;
+      let preparedCurrent = true;
       try { agentPrepared.assertCurrent(); }
-      catch (error) { setArtGenerateStatus(String(error?.message || '小桃建议已失效，请重新分析'), true); return; }
-      return runArtGenerate({ drawingPrepared: agentPrepared });
+      catch (error) {
+        if (agentPrepared.promptOnlyOptimization === true) preparedCurrent = false;
+        else { setArtGenerateStatus(String(error?.message || '小桃建议已失效，请重新分析'), true); return; }
+      }
+      if (preparedCurrent) return runArtGenerate({ drawingPrepared: agentPrepared, ownerGuard, artConfirmationTicket:options.artConfirmationTicket });
     }
     const ui = window.NovaFlowUiDesignDrawing;
     const getCurrentContext = () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(),
@@ -86436,10 +86670,12 @@
       setArtGenerateProgress("理解 UI 设计需求…", 0);
       setArtGenerateStatus("理解 UI 设计需求…");
       try {
-        const prepared = await ui.prepare({ ...getCurrentContext(), getCurrentContext });
+        const prepared = await ui.prepare({ ...getCurrentContext(), getCurrentContext, isOwnerCurrent: ownerCurrent });
+        if (!ownerCurrent()) { releaseStalePreparation(); return; }
         ART_GENERATE_STATE.running = false;
-        return await runArtGenerate({ uiPrepared: prepared });
+        return await runArtGenerate({ uiPrepared: prepared, ownerGuard });
       } catch (error) {
+        if (!ownerCurrent()) { releaseStalePreparation(); return; }
         ART_GENERATE_STATE.running = false;
         resetArtGenerateProgress(error?.name === 'AbortError' || /中止|终止/.test(String(error?.message || '')) ? '任务已中止' : '分析失败，未提交生成', 0);
         setArtGenerateStatus(String(error?.message || error), true);
@@ -86451,17 +86687,20 @@
       try {
         if (!direction?.selectManual) throw new Error('绘图组件未加载，请刷新页面');
         await direction.selectManual(ART_GENERATE_STATE);
-      } catch (error) { setArtGenerateStatus(String(error?.message || error), true); return; }
+        if (!ownerCurrent()) return;
+      } catch (error) { if (ownerCurrent()) setArtGenerateStatus(String(error?.message || error), true); return; }
       captureArtGeneratePromptSnapshot();
       ART_GENERATE_STATE.running = true;
       try {
         if (!window.NovaFlowArtDirection?.prepare) throw new Error('绘图分析组件未加载，请刷新页面');
-        const drawingPrepared = await window.NovaFlowArtDirection.prepare({ ...getCurrentContext(), getCurrentContext,
-          onProgress: message => { setArtGenerateProgress(message, 0); setArtGenerateStatus(message); } });
+        const drawingPrepared = await window.NovaFlowArtDirection.prepare({ ...getCurrentContext(), getCurrentContext, isOwnerCurrent: ownerCurrent,
+          onProgress: message => { if (ownerCurrent() && ownerPreparationEpoch === artOwnerPreparationEpoch) { setArtGenerateProgress(message, 0); setArtGenerateStatus(message); } } });
+        if (!ownerCurrent()) { releaseStalePreparation(); return; }
         if (drawingPrepared.applyPromptToState?.()) renderArtGenerateSurfaces({ forceBottom: true });
         ART_GENERATE_STATE.running = false;
-        return await runArtGenerate({ drawingPrepared });
+        return await runArtGenerate({ drawingPrepared, ownerGuard });
       } catch (error) {
+        if (!ownerCurrent()) { releaseStalePreparation(); return; }
         ART_GENERATE_STATE.running = false;
         resetArtGenerateProgress(error?.name === 'AbortError' ? '任务已中止' : '准备失败，未提交生成', 0);
         setArtGenerateStatus(String(error?.message || error), error?.name !== 'AbortError');
@@ -86503,10 +86742,14 @@
       setArtGenerateStatus(`${providerLabel} 最多支持 ${referenceLimit} 张参考图，当前 ${allRefs.length} 张。请移除多余图片或切换模型；本次未截断提交。`, true);
       return;
     }
-    const assistantRolePlan = !prepared && runMode === "img2img"
-      ? window.__NovaFlowSmartAI?.getArtGenerationReferencePlan?.(allRefs)
+    const assistantRolePlan = runMode === "img2img"
+      ? prepared?.referenceRolePlan || (!prepared ? window.__NovaFlowSmartAI?.getArtGenerationReferencePlan?.(allRefs) : null)
       : null;
-    const { refs, rolePlan } = resolveArtGenerateReferenceInputs(allRefs, assistantRolePlan);
+    const scopedArtCandidate = Boolean(window.NovaFlowWebRuntime && prepared?.agentRun === true && prepared.promptOnlyOptimization !== true && runProvider === 'local' && runMode === 'img2img');
+    const resolvedReferences = resolveArtGenerateReferenceInputs(allRefs, assistantRolePlan);
+    const refs = scopedArtCandidate ? resolvedReferences.refs.map((ref) => Object.freeze({ ...ref })) : resolvedReferences.refs;
+    const rolePlan = scopedArtCandidate && resolvedReferences.rolePlan
+      ? { ...resolvedReferences.rolePlan, conditioning: refs } : resolvedReferences.rolePlan;
     if (runMode === "img2img" && !refs.length) {
       resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);
       setArtGenerateStatus("\u56fe\u751f\u56fe\u9700\u8981\u5148\u4e0a\u4f20\u53c2\u8003\u56fe", true);
@@ -86515,7 +86758,9 @@
     const referenceRoleConstraint = rolePlan?.conditioning?.length
       ? rolePlan.conditioning.map((item, index) => {
           const number = index + 1;
-          if (item.role === "subject") return `图${number}是唯一主体/原图，只从该图保留人物、物体身份与核心设计。`;
+          if (item.role === "subject") return prepared?.referenceRolePlan?.allowMultipleSubjects === true && rolePlan.conditioning.filter(ref => ref.role === "subject").length > 1
+            ? `图${number}是用户指定的主体参考之一，请依据用户要求保留该图中的人物、物体身份与核心设计。`
+            : `图${number}是唯一主体/原图，只从该图保留人物、物体身份与核心设计。`;
           if (item.role === "pose") return `图${number}是经过隔离的姿势约束图，只使用骨骼、肢体方向和动作，不复制外观内容。`;
           if (item.role === "background") return `图${number}是经过隔离的背景约束图，只使用环境与空间，不复制前景主体。`;
           if (item.role === "composition") return `图${number}是经过隔离的构图/深度定位图，只使用位置、尺度和空间层次。`;
@@ -86526,7 +86771,7 @@
           return `图${number}只作为${item.role || "指定"}约束。`;
         }).join("\n")
       : "";
-    const promptWithReferenceRoles = referenceRoleConstraint
+    const promptWithReferenceRoles = prepared?.confirmedBoundGeneration===true ? qualityCompiled.prompt : referenceRoleConstraint
       ? `${qualityCompiled.prompt}\n\n参考图职责（严格执行）：\n${referenceRoleConstraint}\n禁止任何辅助约束图改变主体身份。`
       : qualityCompiled.prompt;
     const compiledPrompt = compileArtGeneratePromptMentions(refs, promptWithReferenceRoles, Boolean(prepared));
@@ -86546,7 +86791,29 @@
         return;
       }
     }
+    if (runProvider === "gpt" && (typeof ownerGuard !== 'function' || ownerGuard() !== true)) {
+      setArtGenerateStatus("当前账号状态无法验证，未提交生成", true); return;
+    }
+    const bindArt = scopedArtCandidate;
+    if(bindArt){
+      if (normalizeArtGenerateCount(settingsSnapshot.count) !== 1) {
+        setArtGenerateStatus('当前小桃图片任务每次只能生成一张，请将数量设为 1 后重试。', true); return;
+      }
+      const ticket=options.artConfirmationTicket;
+      if(!ticket || !artConfirmations.has(ticket) || typeof ownerGuard!=='function' || ownerGuard()!==true){
+        setArtGenerateStatus('请在绘图界面确认后点击生成。',true);return;
+      }
+      artConfirmations.delete(ticket);
+      if(typeof window.NovaFlowWebRuntime.artImageBindingAvailable!=='function' ||
+         await window.NovaFlowWebRuntime.artImageBindingAvailable()!==true){
+        setArtGenerateStatus('当前节点暂不支持安全图片绑定，未提交生成。',true);return;
+      }
+      if(ownerGuard()!==true){setArtGenerateStatus('登录状态已变，未提交生成。',true);return;}
+      prepared.assertCurrent();
+    }
     const runToken = beginArtGenerateRun();
+    const bindingAbort=bindArt ? new AbortController() : null, scopedBindings=[];
+    if(bindArt)artBoundAbort=bindingAbort;
     if (runProvider === "gpt") {
       try {
         await runArtGenerateOnRunningHub({
@@ -86558,16 +86825,20 @@
           batchCount: normalizeArtGenerateCount(settingsSnapshot.count),
           providerLabel,
           prepared,
+          ownerGuard,
           options
         });
       } catch (error) {
-        if (!isArtGenerateRunCurrent(runToken)) return;
+        const stoppedBeforeDispatch=prepared?.confirmedBoundGeneration===true && error?.code==='art-cancelled-before-dispatch';
+        if (!isArtGenerateRunCurrent(runToken)) return stoppedBeforeDispatch ? {phase:'cancelled-before-dispatch'} : undefined;
         ART_GENERATE_STATE.running = false;
         const failure = artGenerateBatchProgress(String(error && error.message || error || "生成失败"), 0);
         clearArtGenerateBatch();
         setArtGenerateProgress(failure.label, failure.pct);
-        setArtGenerateStatus(failure.label, true);
+        const declined=prepared?.confirmedBoundGeneration===true && (error?.code==='art-generation-cancelled'||stoppedBeforeDispatch);
+        setArtGenerateStatus(failure.label, !declined);
         clearArtGenerateRunIfCurrent(runToken);
+        if(declined)return {phase:'cancelled-before-dispatch'};
       } finally {
         try { authorizationContext?.release?.(); } catch {}
       }
@@ -86590,12 +86861,28 @@
       ART_GENERATE_STATE.activeClientId = clientId;
       let uploadedNames = [];
       const referenceSizes = [];
+      const scopedReferences = [];
+      const isScopedCurrent = () => { try { return isArtGenerateRunCurrent(runToken) && ownerGuard() === true && (prepared.assertCurrent(), true); } catch { return false; } };
       // Every reference goes up under its own name (two files both called 1.png must not collapse
       // into one image). On the web each task takes the images staged for it, so a batch stages them
       // again for every image after the first.
       const uploadStamp = `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`;
       const uploadReferences = async (pass) => {
         const names = [];
+        if(bindArt){
+          const isCurrent = isScopedCurrent;
+          if (!isCurrent() || scopedReferences.length !== refs.length) throw new Error('绘图或登录状态已变化，未提交生成。');
+          const boundReferences = Object.freeze(scopedReferences.slice());
+          const binding=await window.NovaFlowWebRuntime.prepareArtImageBinding({references:boundReferences,isCurrent,signal:bindingAbort.signal});
+          scopedBindings.push(binding.ticket);
+          if(!isCurrent())throw new Error('绘图或登录状态已变化，未提交生成。');
+          for(let i=0;i<boundReferences.length;i++){
+            const staged=await window.NovaFlowWebRuntime.stageArtBoundReference(binding.ticket,i);
+            if(staged?.ok!==true || staged.result?.name!==binding.names[i] || !isCurrent())throw new Error('图片绑定已失效，未提交生成。');
+            names.push(staged.result.name);
+          }
+          return names;
+        }
         for (let i = 0; i < refs.length; i += 1) {
           if (!isArtGenerateRunCurrent(runToken)) return null;
           prepared?.assertCurrent?.();
@@ -86616,7 +86903,10 @@
         for (let i = 0; i < refs.length; i += 1) {
           if (!isArtGenerateRunCurrent(runToken)) return;
           prepared?.assertCurrent?.();
-          const image = await loadNovaflowArtExportImage(await resolveArtReferenceDataUrl(refs[i]));
+          const dataUrl = await resolveArtReferenceDataUrl(refs[i]);
+          if (bindArt && !isScopedCurrent()) throw new Error('绘图或登录状态已变化，未提交生成。');
+          if (bindArt) scopedReferences.push(Object.freeze({ dataUrl, role: refs[i].role || 'reference' }));
+          const image = await loadNovaflowArtExportImage(dataUrl);
           if (!isArtGenerateRunCurrent(runToken)) return;
           prepared?.assertCurrent?.();
           const width = Number(image.naturalWidth || image.width), height = Number(image.naturalHeight || image.height);
@@ -86655,7 +86945,7 @@
           () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, drawingRepair ? `${compiledPrompt.text}\n\n本次纠正：${drawingRepair}` : compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
             prepared ? { ...settingsSnapshot, ...(fixedSeed ? { seed: baseSeed + batchIndex, randomSeed: false } : {}) } : ART_GENERATE_STATE,
             prepared ? referenceLimit : undefined,
-            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : options.drawingPrepared ? window.NovaFlowArtDirection.generationOptions(options.drawingPrepared) : {})
+            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : options.drawingPrepared ? { ...window.NovaFlowArtDirection.generationOptions(options.drawingPrepared), ...(bindArt?{taskProfile:'art-direction',referenceRoles:scopedReferences.map(ref=>ref.role)}:{}) } : {})
         );
         const workflow = workflowRun.workflow;
         const controlNetResult = runMode === "img2img" ? applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) : { applied: 0 };
@@ -86777,7 +87067,7 @@
           }
           if (!isArtGenerateRunCurrent(runToken)) return;
           prepared.assertCurrent();
-          if (drawingReview.pass === false && drawingCorrection < 1 && runProvider === 'local') {
+          if (!bindArt && drawingReview.pass === false && drawingCorrection < 1 && runProvider === 'local') {
             drawingCorrection += 1;
             drawingRepair = drawingReview.repair;
             setArtGenerateStatus('成图与需求存在偏差，正在自动纠正（最多一次）');
@@ -86793,6 +87083,7 @@
           mode: runMode,
           provider: runProvider,
           nsfw: !!settingsSnapshot.nsfw,
+          ...(runProvider === 'local' && settingsSnapshot.nsfwLoraEnabled ? {nsfwLoraEnabled:true,nsfwLoraName:settingsSnapshot.nsfwLoraName} : {}),
           name: file.filename || `${prefix}.png`,
           imageUrl,
           createdAt: new Date().toISOString(),
@@ -86808,13 +87099,8 @@
         ART_GENERATE_STATE.selectedResultId = result.id;
         lastPromptId = promptId;
         if (batchIndex + 1 < batchCount) setArtGenerateProgress("已完成", 1, { promptId });
-        placeArtGenerateResultIntoSource(result).then((placed) => {
-          if (!ART_GENERATE_STATE.results.some((item) => item && item.id === result.id)) return;
-          result.placedInSource = !!placed;
-          renderArtGenerateSurfaces({ forceBottom: true });
-        }).catch((error) => {
-          console.warn("[NovaFlow] Art generate source placement failed", error);
-        });
+        result.placedInSource=await placeArtGenerateResultIntoSource(result);
+        renderArtGenerateSurfaces({ forceBottom: true });
       }
       clearArtGenerateBatch();
       ART_GENERATE_STATE.running = false;
@@ -86838,6 +87124,7 @@
       setArtGenerateStatus(failure.label, true);
       clearArtGenerateRunIfCurrent(runToken);
     } finally {
+      if(bindingAbort){bindingAbort.abort();if(artBoundAbort===bindingAbort)artBoundAbort=null;for(const ticket of scopedBindings)window.NovaFlowWebRuntime?.discardArtImageBinding?.(ticket);}
       try {
         authorizationContext?.release?.();
       } catch {}
@@ -86881,6 +87168,58 @@
     throw new Error("参考图格式不受支持");
   }
 
+  // Isolated prototype: this gate is absent from the published site.
+  // The normal manual generation path does not enter this function.
+  async function runConfirmedCloudArtCandidate(ctx, images, settings, api, boundRun) {
+    const prepared=ctx?.prepared, binding=prepared?.compilerBinding;
+    const errorMessage={
+      'art-context-changed':'页面或账号已变化，请重新确认。',
+      'art-context-unavailable':'无法核验当前页面状态，请重新打开绘图。',
+      'art-cancelled':'已取消本次生图。',
+      'confirmed-art-unavailable':'当前安全生图通道尚未开放。',
+      'art-proof-stale':'提示词或参考图已变化，请重新优化并确认。',
+      'art-quote-unavailable':'暂时无法取得生图报价，请稍后重试。',
+      'art-generation-cancelled':'已取消本次生图。',
+      'art-quote-expired':'生图报价已过期，请重新确认。'
+    };
+    const fail=(code)=>{throw Object.assign(new Error(errorMessage[code]||'本次生图无法继续，请重新确认。'),{code});};
+    const current=()=>{
+      if(ctx?.ownerGuard?.()!==true || ctx?.runToken==null || !isArtGenerateRunCurrent(ctx.runToken)) fail('art-context-changed');
+      if(typeof prepared?.assertCurrent!=='function') fail('art-context-unavailable');
+      prepared.assertCurrent();
+      if(boundRun?.controller?.signal?.aborted) fail('art-cancelled');
+    };
+    if(api?.confirmedArtImageAvailableSync?.()!==true || typeof api.runningHubGptImageQuote!=='function' || typeof api.runningHubGptImage!=='function') fail('confirmed-art-unavailable');
+    if(!binding || typeof binding.proof!=='string' || !binding.proof || typeof binding.modelId!=='string' || !Number.isSafeInteger(binding.epoch) ||
+      typeof binding.modelPrompt!=='string' || binding.modelPrompt!==ctx.prompt || ctx.runMode!=='img2img' || ctx.batchCount!==1 ||
+      !/^[a-f0-9]{64}$/.test(prepared.confirmationPageHash||'') || !Array.isArray(binding.images) || !Array.isArray(images) ||
+      ![1,2].includes(images.length) || binding.images.length!==images.length) fail('art-proof-stale');
+    const roles=prepared?.referenceRolePlan?.roles;
+    if(!Array.isArray(roles)||roles.length!==images.length) fail('art-proof-stale');
+    const verified=images.map((item,index)=>{
+      const role=index===0?'subject':'style', original=binding.images[index];
+      const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(item?.dataUrl||'');
+      if(!match||roles[index]!==role||original?.role!==role||original?.dataUrl!==item.dataUrl) fail('art-proof-stale');
+      return {role,filename:`reference-${index+1}.${match[1]==='jpeg'?'jpg':match[1]}`,dataUrl:item.dataUrl};
+    });
+    current();
+    const operationId=window.crypto.randomUUID();
+    const payload={operationId,mode:ctx.runMode,prompt:ctx.prompt,settings,images:verified,count:1,width:ctx.settingsSnapshot.width,height:ctx.settingsSnapshot.height};
+    const request={payload,brain:binding.modelId,pageHash:prepared.confirmationPageHash,compilerProof:binding.proof,selectionEpoch:binding.epoch};
+    const quoted=await api.runningHubGptImageQuote({...request,contract:'confirmed-reference-v1'},{signal:boundRun?.controller?.signal});
+    current();
+    const q=quoted?.result;
+    if(quoted?.ok!==true||typeof q?.token!=='string'||!q.token||!Number.isSafeInteger(q?.quote?.estimatedCredits)||q.quote.estimatedCredits<1||
+      !Number.isSafeInteger(q.quote.expiresAt)||Date.now()>=q.quote.expiresAt) fail('art-quote-unavailable');
+    if(typeof window.confirm!=='function'||window.confirm(`本次生图预计 ${q.quote.estimatedCredits} 积分，确认生成吗？`)!==true) fail('art-generation-cancelled');
+    current();
+    if(Date.now()>=q.quote.expiresAt) fail('art-quote-expired');
+    boundRun.dispatched=true;
+    const sent=await api.runningHubGptImage({...request,contract:'confirmed-reference-v1',token:q.token},{signal:boundRun?.controller?.signal});
+    if(sent?.ok!==true) throw Object.assign(new Error('生图请求结果或扣费尚待核对，请勿重复提交。'),{code:'art-generation-outcome-unknown',billingUnknown:true});
+    return sent;
+  }
+
   async function runArtGenerateOnRunningHub(ctx) {
     const api = window.electronAPI;
     if (!api || typeof api.runningHubGptImage !== "function") throw new Error("云端出图接口未就绪，请刷新页面后重试");
@@ -86904,7 +87243,18 @@
       ART_GENERATE_STATE.batchIndex = batchIndex;
       setArtGenerateProgress("正在生成...", 0.35);
       setArtGenerateStatus("正在生成...");
-      const sent = await api.runningHubGptImage({
+      let sent;
+      if(ctx.prepared?.confirmedBoundGeneration===true){
+        if(pendingConfirmedCloudRun)throw Error('已有生图正在处理，请稍候');
+        const boundRun={token:ctx.runToken,controller:new AbortController(),dispatched:false};
+        pendingConfirmedCloudRun=boundRun;
+        try{sent=await runConfirmedCloudArtCandidate(ctx,images,settings,api,boundRun);}
+        catch(error){
+          if(boundRun.dispatched===false&&boundRun.controller.signal.aborted)throw Object.assign(new Error('已取消生图，未提交。'),{code:'art-cancelled-before-dispatch'});
+          throw error;
+        }
+        finally{if(pendingConfirmedCloudRun===boundRun)pendingConfirmedCloudRun=null;}
+      }else sent=await api.runningHubGptImage({
         mode: ctx.runMode,
         prompt: ctx.prompt,
         settings,
@@ -86913,16 +87263,35 @@
         width: ctx.settingsSnapshot.width,
         height: ctx.settingsSnapshot.height
       });
+      if (ctx.ownerGuard?.() !== true) {
+        // Only finish the run that owns this token; never alter a newer run.
+        if (ART_GENERATE_STATE.runToken === ctx.runToken) {
+          ART_GENERATE_STATE.running = false;
+          clearArtGenerateBatch();
+          clearArtGenerateRunIfCurrent(ctx.runToken);
+        }
+        return;
+      }
       const payload = sent?.result && typeof sent.result === "object" ? sent.result : sent;
       if (!sent || sent.ok === false || payload?.ok === false) throw new Error(String(payload?.error || sent?.error || "云端出图失败"));
       const image = Array.isArray(payload.images) ? payload.images[0] : null;
-      const imageUrl = String(image?.imageDataUrl || payload?.imageDataUrl || "");
+      let imageUrl = String(image?.imageDataUrl || payload?.imageDataUrl || "");
       if (!imageUrl) throw new Error(String(payload?.error || "云端出图没有返回图片"));
+      const delivered=await resolveGptDeliveredImage(imageUrl,ctx.settingsSnapshot);imageUrl=delivered.imageUrl;
+      if (ctx.ownerGuard?.() !== true) {
+        if (ART_GENERATE_STATE.runToken === ctx.runToken) {
+          ART_GENERATE_STATE.running = false;
+          clearArtGenerateBatch();
+          clearArtGenerateRunIfCurrent(ctx.runToken);
+        }
+        return;
+      }
       const promptId = String(image?.taskId || payload?.promptId || `rh_${Date.now()}`);
       lastPromptId = promptId;
       const chargedCredits = payload.billing?.chargedCredits ?? payload.charged;
       const balanceAfter = payload.billing?.balanceAfter ?? payload.remaining;
       window.NovaFlowArtGenerateCreditPricing?.recordSettlement?.({
+        isOwnerCurrent: ctx.ownerGuard,
         promptId,
         settlement: { status: Number(chargedCredits) > 0 ? "settled" : "not_charged", charge_amount: chargedCredits },
         credits: { deducted: chargedCredits, balance: balanceAfter },
@@ -86937,6 +87306,8 @@
         nsfw: !!ctx.settingsSnapshot.nsfw,
         name: `${promptId}.png`,
         imageUrl,
+        width:delivered.width,height:delivered.height,
+        ...(delivered.requestedWidth?{requestedWidth:delivered.requestedWidth,requestedHeight:delivered.requestedHeight,customSizeApplied:delivered.customSizeApplied}:{}),
         createdAt: new Date().toISOString(),
         generationElapsedSec: Math.max(1, Math.round((Date.now() - artImageStartedAt) / 1000)),
         workflow: "runninghub-gpt-image",
@@ -86956,9 +87327,33 @@
         };
       }
       artImageStartedAt = Date.now();
+      const placementCurrent = () => {
+        try { return ctx.ownerGuard() === true && (ctx.prepared?.assertCurrent?.(), true); }
+        catch { return false; }
+      };
+      // The bridge rechecks after asynchronous image decoding, immediately before mutation.
+      result.placedInSource = placementCurrent && !placementCurrent() ? false :
+        await placeArtGenerateResultIntoSource(result, { isCurrent: placementCurrent });
+      if (ctx.ownerGuard?.() !== true) {
+        // Only finish the run that owns this token; never alter a newer run.
+        if (ART_GENERATE_STATE.runToken === ctx.runToken) {
+          ART_GENERATE_STATE.running = false;
+          clearArtGenerateBatch();
+          clearArtGenerateRunIfCurrent(ctx.runToken);
+        }
+        return;
+      }
       ART_GENERATE_STATE.results.unshift(result);
       ART_GENERATE_STATE.selectedResultId = result.id;
       if (ctx.options?.uiPrepared) window.NovaFlowUiDesignDrawing?.recordResult?.(result, ctx.options.uiPrepared);
+      if (!result.placedInSource) {
+        clearArtGenerateBatch(); ART_GENERATE_STATE.running = false;
+        setArtGenerateProgress("图片已生成，未自动放置，请查看结果列表", 1, { promptId });
+        setArtGenerateStatus("图片已生成，未自动放置，请查看结果列表");
+        clearArtGenerateRunIfCurrent(ctx.runToken);
+        renderArtGenerateSurfaces({forceBottom:true}); return;
+      }
+      renderArtGenerateSurfaces({forceBottom:true});
     }
     clearArtGenerateBatch();
     ART_GENERATE_STATE.running = false;
@@ -86981,6 +87376,8 @@
         mode,
         provider,
         nsfw: !!source.nsfw,
+        nsfwLoraEnabled: !!source.nsfwLoraEnabled,
+        nsfwLoraName: String(source.nsfwLoraName || ''),
         width: Math.max(64, Math.round(Number(source.width) || 1024)),
         height: Math.max(64, Math.round(Number(source.height) || 1024)),
         randomSeed: source.randomSeed !== false,
@@ -87086,11 +87483,27 @@
       run: runArtGenerate,
       references: artGenerateReferences,
       referenceLimit: artGenerateReferenceLimit,
+      isReferenceSizePending: (index, dataUrl) => ART_GENERATE_REFERENCE_SIZE_PENDING.has(artGenerateReferenceSizeToken(index, dataUrl)),
       setReference: setArtGenerateReference,
       refreshReferences: refreshArtGenerateReferences,
       capturePrompt: captureArtGeneratePromptSnapshot,
-      captureContext: () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(),
+      captureContext: () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(), routeRevision: PRIMARY_SWITCH_TOKEN, referenceRevision: ART_GENERATE_REFERENCE_REVISION,
         generationSurface: document.body?.classList.contains('novaflow-primary-target-art') ? window.NovaFlowUiDesignDrawing?.isActive?.() ? 'ui' : 'drawing' : 'other' }),
+      // Capture before a prompt-source question. Never read or upload image bytes here.
+      capturePromptSourceGuard() {
+        const rt=window.__NovaFlowArtGenerate, bridge=window.NovaFlowSpineSplitBridge, context=rt?.captureContext?.();
+        const state=bridge?.getState?.(), workspaceRevision=bridge?.getAgentWorkspaceRevision?.();
+        if (context?.generationSurface!=='drawing'||!Number.isSafeInteger(context.routeRevision)||
+            !Number.isSafeInteger(workspaceRevision)||!state) throw new Error('绘图工程状态无法核验，请重新打开后重试');
+        const source=state.source, sourceId=state.activeSourceResourceId, setId=state.activeSplitSetId, routeRevision=context.routeRevision;
+        return Object.freeze({isCurrent(){try {
+          const now=rt.captureContext(), current=bridge.getState();
+          return window.__NovaFlowArtGenerate===rt && window.NovaFlowSpineSplitBridge===bridge && current===state &&
+            now.generationSurface==='drawing' && now.routeRevision===routeRevision &&
+            bridge.getAgentWorkspaceRevision()===workspaceRevision && current.source===source &&
+            current.activeSourceResourceId===sourceId && current.activeSplitSetId===setId;
+        } catch {return false}}});
+      },
       selectedResult: selectedArtGenerateResult,
       cancel: cancelArtGenerateRun,
       cancelPromptAnalysis: cancelArtGeneratePromptAnalysis,
@@ -87098,8 +87511,14 @@
         if (ART_GENERATE_STATE.running || typeof prepared?.assertCurrent !== 'function') throw new Error('当前无法应用绘图建议');
         prepared.assertCurrent();
         pendingArtAgentPreparation = prepared;
+        pendingArtAgentRevision += 1n;
       },
-      clearAgentPrepared() { pendingArtAgentPreparation = null; }
+      clearAgentPrepared() { pendingArtAgentPreparation = null; pendingArtAgentRevision += 1n; },
+      captureAgentPreparedSnapshot,
+      isAgentPreparedSnapshotEmptyAndCurrent,
+      replaceAgentPrepared,
+      restoreAgentPrepared,
+      isAgentPreparedReplacementCurrent
     };
     const creditUpdateEvent = window.NovaFlowArtGenerateCreditPricing?.UPDATE_EVENT;
     if (creditUpdateEvent) {
@@ -87338,6 +87757,14 @@
   var STARTUP_DEFAULT_ANIMATION_AT = 0;   // var: the start-up snapshot can run before this line
   var STARTUP_DEFAULT_SETTLED_AT = 0;
   function ensureStartupDefaultAnimation(primaryTargetClass) {
+    // A home/deep-link target overrides the old startup-only animation default.
+    // The existing boot gate waits for the actual requested native workspace.
+    const requested = new URLSearchParams(window.location.search).get("surface");
+    if (requested === "drawing" || requested === "ui") return primaryTargetClass === "novaflow-primary-target-art";
+    if (requested === "tools") return primaryTargetClass === "novaflow-primary-target-tools";
+    if (requested === "effects") return primaryTargetClass === "novaflow-primary-target-particle" && window.NovaFlowAifxMvp?.isOpen?.() === true;
+    if (requested === "video") return primaryTargetClass === "novaflow-primary-target-animation" && window.NovaFlowAudioStudio?.sub?.() === "video";
+    if (requested === "animation") return primaryTargetClass === "novaflow-primary-target-animation" && window.NovaFlowSkeletonEditor?.active?.() === true;
     if (STARTUP_DEFAULT_ANIMATION_AT) {
       if (nowMs() - STARTUP_DEFAULT_ANIMATION_AT > 8000) return true;
       if (primaryTargetClass !== "novaflow-primary-target-animation") return false;
@@ -87462,6 +87889,7 @@
   }
 
   function bootstrapEarlyRuntime() {
+    observePrimaryExtraRail();
     bindAiSequenceCutoutFailureRecovery();
     installNovaflowSkeletonExportCanvasCompatibility();
     installNFAnimationPerfProbe();
@@ -87517,6 +87945,7 @@
   const run = () => {
     if (BRAND_RUNTIME_STARTED) return;
     BRAND_RUNTIME_STARTED = true;
+    observePrimaryExtraRail();
     installNovaflowSkeletonExportCanvasCompatibility();
     installNFAnimationPerfProbe();
     installNFDesktopPerfProbe();
