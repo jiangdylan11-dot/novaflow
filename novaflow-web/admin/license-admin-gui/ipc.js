@@ -6,26 +6,31 @@ const licenseAdminOnline = require("../license-admin-online");
 const adminData = require("./admin-data");
 
 function getDefaultPaths() {
-  const bundledPub = path.join(__dirname, "..", "license-public-key.b64");
-  const bundledPriv = path.join(__dirname, "..", ".secrets", "license-private-key.pem");
-  const bundledOk = fs.existsSync(bundledPub) && fs.existsSync(bundledPriv);
-  if (bundledOk) {
-    return {
-      mode: "bundled",
-      baseDir: path.join(app.getPath("documents"), "NovaFlow-License"),
-      publicKeyPath: bundledPub,
-      privateKeyPath: bundledPriv,
-      defaultLicenseOutPath: path.join(app.getPath("documents"), "NovaFlow-License", "licenses", "license.nfl")
-    };
-  }
   const base = path.join(app.getPath("documents"), "NovaFlow-License");
+  const externalPublic = path.join(base, "keys", "license-public-key.b64");
+  const bundledPublic = path.join(__dirname, "..", "license-public-key.b64");
+  const configuredPrivate = String(process.env.FOART_LICENSE_PRIVATE_KEY_PATH || "").trim();
+  const configError = configuredPrivate && !path.isAbsolute(configuredPrivate)
+    ? "FOART_LICENSE_PRIVATE_KEY_PATH 必须是本机私钥文件的绝对路径。" : "";
   return {
-    mode: "documents",
+    mode: configuredPrivate && !configError ? "configured" : "documents",
     baseDir: base,
-    publicKeyPath: path.join(base, "keys", "license-public-key.b64"),
-    privateKeyPath: path.join(base, "keys", "license-private-key.pem"),
+    publicKeyPath: externalPublic,
+    verificationPublicKeyPath: fs.existsSync(externalPublic) ? externalPublic : bundledPublic,
+    privateKeyPath: configuredPrivate && !configError ? configuredPrivate : path.join(base, "keys", "license-private-key.pem"),
+    keyConfigError: configError,
     defaultLicenseOutPath: path.join(base, "licenses", "license.nfl")
   };
+}
+
+function requirePrivateKeyPath(explicitPath, defaults) {
+  const selected = typeof explicitPath === "string" ? explicitPath.trim() : "";
+  if (!selected && defaults.keyConfigError) throw new Error(defaults.keyConfigError);
+  const keyPath = selected || defaults.privateKeyPath;
+  if (!fs.existsSync(keyPath)) {
+    throw new Error("未找到本机签发私钥。请在 Documents/NovaFlow-License/keys 配置已有私钥，或通过 FOART_LICENSE_PRIVATE_KEY_PATH 指定已有私钥的绝对路径；安装包不包含私钥。");
+  }
+  return keyPath;
 }
 
 function registerLicenseAdminIpc() {
@@ -191,7 +196,7 @@ function registerLicenseAdminIpc() {
 
   ipcMain.handle("admin-read-public-key", async (_evt, payload) => {
     const def = getDefaultPaths();
-    const pub = payload?.publicKeyPath || def.publicKeyPath;
+    const pub = payload?.publicKeyPath || def.verificationPublicKeyPath;
     try {
       if (!fs.existsSync(pub)) return { ok: false, error: "公钥文件不存在" };
       const text = fs.readFileSync(pub, "utf8");
@@ -262,7 +267,7 @@ function registerLicenseAdminIpc() {
 
   ipcMain.handle("admin-status", async (_evt, payload) => {
     const def = getDefaultPaths();
-    const pub = payload?.publicKeyPath || def.publicKeyPath;
+    const pub = payload?.publicKeyPath || def.verificationPublicKeyPath;
     const priv = payload?.privateKeyPath || def.privateKeyPath;
     try {
       const st = licenseAdminCore.readKeyStatus(pub, priv);
@@ -407,10 +412,11 @@ function registerLicenseAdminIpc() {
   ipcMain.handle("admin-license-code", async (_evt, payload) => {
     const def = getDefaultPaths();
     try {
+      const privateKeyPath = requirePrivateKeyPath(payload?.privateKeyPath, def);
       const res = licenseAdminCore.issueLicenseFile({
         machineId: payload?.machineId,
         licenseKey: payload?.licenseKey,
-        privateKeyPath: payload?.privateKeyPath || def.privateKeyPath,
+        privateKeyPath,
         expiresAt: payload?.expiresAt,
         featuresText: payload?.featuresText
       });
@@ -422,9 +428,9 @@ function registerLicenseAdminIpc() {
 
   ipcMain.handle("admin-issue-license", async (_evt, payload) => {
     const def = getDefaultPaths();
-    const priv = payload?.privateKeyPath || def.privateKeyPath;
     const outPath = payload?.outPath || def.defaultLicenseOutPath;
     try {
+      const priv = requirePrivateKeyPath(payload?.privateKeyPath, def);
       const res = licenseAdminCore.issueLicenseFile({
         machineId: payload?.machineId,
         licenseKey: payload?.licenseKey,
@@ -455,7 +461,7 @@ function registerLicenseAdminIpc() {
 
   ipcMain.handle("admin-verify-license", async (_evt, payload) => {
     const def = getDefaultPaths();
-    const pub = payload?.publicKeyPath || def.publicKeyPath;
+    const pub = payload?.publicKeyPath || def.verificationPublicKeyPath;
     try {
       const res = licenseAdminCore.verifyLicenseFile({
         licensePath: payload?.licensePath,

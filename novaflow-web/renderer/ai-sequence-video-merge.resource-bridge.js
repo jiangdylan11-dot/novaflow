@@ -26,7 +26,7 @@
     return SUPPORTED_MIME_TYPES.includes(mimeType) || SUPPORTED_EXTENSIONS.includes(extensionOf(fileName))
   }
 
-  function normalizeDescriptor(value, fallbackId) {
+  function normalizeDescriptor(value, fallbackId, options = {}) {
     const item = value && typeof value === 'object' ? value : {}
     const resourceId = text(item.resourceId || item.id || fallbackId)
     const file = item.file && typeof item.file === 'object' ? item.file : null
@@ -49,7 +49,9 @@
       mediaToken,
       ownedObjectUrl: item.ownedObjectUrl === true,
     }
-    if (!isSupportedVideo(descriptor)) throw new Error('video_merge_unsupported_video')
+    const audio = options.allowAudio === true && (mimeType.startsWith('audio/') || /\.(wav|mp3|ogg|m4a|aac|flac)$/i.test(fileName))
+    const image = options.allowImages === true && (mimeType.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(fileName))
+    if (!isSupportedVideo(descriptor) && !audio && !image) throw new Error('video_merge_unsupported_video')
     return Object.freeze(descriptor)
   }
 
@@ -184,8 +186,9 @@
       const normalizedId = text(resourceId)
       if (!normalizedId) throw new Error('video_merge_resource_id_missing')
       const bridge = getAssetBridge(config)
+      if ((config.allowAudio || config.allowImages) && typeof bridge.resolveMediaResource === 'function') return normalizeDescriptor(await bridge.resolveMediaResource(normalizedId), normalizedId, config)
       if (typeof bridge.resolveVideoResource !== 'function') throw new Error('video_merge_resource_resolver_missing')
-      return normalizeDescriptor(await bridge.resolveVideoResource(normalizedId), normalizedId)
+      return normalizeDescriptor(await bridge.resolveVideoResource(normalizedId), normalizedId, config)
     }
 
     async function addLocalFiles(files) {

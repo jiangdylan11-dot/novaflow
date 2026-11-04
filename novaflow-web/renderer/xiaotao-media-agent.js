@@ -26,7 +26,7 @@
   }
   const allClips=editor => editor?.state?.tracks?.flatMap(t=>t.clips || []) || [];
   function timeline(editor) {
-    return {selected:editor?.selectedClip?.()?.id || '',canvas:editor?.state?.canvas?clone(editor.state.canvas):null,tracks:(editor?.state?.tracks || []).map(t=>({id:t.id,name:t.name||'',kind:t.kind,gain:t.gain ?? 1,mute:!!t.mute,solo:!!t.solo,visible:t.visible!==false,
+    return {supportedActions:editor?['import_resource','select_clip','split','trim','move','rate','fade','duplicate','remove','export','track_mute','play','pause','seek',...(editor.setGain?['volume','track_gain','track_solo','save_mix']:[]),...(editor.setLoops?['loops']:[]),...(editor.setTransform?['clip_transform','clip_visibility']:[])]:[],selected:editor?.selectedClip?.()?.id || '',canvas:editor?.state?.canvas?clone(editor.state.canvas):null,tracks:(editor?.state?.tracks || []).map(t=>({id:t.id,name:t.name||'',kind:t.kind,gain:t.gain ?? 1,mute:!!t.mute,solo:!!t.solo,visible:t.visible!==false,
       clips:(t.clips || []).map(c=>({id:c.id,name:c.name,kind:c.kind || '',start:c.start,offset:c.offset,end:c.end,length:c.length,
         rate:c.rate || 1,gain:c.gain ?? 1,loops:c.loops || 1,fadeIn:c.fadeIn || 0,fadeOut:c.fadeOut || 0,visible:c.visible!==false,audioDetached:!!c.audioDetached,
         transform:c.transform?clone(c.transform):null,maskRevision:c.maskRevision || 0,sourceIdentity:referenceStamp(c.source || c.buffer),sourceName:c.source?.fileName || '',sourceSeconds:c.source?.durationSec || c.buffer?.duration || 0}))}))};
@@ -37,8 +37,32 @@
       generation:gen?.capture?.() || null,
       video:timeline(video?.editor?.()),audio:timeline(audio?.editor?.()),
       videoResources:root.NovaFlowAiSequenceAssetBridge?.listResources?.() || [],
-      audioResources:(audio?.resources?.() || []).filter(r=>!r.pending).map(r=>({id:r.id,name:r.name,seconds:r.seconds,kind:r.kind})),
+      audioResources:(audio?.resources?.() || []).filter(r=>!r.pending).map(r=>({id:r.id,name:r.name,seconds:r.seconds,kind:r.kind,publishedId:r.publishedId||''})),
       audioSettings:audio?.agentSettings?.() || null},images:[]};
+  }
+  async function prepareCapture() {
+    if(root.NovaFlowAudioStudio?.isOpen?.()!==true || root.NovaFlowAudioStudio?.sub?.()!=='video')return;
+    for(let attempt=0;attempt<3;attempt++){
+      const before=root.NovaFlowAiSequenceGeneration?.capture?.();
+      if(before?.mode!=='minimax_h3_local' || before.genType!=='multi_reference')return;
+      // Restoration, imports and native remove handlers commit asynchronously.
+      // Read after the original store has committed, never report a transient
+      // empty list to the planner as if the user's references were missing.
+      await root.NovaFlowH3Media?.snapshot?.(before.boardId);
+      const after=root.NovaFlowAiSequenceGeneration?.capture?.();
+      if(after?.boardId!==before.boardId || after?.genType!==before.genType)continue;
+      const panels=Array.from(root.document?.querySelectorAll?.('[data-novaflow-h3-media-panel]')||[])
+        .filter(el=>el.getClientRects().length);
+      const panel=panels.find(el=>el.getAttribute('data-board-id')===String(after.boardId));
+      if(panels.length&&!panel)fail('当前视频画板仍在切换，尚未读取引用，请稍后重试');
+      if(panel){
+        const visibleIds=Array.from(panel.querySelectorAll('[data-novaflow-h3-source-id]'),el=>el.getAttribute('data-novaflow-h3-source-id')).sort();
+        const capturedIds=(after.h3References||[]).map(ref=>ref.sourceId).sort();
+        if(JSON.stringify(visibleIds)!==JSON.stringify(capturedIds))fail('多参引用与当前画板尚未同步，未提交分析或生成；请保留现有素材后重试');
+      }
+      return;
+    }
+    fail('视频工作区在读取期间发生变化，未提交分析或生成');
   }
   function wantsMedia(message) {
     return /视频|动画|动起来|音频|音效|音乐|配乐|剪辑|时间轴|淡入|淡出|音轨|音视/.test(message);
@@ -85,6 +109,7 @@
   }
   const numeric=(v,min,max,label)=>{if(typeof v!=='number' || !Number.isFinite(v) || v<min || v>max)fail(label+'超出允许范围');return v;};
   function edit(editor,op) {
+    if(op.target==='video'&&['volume','loops','track_gain','track_solo'].includes(op.action))fail('该参数属于音频编辑器，请调用原生音频处理；视频重复请使用复制片段');
     if(['play','pause','seek'].includes(op.action)){
       if(op.action==='seek')editor.seek(numeric(op.at,0,editor.projectEnd(),'播放位置'));
       else editor[op.action]();
@@ -92,6 +117,7 @@
     }
     if(['track_gain','track_mute','track_solo'].includes(op.action)){
       const track=editor.state.tracks.find(t=>t.id===op.trackId);if(!track)fail('未找到当前音轨');
+      if(op.target==='video'&&op.action!=='track_mute')fail('视频时间轴不支持轨道增益或独奏，请调用音频编辑器');
       editor.pause();if(op.action==='track_gain')track.gain=numeric(op.value,0,1.5,'音轨音量');else {if(typeof op.enabled!=='boolean')fail('音轨开关无效');track[op.action==='track_mute'?'mute':'solo']=op.enabled;}
       refresh(editor,{tracksChanged:true});return {ok:true,action:op.action,target:op.target,trackId:track.id,timeline:timeline(editor)};
     }
@@ -138,7 +164,89 @@
     return {ok:true,action:op.action,target:op.target,clipId:clip.id,timeline:timeline(editor)};
   }
   function refresh(editor,options) {editor.commitEdit(options);editor.select(editor.selectedClip?.()?.id || null);root.NovaFlowAiSequenceVideoMergeWorkspace?.refresh?.();}
-  async function generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus,onOptimizationRequest,reuseOptimizedPrompt}={}) {
+  function captureH3PromptSourceGuard() {
+    if(root.NovaFlowAudioStudio?.isOpen?.()!==true || root.NovaFlowAudioStudio?.sub?.()!=='video')fail('请先打开视频 H3 生成页面。');
+    const readRoute=()=>root.__NovaFlowArtGenerate?.captureContext?.()?.routeRevision;
+    const studio=root.NovaFlowAudioStudio,mediaRevision=studio?.routeRevision?.();
+    const routeRevision=readRoute(),gen=root.NovaFlowAiSequenceGeneration,before=gen?.capture?.(),boardIdentity=gen?.boardIdentity?.();
+    if(!Number.isSafeInteger(routeRevision)||routeRevision<0||!Number.isSafeInteger(mediaRevision)||mediaRevision<0||typeof boardIdentity!=='symbol'||!Number.isSafeInteger(before?.boardRevision)||before.boardRevision<0||before.mode!=='minimax_h3_local'||typeof before.prompt!=='string')fail('无法确认当前视频页面或画板，未提交。');
+    const expected=JSON.stringify(before);
+    const isCurrent=()=>root.NovaFlowAudioStudio===studio&&studio.routeRevision?.()===mediaRevision&&studio.isOpen?.()===true&&studio.sub?.()==='video'&&readRoute()===routeRevision&&root.NovaFlowAiSequenceGeneration?.boardIdentity?.()===boardIdentity&&JSON.stringify(root.NovaFlowAiSequenceGeneration?.capture?.())===expected;
+    return Object.freeze({pagePrompt:before.prompt,isCurrent});
+  }
+  // Text captures preserve reference identities; actual pixels are included
+  // only when explicitly requested and confirmed by the caller before sending.
+  async function captureH3TextDraft({requestId,requirements='',sourcePrompt,includeReferenceImages=false}={}) {
+    const sourceGuard=captureH3PromptSourceGuard();
+    const readRoute=()=>root.__NovaFlowArtGenerate?.captureContext?.()?.routeRevision;
+    const routeRevision=readRoute();
+    if(!Number.isSafeInteger(routeRevision)||routeRevision<0)fail('无法确认当前页面版本，未提交。');
+    await prepareCapture();
+    if(!sourceGuard.isCurrent())fail('视频页面或画板已变化，未提交。');
+    const gen=root.NovaFlowAiSequenceGeneration,before=gen?.capture?.(),studio=root.NovaFlowAudioStudio,mediaRevision=studio?.routeRevision?.();
+    const boardIdentity=gen?.boardIdentity?.();
+    if(typeof boardIdentity!=='symbol'||!Number.isSafeInteger(before?.boardRevision)||before.boardRevision<0||!Number.isSafeInteger(mediaRevision)||mediaRevision<0||readRoute()!==routeRevision)fail('无法确认当前视频画板或页面已变化，未提交。');
+    if(!gen?.optimizationContext || before?.mode!=='minimax_h3_local' || !['text_video','image_video','first_last','multi_reference'].includes(before.genType))fail('请先选择视频 H3 的文字或参考模式。');
+    const selectedPrompt=sourcePrompt===undefined?before.prompt:sourcePrompt;
+    if(typeof selectedPrompt!=='string'||!selectedPrompt.trim()||selectedPrompt.length>1500)fail('请先提供有效的视频提示词。');
+    const expected=JSON.stringify(before),ctx=await gen.optimizationContext();
+    const isWorkspaceBound=()=>root.NovaFlowAudioStudio===studio&&studio.routeRevision?.()===mediaRevision&&readRoute()===routeRevision&&root.NovaFlowAiSequenceGeneration?.boardIdentity?.()===boardIdentity;
+    const current=()=>isWorkspaceBound()&&root.NovaFlowAudioStudio?.isOpen?.()===true && root.NovaFlowAudioStudio?.sub?.()==='video' && JSON.stringify(root.NovaFlowAiSequenceGeneration?.capture?.())===expected;
+    if(!current()||ctx?.modelId!=='minimax_h3_local'||ctx.mode!==before.genType)fail('视频上下文已变化，请重新发起。');
+    const resources=Array.isArray(ctx.resources)?ctx.resources:[];
+    if(resources.some(x=>x?.occupied===false||!x?.sourceId))fail('请先补齐参考素材。');
+    const references=resources.map(({key,kind,sourceId})=>({key,kind,sourceId:String(sourceId)}));
+    let images;
+    if(includeReferenceImages===true){
+      if(ctx.mode!=='first_last'||resources.length!==2)fail('此入口目前只支持读取两张首尾帧图片，未提交。');
+      images=['first_frame','last_frame'].map(key=>{
+        const matches=resources.filter(item=>item?.key===key&&item.kind==='image');
+        const dataUrl=matches.length===1?matches[0].previewUrl:'';
+        if(typeof dataUrl!=='string'||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl))fail('首尾帧图片尚未就绪或格式不支持，未提交。');
+        return {key,dataUrl};
+      });
+      if(images.reduce((n,x)=>n+x.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256)fail('首尾帧图片总大小超过 20 MB，未提交。');
+    }
+    // A review owns only a pending prompt write, never a generation action.
+    // Re-check the full captured workspace both before writing and before undo;
+    // React's setter is asynchronous, so wait for the actual bridge snapshot.
+    let phase='pending',appliedPrompt='';
+    const sameExceptPrompt=actual=>{
+      if(!actual||typeof actual!=='object')return false;
+      return JSON.stringify({...actual,prompt:before.prompt})===expected;
+    };
+    const settled=async(prompt,binding)=>{
+      for(let i=0;i<80;i++){
+        if(typeof binding!=='function'||binding()!==true||!isWorkspaceBound()||root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')fail('视频工作区或账号已变化，请核对当前内容。');
+        const actual=root.NovaFlowAiSequenceGeneration?.capture?.();
+        if(!sameExceptPrompt(actual))fail('视频素材或参数已变化，请核对当前内容。');
+        if(actual.prompt===prompt)return true;
+        await new Promise(resolve=>root.setTimeout(resolve,25));
+      }
+      fail('提示词更新未能确认，请核对当前内容。');
+    };
+    const applyDraft=async(prompt,{userConfirmed=false,bindingCurrent}={})=>{
+      if(phase!=='pending'||userConfirmed!==true||typeof prompt!=='string'||!prompt.trim()||prompt.length>12000||!current()||typeof bindingCurrent!=='function'||bindingCurrent()!==true)fail('视频草稿或确认已失效，未应用。');
+      if(typeof root.NovaFlowAiSequenceGeneration?.setRequest!=='function')fail('视频提示词接口不可用，未应用。');
+      phase='uncertain';
+      root.NovaFlowAiSequenceGeneration.setRequest({prompt});
+      await settled(prompt,bindingCurrent);
+      appliedPrompt=prompt;phase='applied';return {phase:'applied'};
+    };
+    const undoDraft=async({userConfirmed=false,bindingCurrent}={})=>{
+      const actual=root.NovaFlowAiSequenceGeneration?.capture?.();
+      if(phase!=='applied'||userConfirmed!==true||typeof bindingCurrent!=='function'||bindingCurrent()!==true||!isWorkspaceBound()||!sameExceptPrompt(actual)||actual.prompt!==appliedPrompt)fail('视频内容已变化，未撤销。');
+      phase='uncertain';
+      root.NovaFlowAiSequenceGeneration.setRequest({prompt:before.prompt});
+      await settled(before.prompt,bindingCurrent);
+      phase='undone';return {phase:'undone'};
+    };
+    return {request:{mode:'video-rewrite',requestId,h3Mode:ctx.mode,durationSeconds:ctx.durationSeconds,prompt:selectedPrompt,requirements,references,...(images?{images}:{})},isCurrent:current,applyDraft,undoDraft};
+  }
+  async function generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus,onOptimizationRequest,reuseOptimizedPrompt,analysisProvider,assistantSelectionScope='',selectionStillCurrent}={}) {
+    const scoped=assistantSelectionScope==='xiaotao';
+    const checkSelection=()=>{if(scoped&&(typeof selectionStillCurrent!=='function'||selectionStillCurrent()!==true))fail('\u6a21\u578b\u9009\u62e9\u5df2\u53d8\u5316\uff0c\u672a\u6267\u884c\u89c6\u9891\u64cd\u4f5c\u3002');};
+    checkSelection();
     root.NovaFlowAudioStudio?.open('video');
     let gen=root.NovaFlowAiSequenceGeneration;
     if(!gen)fail('视频生成接口尚未就绪');
@@ -147,14 +255,16 @@
     const videoContext=await gen.optimizationContext();
     videoContext.durationSeconds=op.seconds ?? videoContext.durationSeconds;
     const stamp=await fingerprint(snapshot);
-    const reuseHit=reuseOptimizedPrompt && preparedVideo?.fingerprint===stamp;
+    const reuseHit=!scoped && reuseOptimizedPrompt && preparedVideo?.fingerprint===stamp;
     const optimized=reuseHit ? preparedVideo.optimized
-      : await root.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',videoContext,prompt:op.prompt || gen.capture().prompt,requirements,signal,onRequest:onOptimizationRequest,onProgress:onOptimizationStatus});
+      : await root.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',analysisProvider,assistantSelectionScope,selectionStillCurrent,videoContext,prompt:op.prompt || gen.capture().prompt,requirements,signal,onRequest:onOptimizationRequest,onProgress:onOptimizationStatus});
+    checkSelection();
     if(signal?.aborted)fail('本次视频生成已停止');
     if(await fingerprint(capture())!==await fingerprint(snapshot))fail('视频素材或参数在优化期间变化，未写入或生成');
     op={...op,prompt:optimized.displayPrompt || optimized.prompt};
     gen=root.NovaFlowAiSequenceGeneration;
     const before=new Set((gen.resources() || []).map(r=>r.id));
+    checkSelection();
     gen.setRequest(op);
     await new Promise(r=>root.setTimeout(r,100));
     if(signal?.aborted)fail('音视操作已停止');
@@ -169,12 +279,16 @@
     let changed=false;
     const abort=()=>{void Promise.resolve(root.NovaFlowAiSequenceGeneration?.cancel?.()).catch(()=>{});};signal?.addEventListener('abort',abort,{once:true});
     try {
+      checkSelection();
       await gen.submit(signal);
       for(;;) {
         if(signal?.aborted)fail('本次视频生成已停止');
         const current=root.NovaFlowAiSequenceGeneration,status=current.status();
         if(JSON.stringify(status)!==initial)changed=true;
-        if(changed && status?.state==='error')fail(status.message || '视频生成失败');
+        if(changed && status?.state==='error'){
+          const detail=root.NovaFlowWebRuntime?.lastFailure;
+          fail(detail?.at>=started&&['/prompt','/api/prompt'].includes(detail.path)?detail.message:status.message || '视频生成失败');
+        }
         const added=current.resources().filter(r=>!before.has(r.id));
         const produced=status?.promptId && status.promptId!==initialStatus?.promptId
           ? added.filter(r=>r.promptId===status.promptId || r.id.startsWith(status.promptId+':')) : [];
@@ -185,7 +299,11 @@
       }
     } finally {signal?.removeEventListener('abort',abort);}
   }
-  async function execute(plan,{snapshot,fingerprint,signal,requirements='',reuseOptimizedPrompt=false,onOptimizationStatus=()=>{},onOptimizationRequest=()=>{},onProgress=()=>{}}={}) {
+  async function execute(plan,{snapshot,fingerprint,signal,requirements='',reuseOptimizedPrompt=false,analysisProvider='local',assistantSelectionScope='',selectionStillCurrent,onOptimizationStatus=()=>{},onOptimizationRequest=()=>{},onProgress=()=>{},assistantAudioGrant=null,assistantAudioPlanId=''}={}) {
+    const scopedOnlineAudio=root.NovaFlowAudioStudio?.assistantAudioActionEnabled?.()===true&&assistantSelectionScope==='xiaotao'&&analysisProvider==='api'&&plan?.operations?.some(op=>op?.target==='audio'&&op?.action==='generate_music');
+    if(scopedOnlineAudio && (!plan||!Array.isArray(plan.operations)||plan.operations.length!==1||plan.operations[0]?.target!=='audio'||plan.operations[0]?.action!=='generate_music'||
+       assistantAudioPlanId!==plan.planId||root.NovaFlowAudioStudio?.validateAssistantAudioGrant?.(assistantAudioGrant,assistantAudioPlanId,plan.operations[0])!==true))
+      fail('在线音频操作未经确认，未提交');
     if(!plan || !Array.isArray(plan.operations) || !plan.operations.length || plan.operations.length>12)fail('音视执行方案无效');
     if(typeof plan.planId!=='string' || usedPlans.has(plan.planId))fail('这份音视方案已执行或编号无效，请重新发送需求');
     if(plan.contextFingerprint!==await fingerprint(snapshot) || plan.contextFingerprint!==await fingerprint(capture()))fail('音视内容已变化，请重新发送需求');
@@ -196,10 +314,11 @@
       if(!['video','audio'].includes(op.target))fail('音视操作目标无效');
       onProgress(op,results.length);
       try {
-        if(['generate_video','optimize_video_prompt'].includes(op.action))results.push(await generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus,onOptimizationRequest,reuseOptimizedPrompt}));
+        if(['generate_video','optimize_video_prompt'].includes(op.action))results.push(await generateVideo(op,signal,{snapshot,fingerprint,requirements,onOptimizationStatus,onOptimizationRequest,reuseOptimizedPrompt,analysisProvider,assistantSelectionScope,selectionStillCurrent}));
         else if(['generate_music','generate_sfx'].includes(op.action)) {
           root.NovaFlowAudioStudio.open('audio');
-          results.push(await root.NovaFlowAudioStudio.agentGenerate(op,{signal}));
+          results.push(await root.NovaFlowAudioStudio.agentGenerate(op,{signal,analysisProvider,assistantSelectionScope,selectionStillCurrent,onOptimizationStatus,
+            ...(scopedOnlineAudio?{assistantAudioGrant,assistantAudioPlanId}:{})}));
         } else {
           const editor=await openEditor(op.target);
           if(signal?.aborted)fail('音视操作已停止');
@@ -211,15 +330,17 @@
             if(op.target==='video')await root.NovaFlowAiSequenceVideoMergeWorkspace.importResource(op.resourceId,{signal});
             else await root.NovaFlowAudioStudio.agentImportResource(op.resourceId,{signal});
             if(editor.clipCount()<=before)fail('素材未导入时间轴');
-            results.push({ok:true,action:op.action,target:op.target,timeline:timeline(editor)});
+            results.push({ok:true,action:op.action,target:op.target,resourceId:op.resourceId,timeline:timeline(editor)});
+          } else if(op.action==='save_mix') {
+            if(op.target!=='audio')fail('请在音频编辑器保存混音资源');results.push(await root.NovaFlowAudioStudio.agentSaveMix());
           } else if(op.action==='export') {
             if(op.target==='video') {const result=await root.NovaFlowAiSequenceVideoMergeWorkspace.exportToFile();if(!result?.ok)fail(result?.error || '视频导出未完成');results.push({ok:true,action:'export',target:'video',fileName:result.fileName || '',bytes:result.bytes || 0});}
             else results.push(await root.NovaFlowAudioStudio.agentExport());
           } else results.push(edit(editor,op));
         }
-      } catch(error) {throw Object.assign(new Error((results.length?'已完成 '+results.length+' 步；':'')+String(error.message || error)),{completed:clone(results)});}
+      } catch(error) {throw Object.assign(new Error((results.length?'已完成 '+results.length+' 步；':'')+String(error.message || error)),{completed:clone(results),...(error?.code?{code:error.code}:{}),...(error?.taskId?{taskId:error.taskId}:{})});}
     }
     return {ok:true,results};
   }
-  root.NovaFlowMediaAgent={capture,wantsMedia,discussionOnly,directVideoPlan,execute,referenceStamp,h3ReferenceContext,h3PromptProtocol,timeline,edit};
+  root.NovaFlowMediaAgent={capture,prepareCapture,wantsMedia,discussionOnly,directVideoPlan,execute,referenceStamp,h3ReferenceContext,h3PromptProtocol,timeline,edit,captureH3PromptSourceGuard,captureH3TextDraft};
 })(typeof window!=='undefined'?window:globalThis);

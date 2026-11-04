@@ -837,7 +837,7 @@
     }, { visualEncoding: 'filled-regions-only' }) : null
     const references = preparedReferences || requiredGenerationReferences(context, generatorReferenceDescriptors(state, context.generator.id), guide, structure)
     return {
-      uiCatalogEnabled: true, provider: context.provider,
+      uiCatalogEnabled: true, provider: context.provider, foartUiContract: 'independent-ui-v263',
       engine: profile.settings.assistantEngine || 'local',
       targetEngine: context.provider === 'local' ? 'qwen-2.1' : '',
       generationIntent: context.iterationReferenceCount > 0 ? 'iteration' : 'redesign',
@@ -866,6 +866,7 @@
       workflow: modules.assistantWorkflow,
       electronAPI: root?.electronAPI,
       uiCatalogEnabled: true, provider: context.provider,
+      foartUiContract: input.foartUiContract,
       engine: profile.settings.assistantEngine || 'local',
       targetEngine: input.targetEngine,
       generationIntent: input.generationIntent,
@@ -1283,6 +1284,8 @@
     ensureStore,
     getStore: () => store,
     getState: () => store?.getState?.() || null,
+    getAgentLayout: () => mounted?.workspaceHandle?.getLayout?.() || null,
+    applyAgentLayout(spec) { if(!isUiDesignRoute()||!mounted?.handle?.applyAgentLayout)throw Error('请先打开UI布局编辑');return mounted.handle.applyAgentLayout(spec) },
     getCurrentExportSource,
     resolveGenerationContext: generationContext,
     getGeneratorReferenceDescriptors: generatorReferenceDescriptors,

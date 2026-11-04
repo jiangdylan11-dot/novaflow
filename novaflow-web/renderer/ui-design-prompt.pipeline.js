@@ -439,8 +439,23 @@
       && !plan.preserve.some(kept => kept.includes(fact))).slice(0, Math.max(0, 30 - plan.preserve.length)) : []
     const businessFacts = themeFormRedesign ? plan.preserve.length ? [...plan.preserve, ...observedLabels] : observedFacts : plan.preserve
     const humanDirective = String(input.prompt || '').trim()
+    // Artwork lettering is a literal payload, independent of instruction
+    // language. Keep explicitly requested new labels even if a planner
+    // paraphrases its surrounding edit description.
+    const requestedLettering=[...new Set([...humanDirective.matchAll(/(?:文字|文案|标题|文本|标签)[^\n]{0,40}?(?:改为|改成|替换为|替换成|写成|设为|显示为)\s*[“"「]([^”"」\n]+)[”"」]/gu)].map(match=>match[1]))]
+    const lettering=requestedLettering.length?'用户指定的画面文字须逐字使用：'+requestedLettering.map(text=>'“'+text+'”').join('、'):''
     const proposal = themeFormRedesign && humanDirective ? themeDesignProposal(directive, input, businessFacts, plan.layoutReference) : ''
-    const prompt = themeFormRedesign ? [conciseRoles, native(humanDirective || directive),
+    // Qwen's edit policy separates modified attributes from preserved content.
+    // A local revision should not carry the whole-interface redesign essay,
+    // which can make a one-button change redraw unrelated parts of the UI.
+    const localRevision=plan.visualMode==='partial'||input.generationIntent==='iteration'
+    const prompt = localRevision ? [native(directive),lettering,conciseRoles,native(layout),
+      '只执行上述指定对象及属性的修改，其他区域的身份、布局、风格、光照与功能状态保持输入一致；不根据参考素材重新描写或重做未修改区域。',
+      '除用户明确要求改动的部分外，全部操作图标及功能状态逐项保留，不得遗漏或重复；不新增用户未要求的功能，不编造未提供的数值。',
+      businessFacts.length?`保留布局与功能事实：${businessFacts.map(native).join('；')}`:'',geometry,
+      '有效画面文字保留原语言、拼写、标点及数值；仅替换用户点名的文字，不把编辑说明、参考编号或内部模块名绘入界面。',
+      wireframe?'定位图只提供位置与用途，灰块、诊断文字与示例值不作为成品内容。':'输出完整UI成品，保留未要求修改的文字与功能。'
+    ].filter(Boolean).join('。').replace(/[\r\n]+/g,' ').replace(/。{2,}/g,'。') : themeFormRedesign ? [conciseRoles, native(humanDirective || directive),lettering,
       proposal ? `规划补充（用户明确要求优先）：${native(proposal)}` : '',
       '主题重设计只保留布局图的业务结构：玩法拓扑、网格行列数量、控件数量与功能、信息层级及主要区域锚点。人物、背景、玩法物品和标题按用户的新主题要求重做；除用户明确保留的身份外，旧题材的展示物与装饰须替换为新题材物件，不只改材质。未要求改变的金额、规则、控制功能及其状态保持正确，不增加或重复区域，不得新增登录、输入、设置、弹窗等新功能。锚定区域内可创意重设计组件构造；点击目标可辨识，装饰不得遮挡玩法内容或控件。按钮造型、面板边框、字体视觉、材质与配色不继承旧主题。',
       businessFacts.length ? `业务事实：${businessFacts.map(native).join('；')}` : '', geometry,
@@ -452,7 +467,7 @@
     return { prompt, references: order.map(i => input.references[i-1]), plan: modelPlan, analysisPlan:plan, order, businessFacts: businessFacts.map(remap), businessFactsSource: plan.preserve.length ? observedLabels.length ? 'plan+observed-labels' : 'plan' : businessFacts.length ? 'observed-directive' : 'none' }
   }
   function key(input) {
-    return JSON.stringify({ contract: 'ui-native-edit-19-catalog', uiCatalogEnabled:input.uiCatalogEnabled === true, provider: input.provider, engine: input.engine || 'local', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, editRegion: input.editRegion || null, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
+    return JSON.stringify({ contract: 'ui-native-edit-20-scoped-attributes', uiCatalogEnabled:input.uiCatalogEnabled === true, provider: input.provider, engine: input.engine || 'local', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, editRegion: input.editRegion || null, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
   }
   function remember(id, input, result, appliedInput) {
     const normalized = value => ({ ...value, references: requireLayoutReferences(value.references) })

@@ -183,12 +183,18 @@ export async function deriveWorkerGrantKey(workerId, controlSecret) {
 export async function issueGrantToken(input, grantKey) {
   const iat = nowSeconds();
   const ttl = Number(input.ttlSeconds) > 0 ? Number(input.ttlSeconds) : 900;
+  const scoped = input.scope !== undefined;
+  if (scoped && (input.scope !== 'qwen-foart-plan-v1' ||
+      !Number.isSafeInteger(input.attempt) || input.attempt < 1 || input.attempt > 20)) {
+    throw new Error('invalid grant scope or attempt');
+  }
   return await signEnvelope('nfg_', {
     kind: 'grant',
     sub: String(input.userId),
     task: String(input.taskId),
     wid: String(input.workerId),
     op: String(input.op),
+    ...(scoped ? {scope:input.scope,attempt:input.attempt} : {}),
     iat,
     exp: iat + ttl,
     nonce: randomId()
@@ -198,9 +204,59 @@ export async function issueGrantToken(input, grantKey) {
 export async function verifyGrantToken(token, grantKey, expect = {}) {
   const payload = await verifyEnvelope('nfg_', token, grantKey);
   if (payload.kind !== 'grant') throw new Error('invalid token');
+  if (payload.scope !== undefined && (payload.scope !== 'qwen-foart-plan-v1' ||
+      !Number.isSafeInteger(payload.attempt) || payload.attempt < 1 || payload.attempt > 20)) {
+    throw new Error('invalid grant scope or attempt');
+  }
   if (expect.taskId && String(payload.task) !== String(expect.taskId)) throw new Error('grant task mismatch');
   if (expect.workerId && String(payload.wid) !== String(expect.workerId)) throw new Error('grant worker mismatch');
   if (expect.op && String(payload.op) !== String(expect.op)) throw new Error('grant op mismatch');
+  return payload;
+}
+
+// This proof is for server-to-server validation of the reserved Qwen
+// rotation candidate only. It is never an authorization decision by itself:
+// the control plane must also re-check the stored task, owner, session,
+// attempt and operation transactionally. The worker receives neither the
+// control secret nor this derived key.
+const QWEN_ROTATION_PROOF_PREFIX = 'nfr_';
+const QWEN_ROTATION_PROOF_MAX_SECONDS = 60;
+const QWEN_ROTATION_TASK_ID = /^fa047a0a-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const rotationProofOp = value => value === 'upload' || value === 'download';
+async function rotationProofKey(controlSecret) {
+  if (typeof controlSecret !== 'string' || !controlSecret.trim()) throw new Error('control secret is not configured');
+  return await hmacSha256('novaflow-web-qwen-rotation-proof:v1', controlSecret);
+}
+function validRotationProofFields(payload) {
+  return payload && payload.kind === 'qwen-rotation-proof-v1' &&
+    payload.scope === 'qwen-foart-rotation-candidate-v1' && payload.aud === 'novaflow-web-candidate-verifier' &&
+    QWEN_ROTATION_TASK_ID.test(payload.task) && CANONICAL_UUID.test(payload.wid) &&
+    CANONICAL_UUID.test(payload.sub) && CANONICAL_UUID.test(payload.sid) &&
+    Number.isSafeInteger(payload.attempt) && payload.attempt > 0 &&
+    rotationProofOp(payload.op) && Number.isSafeInteger(payload.iat) &&
+    Number.isSafeInteger(payload.exp) && payload.exp > payload.iat &&
+    payload.exp - payload.iat <= QWEN_ROTATION_PROOF_MAX_SECONDS;
+}
+
+export async function issueQwenRotationProof(input, controlSecret) {
+  const iat = nowSeconds();
+  if (!input || !Number.isSafeInteger(input.sessionExpiresAt) || input.sessionExpiresAt <= iat)
+    throw new Error('invalid candidate session expiry');
+  const payload = {kind:'qwen-rotation-proof-v1',scope:'qwen-foart-rotation-candidate-v1',
+    aud:'novaflow-web-candidate-verifier',sub:input.userId,sid:input.sessionId,
+    task:input.taskId,wid:input.workerId,attempt:input.attempt,op:input.op,iat,
+    exp:Math.min(input.sessionExpiresAt,iat+QWEN_ROTATION_PROOF_MAX_SECONDS)};
+  if (!validRotationProofFields(payload)) throw new Error('invalid candidate proof');
+  return await signEnvelope(QWEN_ROTATION_PROOF_PREFIX,payload,await rotationProofKey(controlSecret));
+}
+
+// Signature validation only; callers must reject on an unavailable/negative
+// authoritative database check, even if this signature is valid.
+export async function verifyQwenRotationProofSignature(token, controlSecret) {
+  if (typeof token !== 'string' || token.length > 8192) throw new Error('invalid candidate proof');
+  const payload = await verifyEnvelope(QWEN_ROTATION_PROOF_PREFIX,token,await rotationProofKey(controlSecret));
+  if (!validRotationProofFields(payload) || payload.iat > nowSeconds()) throw new Error('invalid candidate proof');
   return payload;
 }
 

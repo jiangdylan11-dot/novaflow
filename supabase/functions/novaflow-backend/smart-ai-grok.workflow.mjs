@@ -1,11 +1,19 @@
 "use strict";
 import * as h3PromptEnhance from './h3-prompt-enhance.mjs';
 import * as artDirection from './art-direction.mjs';
-import { DEFAULT_RUNNINGHUB_LLM_MODEL } from '../_art-shared/runninghub-llm.mjs';
+import { DEFAULT_RUNNINGHUB_LLM_MODEL } from '../_art-shared/backend-legacy-v249-runninghub-llm.mjs';
 
 const MINIMAX_H3_I2V_REVERSE_PURPOSE = "minimax-h3-i2v-reverse";
 const MINIMAX_H3_FL2V_REVERSE_PURPOSE = "minimax-h3-fl2v-reverse";
 const MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS = 4096;
+
+// One shared wall-clock budget, including any contract repair. Reference H3
+// compiles keep their original bilingual/visual rules and need more than a
+// short chat response; ordinary interactive optimizers keep their short cap.
+export function grokResponseTimeBudgetMs(inputMeta = {}, resultOptions = {}) {
+  if (resultOptions.minimaxH3Prompt !== true) return 45000;
+  return (resultOptions.minimaxH3Mode || inputMeta.h3Mode) === 'multi_reference' ? 150000 : 120000;
+}
 const MINIMAX_H3_VISUAL_SCHEMA = "nf.h3.visual.v1";
 const MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER = "H3_CONTENT_POLICY_BLOCKED";
 const MINIMAX_H3_VISUAL_IR_TOP_LEVEL_KEYS = Object.freeze([
@@ -2435,7 +2443,7 @@ function miniMaxH3SafeRuntimeError(error) {
     safe.h3ValidationLeaf = miniMaxH3ValidationLeaf(error?.h3ValidationLeaf, "strict_ir_unknown");
     return safe;
   }
-  const isTimeout = error?.name === "AbortError" || /timeout|timed out|aborted/i.test(String(error?.code || ""));
+  const isTimeout = error?.name === "AbortError" || error?.name === "TimeoutError" || error?.errorCode === "timeout" || Number(error?.statusCode) === 504 || /timeout|timed\s*out|aborted/i.test(String(error?.code || ""));
   const statusCode = isTimeout ? 504 : Number(error?.statusCode || 502);
   const safe = miniMaxH3ContractError(
     isTimeout ? "timeout" : "provider_http",
@@ -8248,7 +8256,7 @@ function grokResponsesPublicResult(data, options = {}) {
   }
   if (options.artSemanticFusion === true) {
     parsed.prompt = finalizeArtSemanticFusion(parsed.prompt, options.requirements);
-    const failure = artSemanticFusionFailure(options.originalPrompt, options.requirements, parsed.prompt, {freeform:options.targetEngine === "gpt-image-2.5"});
+    const failure = artSemanticFusionFailure(options.originalPrompt, options.requirements, parsed.prompt, {freeform:options.targetEngine === "gpt-image-2.5",completeVisualBrief:options.completeVisualBrief === true});
     if (failure) {
       const fusionError = new Error("提示词融合未完成：" + failure + "；原提示词未修改");
       fusionError.artSemanticFusionFailed = true;
@@ -8679,6 +8687,10 @@ function finalizeArtSemanticFusion(candidate, instruction) {
 function artSemanticFusionFailure(source, instruction, candidate, options = {}) {
   if (!candidate) return "未返回完整提示词";
   if (ordinaryArtPromptPatchCompact(source) === ordinaryArtPromptPatchCompact(candidate)) {
+    // The agent supplies a complete brief with the latest edit already merged.
+    // A clear GPT brief may be ready as-is; do not force another semantic change
+    // or another model call merely to make its wording different.
+    if(options.freeform&&options.completeVisualBrief)return "";
     // No instruction means "enrich the draft", not "return it"; an echo is a failure.
     if (!instruction) return "未补足视觉细节";
     return /^(?:保持原样|保持不变|不做修改|无需修改|原样保留)[。.!！\s]*$/u.test(instruction) ? "" : "未实际融合修改要求";
@@ -8718,6 +8730,7 @@ function buildArtSemanticFusionRequest(payload, model) {
   const { source, instruction } = artSemanticFusionInput(smartAiCurrentPrompt(payload, 20000), payload.requirements || payload.requirement || payload.instructions);
   const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
   const gptImage = payload.targetEngine === "gpt-image-2.5";
+  const completeVisualBrief = gptImage && payload.completeVisualBrief === true;
   const preserve = [...new Set(source.match(/成年|女性|男性|站立|坐姿|跪姿|俯卧|仰卧|右手|左手|全身|仰视/g) || [])].filter(word => {
     if (instruction.includes(word)) return false;
     if (/男|女|性别/u.test(instruction) && /女性|男性/u.test(word)) return false;
@@ -8739,7 +8752,8 @@ function buildArtSemanticFusionRequest(payload, model) {
     // A draft in a layout of its own keeps it; the brief names the five sections.
     + (gptImage || artPromptUsesOwnSections(source) && !ART_FIVE_SECTIONS.every((title) => source.includes(title)) ? "" : "\n" + ART_PROMPT_CRAFT_RULE);
   const system = gptImage ? ART_SEMANTIC_FUSION_RULES.replace("底稿没有标题时，必须按 [风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 五段重新组织，不保持自然段，也不得自创段名。", "底稿没有标题时，保持清晰紧凑的自然语言。")
-    + "\n目标是 GPT Image 2.5。完整落实数量、配色、主体、文字、构图与参考图职责，以约120至220字中文说明实际画面或编辑动作；简单需求可更短。纯色背景不添加场景或地面。局部修改只展开本次改动，其余内容明确保留。不要添加未要求的镜头参数、反向提示词或冗余质量口号。" : ART_SEMANTIC_FUSION_RULES;
+    + "\n目标是 GPT Image 2.5。完整落实数量、配色、主体、文字、构图与参考图职责，以约120至220字中文说明实际画面或编辑动作；简单需求可更短。纯色背景不添加场景或地面。局部修改只展开本次改动，其余内容明确保留。不要添加未要求的镜头参数、反向提示词或冗余质量口号。"
+    + (completeVisualBrief ? "\n底稿是助手已融合当前用户需求的完整视觉描述。只整理为模型能清晰理解的实际画面或编辑指令；无需再次发明修改，已准确清晰时可以保留原文。用户消息中的调用工具、生成后结束等流程要求不写入画面。" : "") : ART_SEMANTIC_FUSION_RULES;
   return {
     body: { model, store: false, temperature: 0.4, max_output_tokens: gptImage ? 1536 : 4096,
       text: { format: { type: "json_schema", name: "novaflow_art_semantic_fusion_v1", strict: true,
@@ -8748,7 +8762,7 @@ function buildArtSemanticFusionRequest(payload, model) {
           required: supportsNegativePrompt ? ["prompt", "negative_prompt"] : ["prompt"] } } },
       input: [ { role: "system", content: [smartAiInputText(system)] }, { role: "user", content: [smartAiInputText(userText)] } ] },
     inputMeta: { mode: "prompt_optimize", scenario: "prompt_optimize", charCount: source.length + instruction.length, imageCount: 0, supportsNegativePrompt, hasNegativePrompt: Boolean(payload.negativePrompt || payload.negative_prompt) },
-    resultOptions: { artSemanticFusion: true, artFiveSectionPrompt: !gptImage && !artPromptUsesOwnSections(source), ...(gptImage?{targetEngine:"gpt-image-2.5"}:{}), originalPrompt: source, requirements: instruction, supportsNegativePrompt, nsfw: payload.nsfw === true,
+    resultOptions: { artSemanticFusion: true, artFiveSectionPrompt: !gptImage && !artPromptUsesOwnSections(source), ...(gptImage?{targetEngine:"gpt-image-2.5",completeVisualBrief}:{}), originalPrompt: source, requirements: instruction, supportsNegativePrompt, nsfw: payload.nsfw === true,
       ...(supportsNegativePrompt && (payload.negativePrompt || payload.negative_prompt) ? { artUserText: String(payload.negativePrompt || payload.negative_prompt) } : {}) }
   };
 }

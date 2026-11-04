@@ -1,0 +1,37 @@
+// Independent Chromium profile and mock bridge; no network or user files.
+const {app,BrowserWindow,session}=require('electron');
+const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
+app.disableHardwareAcceleration();
+(async()=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'foart-retired-model-'));
+  app.setPath('userData',path.join(dir,'profile'));
+  await app.whenReady();
+  session.defaultSession.webRequest.onBeforeRequest((details,callback)=>callback({cancel:!details.url.startsWith('file:')}));
+  const script=await fs.readFile(path.join(__dirname,'../../renderer/xiaotao-art-agent.js'),'utf8');
+  const html=path.join(dir,'fixture.html');
+  await fs.writeFile(html,`<!doctype html><meta charset="utf-8"><script>window.__requests=[];window.electronAPI={artAgentChat:async p=>{__requests.push(p);return {ok:true,data:{reply:'mock',history:[]}}},promptAssistantGetStatus:async()=>{__requests.push('status');return {ok:true}}};</script><script>${script}</script>`);
+  const win=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
+  const run=code=>win.webContents.executeJavaScript(code);
+  await win.loadFile(html);
+  const fresh=await run(`(()=>{const s=document.querySelector('.nf-xiaotao-model-select');return {options:[...s.options].map(o=>({value:o.value,text:o.textContent})),value:s.value}})()`);
+  assert.equal(fresh.value,'qwen3.5-9b-heretic');assert(!fresh.options.some(o=>o.value==='next'));assert(!fresh.options.some(o=>o.value==='gemma-4-12b-it'));assert(!fresh.options.some(o=>o.value==='glm/glm-5.3-flash'));
+  assert(fresh.options.some(o=>o.value==='qwen3.5-9b-heretic' && /本地·免费/.test(o.text)));
+  await run(`localStorage.setItem('novaflow.xiaotao-art.chat.v1',JSON.stringify({provider:'local',modelId:'next',modelSessions:{'next':{messages:[{role:'user',content:'旧对话'}],history:[{role:'user',content:'旧对话'}]}}}));location.reload()`);
+  await new Promise(resolve=>win.webContents.once('did-finish-load',resolve));
+  const restored=await run(`(async()=>{const c=NovaFlowXiaotaoArtAgent.panel.controller,s=document.querySelector('.nf-xiaotao-model-select');await c.calibrateLocalStatus();const result=await c.send('测试');const o=[...s.options].find(x=>x.value==='next');return {id:c.state.modelId,message:c.state.messages[0]?.content,result,error:c.state.error,requests:__requests.length,value:s.value,disabled:o?.disabled,hidden:o?.hidden,text:o?.textContent,inputDisabled:document.querySelector('.nf-xiaotao-compose textarea').disabled}})()`);
+  assert.equal(restored.id,'next');assert.equal(restored.message,'旧对话');assert.equal(restored.result,false);
+  assert.match(restored.error,/已移除/);assert.equal(restored.requests,0);assert.equal(restored.value,'next');
+  assert.equal(restored.disabled,true);assert.equal(restored.hidden,true);assert.equal(restored.inputDisabled,true);assert.match(restored.text,/请选择/);
+  const switched=await run(`(()=>{const s=document.querySelector('.nf-xiaotao-model-select');s.value='qwen3.5-9b-heretic';s.dispatchEvent(new Event('change',{bubbles:true}));return {id:NovaFlowXiaotaoArtAgent.panel.controller.state.modelId,options:[...s.options].map(o=>o.value)}})()`);
+  assert.equal(switched.id,'qwen3.5-9b-heretic');assert(!switched.options.includes('next'));const archived=await run(`(()=>{const p=document.querySelector('.nf-xiaotao-legacy'),s=p.querySelector('select');p.open=true;s.value='retired-local';s.dispatchEvent(new Event('change',{bubbles:true}));return {text:p.querySelector('pre').textContent,disabled:p.querySelector('button').disabled}})()`);assert.match(archived.text,/旧对话/);assert.equal(archived.disabled,true);
+  await run(`(()=>{const k='novaflow.xiaotao-art.chat.v1',v=JSON.stringify({provider:'api',modelId:'glm/glm-5.3-flash',billingNotices:[{id:'old-bill',modelId:'glm/glm-5.3-flash',confirmed:3,unknown:true}],modelSessions:{'glm/glm-5.3-flash':{messages:[{role:'user',content:'GLM history'}],history:[{role:'user',content:'GLM history'}]}}});localStorage.setItem(k,v);localStorage.setItem(k+':tab:'+sessionStorage.getItem(k+':tab-id'),v);location.reload()})()`);
+  await new Promise(resolve=>win.webContents.once('did-finish-load',resolve));
+  const oldGlm=await run(`(async()=>{const c=NovaFlowXiaotaoArtAgent.panel.controller,s=document.querySelector('.nf-xiaotao-model-select');const result=await c.send('no');const o=[...s.options].find(x=>x.value==='glm/glm-5.3-flash');return {id:c.state.modelId,result,value:s.value,disabled:o?.disabled,hidden:o?.hidden,requests:__requests.length,inputDisabled:document.querySelector('.nf-xiaotao-compose textarea').disabled}})()`);
+  assert.equal(oldGlm.id,'glm/glm-5.3-flash');assert.equal(oldGlm.result,false);assert.equal(oldGlm.value,oldGlm.id);assert(oldGlm.disabled && oldGlm.hidden && oldGlm.inputDisabled);assert.equal(oldGlm.requests,0);
+  assert.match(await run(`document.querySelector('.nf-xiaotao-billing-alerts').innerText`),/扣 3 分.*待核对/);
+  const glmArchive=await run(`(()=>{const s=document.querySelector('.nf-xiaotao-model-select');s.value='qwen3.5-9b-heretic';s.dispatchEvent(new Event('change',{bubbles:true}));const p=document.querySelector('.nf-xiaotao-legacy'),a=p.querySelector('select');p.open=true;a.value='retired-glm';a.dispatchEvent(new Event('change',{bubbles:true}));return {model:s.value,text:p.querySelector('pre').textContent,disabled:p.querySelector('button').disabled}})()`);
+  assert.equal(glmArchive.model,'qwen3.5-9b-heretic');assert.match(glmArchive.text,/GLM history/);assert.equal(glmArchive.disabled,true);
+  console.log('Retired selection: fresh list, stored history, blocked send and explicit switch verified in isolated Chromium.');
+  win.destroy();app.exit(0);
+})().catch(error=>{console.error(error);app.exit(1);});
+setTimeout(()=>app.exit(2),30000).unref();

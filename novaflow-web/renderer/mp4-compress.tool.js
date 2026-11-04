@@ -181,7 +181,19 @@
   }
 
   function activate() {
-    installStyle()
+    // Xiaotao reads native output metadata; it never treats a click as a result.
+  ;(window.NovaFlowProductionTools ||= {})['mp4_compress'] = {
+    snapshot: () => ({ name: 'mp4_compress', active: state.active, busy: state.processing || state.exporting, selectedId:state.selectedId,
+      items: state.items.map(item => ({ id: item.id, name: item.name, status: item.status, sourceMaterialId:item.sourceMaterialId,inputBytes:item.inputBytes||item.bytes,
+        output: item.result ? { id: item.id, name: item.result.fileName || item.result.name || item.name,
+          bytes: item.result.blob?.size || item.result.bytesOut || item.result.bytes?.length || 0,
+          keptOriginal: !!item.result.keptOriginal } : null })),
+      atlases: (state.resultAtlases || []).map(item => ({name: item.fileName, bytes: new TextEncoder().encode(item.text || '').length})) }),
+    run: processAll, export: exportAll, addFiles:async files=>{const before=state.items.length;await addFiles(files);state.items.slice(before).forEach((item,i)=>{item.sourceMaterialId=files[i]?.__nfFoartMaterialId;item.inputBytes=files[i]?.size;});if(state.items.length>before)state.selectedId=state.items.at(-1).id;render();},
+    files: () => state.items.filter(item => item.result).map(item => ({ id: item.id, name: item.result.fileName || item.name, blob: item.result.blob, url: item.result.url }))
+  }
+
+  installStyle()
     state.active = true
     nativeWorkspace = findWorkspace()
     if (nativeWorkspace instanceof HTMLElement) nativeWorkspace.style.setProperty('visibility', 'hidden', 'important')
@@ -262,16 +274,16 @@
     })
   }
 
-  async function processAll() {
+  async function processAll(inputIds) {
     if (state.processing || !state.items.length) return
     const api = window.electronAPI
     if (!api?.compressMp4) { alert('MP4 压缩能力未加载，请重启 Foart 后重试。'); return }
-    const missing = state.items.filter((item) => !item.filePath)
+    const missing = state.items.filter((item) => (!Array.isArray(inputIds) || inputIds.includes(item.id)) && !item.filePath)
     if (missing.length) { alert(`MP4 压缩需要本地文件路径，以下文件缺少原路径：${missing.slice(0, 6).map((item) => item.name).join('、')}${missing.length > 6 ? '…' : ''}`); return }
     bindProgress()
     state.processing = true
     render()
-    for (const item of state.items) {
+    for (const item of state.items.filter(item => !Array.isArray(inputIds) || inputIds.includes(item.id))) {
       item.jobId = `mp4_${item.id}`
       item.progress01 = 0
       item.status = '正在压缩… 0%'

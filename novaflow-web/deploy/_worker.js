@@ -30,6 +30,7 @@ const SESSION_COOKIE = 'nf_sess';
 const PUBLIC_FILES = new Set([
   '/',
   '/index.html',
+  '/home-shell.js',
   '/novaflow-web-runtime.js',
   '/novaflow-web-account.js',
   '/novaflow-ui-theme.css',

@@ -105,20 +105,31 @@ export async function planFlashArtDirection({ payload, flash } = {}) {
     && typeof answer.sourceContent === 'string' && answer.sourceContent.trim() && answer.sourceContent.length <= 3000
     && classes.has(renderingClass), 'strata-art-invalid-response', 'Flash 原生绘图回答缺少完整正文或有效类型');
   const slots = [...answer.prompt.matchAll(/<image(\d+)>/g)].map(match=>Number(match[1]));
-  requireValue(slots.includes(1) && slots.includes(2) && slots.every(slot=>slot === 1 || slot === 2),
-    'strata-art-invalid-response', '原生正文没有使用本次实际双图编号');
-  // sourceContent is retained as native evidence only. No exact-phrase include
-  // gate, concatenation, color cleanup, second model call or shortened rewrite.
-  const enhancer = { kind:FLASH_ART_KIND,version:FLASH_ART_VERSION,model:result.model,prompt:answer.prompt,
+  // Only the verified Qwen pair may omit markers altogether: the application
+  // owns the already validated and sorted subject/style input order. Never
+  // repair partial, malformed or conflicting markers. This binding is not
+  // evidence that the model's prose actually preserves the source content.
+  const markerLike=/<\s*image\b|\bimage\s*\d+\b|(?:参考图|图片|图)\s*\d+/i.test(answer.prompt);
+  const bindMissingPair=flash.identity.id==='qwen35-heretic' && slots.length===0 && !markerLike;
+  const ambiguousMarkers=/<\s*image\b|\bimage\s*\d+\b|(?:参考图|图片|图)\s*\d+/i.test(answer.prompt.replace(/<image(?:1|2)>/g,''));
+  const binding='Use <image1> as the original content source and preserve its actual subject, composition and scene, including the background unless the user explicitly requests a change. Use <image2> only as the artistic rendering reference, not as replacement scene content.\n\n';
+  const outputPrompt=bindMissingPair ? binding+answer.prompt : answer.prompt;
+  requireValue((bindMissingPair || slots.includes(1) && slots.includes(2) && slots.every(slot=>slot === 1 || slot === 2)
+    && (flash.identity.id!=='qwen35-heretic' || !ambiguousMarkers))
+    && outputPrompt.length<=12000, 'strata-art-invalid-response', '原生正文没有使用本次实际双图编号');
+  // Keep native model text in rawOutput; do not rewrite or shorten its content.
+  const enhancer = { kind:FLASH_ART_KIND,version:FLASH_ART_VERSION,model:result.model,prompt:outputPrompt,
     renderingClass,sourceOrder:inputSources,promptIds:[result.requestId],
     providerPolicy:{schema:'nf.qwen21-native-provider.v1',cfg:3} };
   return { visualSchema:SCHEMA,rawOutput:result.text,
-    artDirection:{schema:SCHEMA,summary:'Flash 单轮完整画风重绘',prompt:answer.prompt,
+    artDirection:{schema:SCHEMA,summary:'Flash 单轮完整画风重绘',prompt:outputPrompt,
       references:inputs.map(image=>({source:image.source,uses:[{role:image.role,detail:image.role === 'subject'
         ? '完整内容原图，提供实际主体、主要关系与原场景' : '完整画风原图，仅提供实际绘画技法与光色关系',box:[0,0,1000,1000],samples:[]}],omit:[]})),
       preserve:[],exclude:[],clarification:'',editEnhancer:enhancer},
     nativeAnalysis:{schema:'nf.flash.art-native-analysis.v1',systemSHA256:createHash('sha256').update(system).digest('hex'),requestId:result.requestId,
       model:result.model,sourceContent:answer.sourceContent,inputSources,
+      ...(bindMissingPair ? { inputRoleBinding:{source:'validated-input-order',markers:'application-inserted',requiresManualReview:true,
+        modelPromptSHA256:createHash('sha256').update(answer.prompt,'utf8').digest('hex')} } : {}),
       renderingClassMetadata:{value:renderingClass,source:answer.renderingClass===undefined?'program-default-missing':'model'},
       ...(hasNegativePrompt ? { negativePromptContext:{provided:true,source:'unknown',
         inputSHA256:createHash('sha256').update(negativePrompt,'utf8').digest('hex'),

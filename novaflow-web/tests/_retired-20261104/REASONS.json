@@ -1,0 +1,11 @@
+{
+ "e2e/gemma-shared-lease.test.mjs": "Gemma local model retired",
+ "e2e/art-gpt-custom-dimensions.test.mjs": "GPT image no longer goes through Comfy nodes",
+ "e2e/split-inpaint-qwen21-nsfw.test.mjs": "old NSFW inpaint route retired",
+ "e2e/ui-trial-package.test.mjs": "old NovaFlow UI trial package",
+ "e2e/glm-retire-publish.test.mjs": "GLM retired, rate table no longer carries it",
+ "e2e/pe-assistant-routing.test.mjs": "Flash/PE routing and qwen-image-2511 retired",
+ "e2e/next-retirement.test.mjs": "Next model migration fixture",
+ "e2e/strata-ui-cpu-route.test.mjs": "old CPU UI route replaced by model selection",
+ "e2e/art-generalization-scope.test.mjs": "hash of the retired drawing candidate"
+}

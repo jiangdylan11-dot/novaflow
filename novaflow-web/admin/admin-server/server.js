@@ -11566,12 +11566,20 @@ async function handleAdminRoute(req, res, pathName) {
   }
   if (req.method === "POST" && pathName === "/api/admin/system-settings") {
     const payload = await parseBody(req);
+    if (String(payload?.key || "").trim().slice(0, 120) === "feature_credit_config") {
+      sendJson(res, 403, { ok: false, error: "请通过后台积分配置界面修改该项。" });
+      return;
+    }
     sendJson(res, 200, normalizeResult(await adminData.upsertAdminSystemSetting(payload)));
     return;
   }
   if (req.method === "PATCH" && pathName.startsWith("/api/admin/system-settings/")) {
     const key = decodeURIComponent(pathName.slice("/api/admin/system-settings/".length));
     const payload = await parseBody(req);
+    if (String(key || "").trim().slice(0, 120) === "feature_credit_config") {
+      sendJson(res, 403, { ok: false, error: "请通过后台积分配置界面修改该项。" });
+      return;
+    }
     sendJson(res, 200, normalizeResult(await adminData.upsertAdminSystemSetting({ ...payload, key })));
     return;
   }

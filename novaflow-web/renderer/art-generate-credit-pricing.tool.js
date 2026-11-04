@@ -21,6 +21,12 @@
   const estimateRequests = new Map()
   const estimateCache = new Map()
   const settlementCache = new Map()
+  // Only volatile UI receipts are cleared. This never changes the ledger.
+  root?.addEventListener?.('novaflow-client-auth-changed', () => settlementCache.clear())
+  root?.addEventListener?.('storage', (event) => {
+    if (!event || event.key === null || event.key === 'novaflow_web_session_v1' ||
+        event.key === 'novaflow.client.auth.session.v1') settlementCache.clear()
+  })
   const retryState = new Map()
   let latestSignature = ''
   let estimateEpoch = 0
@@ -500,7 +506,16 @@
       ? { ...payload.providerBudget }
       : (payload.provider_budget && typeof payload.provider_budget === 'object' ? { ...payload.provider_budget } : {})
     const pricing = payload.pricing && typeof payload.pricing === 'object' ? { ...payload.pricing } : {}
+    const guards = []
+    if (typeof payload.isOwnerCurrent === 'function') guards.push(payload.isOwnerCurrent)
+    if (typeof root?.electronAPI?.captureFoartSessionGuard === 'function') {
+      const guard = root.electronAPI.captureFoartSessionGuard()
+      if (typeof guard !== 'function') return false
+      guards.push(guard)
+    }
+    try { if (guards.some((guard) => guard() !== true)) return false } catch { return false }
     const record = Object.freeze({
+      ownerGuards: Object.freeze(guards),
       promptId,
       settlement: Object.freeze(settlement),
       credits: Object.freeze(credits),
@@ -516,7 +531,12 @@
 
   function getProgressView(options = {}) {
     const promptId = String(options.promptId || options.prompt_id || '').trim()
-    const record = promptId ? settlementCache.get(promptId) : null
+    let record = promptId ? settlementCache.get(promptId) : null
+    if (record) {
+      try {
+        if (record.ownerGuards.some((guard) => guard() !== true)) { settlementCache.delete(promptId); record = null }
+      } catch { settlementCache.delete(promptId); record = null }
+    }
     if (record) {
       const status = String(record.settlement.status || '').trim().toLowerCase()
       if (['not_charged', 'failed', 'cancelled', 'canceled'].includes(status)) {

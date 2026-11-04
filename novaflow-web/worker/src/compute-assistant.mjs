@@ -8,10 +8,29 @@ import { createBorrowedRuntimeServices } from './borrowed-runtime-services.mjs';
 import { createPromptAssistant } from './prompt-assistant.mjs';
 import { ensureFlashBrainConfiguration } from './flash-brain-configuration.mjs';
 
+// This isolated prototype requires an explicit, trusted startup opt-in. A
+// packaged release must wire it deliberately after integration validation.
+export function computePromptAssistantOptions(options, worker, comfyUrls) {
+  return { worker, logger: options.logger, comfyUrls, ...(options.promptAssistant || {}),
+    qwenBusinessBridge: options.enableQwenBusinessBridge === true,
+    qwenBusinessTextOnly: options.qwenBusinessTextOnly === true,
+    // This is a trusted node-construction switch, never a browser payload.
+    // Both gates must agree before the model adapter can accept this scope.
+    qwenRotationCandidateEnabled: options.qwenRotationCandidateEnabled === true && options.qwenRotationVerificationEnabled === true,
+    qwenPlanVerificationEnabled: options.qwenPlanVerificationEnabled === true,
+    qwenPlanEnabled: options.qwenPlanEnabled === true && options.qwenPlanVerificationEnabled === true,
+    qwenImageEditEnabled: options.qwenImageEditEnabled === true };
+}
+
 export async function createComputeAssistant(options) {
-  if (!options.modelsRoot) {
+  // Keep the caller's explicit override distinct from a root we discovered
+  // ourselves, so a later runtime restart can follow an updated config.
+  const hasExplicitModelsRoot = Boolean(options.modelsRoot);
+  const runtimeJsonPath = options.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON
+    || join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow/AI-Runtime/runtime.json');
+  if (!hasExplicitModelsRoot) {
     try {
-      const config = JSON.parse((await readFile(join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow/AI-Runtime/runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
+      const config = JSON.parse((await readFile(runtimeJsonPath, 'utf8')).replace(/^\uFEFF/, ''));
       options = { ...options, modelsRoot: config.modelsPath || '' };
     } catch { /* services.start reports a missing environment. */ }
   }
@@ -76,9 +95,9 @@ export async function createComputeAssistant(options) {
     try {
       // The environment may have been installed while this machine waited for
       // approval. Read it again before each attempt, without needing a restart.
-      if (!options.modelsRoot) {
+      if (!hasExplicitModelsRoot) {
         try {
-          const config = JSON.parse((await readFile(options.promptAssistant?.runtimeJsonPath || join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow/AI-Runtime/runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
+          const config = JSON.parse((await readFile(runtimeJsonPath, 'utf8')).replace(/^\uFEFF/, ''));
           worker.retargetModelsRoot(config.modelsPath || '');
         } catch { /* services.start will provide the actionable error. */ }
       }
@@ -87,7 +106,7 @@ export async function createComputeAssistant(options) {
         ...(options.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG ? { configPath: options.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG } : {})
       });
       if (!prepared.ok) options.logger?.('Flash local installation incomplete', { reason: prepared.reason });
-      if (!promptAssistant) promptAssistant = createPromptAssistant({ worker, logger: options.logger, comfyUrls, ...(options.promptAssistant || {}) });
+      if (!promptAssistant) promptAssistant = createPromptAssistant(computePromptAssistantOptions(options, worker, comfyUrls));
       runtimes = await services.start(() => emit());
       servicesRunning = true;
       const image = runtimes.find(r => r.kind === 'image')?.url;
@@ -136,6 +155,8 @@ export async function createComputeAssistant(options) {
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     start,
     startSharing: start,
+    pauseClaims: options => worker.pauseClaims(options),
+    resumeClaims: () => worker.resumeClaims(),
     stop: () => {
       desired = false; stopping = true;
       clearInterval(retryTimer); retryTimer = null;

@@ -1,4 +1,4 @@
-NovaFlow AI Runtime 模型清单
+Foart AI Runtime 模型清单
 
 以下路径都相对于资源目录下的 models 文件夹（默认 D:\NovaFlow\models）。
 文件名必须完全一致；大小为参考值。
@@ -63,4 +63,4 @@ NovaFlow AI Runtime 模型清单
   text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors
   （提示词助手已经全部改用千问 3 模型）
 
-只用部分功能时，只放对应分组即可；缺少的功能在 NovaFlow 里会提示缺哪个模型。
+只用部分功能时，只放对应分组即可；缺少的功能在 Foart 里会提示缺哪个模型。

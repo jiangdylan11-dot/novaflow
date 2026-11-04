@@ -711,9 +711,21 @@
       if (nativeProjectExporting) return
       nativeProjectExporting = true
       const label = exportRunLabel(b); b.setAttribute('data-nf-skeleton-label', label); b.textContent = '导出中…'; b.disabled = true
-      api.exportSelectedProjects({ mode: packMode(), version: chosenVersion || undefined, skel: exportSkel() })
-        .catch((error) => window.alert('导出失败：' + error.message))
-        .finally(() => { nativeProjectExporting = false; b.textContent = label; b.disabled = false })
+      const controller = new AbortController()
+      const cancel = document.createElement('button')
+      cancel.type = 'button'; cancel.className = 'nf-atlas-button'; cancel.textContent = '取消导出'
+      cancel.title = '停止后续导出；已经写出的文件会保留'
+      cancel.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation()
+        cancel.disabled = true; cancel.textContent = '正在取消…'; controller.abort()
+      })
+      b.insertAdjacentElement('afterend', cancel)
+      api.exportSelectedProjects({ mode: packMode(), version: chosenVersion || undefined, skel: exportSkel(), signal: controller.signal })
+        .catch((error) => {
+          if (error?.name === 'AbortError') window.alert('导出已取消，已经写出的文件会保留。')
+          else window.alert('导出失败：' + error.message)
+        })
+        .finally(() => { nativeProjectExporting = false; cancel.remove(); b.textContent = label; b.disabled = false })
       return
     }
     wantVersion = isSpineExportRun(b) ? 'spine' : '3.8'

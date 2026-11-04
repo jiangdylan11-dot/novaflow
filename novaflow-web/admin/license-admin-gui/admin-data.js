@@ -1,5 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const childProcess = require("child_process");
+const { createHash } = require("crypto");
+const { isDeepStrictEqual } = require("util");
 const WebSocket = require("ws");
 const runningHub = require("./runninghub-provider.cjs");
 const {
@@ -3337,18 +3339,67 @@ async function upsertAdminSystemSetting(payload) {
   if (!clientState.client) {
     const durationMs = Date.now() - startedAt;
     if (clientState.status === "mock") return adminWriteMockResult(operation, durationMs);
-    return adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    return { ...adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs), ok:false };
   }
 
   let parsed;
   try {
     parsed = parseSystemSettingPayload(payload);
   } catch (err) {
-    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+    return { ...adminWriteErrorResult(operation, err, Date.now() - startedAt), ok:false };
   }
 
   try {
     const now = new Date().toISOString();
+    // Explicit policy edits must not be silently discarded by the legacy
+    // compatibility trigger or split into independently committed writes.
+    const next = parsed.value;
+    if (parsed.key === "feature_credit_config" && next && typeof next === "object" && !Array.isArray(next)) {
+      validateExplicitFeatureCreditValues(next);
+      const token = next.token_billing && typeof next.token_billing === "object" && !Array.isArray(next.token_billing)
+        ? next.token_billing : null;
+      const explicitRoot = Object.hasOwn(next, "xiaotao_online");
+      const explicitNested = token && Object.hasOwn(token, "xiaotao_online");
+      const explicitCurrency = Object.hasOwn(next, "credits_per_usd");
+      const explicitRound = token && Object.hasOwn(token, "round");
+      if (explicitRoot || explicitNested || explicitCurrency || explicitRound) {
+        const { data: row, error: readError } = await clientState.client
+          .from("system_settings").select("value").eq("key", parsed.key).maybeSingle();
+        if (readError) throw readError;
+        if (!row || !row.value || typeof row.value !== "object" || Array.isArray(row.value)) {
+          throw new Error("小桃计费配置缺失或格式无效，无法安全修改；请先恢复配置");
+        }
+        const rootChanged = explicitRoot && !isDeepStrictEqual(next.xiaotao_online, row.value.xiaotao_online);
+        const nestedChanged = explicitNested && !isDeepStrictEqual(token.xiaotao_online, row.value.token_billing?.xiaotao_online);
+        const currencyChanged = explicitCurrency && !isDeepStrictEqual(next.credits_per_usd, row.value.credits_per_usd);
+        const roundChanged = explicitRound && !isDeepStrictEqual(token.round, row.value.token_billing?.round);
+        if (rootChanged || nestedChanged || currencyChanged || roundChanged) {
+          if (!payload?.expected_config || typeof payload.expected_config !== "object" || Array.isArray(payload.expected_config)
+              || !isDeepStrictEqual(payload.expected_config, row.value)) {
+            throw new Error("修改计费策略或全局汇率、取整方式需要当前完整配置快照；请重新读取后再提交");
+          }
+          let rpcResult;
+          try {
+            rpcResult = await clientState.client.rpc(
+              "foart_update_feature_credit_config_candidate_v1", { p_expected: payload.expected_config, p_next: next }
+            );
+          } catch (_) {
+            throw new Error("小桃策略更新结果未确认，请先重新读取配置核对，勿重复提交");
+          }
+          const { data: record, error: casError } = rpcResult || {};
+          if (casError) {
+            if (casError.code === "40001") throw new Error("积分配置已变化，请重新读取后再修改");
+            if (casError.code === "PGRST202") throw new Error("小桃策略的原子更新接口尚未安装，未提交修改");
+            throw new Error("小桃策略更新结果未确认，请先重新读取配置核对，勿重复提交");
+          }
+          if (!record || record.key !== parsed.key || !isDeepStrictEqual(record.value, next)) {
+            throw new Error("小桃计费配置更新结果无法确认，请重新读取核对");
+          }
+          return { source:"supabase", status:"connected", configured:true, operation, ok:true,
+            durationMs:Date.now()-startedAt, record };
+        }
+      }
+    }
     const { data, error } = await clientState.client
       .from("system_settings")
       .upsert({ key: parsed.key, value: parsed.value, updated_at: now }, { onConflict: "key" })
@@ -3373,7 +3424,7 @@ async function upsertAdminSystemSetting(payload) {
     });
     return result;
   } catch (err) {
-    const result = adminWriteErrorResult(operation, err, Date.now() - startedAt);
+    const result = { ...adminWriteErrorResult(operation, err, Date.now() - startedAt), ok:false };
     logAdminData("error", "upsert system setting failed", {
       source: result.source,
       status: result.status,
@@ -3585,6 +3636,56 @@ async function saveProfitEstimateSettings(payload) {
   return normalizeProfitEstimateSettings(saved.record?.value);
 }
 
+// Reject explicit invalid prices before a normalizer can silently replace
+// them with a fallback. Absent/blank fields keep existing compatibility.
+function validateExplicitFeatureCreditValues(config) {
+  const object = (value, label) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} 格式无效`);
+    return value;
+  };
+  const number = (value, label, { min = 0, max = Infinity, integer = false, exclusiveMin = false } = {}) => {
+    if (value == null || value === "") return;
+    if ((typeof value !== "number" && typeof value !== "string") || (typeof value === "string" && !/^\d+(?:\.\d+)?$/.test(value.trim()))) throw new Error(`${label} 数值无效`);
+    const n = Number(value);
+    if (!Number.isFinite(n) || (exclusiveMin ? n <= min : n < min) || n > max || (integer && !Number.isSafeInteger(n))) throw new Error(`${label} 数值无效`);
+  };
+  if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("积分配置格式无效");
+  if (config.prices != null) for (const [key, value] of Object.entries(object(config.prices, "积分单价"))) number(value, `积分单价 ${key}`, { max: 1000000, integer: true });
+  number(config.credits_per_usd, "每美元积分", { exclusiveMin: true });
+  number(config.credits_to_cny, "积分人民币参考值", { exclusiveMin: true });
+  number(config.low_balance_usd, "美元余额阈值");
+  number(config.low_balance_cny, "人民币余额阈值");
+  number(config.balance_ttl_seconds, "余额缓存秒数", { min: 30, integer: true });
+  if (config.stale_balance_policy != null && config.stale_balance_policy !== "" && !["allow", "block"].includes(config.stale_balance_policy)) throw new Error("余额过期策略无效");
+  const online = (value, label) => {
+    if (value == null) return;
+    const policy = object(value, label);
+    number(policy.markup, `${label} 倍率`, { exclusiveMin: true, max: 1000 });
+    number(policy.usd_per_million_tokens, `${label} 单价`, { max: 1000 });
+    if (policy.grok_4_7_rates != null) for (const [key, rate] of Object.entries(object(policy.grok_4_7_rates, `${label} Grok 单价`))) {
+      if (["input", "output", "cached_input", "high_input", "high_output", "high_cached_input"].includes(key)) number(rate, `${label} ${key}`, { max: 1000 });
+      if (key === "high_input_threshold") number(rate, `${label} ${key}`, { integer: true, exclusiveMin: true });
+    }
+    if (policy.model_rates != null) for (const [model, rate] of Object.entries(object(policy.model_rates, `${label} 模型单价`))) {
+      for (const [key, value] of Object.entries(object(rate, `${label} ${model}`))) {
+        if (["input", "output", "cached", "highInput", "highOutput", "cached_input", "high_input", "high_output", "high_cached_input"].includes(key)) number(value, `${label} ${model} ${key}`, { max: 1000 });
+        if (["highAbove", "high_input_threshold"].includes(key)) number(value, `${label} ${model} ${key}`, { integer: true });
+      }
+    }
+  };
+  online(config.xiaotao_online, "小桃计价");
+  if (config.token_billing != null) {
+    const token = object(config.token_billing, "Token 计价");
+    number(token.markup, "Token 计价倍率", { exclusiveMin: true, max: 1000 });
+    number(token.settle_cap_credits, "结算上限", { min: 1, max: 1000000, integer: true });
+    if (token.round != null && token.round !== "" && !["ceil", "floor", "round"].includes(token.round)) throw new Error("积分取整规则无效");
+    if (token.estimate_credits != null) for (const [resolution, entries] of Object.entries(object(token.estimate_credits, "预估积分"))) {
+      for (const [quality, value] of Object.entries(object(entries, `预估积分 ${resolution}`))) number(value, `预估积分 ${resolution}/${quality}`, { max: 1000000, integer: true });
+    }
+    online(token.xiaotao_online, "小桃计价");
+  }
+}
+
 async function readFeatureCreditConfig() {
   const { normalizeCreditConfig } = await loadFeatureCredits();
   const clientState = getAdminClient();
@@ -3594,6 +3695,10 @@ async function readFeatureCreditConfig() {
   } catch {
     return normalizeCreditConfig(undefined);
   }
+}
+
+function featureCreditRevision(row) {
+  return row ? createHash("sha256").update(JSON.stringify(row.value)).digest("hex") : "absent";
 }
 
 async function getFeatureCreditAdmin() {
@@ -3609,7 +3714,11 @@ async function getFeatureCreditAdmin() {
   };
   if (!clientState.client) return empty;
   try {
-    const stored = normalizeCreditConfig(await readSettingValue(clientState.client, "feature_credit_config"));
+    const { data: configRow, error: configError } = await clientState.client.from("system_settings").select("value").eq("key", "feature_credit_config").maybeSingle();
+    if (configError) throw configError;
+    if (configRow && (!configRow.value || typeof configRow.value !== "object" || Array.isArray(configRow.value))) throw new Error("服务器积分配置格式无效");
+    if (configRow) validateExplicitFeatureCreditValues(configRow.value);
+    const stored = normalizeCreditConfig(configRow?.value);
     const storedBalance = await readSettingValue(clientState.client, "rh_domestic_balance");
     const env = readAdminRunningHubEnv();
     const latest = runningHubCheck?.baseUrl === env.baseUrl && runningHubCheck?.apiKey === env.apiKey
@@ -3632,6 +3741,7 @@ async function getFeatureCreditAdmin() {
     };
     return {
       config: stored,
+      configRevision: featureCreditRevision(configRow),
       domesticBalance,
       balanceError: latest && !latest.connected ? latest.error || "RunningHub：未配置有效 Key" : null,
       balanceCacheSaved: latest?.balanceCacheSaved,
@@ -3653,14 +3763,28 @@ async function getFeatureCreditAdmin() {
 }
 
 async function saveFeatureCreditAdmin(payload) {
-  const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
-
-  const current = await getFeatureCreditAdmin();
-  const prices = { ...(current.config?.prices || {}) };
+  const { normalizeCreditConfig } = await loadFeatureCredits();
+  const client = getAdminClient().client;
+  if (!client) throw new Error("尚未连接数据库，不能保存积分配置");
+  const key = "feature_credit_config";
+  const { data: row, error: readError } = await client.from("system_settings").select("value").eq("key", key).maybeSingle();
+  if (readError) throw readError;
+  if (row && (!row.value || typeof row.value !== "object" || Array.isArray(row.value))) {
+    throw new Error("服务器积分配置格式无效，已停止保存");
+  }
+  if (typeof payload?.config_revision !== "string" || payload.config_revision !== featureCreditRevision(row)) {
+    throw new Error("积分配置已变化或客户端版本过旧，请刷新配置后重试");
+  }
+  const original = row ? row.value : {};
+  validateExplicitFeatureCreditValues(original);
+  validateExplicitFeatureCreditValues(payload || {});
+  const current = normalizeCreditConfig(original);
+  const object = value => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const prices = { ...current.prices };
   const incoming = payload?.prices && typeof payload.prices === "object" ? payload.prices : {};
   for (const [key, amount] of Object.entries(incoming)) {
     if (amount === "" || amount == null) continue;
-    const n = Math.round(Number(amount));
+    const n = Number(amount);
     if (!Number.isInteger(n) || n < 0 || n > 1000000) throw new Error("积分单价必须是 0 到 1000000 的整数");
     prices[key] = n;
   }
@@ -3669,28 +3793,92 @@ async function saveFeatureCreditAdmin(payload) {
   const thresholdRaw = payload?.low_balance_usd;
   const thresholdCnyRaw = payload?.low_balance_cny;
   const ttlRaw = payload?.balance_ttl_seconds;
-  const config = normalizeCreditConfig({
+  const tokenInput = object(payload?.token_billing);
+  const estimateInput = object(tokenInput.estimate_credits);
+  const estimates = { ...object(current.token_billing?.estimate_credits) };
+  for (const [resolution, values] of Object.entries(estimateInput)) {
+    estimates[resolution] = { ...object(estimates[resolution]), ...object(values) };
+  }
+  const normalized = normalizeCreditConfig({
+    ...original,
     prices,
-    rh_cost_usd: current.config?.rh_cost_usd,
     credits_to_cny: cnyRaw === "" || cnyRaw == null ? null : cnyRaw,
-    low_balance_usd: thresholdRaw === "" || thresholdRaw == null ? current.config?.low_balance_usd : thresholdRaw,
-    low_balance_cny: thresholdCnyRaw === "" || thresholdCnyRaw == null ? current.config?.low_balance_cny : thresholdCnyRaw,
-    balance_ttl_seconds: ttlRaw === "" || ttlRaw == null ? current.config?.balance_ttl_seconds : ttlRaw,
-    stale_balance_policy: payload?.stale_balance_policy || current.config?.stale_balance_policy,
+    low_balance_usd: thresholdRaw === "" || thresholdRaw == null ? current.low_balance_usd : thresholdRaw,
+    low_balance_cny: thresholdCnyRaw === "" || thresholdCnyRaw == null ? current.low_balance_cny : thresholdCnyRaw,
+    balance_ttl_seconds: ttlRaw === "" || ttlRaw == null ? current.balance_ttl_seconds : ttlRaw,
+    stale_balance_policy: payload?.stale_balance_policy || current.stale_balance_policy,
     credits_per_usd: payload?.credits_per_usd === "" || payload?.credits_per_usd == null
-      ? current.config?.credits_per_usd
+      ? current.credits_per_usd
       : payload.credits_per_usd,
     token_billing: {
-      ...(current.config?.token_billing || {}),
-      ...(payload?.token_billing && typeof payload.token_billing === "object" ? payload.token_billing : {})
+      ...current.token_billing, ...tokenInput, estimate_credits: estimates
     },
-    gpt_image: {
-      ...(current.config?.gpt_image || {}),
-      ...(payload?.gpt_image && typeof payload.gpt_image === "object" ? payload.gpt_image : {})
-    }
+    gpt_image: { ...current.gpt_image, ...object(payload?.gpt_image) }
   });
-  const saved = await upsertAdminSystemSetting({ key: "feature_credit_config", value: config });
-  if (saved?.status === "error" || saved?.ok === false) throw new Error(saved.error || "保存积分配置失败");
+  // Start with the raw server object. Only apply fields that this form owns;
+  // unrecognised policy, snapshot, model-rate and future fields stay intact.
+  const config = { ...original };
+  if (Object.keys(incoming).length) {
+    config.prices = { ...object(original.prices) };
+    for (const [name, amount] of Object.entries(incoming)) {
+      if (amount !== "" && amount != null && Object.hasOwn(normalized.prices, name)) config.prices[name] = normalized.prices[name];
+    }
+    config.prices.local = 0;
+  }
+  for (const name of ["credits_to_cny", "low_balance_usd", "low_balance_cny", "balance_ttl_seconds", "stale_balance_policy", "credits_per_usd"]) {
+    if (Object.hasOwn(payload || {}, name) && (name === "credits_to_cny" || (payload[name] !== "" && payload[name] != null))) config[name] = normalized[name];
+  }
+  const rawToken = object(original.token_billing);
+  const token = { ...rawToken };
+  for (const name of ["markup", "settle_cap_credits"]) {
+    if (Object.hasOwn(tokenInput, name) && tokenInput[name] !== "" && tokenInput[name] != null) token[name] = normalized.token_billing[name];
+  }
+  if (Object.hasOwn(tokenInput, "estimate_credits")) {
+    token.estimate_credits = { ...object(rawToken.estimate_credits) };
+    for (const [resolution, values] of Object.entries(estimateInput)) {
+      const target = { ...object(token.estimate_credits[resolution]) };
+      for (const quality of Object.keys(object(values))) {
+        if (values[quality] !== "" && values[quality] != null && Object.hasOwn(object(normalized.token_billing.estimate_credits[resolution]), quality)) target[quality] = normalized.token_billing.estimate_credits[resolution][quality];
+      }
+      token.estimate_credits[resolution] = target;
+    }
+  }
+  if (Object.keys(tokenInput).length) config.token_billing = token;
+  const imageInput = object(payload?.gpt_image);
+  if (Object.keys(imageInput).length) {
+    config.gpt_image = { ...object(original.gpt_image) };
+    for (const name of ["text_endpoint", "image_endpoint", "fallback_text_endpoint", "fallback_image_endpoint", "text_model", "image_model", "official_model", "token_markers"]) {
+      if (Object.hasOwn(imageInput, name)) config.gpt_image[name] = normalized.gpt_image[name];
+    }
+  }
+  // A conditional write prevents changes made after this read from being lost.
+  // A competing insert also fails rather than replacing an unseen row.
+  const currencyChanged = !isDeepStrictEqual(config.credits_per_usd, original.credits_per_usd);
+  if (currencyChanged) {
+    let rpcResult;
+    try {
+      rpcResult = await client.rpc("foart_update_feature_credit_config_candidate_v1", { p_expected: original, p_next: config });
+    } catch (_) {
+      throw new Error("积分汇率更新结果未确认，请重新读取配置核对，勿重复提交");
+    }
+    const { data: record, error: casError } = rpcResult || {};
+    if (casError) {
+      if (casError.code === "40001") throw new Error("积分配置已变化，请刷新后重试");
+      if (casError.code === "PGRST202") throw new Error("积分汇率的原子更新接口尚未安装，未提交修改");
+      throw new Error("积分汇率更新结果未确认，请重新读取配置核对，勿重复提交");
+    }
+    if (!record || record.key !== key || !isDeepStrictEqual(record.value, config)) {
+      throw new Error("积分汇率更新结果无法确认，请重新读取核对");
+    }
+    return getFeatureCreditAdmin();
+  }
+  const table = client.from("system_settings");
+  const write = row
+    ? table.update({ value: config, updated_at: new Date().toISOString() }).eq("key", key).eq("value", JSON.stringify(original))
+    : table.insert({ key, value: config, updated_at: new Date().toISOString() });
+  const { data: saved, error: writeError } = await write.select("key").maybeSingle();
+  if (writeError) throw writeError;
+  if (!saved) throw new Error("积分配置已被其他操作修改，请刷新后重试");
   return getFeatureCreditAdmin();
 }
 

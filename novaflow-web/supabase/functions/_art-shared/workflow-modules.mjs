@@ -12,6 +12,9 @@
 // `label` is what a user sees. `runtime` picks the ComfyUI instance. `price`
 // says how the cost is derived from the recorded options.
 
+export const QWEN21_EDIT_LORA_CAPABILITY = 'qwen-image-2.1-turbo-edit-lora-v1';
+export const QWEN21_EDIT_LORA_NAME = 'qwen/qwen2_1-femaledVaginus-nsfw-v1_3-fine_L22-31.safetensors';
+
 export const WORKFLOW_MODULES = Object.freeze({
   'novaflow-brand-runtime': {
     label: '绘图', modelId: 'qwen-image-2511', minVramMb: 16000,
@@ -32,7 +35,7 @@ export const WORKFLOW_MODULES = Object.freeze({
     runtime: 'image', kind: 'image', price: 'image',
     positional: true,
     methods: [
-      'defaultQwenInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
+      'defaultQwenInpaintWorkflow', 'defaultQwenLoraInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
       'buildSeeThroughSplitWorkflow', 'buildSeedVr2ImageUpscaleWorkflow', 'buildQwenImageOutpaintWorkflow',
       'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow',
       'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow', 'buildGenerativeSplitWorkflow'
@@ -122,8 +125,32 @@ export function isAllowedWorkflowCall(name, method) {
 export function workflowModelId(name, options, method='') {
   const entry = workflowModule(name);
   if (!entry) return null;
+  if (name === 'spine-split-runtime' && method === 'defaultQwenLoraInpaintWorkflow') return QWEN21_EDIT_LORA_CAPABILITY;
+  if (name === 'spine-split-runtime' && method === 'defaultRmbgWorkflow') {
+    const node=options?.__args?.[3];
+    return !node || node.name === 'BiRefNetRMBG' ? 'foart-rmbg-birefnet-general-v1' : 'foart-rmbg-explicit-node-unavailable-v1';
+  }
+  if (name === 'spine-split-runtime' && method === 'defaultRemovalInpaintWorkflow') return 'foart-flux-removal-v1';
+  if (name === 'spine-split-runtime' && method === 'buildSeedVr2ImageUpscaleWorkflow') return 'foart-seedvr2-upscale-v1';
+  if (name === 'spine-split-runtime' && method === 'buildSeeThroughSplitWorkflow') return options?.__args?.[2]?.useLama === false ? 'foart-seethrough-v1' : 'foart-seethrough-lama-v1';
+  if (name === 'spine-split-runtime' && method === 'samPointWorkflowFromPrompts') {
+    const size=options?.__args?.[4]?.modelSize;
+    return size === 'ViT-B' ? 'foart-sam-vit-b-v1' : size === 'ViT-L' ? 'foart-sam-vit-l-v1' : size === 'ViT-H' ? 'foart-sam-vit-h-v1' : 'foart-sam-auto-v1';
+  }
+  if (name === 'spine-split-runtime' && method === 'defaultQwenInpaintWorkflow') {
+    const opts=options?.__args?.[5] || {};
+    const provider=opts.route?.provider || opts.inpaintProvider;
+    if (provider === 'flux-fill') return 'foart-flux-fill-v1';
+    if (opts.route?.nsfw === true || provider === 'qwen-2.1-nsfw-lora' || provider === true) throw Object.assign(new Error('旧 NSFW 补图路由已退役，请重新打开当前开关后提交。'),{code:'RETIRED_NSFW_INPAINT_ROUTE'});
+    return 'foart-qwen21-inpaint-v1';
+  }
   if (name === 'spine-split-runtime' && (method === 'buildGenerativeSplitWorkflow' || options?.__args?.[1]?.taskProfile === 'generative-split')) {
     return options?.__args?.[1]?.profile === 'standard' ? 'qwen-image-2.1' : 'qwen-image-2.1-turbo';
+  }
+  if (name === 'NovaFlowArtGenerateProviderWorkflow' && method === 'buildRunWorkflow' && options?.provider === 'local' && options?.localWorkflow && typeof options.localWorkflow === 'object') {
+    const loaders=Object.values(options.localWorkflow).filter(node=>node?.class_type === 'NovaFlowGGUFBF16Loader').map(node=>node?.inputs?.unet_name);
+    if (loaders.includes('Qwen-Image-2.1-Turbo-BF16.gguf')) return 'qwen-image-2.1-turbo';
+    if (loaders.includes('qwen-image-2.1-UC-BF16.gguf')) return 'qwen-image-2.1';
   }
   const args = name === 'novaflow-brand-runtime' && Array.isArray(options?.__args) ? options.__args : null;
   if (args && args[0] === 'local') {

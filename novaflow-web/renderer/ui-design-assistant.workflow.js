@@ -60,7 +60,9 @@
     Object.freeze({ label: '商城 / 活动', terms: Object.freeze(['商城', '商店', '充值', '礼包', '活动中心', 'shop', 'store']) }),
     Object.freeze({ label: '弹窗 / 结算', terms: Object.freeze(['弹窗', '结算', '战斗结算', '战斗结果', '胜利界面', '失败界面', 'modal', 'result']) }),
   ])
-  const REQUIREMENTS_TRANSPORT_LIMIT = 1950
+  // Match the native UI request boundary; UI rules plus real layout facts can
+  // exceed the old ordinary-image 1950-character limit before user text begins.
+  const REQUIREMENTS_TRANSPORT_LIMIT = 4000
   const DEFAULT_TIMEOUT_MS = 120000
   const LOCAL_TIMEOUT_MS = 300000
   let protectionSequence = 0
@@ -261,6 +263,9 @@
     if (options.targetEngine === 'qwen-2.1') {
       const requirements = [
         '这是 Qwen 2.1 UI 原生参考编辑规划。依据用户原文理解每张图的职责，独立判断视觉修改范围与布局修改范围，不使用固定主题或五段式绘图模板。',
+        // Adapted from Qwen Image 2.1's edit guidance and the user's referenced
+        // iamyoki/qwen-image-2.1-skill: isolate changed attributes and literal text.
+        'Qwen编辑表达：以本次具体修改动作开头，明确改动对象和属性；未点名的区域用概括性保留条款，不重复描写旧外观诱发重绘。布局、风格、配色、质感和人物素材分工绑定到各自真实图片，不把某图的未指定属性一起迁移。描述语言与画面文字独立：保留有效文案的原语言、拼写、标点和数值；仅修改用户指定的文字，内部模块名称、图片编号与说明不能出现在成品里。简洁任务不凑字数，不添加未要求的装饰或功能。',
         'UI设计必须有布局图片，layoutReference必须指向有效布局图，不能为0，layoutMode不能是create。只有一张图片时这张就是布局图，包括原来标为风格或默认参考的图片；多图使用指定布局图或首张普通主图，自建布局图优先。保留布局图主要区域位置与功能关系，人物缩小、按钮上移、增加一行等仅处理用户明确要求的局部调整；其他风格或素材图不提供布局。',
         businessInventory,
         preserveForms ? preservedConstruction : '风格迁移保留未要求改变的内容身份与组件构造，新主题则贯穿人物、背景、符号和组件；局部修改只改指定部分。未明确要求纯换皮或整体保形的主题重设默认重新设计组件构造，自建布局矩形只约束区域锚点、用途与玩法关系，不锁定成品轮廓。仅重设计造型且主题不变时保留原主题、人物物品身份、有效文案和状态；用户明确要求固定形状或只迁移风格时按其范围处理。',
@@ -305,6 +310,25 @@
       options.requirements ? `补充要求：${options.requirements}` : '',
     ].filter(Boolean).join('\n')
     if (content.length > REQUIREMENTS_TRANSPORT_LIMIT) throw new Error('布局说明和补充要求过长，请精简后再优化；本次未截断提交。')
+    return content
+  }
+
+  // Prompt drafting without a reference is distinct from image-based UI
+  // generation: keep the existing professional constraints, but never claim
+  // to have seen a layout, inferred business text or analysed a reference.
+  function buildTextOnlyRequirements(options, structure) {
+    const size=options.size||structure
+    const content=[
+      '你是 UI 视觉设计助手。只优化用户给出的界面需求，不假装已经看到或分析图片。业务功能、文案、金额、数量及状态只来自用户明确描述或已提供的结构，不按常见模板猜测。',
+      '围绕用户实际要求组织主要区域、组件功能、文字与动作图标、点击目标和视觉层级。主题、画风、材质、配色与光照以用户要求为准，不强加固定题材或商业功能。',
+      '需要调整组件造型时，具体说明主体承托、外轮廓、边框连接与负空间；保持同类功能识别一致，不让装饰遮挡文案、金额或控件，不靠删除功能腾空间。',
+      '只修改用户明确要求的内容。不要添加未要求的按钮、奖励、金币、数值、人物或游戏盘；未知事实保持未指定，不编造现有界面细节。区分目标 UI 和编辑器外框，不输出编辑器手柄或辅助线。',
+      '所有 __NOVAFLOW_ 开头并以双下划线结尾的占位符须原样保留。不要输出分析过程或多套方案。',
+      `输出尺寸：${size.width||structure.width}×${size.height||structure.height}。`,
+      structure.regions.length?`用户提供的结构（坐标只指导构图，名称不作为画面文字）：${JSON.stringify(structure)}`:'',
+      options.requirements?`补充要求：${options.requirements}`:'',
+    ].filter(Boolean).join('\n')
+    if(content.length>REQUIREMENTS_TRANSPORT_LIMIT)throw new Error('布局说明和补充要求过长，请精简后再优化；本次未截断提交。')
     return content
   }
 
@@ -398,20 +422,20 @@
 
   async function runGrokComplete(options,references,checkActive) {
     const api=options.electronAPI||root.electronAPI||{},cpu=api.promptAssistantUiDesignCpu;
-    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整在线看图分析需要更新 Foart 算力助手并登录官网；本次未调用付费分析');
+    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整在线看图分析需要更新 Foart并登录官网；本次未调用付费分析');
     const request=[stripTargetStyleContract(options.prompt),options.requirements||''].filter(Boolean).join('\n');
     const callCpu=async payload=>{const r=await cpu({surface:'ui-design',...payload});if(r?.ok===false||!r?.data)throw new Error(r?.error||'UI CPU 组件未返回有效结果');return r.data;};
     const reverse=localApi(options,references);
     if(typeof reverse!=='function')throw new Error('在线目录设计需要算力助手先识别布局；未切换分析来源');
     const capability=await cpu({surface:'ui-design',action:'capabilities'});
-    if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('请更新 Foart 算力助手后使用完整在线目录设计；本次未调用付费分析');
+    if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('请更新 Foart后使用完整在线目录设计；本次未调用付费分析');
     const sourceResult=await reverse({uiPlanner:'native-catalog-v3',surface:'ui-design',targetEngine:'qwen-2.1',uiDesignIntent:'redesign',uiPreserveLayout:true,uiAnalysisStage:'source-only',currentPrompt:request,images:references.map(r=>({dataUrl:r.dataUrl,role:r.role}))});
     checkActive();const source=sourceResult?.data||sourceResult;
     if(sourceResult?.ok===false||!source?.bundle||source.uiCatalog?.recognitionMethod!=='native-source-catalog-v3')throw new Error(sourceResult?.error||'在线分析的前置布局识别未完成；未提交云端分析或生图');
     const job=await callCpu({action:'native-ui-cloud',bundle:source.bundle,images:references.map(r=>({dataUrl:r.dataUrl,role:r.role}))});
     checkActive();
     const requestId=root.crypto?.randomUUID?.();if(!requestId)throw new Error('浏览器不能创建分析请求标识');
-    const reply=await root.NovaFlowWebRuntime.auth('POST','/api/client/runninghub/ui-catalog',{...job,requestId},180000);
+    const reply=await root.NovaFlowWebRuntime.auth('POST','/api/client/runninghub/ui-catalog',{...job,requestId,foartUiContract:options.foartUiContract},180000);
     checkActive();
     const model=typeof reply?.model==='string'?reply.model.trim():'';
     if(!reply?.ok||!model||reply.providerCallCount!==1||reply.retryCount!==0||reply.clientRequestId!==requestId||reply.finishReason!=='completed'||typeof reply.rawOutputText!=='string'||!reply.rawOutputText.trim())throw new Error(reply?.error||'在线目录分析未完成；未切换分析来源或提交生图');
@@ -455,10 +479,10 @@
       if (engine!=='grok' && typeof call !== 'function') throw new Error('本地模型未就绪')
       if(engine==='local'){
         const api=options.electronAPI||root.electronAPI||{};
-        if(typeof api.promptAssistantUiDesignCpu!=='function')throw new Error('请更新 Foart 算力助手后使用完整UI设计，本次未调用其他分析模型');
+        if(typeof api.promptAssistantUiDesignCpu!=='function')throw new Error('请更新 Foart后使用完整UI设计，本次未调用其他分析模型');
         const capability=await api.promptAssistantUiDesignCpu({surface:'ui-design',action:'capabilities'});
         checkActive();
-        if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('当前算力节点需要更新 Foart 算力助手后才能运行完整UI设计，本次未提交分析或生图');
+        if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('当前算力节点需要更新 Foart后才能运行完整UI设计，本次未提交分析或生图');
       }
       const request = [stripTargetStyleContract(options.prompt), options.requirements || ''].filter(Boolean).join('\n')
       const result = engine==='grok' ? await withTimeout(()=>runGrokComplete(options,references,checkActive),options.timeoutMs||900000,engine) : await withTimeout(() => call({ uiPlanner:'native-catalog-v3', surface:'ui-design', targetEngine:'qwen-2.1',
@@ -468,7 +492,7 @@
       if (typeof options.getRevision === 'function' && options.getRevision() !== revision) throw new Error('设计要求已变化，本次结果未覆盖当前内容')
       const data = result?.data || result
       if (result?.ok === false || !data?.prompt || data?.uiCatalog?.schema !== 'nf.ui.structure-catalog.v1') throw new Error(result?.error || '结构编译未返回有效结果，本次未提交生成')
-      if (data.uiCatalog.recognitionMethod !== (engine==='grok'?'native-grok-catalog-v3':'native-source-catalog-v3')) throw new Error('算力节点的 UI 分析组件需要更新，请安装最新版 Foart 算力助手后重试；本次未提交生图')
+      if (data.uiCatalog.recognitionMethod !== (engine==='grok'?'native-grok-catalog-v3':'native-source-catalog-v3')) throw new Error('算力节点的 UI 分析组件需要更新，请安装最新版 Foart后重试；本次未提交生图')
       return Object.freeze({ ...data, provider, engine, targetStyle:'auto', purpose:'ui-design-reference', referenceCount:references.length,
         references, structure, scene, hasNegativePrompt:false, negativePrompt:'', quota: chargeQuota(result) })
     }
@@ -494,6 +518,7 @@
       if (!sessionToken) throw new Error('请先登录 Foart 账号')
       checkActive()
       const request = {
+        foartUiContract: options.foartUiContract,
         token: sessionToken,
         prompt: promptProtection.text,
         currentPrompt: promptProtection.text,
@@ -639,6 +664,7 @@
     structureSnapshot,
     inferPageScene,
     buildRequirements,
+    buildTextOnlyRequirements,
     prepareReferencesForEngine,
     protectText,
     restoreText,

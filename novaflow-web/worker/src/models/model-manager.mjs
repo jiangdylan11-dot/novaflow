@@ -16,6 +16,11 @@ import { join } from 'node:path';
 import { MODEL_MANIFEST } from '../../../packages/shared/src/model-manifest.mjs';
 import { WORKER_MODEL_STATUS } from '../../../packages/shared/src/protocol.mjs';
 
+// Keep retired definitions in the shared catalogue for historical records,
+// but never inspect or advertise their files from a compute node.
+export const WORKER_MODEL_MANIFEST = MODEL_MANIFEST.filter(({ model_id }) =>
+  model_id !== 'prompt-assistant' && model_id !== 'qwen-image-2511');
+
 async function sha256File(path) {
   return await new Promise((resolve, reject) => {
     const hash = createHash('sha256');
@@ -122,7 +127,7 @@ export async function inspectModel(modelsRoot, model, { verifyHashes = false } =
   };
 }
 
-export async function inspectAllModels(modelsRoot, { verifyHashes = false, manifest = MODEL_MANIFEST } = {}) {
+export async function inspectAllModels(modelsRoot, { verifyHashes = false, manifest = WORKER_MODEL_MANIFEST } = {}) {
   const out = [];
   for (const model of manifest) {
     try {
@@ -173,7 +178,7 @@ export async function detectQwenImage21(comfy, { timeoutMs = 5000, variant = 'st
     && choices('VAELoader', 'vae_name').includes(QWEN21_VAE);
 }
 
-export async function inspectViaComfy(comfy, { manifest = MODEL_MANIFEST, timeoutMs = 5000 } = {}) {
+export async function inspectViaComfy(comfy, { manifest = WORKER_MODEL_MANIFEST, timeoutMs = 5000 } = {}) {
   const known = new Set();
   for (const node of ['CheckpointLoaderSimple', 'UNETLoader', 'VAELoader', 'CLIPLoader']) {
     try {

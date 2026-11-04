@@ -35,6 +35,7 @@ export function createFlashChatResidency({ withSession, beforeOpen = async () =>
     throw failure('flash-chat-invalid-config', '小桃驻留会话配置无效');
   let current = null, fault = null;
   const snapshot = () => ({ state: fault ? 'fault' : current?.state || 'cold', modelLoaded: fault ? true : Boolean(current?.loaded),
+    ...(['cpu','gpu'].includes(current?.flash?.executionDevice) ? {executionDevice:current.flash.executionDevice} : {}),
     activeRequestId: current?.activeRequestId || '', idleTimeoutMs, idleExpiresAt: current?.idleExpiresAt || null });
   function clearIdle(cycle) {
     if (cycle.timer !== null) clearTimer(cycle.timer);
@@ -133,6 +134,7 @@ export function createFlashChatResidency({ withSession, beforeOpen = async () =>
     }
     if (!cycle.closing && current === cycle) armIdle(cycle);
     return { value, identity: cycle.flash.identity, reused, resourcesReleased: false, generationReady: false,
+      ...(['cpu','gpu'].includes(cycle.flash.executionDevice) ? {executionDevice:cycle.flash.executionDevice} : {}),
       timing: { totalMs: clock() - startedAt, readyWaitMs: readyAt - startedAt, requestMs: clock() - readyAt,
         reusedSession: reused }, chatSession: snapshot() };
   }

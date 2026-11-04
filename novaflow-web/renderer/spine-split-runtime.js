@@ -1,6 +1,10 @@
 (function () {
   'use strict'
 
+  // Changes to the active drawing source or layer set invalidate pending assistant drafts.
+  let artAgentWorkspaceRevision = 0
+  function invalidateArtAgentWorkspace() { artAgentWorkspaceRevision += 1 }
+
   const ROOT_ATTR = 'data-novaflow-spine-split'
   const WORKSPACE_OVERLAY_ID = 'novaflow-spine-split-workspace-overlay'
   const WORKSPACE_CONTENT_ID = 'novaflow-spine-split-workspace-content'
@@ -227,8 +231,7 @@
   const IMAGE_OUTPAINT_TIMEOUT_MS = 600000
   const IMAGE_OUTPAINT_SAFE_DIMENSION_STEP = 8
   const IMAGE_OUTPAINT_ORIGINAL_EDGE_FEATHER_PX = 24
-  // NSFW option for local editing and completion; the default chains use Qwen-Image-2.1.
-  const QWEN_RAPID_CHECKPOINT = 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
+  // Editing and completion keep their Qwen-Image-2.1 base when NSFW is enabled.
   const IMAGE_ANGLE_ADJUST_TIMEOUT_MS = 600000
   const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'NovaFlow_angle_adjust'
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_DEFAULT = 0
@@ -1671,6 +1674,9 @@
         anchorButtons.forEach((button) => {
           const active = button && button.__novaflowCanvasResizeAnchor === anchor
           if (!button || !button.style) return
+          button.setAttribute('aria-pressed', String(active))
+          const names={ 'top-left':'左上',top:'顶部居中','top-right':'右上',left:'左侧居中',center:'居中',right:'右侧居中','bottom-left':'左下',bottom:'底部居中','bottom-right':'右下' }
+          button.setAttribute('aria-label', '定位：'+names[button.__novaflowCanvasResizeAnchor])
           button.textContent = anchorCellLabel(button.__novaflowCanvasResizeAnchor)
           button.style.background = '#3a3a3a'
           button.style.backgroundColor = '#3a3a3a'
@@ -4076,6 +4082,7 @@
   }
 
   function restoreSplitLayerHistorySnapshot(snapshot, message) {
+    invalidateArtAgentWorkspace()
     if (!snapshot || !Array.isArray(snapshot.parts)) return Promise.resolve(false)
     state.parts = normalizeSpineLayerOrder(cloneSplitLayerHistoryValue(snapshot.parts))
     state.activePartId = snapshot.activePartId || (state.parts[0] && state.parts[0].id) || ''
@@ -4345,6 +4352,7 @@
   }
 
   async function importSourceDataUrl(fileName, dataUrl, options = {}) {
+    invalidateArtAgentWorkspace()
     const src = String(dataUrl || '')
     if (!/^data:image\//i.test(src)) {
       setMessage('请置入 PNG / JPG / WEBP 原图', true)
@@ -4398,6 +4406,7 @@
   }
 
   async function importSourceFile(file) {
+    invalidateArtAgentWorkspace()
     if (!file || !isSourceImageFile(file)) {
       setMessage('请导入 PNG / JPG / WEBP 原图', true)
       render()
@@ -4581,6 +4590,7 @@
   }
 
   function notifySourceResourceChange(type, resource) {
+    invalidateArtAgentWorkspace()
     sourceResourceSubscribers.forEach((listener) => {
       try { listener(sourceResourceChangePayload(type, resource)) } catch {}
     })
@@ -4635,6 +4645,7 @@
   
 
   function activateSourceResource(id, options = {}) {
+    invalidateArtAgentWorkspace()
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const resource = sourceResourceList().find((item) => item && item.id === id)
     if (!resource || !resource.dataUrl) return false
@@ -4790,6 +4801,7 @@
         return false
       }
       if (options.importToken != null && options.importToken !== sourceImportToken) return false
+      if (typeof options.isCurrent === 'function' && options.isCurrent() !== true) return false
       const size = sourceImportSizeFromImage(img, { width: 1, height: 1 })
       const resource = appendSourceResource({
         fileName: String(fileName || '').trim() || 'source.png',
@@ -4832,6 +4844,7 @@
   }
 
   async function importSourceDataUrl(fileName, dataUrl, options = {}) {
+    invalidateArtAgentWorkspace()
     return await addSourceDataUrlResource(fileName, dataUrl, options)
   }
 
@@ -5016,6 +5029,7 @@
   }
 
   async function importSourceFile(file) {
+    invalidateArtAgentWorkspace()
     if (isUiLayerProjectImportFile(file)) {
       try {
         if (file.size > 32 * 1024 * 1024) throw new Error('旧图层项目超过32MB')
@@ -5309,7 +5323,7 @@
     }
   }
 
-  async function executeCanvasResizeTool() {
+  async function executeCanvasResizeTool(agentSize) {
     if (state.busy) return
     if (!state.source || !state.source.dataUrl) {
       setMessage('请先导入原图', true)
@@ -5317,7 +5331,8 @@
       return
     }
     const currentSize = await sourceSize()
-    const raw = await showCanvasResizeDialog(currentSize, { title: '画布扩展', primaryLabel: '执行扩展' })
+    if(agentSize&&(!Number.isInteger(agentSize.width)||!Number.isInteger(agentSize.height)||agentSize.width<1||agentSize.height<1||agentSize.width>8192||agentSize.height>8192||!['top-left','top','top-right','left','center','right','bottom-left','bottom','bottom-right'].includes(agentSize.anchor||'center')))throw Error('画布扩展参数无效')
+    const raw = agentSize || await showCanvasResizeDialog(currentSize, { title: '画布扩展', primaryLabel: '执行扩展' })
     if (raw == null) return
     let delta = null
     try {
@@ -5457,7 +5472,9 @@
   //   * TextEncodeQwenImage21 rounds its reference to multiples of 32, so the pad is extended
   //     right/bottom to 32 and the result is cropped back to the requested size
   //   * no LoRA, no shift, cfg 1, 25 steps: the same schedule as the other 2.1 graphs
-  function imageOutpaintPromptText() {
+  function imageOutpaintPromptText(options = {}) {
+    const intent=String(options.prompt||'').trim()
+    if(intent)return [intent,'仅填补新扩展的灰色空白区域，不保留灰色占位边条。使新增内容与原图的背景、画风、光照和透视连续衔接。原有画面和主体的位置、形状、颜色保持不变，不添加无关的新主体。'].join(' ')
     return [
       'The image is a picture whose canvas has been enlarged; the flat grey border is empty new canvas.',
       'Paint the grey border so the picture continues seamlessly into it: extend the scene, ground, background and any cut-off figure naturally, with the same art style, colors, lighting, perspective and level of detail.',
@@ -5470,7 +5487,7 @@
   function buildQwenImageOutpaintWorkflow(info, imageName, prefix, delta, options = {}) {
     const required = ['LoadImage', 'ImagePadForOutpaint', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'ImageCrop', 'SaveImage']
     const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行无限扩图。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试')
+    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行无限扩图。请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试')
     const side = (value) => Math.max(0, Math.round(Number(value) || 0))
     const pad = { left: side(delta && delta.left), top: side(delta && delta.top), right: side(delta && delta.right), bottom: side(delta && delta.bottom) }
     const output = options.safeSize || null
@@ -5493,7 +5510,7 @@
           clip: ['5', 0],
           vae: ['6', 0],
           resolution: 0,
-          prompt: imageOutpaintPromptText(),
+          prompt: imageOutpaintPromptText(options),
           negative_prompt: '',
           'images.image_1': ['2', 0]
         })
@@ -5721,6 +5738,7 @@
     syncSplitGlobalBusyOverlay()
     try {
       const rawResult = await runQwenImageOutpaint(dataUrl, fileName, plan.delta, nextSize, {
+        prompt: request.prompt,
         requestedSize: targetSize,
         safeSize: nextSize,
         optimized: false
@@ -5939,7 +5957,7 @@
   function buildImageAngleAdjustWorkflow(info, imageName, options = {}) {
     const required = ['LoadImage', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行角度调整。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试')
+    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行角度调整。请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试')
     const horizontalAngle = normalizeImageAngleHorizontal(options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options.zoom)
@@ -7235,7 +7253,7 @@
 
   function missingSeedVr2NodeMessage(missing) {
     const list = Array.isArray(missing) && missing.length ? missing.join(', ') : 'SeedVR2'
-    return '算力节点缺少高清放大组件，请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试'
+    return '算力节点缺少高清放大组件，请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试'
   }
 
   function missingSeedVr2ModelMessage(modelName) {
@@ -7897,7 +7915,7 @@
     // A node that cannot build the 2.1 graph is an error, never a silent run on another model.
     const requiredNodes = ['LoadImage', 'NovaFlowGGUFBF16Loader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = requiredNodes.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${featureName}。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试`)
+    if (!runtime) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${featureName}。请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试`)
     return { engine: 'qwen-2.1', unetName: runtime.unetName, clipName: runtime.clipName, vaeName: runtime.vaeName, loraName: '' }
   }
 
@@ -7978,33 +7996,63 @@
     return window.NovaFlowQwen21Turbo.apply(workflow)
   }
 
+  let objectTransferXiaotaoOutcomeUnknown = false
   async function objectTransferSceneArtStyleText(sceneCanvas) {
-    // Qwen Image Edit does not infer image 2's style and apply it to image 1. Measured 2026-09-17 on four
-    // scenes rebuilt from one picture: handed the scene as a reference the object came back unrendered in
-    // four cases out of five, and nothing in the graph fixed it — not the prompt wording, not swapping
-    // which reference the scene is, not cfg 1 -> 2.5, not 6 -> 8 steps. Handed the SAME style as text it
-    // rendered all four correctly. So the style is read out as words here, by the local Qwen3-VL the
-    // prompt assistant already ships, and passed into the prompt alongside the picture itself: the words
-    // are what makes it change at all, the picture is what keeps it faithful to this particular scene.
-    // Best effort on purpose. Without the words the pass still runs and still matches a scene that is
-    // already close to the object's own rendering, which is every result this feature was tuned on.
-    const api = window.electronAPI
-    if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return ''
+    const api = window.electronAPI, tool = objectTransferState(), scene = state.source
+    const useXiaotao = tool.useXiaotaoStyle === true, cutout = tool.referenceCutoutDataUrl, placement = [tool.x, tool.y, tool.scale]
+    const legacyFailure = () => {
+      if (typeof window.confirm === 'function' && window.confirm('画风分析未完成。将继续使用场景参考图，是否按原流程继续？')) return ''
+      throw new Error('已取消对象迁移：画风分析未完成。')
+    }
+    if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') {
+      if (useXiaotao) throw new Error('小桃画风分析不可用，未继续生成。')
+      return legacyFailure()
+    }
     try {
       setSplitBusyDetail('正在读取画面的画风...')
-      const result = await api.promptAssistantDescribeArtStyle({ name: 'scene.png', dataUrl: sceneCanvas.toDataURL('image/png') })
-      const style = String(result && result.style || '').trim()
-      state.lastProcessingDebug = {
-        ...(state.lastProcessingDebug || {}),
-        objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyle: style.slice(0, 400) }
+      let payload = { name: 'scene.png', dataUrl: sceneCanvas.toDataURL('image/png') }
+      if (useXiaotao) {
+        if (objectTransferXiaotaoOutcomeUnknown) throw new Error('上次在线请求账单待核对，请先查看账单，勿重复提交。')
+        const controller = window.NovaFlowXiaotaoArtAgent?.panel?.controller, selection = controller?.businessModelSnapshot?.()
+        const owner = api.captureFoartBillingOwner?.(), sessionGuard = api.captureFoartSessionGuard?.()
+        if (!selection || !['api', 'local'].includes(selection.provider) || !selection.modelId || !owner?.current?.() || typeof sessionGuard !== 'function' || !sessionGuard() ||
+            (selection.provider === 'api' && typeof controller?.recordBusinessBillingNotice !== 'function') || typeof window.crypto?.randomUUID !== 'function')
+          throw new Error('小桃模型或登录状态不可用，未继续生成。')
+        const current = () => { try {
+          const now = controller.businessModelSnapshot()
+          return state.busy && state.busyAction === 'objectTransfer' && state.source === scene && objectTransferState() === tool && tool.useXiaotaoStyle === true &&
+            tool.referenceCutoutDataUrl === cutout && [tool.x, tool.y, tool.scale].every((v, i) => v === placement[i]) &&
+            window.NovaFlowXiaotaoArtAgent?.panel?.controller === controller && owner.current() && sessionGuard() &&
+            now?.provider === selection.provider && now?.modelId === selection.modelId && now?.epoch === selection.epoch
+        } catch { return false } }
+        const ask = (text) => current() && typeof window.confirm === 'function' && window.confirm(text)
+        payload = { ...payload, requestId: window.crypto.randomUUID(), purpose: 'style', assistantSelectionScope: 'xiaotao',
+          assistantProvider: selection.provider, assistantModelId: selection.modelId, assistantSelectionEpoch: selection.epoch, isInputCurrent: current }
+        if (selection.provider === 'local') {
+          payload.confirmNodeUpload = async ({ nodeName, nodeIdSuffix, count, retentionHours }) => ask(`将 ${count} 张场景图发送至当前账号所属节点 ${nodeName || ''} ${nodeIdSuffix || ''} 的任务目录分析。默认约 ${retentionHours} 小时后清理，节点离线或任务仍活动时可能延后。确认继续？`)
+        } else {
+          payload.confirmImageUpload = async ({ count }) => ask(`将 ${count} 张场景图发送给所选在线模型 ${selection.modelId} 分析。确认上传？`)
+          payload.onPricingQuote = (quote) => setSplitBusyDetail(`小桃预估 ${quote.estimatedCredits} 积分，等待确认`)
+          payload.confirmPricingQuote = async (quote) => ask(`使用 ${selection.modelId} 分析画风，预估 ${quote.estimatedCredits} 积分；${controller.onlineOperationMinimumConfirmed?.() ? '成功操作最低 1 积分，' : ''}最终按实际用量结算。预估不是上限，实际扣分可能高于预估。确认继续？`)
+          payload.onBillingNotice = (notice) => controller.recordBusinessBillingNotice(notice, { selection, owner, sessionGuard })
+        }
+        const result = await api.promptAssistantDescribeArtStyle(payload)
+        if (result?.billingUnknown || result?.errorCode === 'billing-record-unavailable') objectTransferXiaotaoOutcomeUnknown = true
+        if (!current()) throw new Error('模型、账号或素材已变化，未继续生成；如已提交请核对账单。')
+        if (!result?.ok || !String(result.style || '').trim()) throw new Error(result?.error || '小桃画风分析未完成，未继续生成。')
+        const style = String(result.style).trim()
+        state.lastProcessingDebug = { ...(state.lastProcessingDebug || {}), objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyle: style.slice(0, 400) } }
+        return style
       }
+      const result = await api.promptAssistantDescribeArtStyle(payload)
+      const style = result?.ok === false ? '' : String(result?.style || '').trim()
+      if (!style) return legacyFailure()
+      state.lastProcessingDebug = { ...(state.lastProcessingDebug || {}), objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyle: style.slice(0, 400) } }
       return style
     } catch (error) {
-      state.lastProcessingDebug = {
-        ...(state.lastProcessingDebug || {}),
-        objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyleError: String(error && error.message || error).slice(0, 300) }
-      }
-      return ''
+      state.lastProcessingDebug = { ...(state.lastProcessingDebug || {}), objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyleError: String(error && error.message || error).slice(0, 300) } }
+      if (useXiaotao || /已取消对象迁移/.test(String(error?.message || ''))) throw error
+      return legacyFailure()
     }
   }
 
@@ -8540,6 +8588,7 @@
 
   function resolveInpaintWorkflowRoute(mode, provider) {
     const normalizedMode = normalizeSelectionInpaintMode(mode)
+    if (provider === 'qwen-rapid-aio-nsfw-v20' || provider === 'rapid-aio-nsfw') throw new Error('原 NSFW 修图模型已退役，请重新开启当前 NSFW 开关')
     // 去除物体 has two engines, both pasted back as a replacement layer. With the box empty it is Flux Fill
     // + removal LoRA, which needs no instruction. With something written in it (斧头, 肩甲…) it is the 2.1
     // whole-picture edit (the 局部编辑 graph, mode 'edit') told what to remove. Measured 2026-09-27: told
@@ -8567,7 +8616,7 @@
         outputMode: 'replacement'
       }
     }
-    const rapidAioNsfwRequested = provider === true || provider === 'qwen-rapid-aio-nsfw-v20' || provider === 'rapid-aio-nsfw'
+    const qwen21NsfwRequested = provider === true || provider === 'qwen-2.1-nsfw-lora'
     // 智能补图 + FLUX: Flux Fill for structure a split layer barely shows (a limb hidden behind another).
     // Same canvases and merge as the 2.1 completion; only the graph differs (buildFluxCompletionWorkflow).
     if (normalizedMode === 'completion' && provider === FLUX_COMPLETION_PROVIDER) {
@@ -8582,12 +8631,12 @@
         flux: true
       }
     }
-    if (selectionInpaintNsfwAvailable(normalizedMode) && rapidAioNsfwRequested) {
+    if (selectionInpaintNsfwAvailable(normalizedMode) && qwen21NsfwRequested) {
       return {
         mode: normalizedMode,
-        provider: 'qwen-rapid-aio-nsfw-v20',
-        label: 'Qwen Rapid AIO NSFW V20',
-        workflow: 'rapid-aio-nsfw',
+        provider: 'qwen-2.1-nsfw-lora',
+        label: 'Qwen 2.1 + NSFW LoRA',
+        workflow: 'qwen',
         outputMode: 'patch',
         qwenControlMode: normalizedMode === 'edit' ? 1 : 2,
         editV5: normalizedMode === 'edit',
@@ -8616,6 +8665,14 @@
       qwenControlMode: 2,
       v4: true
     }
+  }
+
+  function currentInpaintRoute(route, mode, provider) {
+    if (route && (route.workflow === 'rapid-aio-nsfw' || route.provider === 'qwen-rapid-aio-nsfw-v20' || route.provider === 'rapid-aio-nsfw')) throw new Error('原 NSFW 修图模型已退役，请重新开启当前 NSFW 开关')
+    if (route && (route.nsfw === true || route.provider === 'qwen-2.1-nsfw-lora')) {
+      if (route.nsfw !== true || route.provider !== 'qwen-2.1-nsfw-lora' || route.workflow !== 'qwen' || !selectionInpaintNsfwAvailable(route.mode)) throw new Error('NSFW 修图路线无效，请重新开启开关')
+    }
+    return route || resolveInpaintWorkflowRoute(mode, provider)
   }
 
   function lowerBodyInpaintContext(part, crop) {
@@ -8813,7 +8870,7 @@
     return `The first image is a picture. The second image marks one area in white. Inside the white area only: ${user} Blend the change naturally into the surrounding picture with the same art style, line art, lighting, colors and perspective, and keep everything outside the white area exactly as it is.`
   }
 
-  function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize, promptParts, seed) {
+  function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize, promptParts, seed, loraState) {
     // Both modes show the model the undug crop everywhere (it has to see what it is changing or
     // continuing) and put that same crop back under any pixel 2.1 leaves transparent. A page older than
     // the node sends no undug crop and falls back to the dug plate; the prompt still follows the mode.
@@ -8943,7 +9000,14 @@
       nextId += 1
     }
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
-    return window.NovaFlowQwen21Turbo.apply(workflow)
+    const result = window.NovaFlowQwen21Turbo.apply(workflow)
+    if (loraState) {
+      const lora = window.NovaFlowArtGenerateLora
+      if (!lora || typeof lora.apply !== 'function' || typeof lora.validate !== 'function') throw new Error('LoRA 模块未就绪，未提交修图任务')
+      lora.apply(result, loraState)
+      lora.validate(result, info)
+    }
+    return result
   }
 
   // --- 智能补图 + FLUX (Flux Fill) ------------------------------------------------------------
@@ -8985,7 +9049,7 @@
   function buildFluxCompletionWorkflow(info, imageName, maskName, prefix, options = {}) {
     const required = ['LoadImage', 'ImageToMask', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'CLIPTextEncode', 'ConditioningZeroOut', 'FluxGuidance', 'InpaintModelConditioning', 'DifferentialDiffusion', 'KSampler', 'VAEDecode', 'SaveImage']
     const missing = required.filter((name) => !info || !info[name])
-    if (missing.length) throw new Error('当前算力节点缺少补图所需的组件。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试')
+    if (missing.length) throw new Error('当前算力节点缺少补图所需的组件。请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试')
     const unetName = requireComfyChoice(info.UNETLoader, 'unet_name', 'fill-dev-OneReward-fp8.safetensors', 'Flux Fill UNET')
     const vaeName = requireComfyChoice(info.VAELoader, 'vae_name', 'ae.safetensors', 'Flux VAE')
     const clipName1 = requireComfyChoiceFrom(info.DualCLIPLoader, 'clip_name1', 'clip_l.safetensors', 'Flux CLIP-L')
@@ -9020,7 +9084,7 @@
   }
 
   async function defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
-    const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
+    const route = currentInpaintRoute(options && options.route, options && options.inpaintMode, options && options.inpaintProvider)
     const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
     if (route.provider === FLUX_COMPLETION_PROVIDER) return buildFluxCompletionWorkflow(info, imageName, maskName, prefix, options || {})
     const qwen21 = qwen21Runtime(info)
@@ -9028,7 +9092,7 @@
     // 局部编辑 and 智能补图 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
     // every node carries it.
     const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
-    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补图'}。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试`)
+    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补图'}。请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试`)
     if (wantsQwen21) {
       // 局部编辑 draws a new seed per run (a rerun gives another result); 智能补图 keeps INPAINT_COMPLETION_SEED.
       const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed)))
@@ -9037,6 +9101,15 @@
       setInpaintDebugAttr('workflow-mode', normalizeSelectionInpaintMode(options && options.inpaintMode))
       setInpaintDebugAttr('workflow-provider', route.provider)
       setInpaintDebugAttr('workflow-prompt-head', String(promptText || '').slice(0, 1000))
+      let loraState = null
+      const manualLoras = Array.isArray(options && options.loras) ? options.loras : []
+      if (route.nsfw === true || manualLoras.length) {
+        const lora = window.NovaFlowArtGenerateLora
+        if (!lora || typeof lora.verifiedNsfwName !== 'function' || typeof lora.effectiveSelection !== 'function') throw new Error('LoRA 模块未就绪，未提交修图任务')
+        loraState = {provider:'local',mode:'img2img',nsfw:false,nsfwLoraEnabled:route.nsfw === true,loras:manualLoras}
+        if (route.nsfw === true) loraState.nsfwLoraName = lora.verifiedNsfwName(info)
+      }
+      const workflow = buildQwen21InpaintWorkflow(info, qwen21, imageName, maskName, prefix, promptText, route, options && options.latentInputName || '', options && options.inputSize, options && options.promptParts, seed, loraState)
       state.lastProcessingDebug = {
         ...(state.lastProcessingDebug || {}),
         qwenInpaint: {
@@ -9044,41 +9117,19 @@
           unet: qwen21.unetName,
           clip: qwen21.clipName,
           vae: qwen21.vaeName,
-          loras: [],
+          loras: loraState ? window.NovaFlowArtGenerateLora.effectiveSelection(loraState) : [],
           steps: QWEN21_STEPS,
           seed,
           provider: route.provider
         }
       }
-      return buildQwen21InpaintWorkflow(info, qwen21, imageName, maskName, prefix, promptText, route, options && options.latentInputName || '', options && options.inputSize, options && options.promptParts, seed)
+      return workflow
     }
     throw new Error(`未知的补图模式：${route.mode}`)
   }
 
   async function defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
-    const api = window.NovaFlowSplitInpaintNsfwWorkflow
-    if (!api || typeof api.assertRuntimeSupport !== 'function' || typeof api.buildWorkflow !== 'function') {
-      throw new Error('Foart NSFW 修图工作流未加载，请刷新应用后重试')
-    }
-    const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, true)
-    const info = await comfyAllObjectInfo(baseUrl)
-    const support = api.assertRuntimeSupport(info)
-    const fixedSeed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : null
-    const seed = fixedSeed != null ? fixedSeed : route.mode === 'completion' ? INPAINT_COMPLETION_SEED : Math.floor(Math.random() * 1000000000)
-    const workflow = api.buildWorkflow({
-      runtimeInfo: info,
-      mode: route.mode,
-      imageName,
-      maskName,
-      prefix,
-      prompt: promptText,
-      seed
-    })
-    setInpaintDebugAttr('workflow-mode', route.mode)
-    setInpaintDebugAttr('workflow-provider', route.provider)
-    setInpaintDebugAttr('workflow-model', support.checkpointName)
-    setInpaintDebugAttr('workflow-prompt-head', String(promptText || '').slice(0, 1000))
-    return workflow
+    throw new Error('原 NSFW 修图模型已退役，请重新开启当前 NSFW 开关')
   }
 
 
@@ -9165,12 +9216,20 @@
     return workflow
   }
 
+  // A distinct builder and worker capability prevent older nodes from
+  // interpreting this switch as the retired Rapid AIO route.
+  async function defaultQwenLoraInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
+    const route = currentInpaintRoute(options && options.route, options && options.inpaintMode, options && options.inpaintProvider)
+    if (route.nsfw !== true || route.provider !== 'qwen-2.1-nsfw-lora' || route.workflow !== 'qwen') throw new Error('NSFW LoRA 编辑路由无效，未提交任务')
+    return await defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, { ...(options || {}), route })
+  }
+
   async function defaultAiRetouchWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
-    const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
+    const route = currentInpaintRoute(options && options.route, options && options.inpaintMode, options && options.inpaintProvider)
     // Removal and Rapid AIO never report an engine; without this they would inherit the last Qwen run's.
     setInpaintDebugAttr('workflow-engine', '')
     if (route.workflow === 'removal') return await defaultRemovalInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options || {})
-    if (route.workflow === 'rapid-aio-nsfw') return await defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, { ...(options || {}), route })
+    if (route.nsfw === true) return await defaultQwenLoraInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, { ...(options || {}), route })
     return await defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, { ...(options || {}), route })
   }
 
@@ -9245,8 +9304,8 @@
     // The options are sent on as task parameters, so the latent image travels as an upload and only
     // its name goes into them.
     const { latentInputDataUrl, ...initialOptions } = options || {}
-    const initialRoute = initialOptions.route || resolveInpaintWorkflowRoute(initialOptions.inpaintMode, initialOptions.inpaintProvider)
-    const workflowText = initialRoute.workflow === 'rapid-aio-nsfw'
+    const initialRoute = currentInpaintRoute(initialOptions.route, initialOptions.inpaintMode, initialOptions.inpaintProvider)
+    const workflowText = initialRoute.nsfw === true
       ? ''
       : (customAiWorkflowEnabled('inpaint') ? String(localStorage.getItem(INPAINT_WORKFLOW_KEY) || '').trim() : '')
     const runWithRoute = async (dataUrl, route, prefixSuffix) => {
@@ -11958,7 +12017,7 @@
     debug.status = 'timeout'
     debug.durationMs = Date.now() - start
     state.lastProcessingDebug = debug
-    throw new Error('拆图执行超过 30 分钟，请重启 Foart 算力助手后重试')
+    throw new Error('拆图执行超过 30 分钟，请重启 Foart后重试')
   }
 
   // The See-through split graph. The desktop page builds it against the local runtime; the Web build
@@ -12238,6 +12297,7 @@
     uiLayerProjectListeners.forEach(listener => { try { listener(event) } catch {} })
   }
   async function importUiLayerProject(value, options = {}) {
+    invalidateArtAgentWorkspace()
     const project = value?.uiLayerProject || value
     const key = JSON.stringify(project)
     let pending = uiLayerProjectImports.get(key)
@@ -12327,6 +12387,7 @@
     finally { if (uiLayerMutation === token) uiLayerMutation = null; syncSplitWorkspace(); emitUiLayerState() }
   }
   async function ensureUiLayerSet() {
+    invalidateArtAgentWorkspace()
     let set = activeSplitSet()
     if (set && set.sourceResourceId === state.activeSourceResourceId) {
       if (state.activeSplitSetId !== set.id) activateSplitSet(set.id)
@@ -12343,6 +12404,7 @@
     return set
   }
   async function commitUiLayerParts(set, parts, selectedId) {
+    invalidateArtAgentWorkspace()
     set.parts = normalizeSpineLayerOrder(parts).map(normalizeLayerRecord)
     state.activeSplitSetId = set.id; state.parts = set.parts; state.activePartId = selectedId || ''; state.selectedPartIds = selectedId ? [selectedId] : []; state.viewMode = 'parts'; set.expanded = true
     normalizeSelection(); await refreshSplitPreview(); syncActiveSplitSet(); render(); updatePreviewOverlay(); syncSplitWorkspace(); emitUiLayerState()
@@ -12447,6 +12509,7 @@
     const before = state.splitSets
     const next = before.filter((set) => !!set.uiLayerProject || normalizeSpineLayerOrder(set && set.parts || []).length > 0)
     if (next.length === before.length) return false
+    invalidateArtAgentWorkspace()
     before.filter(set => !next.includes(set)).forEach(set => { set.parts = []; notifyUiLayerProjectChange(set) })
     state.splitSets = next
     const retainedIds = new Set(next.map((set) => String(set && set.id || '')))
@@ -12887,6 +12950,7 @@
   }
 
   function adoptSplitSetForParts(set) {
+    invalidateArtAgentWorkspace()
     if (!set) return false
     state.splitSets.forEach((item) => { item.expanded = item.id === set.id })
     state.activeSplitSetId = set.id
@@ -12897,6 +12961,7 @@
   }
 
   function registerSplitSet(options = {}) {
+    invalidateArtAgentWorkspace()
     state.splitRunCounter += 1
     const id = `split_set_${Date.now()}_${state.splitRunCounter}`
     state.splitSets.forEach((set) => { set.expanded = false })
@@ -12918,6 +12983,7 @@
   }
 
   function activateSplitSet(id) {
+    invalidateArtAgentWorkspace()
     const set = state.splitSets.find((item) => item.id === id)
     if (!set) return
     if (set.sourceResourceId && set.sourceResourceId !== state.activeSourceResourceId) {
@@ -13011,6 +13077,7 @@
   }
 
   function toggleSplitSet(id) {
+    invalidateArtAgentWorkspace()
     if (isSplitEditToolActive()) return
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const set = state.splitSets.find((item) => item.id === id)
@@ -13534,14 +13601,16 @@
     render()
   }
 
-  async function exportForAgent(format='psd') {
+  async function exportForAgent(format='psd',deliverFile) {
     if(!['psd','png','layer','json'].includes(format))throw new Error('不支持的导出格式')
     const result=await getUiLayerExport(format),blob=await dataUrlToBlob(result.dataUrl)
     const fileName=format==='psd'?`${String(state.source?.fileName||'spine_layers').replace(/\.[^/.]+$/g,'')}_layers.psd`:result.name
     if(!blob.size)throw new Error('文件为空，未导出')
-    const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),10000)
-    setMessage('已导出文件：'+fileName);render();syncSplitWorkspace()
-    return {fileName,bytes:blob.size}
+    let delivered
+    if(typeof deliverFile==='function')delivered=await deliverFile({name:fileName,blob})
+    else{const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),10000)}
+    setMessage('已发起文件下载：'+fileName);render();syncSplitWorkspace()
+    return {...delivered,fileName,bytes:blob.size,format,downloadInitiated:true,saved:false}
   }
 
   async function exportPsd() {
@@ -16633,8 +16702,7 @@
 
   // Hover text of the two model switches: what each is for, then its state.
   function selectionInpaintNsfwTitle(enabled) {
-    return `NSFW：适合补画或修改裸露、成人内容；普通内容保持关闭效果更好。
-当前：${enabled ? '已开启' : '已关闭'}`
+    return `在当前 Qwen 2.1 Turbo 编辑底模添加指定 LoRA，不切换底模；需要支持此功能且安装兼容 LoRA 的算力节点。当前：${enabled ? '已开启' : '已关闭'}`
   }
 
   function selectionInpaintFluxTitle(enabled) {
@@ -21336,6 +21404,7 @@
   // Where a result lands is decided by its input, never by whichever card happens to be expanded:
   // a layer-born result stays in that layer's card, a 原图-born one goes to that source's own card.
   function prepareSourceOriginSplitSet(options = {}) {
+    invalidateArtAgentWorkspace()
     syncActiveSplitSet()
     const existing = sourceToolSplitSetForCurrentResource()
     if (existing) {
@@ -22759,7 +22828,7 @@
     // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
     // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
     resolved = objectTransferUsableRuntime(resolved) || resolveQwen21EditRuntime(info, '特效提取')
-    if (!info || !info.GetImageSize || !info.EmptyImage) throw new Error('当前算力节点缺少 GetImageSize / EmptyImage 节点，无法执行特效提取。请检查 Foart 算力助手的生成服务和运行日志，确认模型及组件就绪后重试')
+    if (!info || !info.GetImageSize || !info.EmptyImage) throw new Error('当前算力节点缺少 GetImageSize / EmptyImage 节点，无法执行特效提取。请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试')
     // image_1 is a pure black canvas the size of the plate (so the sampled latent is the plate's grid and
     // the result lands back on the crop), image_2 the plate itself, each at its own size (resolution 0;
     // the plate is 32-aligned, so it is never resampled). The sampler runs on the encoder's latent at
@@ -28861,6 +28930,7 @@
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
         button('\u91cd\u7f6e', () => resetObjectTransferPlacement(size), false),
         button('\u9000\u51fa', () => stopObjectTransferEdit(), false, { [TOOL_ACTION_ATTR]: 'objectTransferExit' }),
+        button(objectTransferState().useXiaotaoStyle ? '小桃画风分析：开' : '小桃画风分析：关', () => { if (!state.busy) { objectTransferState().useXiaotaoStyle = !objectTransferState().useXiaotaoStyle; render(); syncSplitWorkspace() } }, objectTransferState().useXiaotaoStyle === true, { title: '使用小桃当前所选大脑分析画风，在线会先确认报价与图片上传' }),
         h('span', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, color: error ? 'rgba(252,165,165,0.96)' : 'rgba(230,230,230,0.72)', display: 'inline-flex', alignItems: 'center', padding: '0 9px', fontSize: '11px', fontWeight: '600', maxWidth: '420px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, error || '\u62d6\u52a8\u4e3b\u4f53\u5b9a\u4f4d\uff0c\u6eda\u8f6e\u6216\u53f3\u4e0b\u89d2\u7b49\u6bd4\u7f29\u653e')
       ]),
       h('div', Object.assign(splitCanvasPanHandlers(), { onwheel: handleSplitCanvasWheel, style: transparentEditCanvasStyle({ width: '100%', height: '100%', minHeight: 0, overflow: 'auto', borderRadius: '10px', border: '0', padding: '10px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: splitCanvasIdlePanCursor() }) }), art)
@@ -30589,6 +30659,7 @@
   }
 
   function moveSelectedLayersByKeyboard(visualDelta) {
+    invalidateArtAgentWorkspace()
     if (isSplitEditToolActive() || state.busy || selectedParts().some(part => part.locked)) return false
     normalizeSelection()
     const layerSet = activeLayerSetForKeyboardMove()
@@ -30640,6 +30711,7 @@
   }
 
   function activateSetAfterLayerMove(set, activePartId) {
+    invalidateArtAgentWorkspace()
     if (!set) return
     // A layer moved into another card that belongs to another 原图: open that 原图 too, or the card is
     // drawn in this frame. Reordering inside the open card while another picture is on screen keeps
@@ -31462,8 +31534,8 @@
   }
 
   function splitControlElementFromPoint(event) {
-    // An owned pose dialog covers these workspace hit boxes. Never click through it.
-    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
+    // Owned dialogs cover workspace hit boxes, including synthetic tool clicks.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"],[role="dialog"][aria-modal="true"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const x = Number(event.clientX)
     const y = Number(event.clientY)
@@ -31489,7 +31561,7 @@
     
     if (guardPendingSourceDataUrl(action)) return null
     if (action === 'split') return runSplit('parts')
-    if (action === 'canvasResize') return executeCanvasResizeTool()
+    if (action === 'canvasResize') return executeCanvasResizeTool(options.canvasResize)
     if (action === 'imageUpscale') return executeImageUpscaleTool()
     if (action === 'imageOutpaint') return executeImageOutpaintTool()
     if (action === 'imageAngleAdjust') return executeImageAngleAdjustTool()
@@ -31534,8 +31606,8 @@
   }
 
   function splitLayerCommandElementFromPoint(event) {
-    // An owned pose dialog covers these workspace hit boxes. Never click through it.
-    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
+    // Owned dialogs cover workspace hit boxes, including synthetic tool clicks.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"],[role="dialog"][aria-modal="true"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const panel = document.getElementById(RIGHT_WORKSPACE_ID)
     if (!panel) return null
@@ -31589,8 +31661,8 @@
   }
 
   function splitLayerRowElementFromPoint(event) {
-    // An owned pose dialog covers these workspace hit boxes. Never click through it.
-    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
+    // Owned dialogs cover workspace hit boxes, including synthetic tool clicks.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"],[role="dialog"][aria-modal="true"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const panel = document.getElementById(RIGHT_WORKSPACE_ID)
     if (!panel) return null
@@ -32154,8 +32226,8 @@
   }
 
   function splitSetToggleElementFromPoint(event) {
-    // An owned pose dialog covers these workspace hit boxes. Never click through it.
-    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
+    // Owned dialogs cover workspace hit boxes, including synthetic tool clicks.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"],[role="dialog"][aria-modal="true"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const panel = document.getElementById(RIGHT_WORKSPACE_ID)
     if (!panel) return null
@@ -32196,8 +32268,8 @@
   }
 
   function inpaintModeElementFromPoint(event) {
-    // An owned pose dialog covers these workspace hit boxes. Never click through it.
-    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
+    // Owned dialogs cover workspace hit boxes, including synthetic tool clicks.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"],[role="dialog"][aria-modal="true"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const x = Number(event.clientX)
     const y = Number(event.clientY)
@@ -32234,8 +32306,8 @@
   }
 
   function splitToolElementFromPoint(event) {
-    // An owned pose dialog covers these workspace hit boxes. Never click through it.
-    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
+    // Owned dialogs cover workspace hit boxes, including synthetic tool clicks.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"],[role="dialog"][aria-modal="true"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const x = Number(event.clientX)
     const y = Number(event.clientY)
@@ -36104,19 +36176,66 @@
   }
 
   window.NovaFlowSpineSplitBridge = {
+    agentTransferContext() {
+      const tool = state.objectTransfer
+      if (!tool?.active) return null
+      const size = sourceCanvasSizeSync()
+      return { active: true, referenceName: tool.referenceFileName, referenceWidth: tool.referenceWidth, referenceHeight: tool.referenceHeight, sourceWidth: size.width, sourceHeight: size.height, x: tool.x, y: tool.y, scale: tool.scale, bounds: objectTransferPlacementBounds(size), limits: objectTransferScaleLimits(size) }
+    },
+    agentPlaceTransfer(values) {
+      if (state.busy || !objectTransferReady()) throw new Error('请先在万物迁移中导入参考物并等待提取完成')
+      if (!values || Object.keys(values).some(key => !['x', 'y', 'scale'].includes(key)) || !['x', 'y', 'scale'].every(key => typeof values[key] === 'number' && Number.isFinite(values[key])) || values.scale <= 0) throw new Error('万物迁移位置或缩放无效')
+      const tool = objectTransferState(), before = { x: tool.x, y: tool.y, scale: tool.scale }, size = sourceCanvasSizeSync()
+      Object.assign(tool, values); clampObjectTransferPlacement(size)
+      refreshObjectTransferOverlay(size); patchSplitCanvasContentSignature(); syncSplitWorkspace()
+      return { phase: 'applied', previousPlacement: before, placement: this.agentTransferContext() }
+    },
+    agentSelectLayers(layerIds) {
+      if (state.busy || window.__NovaFlowArtGenerate?.state.running || isSplitEditToolActive()) throw new Error('已有美工编辑运行中，请先完成当前操作')
+      if (!Array.isArray(layerIds) || !layerIds.length || layerIds.length > 60 || new Set(layerIds).size !== layerIds.length || layerIds.some(id => !state.parts.some(part => part.id === id))) throw new Error('当前图层选择无效')
+      layerIds.forEach((id, index) => setLayerSelection(id, index ? {ctrlKey:true} : undefined))
+      if (state.selectedPartIds.length !== layerIds.length || layerIds.some(id => !state.selectedPartIds.includes(id))) throw new Error('图层选择未实际应用')
+      return {phase:'applied',selectedLayerIds:state.selectedPartIds.slice(),selectedLayerNames:state.selectedPartIds.map(id=>state.parts.find(part=>part.id===id)?.name || id)}
+    },
+    agentLayerAction({operation,layerId,name,visible} = {}) {
+      if (state.busy || window.__NovaFlowArtGenerate?.state.running || isSplitEditToolActive()) throw new Error('已有美工编辑运行中，请先完成当前操作')
+      const part = state.parts.find(item => item.id === layerId)
+      if (!part) throw new Error('当前图层不存在，未修改其他图层')
+      if (part.locked) throw new Error('图层已锁定，请先解锁')
+      if (operation === 'rename') {
+        if (typeof name !== 'string' || !name.trim() || name.length > 100) throw new Error('图层名称无效')
+        commitRenamePart(layerId, name)
+      } else if (operation === 'visibility') {
+        if (typeof visible !== 'boolean') throw new Error('图层可见性无效')
+        if ((part.visible !== false) !== visible) togglePartVisibility(layerId)
+      } else throw new Error('不支持的图层操作')
+      const actual = state.parts.find(item => item.id === layerId)
+      const expected = operation === 'rename' ? name.replace(/\s+/g, ' ').trim() : visible
+      if (!actual || (operation === 'rename' ? actual.name !== expected : (actual.visible !== false) !== expected)) throw new Error('图层操作未实际应用')
+      return {phase:'applied',operation,layerId,name:actual.name || actual.id,visible:actual.visible !== false}
+    },
     async agentAction(action, options={}) {
       const allowed=['split','canvasResize','imageUpscale','imageOutpaint','imageAngleAdjust','objectTransfer','cutout','generativeSplit','inpaintCompletion','inpaintEdit','inpaintRepair','penCutout','penFill','merge','mask','export','poseReference']
       if (!allowed.includes(action)) throw new Error('不支持的美工工具')
       if (state.busy || window.__NovaFlowArtGenerate?.state.running) throw new Error('已有制作任务运行中，未重复提交')
+      if(state.maskEditor?.active&&action!=='mask')throw new Error('请先应用或退出当前蒙版编辑，再运行其他美工操作')
       const source=state.source?.dataUrl, parts=(state.parts || []).map(p=>p.id+':'+p.dataUrl), resourceIds=getSourceResources().map(r=>r.id)
-      if(action==='export')await exportForAgent(options.format||'psd')
-      else await runSplitControlAction(action)
+      let exportResult = null
+      if(action==='export')exportResult=await exportForAgent(options.format||'psd',options.deliverFile)
+      else if(action==='imageOutpaint'&&options.canvasResize){
+        const size=await sourceSize(),target=options.canvasResize
+        const result=await outpaintImageDataUrl({dataUrl:source,fileName:state.source?.fileName||'source.png',sourceSize:size,targetSize:{width:target.width,height:target.height},anchor:target.anchor||'center',prompt:options.outpaintPrompt,confirm:false})
+        if(!result)throw new Error('原生无限扩图未返回实际结果')
+        if(state.source?.dataUrl!==source)throw new Error('扩图期间原图已变化，未覆盖当前图片')
+        await commitImageOutpaintResult(result.fileName,result.dataUrl,result.delta,{width:result.width,height:result.height})
+      }
+      else await runSplitControlAction(action, options)
       if (state.messageError) throw new Error(state.message || '美工工具未完成')
       const sourceChanged=source!==state.source?.dataUrl, layersChanged=parts.length!==(state.parts || []).length || parts.some((p,i)=>p!==state.parts[i]?.id+':'+state.parts[i]?.dataUrl)
       const addedResources=getSourceResources().filter(r=>!resourceIds.includes(r.id)).map(r=>({id:r.id,name:r.fileName || r.name || ''}))
-      const exported=action==='export'&&/^已导出(?: PSD|文件)[：:]/.test(String(state.message || ''))
-      const fileName=exported?String(state.message).replace(/^已导出(?: PSD|文件)[：:]\s*/,'').split(/[\\/]/).pop():''
-      return {ok:true,action,sourceChanged,layersChanged,resources:addedResources,...(fileName?{fileName}:{}),message:state.message || '',phase:sourceChanged || layersChanged || addedResources.length || exported?'completed':'returned'}
+      const exported=exportResult?.bytes>0&&exportResult.downloadInitiated===true
+      const fileName=exported?exportResult.fileName:''
+      return {ok:true,action,sourceChanged,layersChanged,resources:addedResources,...(fileName?{fileName,output:{name:fileName,...exportResult}}:{}),message:state.message || '',phase:state.maskEditor?.active||state.selectionTool?.active||state.penTool?.active||state.objectTransfer?.active?'opened':sourceChanged || layersChanged || addedResources.length || exported?'completed':'returned'}
     },
     supportsSilentSourceResourceRegistration: true,
     getUiLayerEditingSnapshot, subscribeUiLayerState, getUiLayerToolbarHost, addUiLayer, patchUiLayer, removeUiLayer, moveUiLayer, exportUiLayerProject, getUiLayerExport, regenerateUiLayer, cancelUiLayerGeneration,
@@ -36149,6 +36268,7 @@
     getResourceStoreSnapshot,
     getPreviewStateSnapshot,
     getCanvasExportSource: currentSplitCanvasExportSource,
+    getAgentWorkspaceRevision: () => artAgentWorkspaceRevision,
     getState() {
       return state
     }
@@ -36213,6 +36333,7 @@
     restoreOriginalRegionToOutpaintResult,
     getCanvasExportSource: currentSplitCanvasExportSource,
     setSource(fileName, dataUrl) {
+      invalidateArtAgentWorkspace()
       state.source = { fileName: fileName || 'source.png', dataUrl }
       state.sourceResources = []
       state.activeSourceResourceId = ''
@@ -36324,6 +36445,7 @@
       return cloneLastSmartCompleteStats()
     },
     setOptions(options) {
+      invalidateArtAgentWorkspace()
       if (options && typeof options === 'object') {
         if ('secondPassSplit' in options) state.secondPassSplit = false
         if ('includeFaceDetails' in options) state.includeFaceDetails = !!options.includeFaceDetails

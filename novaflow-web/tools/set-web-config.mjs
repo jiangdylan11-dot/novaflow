@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const INDEX = join(ROOT, 'web-dist/index.html');
+const EDITOR = join(ROOT, 'web-dist/editor.html');
 
 const BLOCK = /window\.NOVAFLOW_WEB_CONFIG = window\.NOVAFLOW_WEB_CONFIG \|\| \{[\s\S]*?\};/;
 
@@ -26,10 +27,11 @@ export function readConfig(html) {
   const control = /controlUrl:\s*"([^"]*)"/.exec(m[0]);
   const auth = /authUrl:\s*"([^"]*)"/.exec(m[0]);
   const knowledge=/artKnowledgeUrl:\s*"([^"]*)"/.exec(m[0]),enabled=/artKnowledgeEnabled:\s*(true|false)/.exec(m[0]);
-  return {controlUrl:control?control[1]:'',authUrl:auth?auth[1]:'',...(knowledge?{artKnowledgeUrl:knowledge[1]}:{}),...(enabled?{artKnowledgeEnabled:enabled[1]==='true'}:{})};
+  const qwenBusiness=/xiaotaoQwenBusinessEnabled:\s*(true|false)\b/.exec(m[0]);
+  return {controlUrl:control?control[1]:'',authUrl:auth?auth[1]:'',...(knowledge?{artKnowledgeUrl:knowledge[1]}:{}),...(enabled?{artKnowledgeEnabled:enabled[1]==='true'}:{}),...(qwenBusiness?{xiaotaoQwenBusinessEnabled:qwenBusiness[1]==='true'}:{})};
 }
 
-export function writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled }) {
+export function writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled, xiaotaoQwenBusinessEnabled }) {
   const m = BLOCK.exec(html);
   if (!m) throw new Error('the config block is not in web-dist/index.html - run the build first');
   const current = readConfig(html);
@@ -37,10 +39,11 @@ export function writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKno
   if (/\/functions\/v1\/novaflow-web\/?$/i.test(nextAuth)) throw new Error('账号认证地址不能指向算力控制函数 novaflow-web；请使用既有 novaflow-backend');
   const next =
     'window.NOVAFLOW_WEB_CONFIG = window.NOVAFLOW_WEB_CONFIG || {\n' +
-    '        controlUrl: "' + (controlUrl ?? current.controlUrl) + '",\n' +
+    '        controlUrl: '+JSON.stringify(controlUrl??current.controlUrl)+',\n' +
     '        authUrl: '+JSON.stringify(authUrl??current.authUrl)+
     ((artKnowledgeUrl??current.artKnowledgeUrl)!==undefined?',\n        artKnowledgeUrl: '+JSON.stringify(artKnowledgeUrl??current.artKnowledgeUrl):'')+
-    ((artKnowledgeEnabled??current.artKnowledgeEnabled)!==undefined?',\n        artKnowledgeEnabled: '+JSON.stringify(artKnowledgeEnabled??current.artKnowledgeEnabled):'')+'\n'+
+    ((artKnowledgeEnabled??current.artKnowledgeEnabled)!==undefined?',\n        artKnowledgeEnabled: '+JSON.stringify(artKnowledgeEnabled??current.artKnowledgeEnabled):'')+
+    ((xiaotaoQwenBusinessEnabled??current.xiaotaoQwenBusinessEnabled)!==undefined?',\n        xiaotaoQwenBusinessEnabled: '+JSON.stringify(xiaotaoQwenBusinessEnabled??current.xiaotaoQwenBusinessEnabled):'')+'\n'+
     '      };';
   return html.slice(0, m.index) + next + html.slice(m.index + m[0].length);
 }
@@ -74,11 +77,19 @@ if (invokedDirectly) {
     }
   }
 
+  const editorHtml = await readFile(EDITOR, 'utf8');
   const next = writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled });
+  const nextEditor = writeConfig(editorHtml, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled });
   await writeFile(INDEX, next, 'utf8');
+  await writeFile(EDITOR, nextEditor, 'utf8');
 
   // Read it back rather than trusting the write.
   const after = readConfig(await readFile(INDEX, 'utf8'));
+  const afterEditor = readConfig(await readFile(EDITOR, 'utf8'));
+  if (!afterEditor || JSON.stringify(afterEditor) !== JSON.stringify(after)) {
+    console.error('home and editor configuration do not match');
+    process.exit(1);
+  }
   console.log('controlUrl: ' + current.controlUrl + '  ->  ' + after.controlUrl);
   console.log('authUrl   : ' + current.authUrl + '  ->  ' + after.authUrl);
   if ((controlUrl && after.controlUrl !== controlUrl) || (authUrl && after.authUrl !== authUrl)) {

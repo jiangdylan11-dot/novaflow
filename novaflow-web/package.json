@@ -1,7 +1,7 @@
 {
   "name": "novaflow-web-workspace",
   "private": true,
-  "version": "2.0.241",
+  "version": "2.0.290",
   "type": "module",
   "description": "Foart website editor, compute-only assistant and administration.",
   "workspaces": [
@@ -33,6 +33,7 @@
     "verify:stable": "npm run verify:independent",
     "sync:edge": "node tools/sync-edge-function.mjs",
     "check:edge": "node tools/sync-edge-function.mjs --check",
+    "check:legacy-ai": "node tools/sync-legacy-ai-server-v3.mjs --check",
     "sync:backend-shared": "node tools/sync-novaflow-backend-shared.mjs",
     "check:backend-shared": "node tools/sync-novaflow-backend-shared.mjs --check",
     "test:redaction": "node tests/e2e/workflow-redaction.test.mjs",
@@ -48,7 +49,10 @@
     "verify:independent": "node tools/check-independent-workspace.mjs",
     "admin:start": "npm --prefix admin start",
     "admin:build": "npm --prefix admin run build:win",
-    "deploy:control": "node tools/deploy-control-plane.mjs"
+    "deploy:control": "node tools/deploy-control-plane.mjs",
+    "deploy:companion": "node tools/deploy-companion.mjs",
+    "deploy:backend": "node tools/deploy-backend.mjs",
+    "deploy:site": "node tools/deploy-site.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

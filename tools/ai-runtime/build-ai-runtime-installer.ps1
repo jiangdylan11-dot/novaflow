@@ -1,12 +1,19 @@
 [CmdletBinding()]
 param(
-  [string] $RuntimeSourcePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime/package/AI-Runtime")),
-  [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime-Installer")),
+  [string] $RuntimeSourcePath = "",
+  [string] $OutputRoot = "",
   [string] $Version = "0.4.0",
-  [string] $CustomNodesSource = ""
+  [string] $CustomNodesSource = "",
+  [string] $QwenComponentSourcePath = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($RuntimeSourcePath)) {
+  $RuntimeSourcePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime/package/AI-Runtime"))
+}
+if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+  $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime-Installer"))
+}
 trap {
   Write-Host $_.Exception.Message
   exit 1
@@ -174,7 +181,61 @@ function New-ZipArchiveFromChildren {
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $setupSource = Join-Path $scriptRoot "installer\setup\NovaFlowRuntimeSetup.cs"
+$qwenSetupSource = Join-Path $scriptRoot "installer\setup\QwenComponentInstaller.cs"
 $readmeTemplate = Join-Path $scriptRoot "templates\README-AI-Runtime.txt"
+$qwenCudaInventory = Join-Path $scriptRoot 'manifests\qwen-ollama-v0.40.13-cuda12.inventory.json'
+$qwenCudaInventoryHash = 'a373ca561ed777def31d0e350ed75343b7f284edb1f0fa342480df2df389183c'
+
+function Copy-QwenCudaInventory {
+  param([Parameter(Mandatory=$true)][string] $Destination)
+  if (-not (Test-Path -LiteralPath $qwenCudaInventory -PathType Leaf) -or
+      (Get-FileHash -LiteralPath $qwenCudaInventory -Algorithm SHA256).Hash.ToLowerInvariant() -ne $qwenCudaInventoryHash) {
+    throw 'Pinned Qwen CUDA inventory is missing or has changed.'
+  }
+  $target = Join-Path $Destination 'QWEN-CUDA12-INVENTORY.json'
+  Copy-Item -LiteralPath $qwenCudaInventory -Destination $target
+  if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() -ne $qwenCudaInventoryHash) {
+    throw 'Copied Qwen CUDA inventory failed verification.'
+  }
+}
+
+if ($QwenComponentSourcePath) {
+  if (-not $PSBoundParameters.ContainsKey('OutputRoot')) { throw 'The component candidate requires a new explicit OutputRoot.' }
+  $componentOutput = Convert-ToFullPath $OutputRoot
+  if (Test-Path -LiteralPath $componentOutput) { throw 'Component OutputRoot must not exist.' }
+  $source = Convert-ToFullPath $QwenComponentSourcePath
+  if (-not (Test-Path -LiteralPath $qwenSetupSource -PathType Leaf)) { throw 'Missing Qwen installer source.' }
+  . (Join-Path $scriptRoot 'qwen-runner-component.ps1')
+  $inventory = Join-Path $source 'QWEN-RUNNER-INVENTORY.json'
+  $inventoryHash = 'b6f573fbd0a7487610b345e1b390f3629fb9d482f9c4a3ac651bca6f7c52d26e'
+  $null = Test-QwenRunnerOfficialInventory -Root $source -InventoryPath $inventory -TrustedInventorySHA256 $inventoryHash -Profile cpu
+  $null = Test-QwenRunnerCpuNotices -NoticesRoot (Join-Path $source 'third-party-notices')
+  New-Item -ItemType Directory -Path $componentOutput | Out-Null
+  Copy-QwenCudaInventory -Destination $componentOutput
+  $componentDir = Join-Path $componentOutput 'component'
+  $null = Copy-QwenRunnerCpuCandidate -Root $source -InventoryPath $inventory -TrustedInventorySHA256 $inventoryHash -NoticesRoot (Join-Path $source 'third-party-notices') -Destination $componentDir
+  $setupExe = Join-Path $componentOutput 'setup.exe'
+  $csc = Find-CSharpCompiler
+  & $csc /nologo /target:winexe /optimize+ /out:$setupExe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Runtime.Serialization.dll $setupSource $qwenSetupSource
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $setupExe -PathType Leaf)) { throw 'Component setup compile failed.' }
+  $launcher = @'
+@echo off
+setlocal
+set "RUNTIME=%ProgramData%\NovaFlow\AI-Runtime"
+if not "%~1"=="" set "RUNTIME=%~1"
+echo Installing the verified Qwen CPU component to: "%RUNTIME%"
+echo This does not change model settings or install model weights.
+"%~dp0setup.exe" --install-qwen-component --runtime "%RUNTIME%" --component "%~dp0component"
+if errorlevel 1 (echo Component installation failed. Existing runtime was not replaced.& exit /b 1)
+echo Component installed or already present. Qwen configuration is unchanged.
+exit /b 0
+'@
+  Set-Content -LiteralPath (Join-Path $componentOutput 'install-qwen-component.cmd') -Value $launcher -Encoding ASCII
+  $manifest = [ordered]@{schema='foart.qwen-component-distribution.v1';component='ollama-v0.40.13';profile='cpu';includesModels=$false;changesConfiguration=$false;inventorySha256=$inventoryHash;setupSha256=(Get-QwenRunnerFileHash $setupExe);files=29;notices=4}
+  $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $componentOutput 'distribution-manifest.json') -Encoding UTF8
+  Write-Output ('Component candidate created: ' + $componentOutput)
+  return
+}
 
 if (-not (Test-Path -LiteralPath $setupSource)) {
   throw "Setup source was not found: $setupSource"
@@ -214,6 +275,7 @@ if (Test-Path -LiteralPath $zipPath) {
 
 New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $releaseRuntimeRoot | Out-Null
+Copy-QwenCudaInventory -Destination $releaseRoot
 
 Write-Host "Copying Runtime package..."
 Copy-DirectoryContents -Source $RuntimeSourcePath -Destination $runtimeDest
@@ -283,7 +345,7 @@ Copy-Item -LiteralPath (Join-Path $scriptRoot "templates\MODELS-AI-Runtime.txt")
 
 Write-Host "Compiling WinForms setup.exe..."
 $csc = Find-CSharpCompiler
-& $csc /nologo /target:winexe /optimize+ /out:$setupExe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll $setupSource
+& $csc /nologo /target:winexe /optimize+ /out:$setupExe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Runtime.Serialization.dll $setupSource $qwenSetupSource
 if ($LASTEXITCODE -ne 0) {
   throw "csc failed with exit code $LASTEXITCODE"
 }

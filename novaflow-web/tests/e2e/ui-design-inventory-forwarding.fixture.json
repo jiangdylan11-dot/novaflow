@@ -1,0 +1,30 @@
+{
+  "provenance": {
+    "newLivePlanner": true,
+    "pageEndToEnd": false,
+    "modelType": "qwen3_vl_8b_abliterated_nf4",
+    "referenceSHA256": "10bbc98d7587e6b2a694626e6c380c508ef162cadb812ec92b6d5aaea1cd11ef",
+    "originalPrompt": "参考@参考图1的布局，换一个中国风主题的老虎机",
+    "rawResponseSHA256": "803df865e65a6b2e51ce26a486f83ace7519c0b6cb87b385a2a7b84670607379"
+  },
+  "prompt": "@参考图1将图1的老虎机界面整体换为中国风主题，保留原有布局结构与功能分区：顶部三档奖励栏（MAJOR/MEGA/MINOR）保持原位与数值，中部5x4网格保留原有符号排列与WILD/SCATTER标识，底部功能栏（BUY FREE GAMES、TOTAL WIN、下注控件、操作按钮）维持原顺序与相对位置。顶部三列火车头替换为中式蒸汽机车造型，车头装饰龙纹与铜铃，车轮为雕花铁艺，车体镀金与朱砂红渐变，背景改为水墨山水与云纹卷轴，天空为暖橙与靛蓝渐变。网格内所有符号替换：K/A/J/Q替换为篆体汉字，火车头变中式机车，矿车变竹编货箱，头盔变官帽，镐头变铜凿，灯笼变红灯笼，宝石变翡翠玉牌，WILD变玉玺，SCATTER变铜钱阵，矿工变身着青衫戴斗笠的采玉匠。底部功能栏按钮替换：sound变铜铃图标，quick spin变转轮轴，auto play变自动卷轴，menu变卷帘门，背景木纹变雕花楠木，按钮边框变回纹边框，金额数字变楷体。整体色调：主色朱砂红与金箔，强调色靛蓝与墨绿，明暗对比拉大，主体高光金属反光，背景哑光宣纸质感，翡翠与玉牌高光，灯笼与铜钱带暖光晕。",
+  "uiPlan": {
+    "version": 1,
+    "layoutMode": "preserve",
+    "layoutReference": 1,
+    "visualMode": "theme-redesign",
+    "references": [
+      {
+        "index": 1,
+        "role": "layout"
+      }
+    ],
+    "layoutChanges": [],
+    "preserve": [
+      "顶部三档奖励栏位置与数值",
+      "中部5x4网格符号排列与WILD/SCATTER标识",
+      "底部功能栏顺序与相对位置"
+    ],
+    "grids": []
+  }
+}

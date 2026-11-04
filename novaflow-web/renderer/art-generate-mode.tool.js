@@ -215,7 +215,7 @@
       if (fields.has('steps') && typeof options.renderSampling === 'function') nodes.push(options.renderSampling('steps', mode))
       if (fields.has('cfg') && typeof options.renderSampling === 'function') nodes.push(options.renderSampling('cfg', mode))
       if (fields.has('seed')) nodes.push(options.renderSeedToggle())
-      if (fields.has('nsfw') && options.nsfwSwitch) nodes.push(options.nsfwSwitch)
+      if (fields.has('nsfwLora') && options.nsfwSwitch) nodes.push(options.nsfwSwitch)
       if (options.accelerationSwitch) nodes.push(options.accelerationSwitch)
       return nodes
     }

@@ -181,7 +181,19 @@
   }
 
   function activate() {
-    installStyle()
+    // Xiaotao reads native output metadata; it never treats a click as a result.
+  ;(window.NovaFlowProductionTools ||= {})['spine_atlas'] = {
+    snapshot: () => ({ name: 'spine_atlas', active: state.active, busy: state.processing || state.exporting,
+      items: state.images.map(item => ({ id: item.id, name: item.name, status: item.status,
+        output: item.result ? { id: item.id, name: item.result.fileName || item.result.name || item.name,
+          bytes: item.result.blob?.size || item.result.bytesOut || item.result.bytes?.length || 0,
+          keptOriginal: !!item.result.keptOriginal } : null })),
+      atlases: (state.resultAtlases || []).map(item => ({name: item.fileName, bytes: new TextEncoder().encode(item.text || '').length})) }),
+    run: processAll, export: exportAll, addFiles,
+    files: () => [...state.images.filter(item => item.result).map(item => ({ id: item.id, name: item.result.fileName || item.name, blob: item.result.blob, url: item.result.url })),...state.resultAtlases.map((item,i)=>({id:'atlas-'+i,name:item.fileName,blob:new Blob([item.text],{type:'text/plain'})}))]
+  }
+
+  installStyle()
     state.active = true
     nativeWorkspaces = findWorkspaces()
     nativeWorkspaces.forEach((workspace) => workspace.style.setProperty('visibility', 'hidden', 'important'))

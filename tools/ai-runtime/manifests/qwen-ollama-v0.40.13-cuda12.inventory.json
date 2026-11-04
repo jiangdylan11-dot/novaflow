@@ -1,0 +1,26 @@
+{
+  "schema": "nf.qwen-runner.cuda12-inventory.v1",
+  "component": "ollama-v0.40.13-cuda12",
+  "target": "windows-x86_64",
+  "sourceURL": "https://github.com/ollama/ollama/releases/download/v0.40.13/ollama-windows-amd64.zip",
+  "archiveSHA256": "7afa38624fa62ee5d8293422d0ab084c1bb4603134c7f4dafce11a033b57cc19",
+  "includesModels": false,
+  "redistributionApproved": false,
+  "gpuExecutionApproved": true,
+  "files": [
+    {"path":"concrt140.dll","bytes":311688,"sha256":"744d671bd459f4366049599fa2d537430f7029d28e325c8ca7847e1701fcd87f"},
+    {"path":"cublas64_12.dll","bytes":113720712,"sha256":"28391f523602bd03a93923351e8de0f34d7eb84ef3920bf27056805b97af47d0"},
+    {"path":"cublasLt64_12.dll","bytes":692449672,"sha256":"6dcee84481613e6a2c05f765531374c56a34c709bdf6398756630f7aaf5d35d0"},
+    {"path":"cudart64_12.dll","bytes":582024,"sha256":"9e464633d7d509b80f8b5a404cd67c726410aea24cf1881208bf3c708da8c29f"},
+    {"path":"ggml-cuda.dll","bytes":369344392,"sha256":"7a9ed369d3824cc8292e40f4126f1d81cd1b0f332c237a7c67b40948ee59ac72"},
+    {"path":"msvcp140.dll","bytes":545160,"sha256":"e4a57fdd394bfe7e65b7e519707f871bf376eb19420a7a2b277b08cd81ff2858"},
+    {"path":"msvcp140_1.dll","bytes":23432,"sha256":"a5398de3247395681d3a136f3ca59e99f0702152ffb6d5a37ff69fa168cbb247"},
+    {"path":"msvcp140_2.dll","bytes":267656,"sha256":"ccf26082a1080852ae8d16c0222f7058c5abc6adaf54877e4df9fc3385c7b42d"},
+    {"path":"msvcp140_atomic_wait.dll","bytes":37768,"sha256":"8fe79aee4c0d99dd57784528594d7741b0d0eeaf4d01e6f01f0bebfb8a8cc544"},
+    {"path":"msvcp140_codecvt_ids.dll","bytes":19336,"sha256":"f9191e0f1afa87813dbbaac3f09ca720ab2d58a999f5224936e5207c41a73e31"},
+    {"path":"vccorlib140.dll","bytes":339848,"sha256":"fabfd82c1da45378f4b83358afefe57a7aa9dc6d207606e6b70ad32549cd2e25"},
+    {"path":"vcruntime140.dll","bytes":112008,"sha256":"eca9f0b4cfce3f35ca91b31855a66a7026b08b0a9cacccdf0f4fa4525dcdafca"},
+    {"path":"vcruntime140_1.dll","bytes":37256,"sha256":"d732e3972807628a1e55b52852341799f10f2a019b05a139e39013e33f809f72"},
+    {"path":"vcruntime140_threads.dll","bytes":25992,"sha256":"134e4155aa87001040e7b619a1265c81b04876104e2051f18e4bdb17ba44e0f8"}
+  ]
+}

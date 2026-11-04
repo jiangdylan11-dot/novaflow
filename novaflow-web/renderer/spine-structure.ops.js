@@ -1293,91 +1293,6 @@
     return { json: tidy(json), owner: owner ? owner.name : null }
   }
 
-  /**
-   * Several images become ONE skin placeholder: each skin shows its own image,
-   * switching skin switches the picture. Works on plain images and on the
-   * per-image placeholders older batches produced (every skin holding a copy).
-   * A skin already holding only that image keeps it, then a skin whose name or
-   * trailing number matches, then skins in order; missing skins are created.
-   */
-  function mergeIntoPlaceholder(input, items, options) {
-    const json = prepare(input)
-    if (!Array.isArray(items) || items.length < 2) fail('至少选择两张图片')
-    const others = () => json.skins.filter((s) => s.name !== 'default')
-    const rows = items.map(({ slot, name }) => {
-      requireSlot(json, slot)
-      const held = json.skins.filter((s) => s.attachments[slot] && s.attachments[slot][name])
-      if (!held.length) fail(`找不到附件：${slot} / ${name}`)
-      const real = held.find((s) => s.attachments[slot][name].type !== 'linkedmesh')
-      if (!real) fail('链接网格要从它的原网格转')
-      const att = real.attachments[slot][name]
-      if (['clipping', 'boundingbox', 'path'].includes(att.type)) fail(`此附件类型不能做皮肤占位符：${name}`)
-      return { slot, name, att: clone(att), image: att.path || att.name || name, held: held.filter((s) => s.name !== 'default').map((s) => s.name) }
-    })
-    const slot = rows[0].slot
-    const prefix = rows.map((r) => r.name).reduce((a, b) => { let i = 0; while (i < a.length && a[i] === b[i]) i++; return a.slice(0, i) })
-    const target = String((options && options.name) || prefix.replace(/[\s_.\/-]*\d*$/, '') || slot).trim()
-    const merged = new Set(rows.filter((r) => r.slot === slot).map((r) => r.name))
-    for (const s of json.skins) if (s.attachments[slot] && s.attachments[slot][target] && !merged.has(target)) fail(`插槽里已有：${target}`)
-    const tail = (t) => { const m = /(\d+)\D*$/.exec(String(t)); return m ? Number(m[1]) : null }
-    const taken = new Map(), rest = new Set(rows)
-    const give = (skin, row) => { taken.set(skin, row); rest.delete(row) }
-    for (const r of rows) if (r.held.length === 1 && !taken.has(r.held[0])) give(r.held[0], r)
-    for (const r of [...rest]) {
-      const skin = others().find((s) => !taken.has(s.name) && (s.name === r.name || (tail(s.name) !== null && tail(s.name) === tail(r.name))))
-      if (skin) give(skin.name, r)
-    }
-    for (const r of [...rest]) {
-      const skin = others().find((s) => !taken.has(s.name))
-      if (skin) give(skin.name, r)
-    }
-    const created = []
-    for (const r of [...rest]) {
-      const skinName = uniqueName(new Set(json.skins.map((s) => s.name)), r.name, true)
-      json.skins.push({ name: skinName, attachments: {} }); created.push(skinName); give(skinName, r)
-    }
-    const gone = (s, n) => rows.some((r) => r.slot === s && r.name === n)
-    for (const s of json.skins) for (const r of rows) {
-      const map = s.attachments[r.slot]
-      if (map) { delete map[r.name]; if (!Object.keys(map).length) delete s.attachments[r.slot] }
-    }
-    for (const r of rows) setEmptyPlaceholders(json, r.slot, emptyPlaceholders(json, r.slot).filter((n) => n !== r.name))
-    const skinOfRow = new Map([...taken].map(([skin, row]) => [row, skin]))
-    for (const [skinName, r] of taken) {
-      const s = findSkin(json, skinName)
-      s.attachments[slot] = s.attachments[slot] || {}
-      const att = r.att; if ((att.type || 'region') !== 'linkedmesh') att.path = r.image
-      delete att.name
-      s.attachments[slot][target] = att
-    }
-    forEachAttachment(json, (a, at) => {
-      if (a && a.type === 'linkedmesh' && gone(at.slot, a.parent)) { const row = rows.find((r) => r.slot === at.slot && r.name === a.parent); a.parent = target; a.skin = skinOfRow.get(row) }
-    })
-    for (const r of rows) {
-      const s = findSlot(json, r.slot)
-      if (s && s.attachment === r.name) { if (r.slot === slot) s.attachment = target; else delete s.attachment }
-    }
-    for (const anim of Object.values(json.animations)) {
-      for (const r of rows) {
-        const keys = anim.slots && anim.slots[r.slot] && anim.slots[r.slot].attachment
-        if (Array.isArray(keys)) for (const k of keys) if (k.name === r.name) k.name = r.slot === slot ? target : null
-        if (!anim.deform) continue
-        for (const skinKeys of Object.values(anim.deform)) {
-          const d = skinKeys[r.slot] && skinKeys[r.slot][r.name]
-          if (!d) continue
-          delete skinKeys[r.slot][r.name]
-          if (!Object.keys(skinKeys[r.slot]).length) delete skinKeys[r.slot]
-          const owner = skinOfRow.get(r)
-          anim.deform[owner] = anim.deform[owner] || {}
-          anim.deform[owner][slot] = anim.deform[owner][slot] || {}
-          anim.deform[owner][slot][target] = d
-        }
-      }
-    }
-    return { json: tidy(json), slot, placeholder: target, created, skins: Object.fromEntries([...taken].map(([k, r]) => [k, r.image])), firstSkin: [...taken.keys()][0] }
-  }
-
-  /** Convert the whole selection atomically, preserving the selected non-default skin. */
   function convertToPlaceholders(input, items, options) {
     let json = prepare(input)
     if (!Array.isArray(items) || !items.length) fail('\u8bf7\u5148\u9009\u62e9\u9644\u4ef6')
@@ -2940,7 +2855,7 @@
     createSkin, renameSkin, deleteSkin, deleteSkins, copyAttachmentToSkin, duplicateAttachment, hasDeformKeys,
     createEvent, setEventProps, renameEvent, deleteEvent, keyEvent, setSkinMembership,
     // skin placeholders
-    isPlaceholder, placeholderList, addPlaceholder, fillPlaceholder, clearPlaceholder, convertToPlaceholder, convertToPlaceholders, mergeIntoPlaceholder, deletePlaceholder, exportable,
+    isPlaceholder, placeholderList, addPlaceholder, fillPlaceholder, clearPlaceholder, convertToPlaceholder, convertToPlaceholders, deletePlaceholder, exportable,
     // constraints
     createIk, createTransform, createPathConstraint, transformOffsets, autoOrderConstraints, setConstraintProps, renameConstraint, deleteConstraint,
     // helpers

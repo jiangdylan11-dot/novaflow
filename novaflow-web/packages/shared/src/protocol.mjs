@@ -188,7 +188,14 @@ export const MATTING_TASK_TYPE = 'video_matting';
 // one uploaded JSON file and the reply comes back as one output file.
 export const PROMPT_ASSISTANT_TASK_TYPE = 'prompt_assistant';
 export const PROMPT_ASSISTANT_MODEL_ID = 'prompt-assistant';
-export const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style', 'art-agent-chat']);
+// A separate scheduler capability; legacy Next nodes cannot claim Qwen work.
+export const PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID = 'qwen3.5-9b-heretic';
+// Distinct scheduler capability: chat-ready older nodes cannot claim business tasks.
+export const PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY = 'qwen3.5-9b-heretic-business-v1';
+// Reserved for a future owner-bound candidate-only route; not advertised or enabled.
+export const PROMPT_ASSISTANT_QWEN_ROTATION_CANDIDATE_SCOPE = 'qwen-foart-rotation-candidate-v1';
+export const PROMPT_ASSISTANT_QWEN_ROTATION_CANDIDATE_CAPABILITY = 'qwen3.5-9b-heretic-foart-rotation-candidate-v1';
+export const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style', 'rewrite-audio-prompt', 'art-agent-chat']);
 export const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
 export const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
 

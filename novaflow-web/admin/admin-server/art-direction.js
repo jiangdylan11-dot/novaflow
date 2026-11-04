@@ -1,2 +1,2 @@
 'use strict';
-module.exports = require('../../../supabase/functions/novaflow-backend/art-direction.mjs');
+module.exports = require('./art-direction.generated.cjs');

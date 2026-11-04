@@ -14,15 +14,17 @@
 // desktop's order: refuse while a task runs, ask ComfyUI to unload, run the
 // script, then stop it again so the next 绘图 has its memory back.
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { ART_EDIT_MODEL, isArtEditRequest, planArtEdit, peekArtStyleCache } from './art-edit-planner.mjs';
 import { planNaturalUiDraft } from './complete-ui-draft.mjs';
 import { planNativeUiDraft } from './native-ui-draft.mjs';
-import { planUiCatalog, cpuCatalog } from './ui-catalog-planner.mjs';
+import { planUiCatalog, cpuCatalog, probeUiCatalogCpu } from './ui-catalog-planner.mjs';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStrataPromptAssistant, strataConfigPath as defaultStrataConfigPath, readStrataConfig } from './strata-prompt-assistant.mjs';
+import { createQwenPrivateInferenceBridge } from './qwen-private-inference-bridge.mjs';
 
 export const MODEL_TYPE = 'qwen3_vl_8b_abliterated_nf4';
 export const MODEL_DIR = 'Huihui-Qwen3-VL-8B-Instruct-Abliterated';
@@ -133,14 +135,14 @@ function failureMetadata(value) {
   }
   if (Number.isFinite(Number(source.retryCount))) metadata.retryCount = Math.max(0, Math.min(2, Math.trunc(Number(source.retryCount))));
   const inference = source.localInference;
-  if(inference?.analysisBackend==='strata' && Array.isArray(inference.requests) && inference.requests.length<=128) {
+  if(['strata','qwen-cpu'].includes(inference?.analysisBackend) && Array.isArray(inference.requests) && inference.requests.length<=128) {
     const requests=inference.requests.filter(item=>item && Number.isFinite(item.requestMs) && item.requestMs>=0).map(item=>({
       requestId:String(item.requestId || '').slice(0,240),model:String(item.model || '').slice(0,2000),requestMs:item.requestMs,
       finishReason:String(item.finishReason || '').slice(0,40),status:item.status==='completed'?'completed':'error',
       imageCount:Math.max(0,Math.min(16,Number(item.imageCount) || 0)),
       ...(item.usage && typeof item.usage==='object'?{usage:item.usage}:{})
     }));
-    metadata.localInference={analysisBackend:'strata',scope:'python-business-request',inferencePerformed:requests.length>0,
+    metadata.localInference={analysisBackend:inference.analysisBackend,scope:'python-business-request',inferencePerformed:requests.length>0,
       requestCount:requests.length,requestMs:requests.reduce((sum,item)=>sum+item.requestMs,0),requests};
   }
   return metadata;
@@ -240,6 +242,11 @@ export function normalizeOptimizeRequest(payload = {}) {
   const h3Duration = payload.durationSeconds ?? payload.duration_seconds ?? payload.duration;
   const h3VisualSchema = String(payload.visualSchema ?? payload.visual_schema ?? '').trim().slice(0, 80);
   const requestedSchema = String(payload.promptSchema ?? payload.prompt_schema ?? '').trim();
+  const nativeContract=payload.promptContract==='qwen21-native-rewrite-v3';
+  if(payload.promptContract!==undefined && (!nativeContract || (payload.assistantSelectionScope!==undefined && payload.assistantSelectionScope!=='xiaotao') ||
+    payload.assistantProvider!=='local' || payload.assistantModelId!=='qwen3.5-9b-heretic' || surface!=='art' || purpose!=='optimize' ||
+    payload.targetEngine!=='qwen-2.1' || payload.qwenPromptMode!=='txt2img' || payload.nsfw===true || !currentPrompt || negativePrompt.length>12000))
+    throw new Error('本地 Qwen 原生提示词优化范围无效');
   const promptSchema = surface === 'art' && purpose === 'optimize' && Boolean(currentPrompt) && requestedSchema === 'nf.art.prompt.v1' ? requestedSchema : '';
   const requestedDetail = String(payload.promptDetailMode ?? payload.prompt_detail_mode ?? '').trim();
   const promptDetailMode = promptSchema === 'nf.art.prompt.v1' && requestedDetail === 'simple-structured-v1'
@@ -259,6 +266,7 @@ export function normalizeOptimizeRequest(payload = {}) {
       requirements, surface, purpose, provider: 'local', currentPrompt,
       ...(surface==='art' && payload.targetEngine==='qwen-2.1' ? {targetEngine:'qwen-2.1',qwenPromptMode:payload.qwenPromptMode==='img2img'?'img2img':'txt2img'} : {}),
       ...(surface==='art' && payload.targetEngine==='qwen-2.1' && payload.agentModelLanguage==='en' ? {agentModelLanguage:'en'} : {}),
+      ...(nativeContract ? {promptContract:'qwen21-native-rewrite-v3'} : {}),
       ...(usesUiQwen ? { targetEngine:'qwen-2.1', supportsNegativePrompt:payload.supportsNegativePrompt !== false, uiDesignIntent:payload.uiDesignIntent, uiPreserveLayout:payload.uiPreserveLayout } : {}),
       ...(usesH3 ? { h3ReferenceFrames: h3ReferenceFrames(payload.h3ReferenceFrames, requirements) } : {}),
       ...(usesH3 && payload.h3Reverse === true ? { h3Reverse: true } : {}),
@@ -369,7 +377,27 @@ async function freeMemory(baseUrl, timeoutMs = 15000) {
   return first.status === 404 ? post('/api/free') : first;
 }
 
-export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend, strataConfigPath: suppliedStrataConfigPath, artLearning = null } = {}) {
+// Only the verified Qwen private Python bridge receives this narrow OS/runtime
+// environment. Do not pass API credentials, proxy credentials or arbitrary
+// interpreter settings from the worker environment to its child process.
+const QWEN_PYTHON_ENV_KEYS = new Set([
+  'PATH','PATHEXT','SYSTEMROOT','WINDIR','COMSPEC','TEMP','TMP',
+  'USERPROFILE','HOMEDRIVE','HOMEPATH','HOME','APPDATA','LOCALAPPDATA','PROGRAMDATA',
+  'CUDA_PATH','CUDA_VISIBLE_DEVICES','CUDA_DEVICE_ORDER','CUDA_MODULE_LOADING','CUDA_CACHE_PATH',
+  'NVIDIA_VISIBLE_DEVICES','LD_LIBRARY_PATH','LANG','LC_ALL'
+]);
+export function qwenBusinessPythonEnvironment(source = {}, overrides = {}) {
+  const result = {};
+  for (const entries of [source || {}, overrides || {}]) {
+    for (const [key, value] of Object.entries(entries)) {
+      const normalized = key.toUpperCase();
+      if (QWEN_PYTHON_ENV_KEYS.has(normalized) && typeof value === 'string') result[normalized] = value;
+    }
+  }
+  return result;
+}
+
+export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend, strataConfigPath: suppliedStrataConfigPath, artLearning = null, communityCpuTrialForDevelopment = false, qwenBusinessBridge = false, qwenBusinessTextOnly = false, qwenRotationCandidateEnabled = false, qwenPlanEnabled = false, qwenPlanVerificationEnabled = false, qwenImageEditEnabled = false, qwenSession = undefined, qwenBusinessReady: suppliedQwenBusinessReady = null } = {}) {
   const candidateConfigPath = suppliedStrataConfigPath || defaultStrataConfigPath(runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON);
   const candidateConfig = readStrataConfig(candidateConfigPath);
   const log = logger || (() => {});
@@ -385,7 +413,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   // Flash is selected it is a client of an already-owned session, never a
   // fallback that loads PE weights on its own.
   analysisBackend = selectedBackend;
-  let flashSession = null;
+  let flashSession = null, qwenBridge = null;
   let proc = null, startPromise = null, stopPromise = null, lease = null;
   let nextId = 1, buffer = '', stderrTail = [], pending = new Map();
   let lastError = '', lastWarning = '';
@@ -400,6 +428,13 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     const python = pythonPath || process.env.NOVAFLOW_PROMPT_ASSISTANT_PYTHON
       || [join(runtime.installPath, 'engine', 'python', 'python.exe')].find(existsSync) || 'python';
     if (analysisBackend === 'strata') {
+      if(flashSession?.identity?.id==='qwen35-heretic') {
+        const file=flashSession.identity.path || '',modelExists=isFile(file),serviceExists=isFile(script);
+        return {modelType:'qwen35_heretic_local',modelPath:file,modelFolderReady:modelExists,cachePath:'',cacheReady:false,
+          modelExists,serviceScript:script,serviceExists,pythonPath:python,comfyRoot:process.env.NOVAFLOW_COMFY_ROOT || join(runtime.installPath,'engine','ComfyUI'),
+          runtimeJsonPath:runtimeJson,enabled:modelExists&&serviceExists,runtimeStatus:lease?'推理中':modelExists?'模型可用':'未配置模型',
+          error:!serviceExists?'Prompt Assistant 服务脚本不存在':modelExists?lastError:'Qwen 本地模型尚未安装完整'};
+      }
       const files = candidateConfig?.modelFiles || [];
       const file = typeof files[0] === 'string' ? files[0] : files[0]?.path || '';
       const modelExists = files.length > 0 && files.every(item => isFile(typeof item === 'string' ? item : item.path));
@@ -445,6 +480,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
 
   function onStdout(text) {
     buffer += text;
+    if(buffer.length>72*1024*1024){lastError='本地推理通信超过上限';void stop();return;}
     let index = buffer.indexOf('\n');
     while (index >= 0) {
       const line = buffer.slice(0, index).trim();
@@ -452,6 +488,15 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       if (line) {
         try {
           const message = JSON.parse(line);
+          if(message?.type==='qwen-infer-v1') {
+            const owner=proc, session=flashSession;
+            if(!qwenBridge && owner && session?.identity?.id==='qwen35-heretic')qwenBridge=createQwenPrivateInferenceBridge({session,
+              isCurrent:id=>proc===owner && flashSession===session && pending.has(id) && Boolean(lease),
+              write:value=>owner.stdin.write(JSON.stringify(value)+'\n')});
+            if(!qwenBridge){lastError='本地推理通道未授权';void stop();return;}
+            void qwenBridge(message).catch(()=>{lastError='本地推理通道身份无效';void stop();});
+            index=buffer.indexOf('\n');continue;
+          }
           if (message && message.id !== undefined && pending.has(message.id)) {
             const item = pending.get(message.id);
             pending.delete(message.id);
@@ -478,20 +523,21 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       const child = spawn(cfg.pythonPath, [cfg.serviceScript], {
         cwd: dirname(cfg.serviceScript), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
         env: {
-          ...process.env, ...(env || {}), PYTHONIOENCODING: 'utf-8',
+          ...(flashSession?.identity?.id==='qwen35-heretic' ? qwenBusinessPythonEnvironment(process.env, env) : {...process.env, ...(env || {})}), PYTHONIOENCODING: 'utf-8',
           NOVAFLOW_RUNTIME_JSON: cfg.runtimeJsonPath, NOVAFLOW_COMFY_ROOT: cfg.comfyRoot,
           NOVAFLOW_PROMPT_ASSISTANT_COMFY_URL: String(comfyUrls[0]||'http://127.0.0.1:8188').replace(/\/+$/,''),
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: cfg.modelPath,
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE: cfg.modelType,
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH: cfg.cachePath,
-          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE: ['qwen35_pe_i2i','swift15_qwen38_flash_next_iq2_xs'].includes(cfg.modelType)?'0':'1',
+          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE: ['qwen35_pe_i2i','swift15_qwen38_flash_next_iq2_xs','qwen35_heretic_local'].includes(cfg.modelType)?'0':'1',
           ...(analysisBackend === 'strata' ? {
             NOVAFLOW_PROMPT_ASSISTANT_BACKEND:'strata',
-            NOVAFLOW_FLASH_BASE_URL:candidateConfig.baseUrl || 'http://127.0.0.1:8198',
+            ...(flashSession?.identity?.id==='qwen35-heretic'?{NOVAFLOW_QWEN_STDIO_BRIDGE:'v1'}:{NOVAFLOW_QWEN_STDIO_BRIDGE:''}),
+            NOVAFLOW_FLASH_BASE_URL:flashSession?.identity?.id==='qwen35-heretic'?'':candidateConfig?.baseUrl || 'http://127.0.0.1:8198',
             NOVAFLOW_FLASH_MODEL_ID:flashSession?.identity?.id || '',
-            NOVAFLOW_FLASH_MAX_TOKENS:String(candidateConfig.maxTokens || 4096),
-            NOVAFLOW_FLASH_REASONING_EFFORT:flashSession?.requestPolicy?.reasoningEffort || candidateConfig.reasoningEffort || 'low',
-            NOVAFLOW_FLASH_REASONING_BUDGET_TOKENS:String(flashSession?.requestPolicy?.reasoningBudgetTokens ?? candidateConfig.reasoningBudgetTokens ?? 1024)
+            NOVAFLOW_FLASH_MAX_TOKENS:String(flashSession?.identity?.id==='qwen35-heretic'?4096:candidateConfig?.maxTokens || 4096),
+            NOVAFLOW_FLASH_REASONING_EFFORT:flashSession?.identity?.id==='qwen35-heretic'?'none':flashSession?.requestPolicy?.reasoningEffort || candidateConfig?.reasoningEffort || 'low',
+            NOVAFLOW_FLASH_REASONING_BUDGET_TOKENS:String(flashSession?.identity?.id==='qwen35-heretic'?0:flashSession?.requestPolicy?.reasoningBudgetTokens ?? candidateConfig?.reasoningBudgetTokens ?? 1024)
           } : {})
         }
       });
@@ -547,7 +593,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
 
   function stop() {
     const child = proc;
-    proc = null; startPromise = null; buffer = '';
+    proc = null; startPromise = null; buffer = ''; qwenBridge=null;
     if (!child) return stopPromise || Promise.resolve('not-running');
     const exited = new Promise(resolvePromise => {
       const timer = setTimeout(() => resolvePromise('stop-timeout'), STOP_TIMEOUT_MS);
@@ -604,7 +650,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     const cfg = config();
     // Strata inference without an owned Flash session must not start the
     // Python service. UI CPU compilers do not come through this function.
-    if (analysisBackend === 'strata' && !flashSession && ['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle'].includes(command)) {
+      if (analysisBackend === 'strata' && !flashSession && ['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle','qwenImageEdit'].includes(command)) {
       return { ...publicConfig(cfg), ok: false, error: '本地 Flash 模型不可用，请安装本地 Flash 模型后重试', errorCode: 'flash-model-missing' };
     }
     if (!cfg.enabled) return { ...publicConfig(cfg), ok: false, error: cfg.error };
@@ -660,7 +706,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       // The agent already supplies the task and the original H3 protocol. Avoid
       // spending another 1024 reasoning tokens per optimization/translation;
       // keep the same writer, translator and validators.
-      flashSession = payload?.agentCompileForGeneration === true
+      flashSession = payload?.agentCompileForGeneration === true || payload?.promptContract==='qwen21-native-rewrite-v3'
         ? {...session,requestPolicy:{reasoningEffort:'none',reasoningBudgetTokens:0}} : session;
       try {
         return context.taskId ? await api.runForTask(context.taskId,method,payload,context) : await api[method](payload);
@@ -670,7 +716,9 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     get busy() { return Boolean(lease); },
     /** One request on behalf of a prompt_assistant pool task (worker-core). */
     async runForTask(taskId, method, payload, context = {}) {
-      if (!['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle', 'uiDesignCpu'].includes(String(method))) return invalid(new Error('未知的提示词助手操作'));
+      if (!['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle', 'uiDesignCpu','qwenImageEdit'].includes(String(method))) return invalid(new Error('未知的提示词助手操作'));
+      if(method==='qwenImageEdit' && (context.imageEditActor?.scope!=='qwen21-local-image-edit-v1' || context.imageEditActor?.taskId!==taskId || typeof context.imageEditPhaseVerifier!=='function' || typeof context.isCancelled!=='function'))
+        return invalid(new Error('参考图编辑缺少本人节点任务绑定'));
       ownTaskId = String(taskId || '');
       taskIsCancelled = typeof context.isCancelled === 'function' ? context.isCancelled : () => false;
       try { return await api[method](payload); }
@@ -684,6 +732,23 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       let normalized;
       try { normalized = normalizeOptimizeRequest(payload); } catch (error) { return invalid(error); }
       return requestWithCache('optimizePrompt', normalized.request, normalized.timeoutMs);
+    },
+    async qwenImageEdit(payload) {
+      if(!flashSession)return invalid(new Error('参考图编辑缺少本地模型租约'));
+      return request('qwenImageEdit',payload,900000);
+    },
+    async probeUiCpu() { const cfg=config(); if(!isFile(cfg.pythonPath) || !isFile(cfg.serviceScript)) return false; return probeUiCatalogCpu({python:cfg.pythonPath,serviceScript:cfg.serviceScript}); },
+    async uiPeSource(payload,context={}) {
+      if(payload?.surface!=='ui-design' || payload?.uiPlanner!=='native-catalog-v3' || payload?.uiAnalysisStage!=='source-only' || payload?.targetEngine!=='qwen-2.1' || payload?.uiDesignIntent!=='redesign' || payload?.uiPreserveLayout!==true) return invalid(new Error('Invalid UI PE source-only scope'));
+      if(lease) return {ok:false,errorCode:'prompt-assistant-busy',error:'UI analysis is busy'};
+      lease={command:'uiPeSource',startedAt:Date.now()};
+      try {
+        const cfg=config(),base=String(comfyUrls[0]||'').replace(/\/+$/,'');
+        if(!base || !await probeUiCatalogCpu({python:cfg.pythonPath,serviceScript:cfg.serviceScript})) throw Error('UI CPU or local Comfy runtime unavailable');
+        const data=await planNativeUiDraft({baseUrl:base,payload,isCancelled:()=>Boolean(context.isCancelled?.()),cpu:value=>cpuCatalog({python:cfg.pythonPath,serviceScript:cfg.serviceScript},value)});
+        return {ok:true,data};
+      } catch(error) {return {ok:false,errorCode:'ui-pe-source-failed',error:String(error?.message||error)};}
+      finally {lease=null;}
     },
     async uiDesignCpu(payload) {
       if (payload?.surface !== 'ui-design' || !['grok-vision-job','compile-grok-vision','native-ui-cloud','native-ui-compile'].includes(payload?.action)) return invalid(new Error('未知的 UI CPU 操作'));
@@ -780,6 +845,43 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     releaseRuntimes,
     stop
   };
+  // Pin all bytes except Python's equivalent CRLF/LF source line endings.
+  // Derive these hashes from the packaged source after CRLF -> LF conversion;
+  // BOM, lone CR, whitespace and every other byte remain security-relevant.
+  const expectedBridgeService='b06649f31d2a7905a6f4d8ac92c709002da9d768752966335457441a6d246f4e';
+  const expectedBridgeAdapter='ecb801bcf473bfd36f291a32fe882d586e2c9d0450d0c25a6981381f62f06014';
+  const fileDigest=file=>{
+    const input=readFileSync(file), normalized=Buffer.allocUnsafe(input.length);let used=0;
+    for(let i=0;i<input.length;i++)if(input[i]!==13 || input[i+1]!==10)normalized[used++]=input[i];
+    return createHash('sha256').update(normalized.subarray(0,used)).digest('hex');
+  };
+  const qwenBusinessReady = suppliedQwenBusinessReady || (() => {
+    try { const cfg=config(),adapter=join(dirname(cfg.serviceScript),'prompt_assistant','flash_adapter.py');
+      // All modules imported at service startup must be packaged alongside the
+      // bridge. A missing dependency must never advertise a usable node.
+      const pythonModules=['__init__.py','h3_prompt_enhance.py','art_prompt_contract.py',
+        'qwen3_vl_adapter.py','qwen21_prompt_policy.py','pe_adapter.py','visual_contract.py'];
+      const moduleDir=dirname(adapter);
+      return isFile(cfg.pythonPath) && isFile(cfg.serviceScript) && isFile(adapter)
+        && pythonModules.every(name=>isFile(join(moduleDir,name)))
+        && fileDigest(cfg.serviceScript)===expectedBridgeService && fileDigest(adapter)===expectedBridgeAdapter;
+    } catch { return false; }
+  });
+  // The opt-in contract is advertised only when the packaged policy itself is
+  // the exact version understood by this worker and its service bridge.
+  const qwenNativeReady = () => {
+    try {
+      const cfg=config(), moduleDir=join(dirname(cfg.serviceScript),'prompt_assistant');
+      return qwenBusinessReady()===true && fileDigest(cfg.serviceScript)===expectedBridgeService
+        && fileDigest(join(moduleDir,'flash_adapter.py'))===expectedBridgeAdapter
+        && fileDigest(join(moduleDir,'qwen21_prompt_policy.py'))==='9646f627a48c07066989d6086f2904c7ac469c89e8f60826240df61fc4379b4b'
+        && fileDigest(fileURLToPath(new URL('./local-model-selection.mjs',import.meta.url)))==='b4ae5e46438b8c704aff6e26281d1c522deb5dae32a04c993db1cc648a94111f';
+    } catch { return false; }
+  };
+  const qwenImageReady=()=>{try{return qwenNativeReady()===true && fileDigest(join(dirname(config().serviceScript),'prompt_assistant','qwen21_image_edit.py'))==='15df47b615b92c00e99bbd65ba3891556ae0602d6798200a70212efbdd5713e8';}catch{return false;}};
   return selectedBackend === 'strata' ? createStrataPromptAssistant({ worker, comfyUrls, configPath: candidateConfigPath,
-    normalizeOptimizeRequest, normalizeReverseRequest, legacyApi: api, logger, artLearning }) : api;
+    normalizeOptimizeRequest, normalizeReverseRequest, legacyApi: api, logger, artLearning, qwenBusinessBridge, qwenBusinessTextOnly, qwenSession, qwenBusinessReady, qwenNativeReady,qwenImageReady,
+    communityCpuTrialForDevelopment: communityCpuTrialForDevelopment===true,
+    qwenRotationCandidateEnabled: qwenRotationCandidateEnabled===true,
+    qwenPlanEnabled: qwenPlanEnabled===true, qwenPlanVerificationEnabled: qwenPlanVerificationEnabled===true,qwenImageEditEnabled:qwenImageEditEnabled===true }) : api;
 }

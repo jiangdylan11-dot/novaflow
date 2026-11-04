@@ -14,7 +14,12 @@ export function createRunningHubServerConfig({rpc,env}) {
       const row=Array.isArray(value)?value[0]:value;
       if(row && typeof row.api_key!=='string')throw Object.assign(new Error('服务器 RunningHub 配置格式无效'),{statusCode:503});
       snapshot=row || null;
-      return this.read();
+      // Bind the non-secret revision to the same refresh as these provider
+      // values, rather than reading mutable status after a concurrent refresh.
+      const current=this.read(),rev=row?.revision;
+      const valid=(typeof rev==='number' && Number.isSafeInteger(rev) && rev>0)
+        || (typeof rev==='string' && /^[1-9]\d{0,18}$/.test(rev));
+      return {...current,configRevision:valid?String(rev):null};
     },
     read() {
       return readRunningHubLlmConfig(name=>snapshot ? ({NOVAFLOW_RUNNINGHUB_API_KEY:snapshot.api_key,

@@ -184,6 +184,7 @@
         engine: record.engine,
         targetEngine: record.options.targetEngine,
         uiCatalogEnabled: record.options.uiCatalogEnabled === true,
+        foartUiContract: record.options.foartUiContract,
         generationIntent: record.options.generationIntent,
         preserveLayout: record.options.preserveLayout,
         provider: record.options.provider || record.options.state?.provider,

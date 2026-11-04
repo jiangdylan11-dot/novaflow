@@ -1,0 +1,35 @@
+const {app,BrowserWindow,session}=require('electron');
+const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
+app.disableHardwareAcceleration();
+(async()=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'foart-idle-test-'));
+  app.setPath('userData',path.join(dir,'profile'));
+  await app.whenReady();
+  session.defaultSession.webRequest.onBeforeRequest((details,callback)=>callback({cancel:!details.url.startsWith('file:')}));
+  const root=path.resolve(__dirname,'../..');
+  const js=await fs.readFile(path.join(root,'renderer/xiaotao-art-agent.js'),'utf8');
+  const css=await fs.readFile(path.join(root,'renderer/xiaotao-art-agent.css'),'utf8');
+  const html=path.join(dir,'index.html');
+  await fs.writeFile(html,`<!doctype html><style>${css}</style><script>
+    window.__idleSchedules=[];window.__chatRequests=0;
+    const nativeTimeout=window.setTimeout.bind(window),nativeInterval=window.setInterval.bind(window);
+    window.setTimeout=(fn,ms,...args)=>{if(ms===12000)window.__idleSchedules.push(['timeout',ms]);return nativeTimeout(fn,ms,...args)};
+    window.setInterval=(fn,ms,...args)=>{if(ms===300000)window.__idleSchedules.push(['interval',ms]);return nativeInterval(fn,ms,...args)};
+    window.electronAPI={promptAssistantGetStatus:async()=>({ok:true,result:{features:{qwen35CpuTrial:true}}}),artAgentChat:async()=>{window.__chatRequests++;return {ok:true,data:{reply:'ok'}}}};
+  </script><script>${js}</script>`);
+  const win=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
+  const run=code=>win.webContents.executeJavaScript(code);
+  await win.loadFile(html);
+  assert.deepEqual(await run('window.__idleSchedules'),[],'idle greeting timers must not be registered');
+  assert.equal(await run("document.querySelector('.nf-xiaotao-greeting')"),null,'idle greeting element must be absent');
+  assert.equal(await run('window.__chatRequests'),0,'mount must not send a chat request');
+  const pos=await run(`(()=>{const r=document.querySelector('.nf-xiaotao-robot').getBoundingClientRect();return {x:Math.round((r.left+r.right)/2),y:Math.round((r.top+r.bottom)/2)}})()`);
+  win.webContents.sendInputEvent({type:'mouseDown',x:pos.x,y:pos.y,button:'left',clickCount:1});
+  win.webContents.sendInputEvent({type:'mouseUp',x:pos.x,y:pos.y,button:'left',clickCount:1});
+  await new Promise(resolve=>setTimeout(resolve,100));
+  assert.equal(await run("document.querySelector('.nf-xiaotao-robot').getAttribute('aria-expanded')"),'true','user click must still open the assistant');
+  assert.equal(await run('window.__chatRequests'),0,'opening the panel must not send a chat request');
+  console.log('PASS: no idle greeting or greeting timers; user click opens assistant without sending a chat request');
+  win.destroy();app.exit(0);
+})().catch(error=>{console.error(error);app.exit(1)});
+setTimeout(()=>app.exit(2),30000).unref();

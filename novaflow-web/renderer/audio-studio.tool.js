@@ -121,6 +121,9 @@
   };
   let ui = null;
   let editor = null;
+  // Invalidates an unconfirmed text draft after leaving the workspace,
+  // switching mode, or selecting another board, including switch-back (ABA).
+  let textReviewEpoch = 0;
 
   // ---- rail cell ---------------------------------------------------------------
   function railEntry(label) {
@@ -283,6 +286,7 @@
   function activate(sub) {
     sub = sub === 'audio' || sub === 'video' ? sub : state.sub;
     if (state.active && state.sub === sub) return;
+    textReviewEpoch += 1;
     cancelPendingTeardown();
     state.active = true;
     state.sub = sub;
@@ -349,6 +353,7 @@
   }
   function deactivate(silent) {
     if (!state.active) return;
+    textReviewEpoch += 1;
     state.active = false;
     setAnimationSecondaryFlag();
     // leaving 音视 for 动画 itself: the pointerdown above already covers and switches
@@ -1170,6 +1175,7 @@
 
   function setMode(mode) {
     closeDropdown();
+    if (state.mode !== mode) textReviewEpoch += 1;
     state.mode = mode;
     ui.modeMusic.setAttribute('aria-pressed', String(mode === 'music'));
     ui.modeSfx.setAttribute('aria-pressed', String(mode === 'sfx'));
@@ -1394,6 +1400,7 @@
       dropPayload: (event) => readResourceDragId(event),
       resolveDrop: async (id) => {
         const local = state.resources.find((x) => x.id === id);
+        if(local&&(!assistantAudioVisible(local)||assistantAudioArtifacts.has(local)))return null;
         if (local && local.buffer) return { buffer: local.buffer, name: local.name, kind: local.kind, loopable: local.loopable };
         try {
           const res = await resourceAudio(id);
@@ -1414,7 +1421,9 @@
   }
   function switchBoard(index) {
     if (editor) editor.pause();
-    state.board = Math.max(0, Math.min(state.boards.length - 1, index));
+    const nextBoard = Math.max(0, Math.min(state.boards.length - 1, index));
+    if (state.boards[state.board] !== state.boards[nextBoard]) textReviewEpoch += 1;
+    state.board = nextBoard;
     state.boards.forEach((b, i) => { b.host.style.display = i === state.board ? 'block' : 'none'; });
     editor = state.boards[state.board].editor;
     if (ui.loop) ui.loop.setAttribute('aria-pressed', String(editor.state.loop));
@@ -1503,8 +1512,7 @@
   // written (length and BPM are still appended there), and the pipeline's own
   // rewrite is skipped for it. Edited afterwards, it is ordinary text again.
   function optimizedCaption(m) { const text = String(m.text || '').trim(); return text && m.optimized === text ? text : ''; }
-  function musicCaption() {
-    const m = state.music;
+  function musicCaption(m = state.music) {
     if (optimizedCaption(m)) return optimizedCaption(m);
     const style = MUSIC_STYLES.find((s) => s[0] === m.style) || MUSIC_STYLES[0];
     const mood = MOODS.find((s) => s[0] === m.mood) || MOODS[0];
@@ -1518,8 +1526,7 @@
     if (m.loop) parts.push('no intro, no outro, seamless loop');
     return parts.join(', ') + '. BPM: ' + m.bpm;
   }
-  function sfxCaption() {
-    const m = state.sfx;
+  function sfxCaption(m = state.sfx) {
     if (optimizedCaption(m)) return optimizedCaption(m);
     const cat = SFX_CATEGORIES.find((c) => c[0] === m.category) || SFX_CATEGORIES[0];
     const style = SFX_STYLES.find((s) => s[0] === m.style) || SFX_STYLES[0];
@@ -1557,56 +1564,239 @@
     const parameters = { prompt: sfxCaption(), duration_seconds: m.seconds, reprompt: m.rewrite && !optimizedCaption(m) };
     for (let i = 0; i < m.count; i += 1) submit('audio_sfx', 'sfx', describeSfx(), parameters);
   }
-  async function submit(taskType, kind, label, parameters, { strict = false, signal } = {}) {
+  // Only task identifiers survive reload; no conversation, prompt or media.
+  const assistantAudioRecoveryPrefix='novaflow.xiaotao-audio-task-recovery.v1:';
+  const ASSISTANT_AUDIO_ACTION_ENABLED=false; // review-only, never enable without server binding.
+  const assistantAudioGrants=new WeakMap(),assistantAudioClickEvents=new WeakSet();
+  let pendingAssistantAudioReview=null;
+  // Only AI-owned transient rows are filtered; user resources are untouched.
+  const assistantPendingOwners=new WeakMap(),assistantAudioArtifacts=new WeakSet(),assistantArtifactTimers=new WeakMap(),assistantArtifactIds=new Set();
+  function assistantAudioVisible(resource) {
+    const guard=assistantPendingOwners.get(resource);
+    if(!guard)return true;
+    try{return guard()===true;}catch{return false;}
+  }
+  // AI artifacts live only in their initiating session. Do not modify the
+  // user's existing timeline or unrelated resources when that session ends.
+  function discardExpiredAssistantAudio(){
+    let changed=false;
+    state.resources=state.resources.filter(resource=>{
+      if(!assistantAudioArtifacts.has(resource)||assistantAudioVisible(resource))return true;
+      const timer=assistantArtifactTimers.get(resource);if(timer)window.clearTimeout(timer);
+      if(state.preview?.res===resource)stopPreview();
+      if(resource.url)URL.revokeObjectURL(resource.url);
+      changed=true;return false;
+    });
+    if(changed)renderList();
+  }
+  window.addEventListener?.('novaflow-client-auth-changed',discardExpiredAssistantAudio);
+  window.addEventListener?.('storage',discardExpiredAssistantAudio);
+  function previewAssistantAudioParameters(op){
+    const music=op?.action==='generate_music',kind=music?'music':'sfx';
+    if(!state.active||state.sub!=='audio'||op?.target!=='audio'||op.action!=='generate_music'||
+      typeof op.prompt!=='string'||!op.prompt.trim()||op.prompt.length>4000||typeof state[kind].rewrite!=='boolean'||op.count!==1||
+      (music&&(!MUSIC_STYLES.some(row=>row[0]===state.music.style)||!MOODS.some(row=>row[0]===state.music.mood)))||
+      (!music&&(!SFX_CATEGORIES.some(row=>row[0]===state.sfx.category)||!SFX_STYLES.some(row=>row[0]===state.sfx.style))))throw new Error('音频参数未准备好，未提交');
+    const rawSeconds=op.seconds??state[kind].seconds,bpm=op.bpm??state.music.bpm;
+    if(!Number.isFinite(rawSeconds)||rawSeconds<(music?8:1)||rawSeconds>(music?300:30)||
+      (music&&(!Number.isInteger(bpm)||bpm<40||bpm>220)))throw new Error('音频参数超出范围，未提交');
+    const seconds=Math.round(rawSeconds*10)/10;
+    const snapshot={...state[kind],text:op.prompt,optimized:'',seconds,...(music?{bpm,loop:op.loop??state.music.loop}:{})};
+    const prompt=music?musicCaption(snapshot):sfxCaption(snapshot);
+    if(!prompt||prompt.length>4000)throw new Error('音频生成描述无效，未提交');
+    return {taskType:music?'audio_music':'audio_sfx',rewritePolicy:state[kind].rewrite?'skip-for-confirmed-task':'respect-disabled',parameters:{prompt,duration_seconds:seconds,reprompt:false,
+      ...(music?{bpm,loop:snapshot.loop,crossfade_ms:800}:{})}};
+  }
+  function assistantAudioOwner(){const owner=window.electronAPI?.captureFoartBillingOwner?.();return owner&&/^[A-Za-z0-9_-]{1,128}$/.test(owner.owner||'')&&owner.current?.()===true?owner:null;}
+  function assistantAudioRecoveryKey(owner,id){return assistantAudioRecoveryPrefix+owner.owner+':'+id;}
+  function rememberAssistantAudioTask(taskId,taskType){
+    const owner=assistantAudioOwner(),storage=window.localStorage;
+    if(!owner||!storage)throw new Error('无法保存音频任务状态，未提交');
+    const key=assistantAudioRecoveryKey(owner,taskId),value=JSON.stringify({taskId,taskType,mode:'shared'});
+    const prior=storage.getItem(key);if(prior!==null&&prior!==value)throw new Error('音频任务状态冲突，未提交');
+    storage.setItem(key,value);
+    if(owner.current()!==true||storage.getItem(key)!==value){if(prior===null&&storage.getItem(key)===value)storage.removeItem(key);throw new Error('无法确认音频任务状态，未提交');}
+    return {owner,key,value,newMarker:prior===null};
+  }
+  function pendingAssistantAudioTasks(){
+    const owner=assistantAudioOwner(),storage=window.localStorage;if(!owner||!storage)return [];
+    const prefix=assistantAudioRecoveryPrefix+owner.owner+':',out=[];
+    for(let i=0;i<storage.length;i++){const key=storage.key(i);if(typeof key!=='string'||!key.startsWith(prefix))continue;
+      try{const row=JSON.parse(storage.getItem(key)),id=key.slice(prefix.length);
+        if(row?.taskId===id&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)&&
+          ['audio_music','audio_sfx'].includes(row.taskType)&&((Object.keys(row).sort().join(',')==='mode,taskId,taskType'&&row.mode==='shared')||Object.keys(row).sort().join(',')==='taskId,taskType'))out.push(row);
+      }catch{}
+    }
+    return owner.current()===true?out:[];
+  }
+  async function checkAssistantAudioTask(taskId){
+    const owner=assistantAudioOwner(),row=pendingAssistantAudioTasks().find(item=>item.taskId===taskId);
+    if(!owner||!row||owner.current()!==true)throw new Error('音频任务会话无效');
+    if(row.mode!=='shared')throw new Error('音频任务算力来源待核对');
+    const result=await window.NovaFlowWebRuntime.control('GET','/api/web/tasks/'+taskId,undefined,{assistantRecoveryMode:'shared'});
+    if(owner.current()!==true||result?.task?.id!==taskId||result.task.task_type!==row.taskType)throw new Error('音频任务状态待核对');
+    return result.task;
+  }
+  async function acknowledgeAssistantAudioTask(taskId){
+    const owner=assistantAudioOwner(),row=pendingAssistantAudioTasks().find(item=>item.taskId===taskId);if(!owner||!row)return false;
+    const task=await checkAssistantAudioTask(taskId);
+    if(owner.current()!==true||!['completed','failed','cancelled','expired'].includes(task.status)||
+       (task.status==='completed'&&task.credit_settled!==true))return false;
+    window.localStorage.removeItem(assistantAudioRecoveryKey(owner,taskId));return owner.current()===true;
+  }
+  function stageAssistantAudioReview({plan,snapshot,fingerprint,signal,selectionStillCurrent,sessionCurrent,selection,expectedParameters}={}){
+    const owner=assistantAudioOwner(),media=window.NovaFlowMediaAgent,controller=window.NovaFlowXiaotaoArtAgent?.panel?.controller;
+    const actual=controller?.businessModelSnapshot?.(),op=plan?.operations?.[0];
+    if(!ASSISTANT_AUDIO_ACTION_ENABLED||pendingAssistantAudioReview||!owner||!media||!controller||!plan||plan.operations?.length!==1||
+      op?.action!=='generate_music'||op.target!=='audio'||typeof fingerprint!=='function'||
+      typeof selectionStillCurrent!=='function'||selectionStillCurrent()!==true||typeof sessionCurrent!=='function'||sessionCurrent()!==true||
+      !selection||selection.provider!=='api'||actual?.provider!==selection.provider||actual?.modelId!==selection.modelId||actual?.epoch!==selection.epoch||
+      signal?.aborted||JSON.stringify(media.capture())!==JSON.stringify(snapshot)||JSON.stringify(previewAssistantAudioParameters(op))!==JSON.stringify(expectedParameters))throw new Error('音频确认状态无效，未提交');
+    pendingAssistantAudioReview={plan:JSON.parse(JSON.stringify(plan)),snapshot,snapshotText:JSON.stringify(snapshot),expectedParameters:JSON.parse(JSON.stringify(expectedParameters)),fingerprint,signal,owner,selection:{...selection},selectionStillCurrent,sessionCurrent,controller,media};
+    return true;
+  }
+  function cancelAssistantAudioReview(planId){if(!pendingAssistantAudioReview||pendingAssistantAudioReview.plan.planId!==planId)return false;pendingAssistantAudioReview=null;return true;}
+  function validateAssistantAudioGrant(token,planId,op){
+    const grant=token&&typeof token==='object'?assistantAudioGrants.get(token):null,now=grant?.controller?.businessModelSnapshot?.();
+    return !!grant&&grant.planId===planId&&JSON.stringify(grant.op)===JSON.stringify(op)&&grant.owner.current()===true&&
+      grant.sessionCurrent()===true&&grant.selectionStillCurrent()===true&&now?.provider===grant.selection.provider&&now?.modelId===grant.selection.modelId&&now?.epoch===grant.selection.epoch&&
+      !grant.signal?.aborted&&grant.media===window.NovaFlowMediaAgent&&JSON.stringify(grant.media.capture())===grant.snapshotText&&
+      JSON.stringify(previewAssistantAudioParameters(op))===JSON.stringify(grant.expectedParameters);
+  }
+  function consumeAssistantAudioGrant(token,planId,op){
+    if(!validateAssistantAudioGrant(token,planId,op))throw new Error('音频确认已失效，未提交');
+    const grant=assistantAudioGrants.get(token);assistantAudioGrants.delete(token);return grant;
+  }
+  function executeAssistantAudioReview(event,planId){
+    const review=pendingAssistantAudioReview,button=event?.currentTarget,attr='data-novaflow-audio-action-confirm',actual=review?.controller?.businessModelSnapshot?.();
+    let trusted=false;try{const getter=Object.getOwnPropertyDescriptor(new window.MouseEvent('click'),'isTrusted')?.get;trusted=typeof getter==='function'&&getter.call(event)===true;}catch{}
+    if(!ASSISTANT_AUDIO_ACTION_ENABLED||!review||review.plan.planId!==planId||!event||assistantAudioClickEvents.has(event)||event.view!==window||
+      !(event instanceof window.MouseEvent)||event.type!=='click'||!trusted||!button?.isConnected||button.ownerDocument!==window.document||
+      !button.contains(event.target)||button.getAttribute?.(attr)!=='1'||window.document?.querySelectorAll?.('['+attr+'="1"]').length!==1||
+      window.navigator?.userActivation?.isActive!==true||!review.owner.current()||!review.sessionCurrent()||!review.selectionStillCurrent()||
+      actual?.provider!==review.selection.provider||actual?.modelId!==review.selection.modelId||actual?.epoch!==review.selection.epoch||
+      review.signal?.aborted||review.media!==window.NovaFlowMediaAgent||JSON.stringify(review.media.capture())!==review.snapshotText||
+      JSON.stringify(previewAssistantAudioParameters(review.plan.operations[0]))!==JSON.stringify(review.expectedParameters))
+      throw new Error('音频确认无效或工作区已变化，未提交');
+    const taskId=window.crypto?.randomUUID?.();
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(taskId||''))throw new Error('音频任务标识无效，未提交');
+    assistantAudioClickEvents.add(event);pendingAssistantAudioReview=null;
+    const token=Object.freeze({});assistantAudioGrants.set(token,{...review,taskId,planId:review.plan.planId,op:review.plan.operations[0]});
+    return Promise.resolve().then(()=>review.media.execute(review.plan,{snapshot:review.snapshot,fingerprint:review.fingerprint,signal:review.signal,
+      requirements:review.plan.operations[0].prompt,analysisProvider:'api',assistantSelectionScope:'xiaotao',selectionStillCurrent:review.selectionStillCurrent,
+      assistantAudioGrant:token,assistantAudioPlanId:review.plan.planId})).finally(()=>assistantAudioGrants.delete(token));
+  }
+  // A network error is not proof that the confirmed task was not created.
+  async function createAssistantAudioTaskOnce(runtime, taskType, parameters, taskId, sessionCurrent) {
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(taskId||'') ||
+       typeof sessionCurrent!=='function'||sessionCurrent()!==true)throw new Error('音频任务会话无效，未提交');
+    if(taskType!=='audio_music'||typeof parameters?.prompt!=='string'||!parameters.prompt.trim()||parameters.prompt.length>4000||
+       !Number.isFinite(parameters.duration_seconds))throw new Error('音频任务参数无效，未提交');
+    if(runtime.computeMode!=='shared')throw new Error('音频任务当前仅支持共享算力，未提交');
+    // The control plane stores duration at one decimal; submit exactly what
+    // will be stored so recovery compares the confirmed request correctly.
+    parameters={...parameters,duration_seconds:Math.round(parameters.duration_seconds*10)/10};
+    const record=rememberAssistantAudioTask(taskId,taskType),owner=record.owner;
+    const stillCurrent=()=>sessionCurrent()===true&&owner.current()===true;
+    const matches=task=>task?.id===taskId&&task?.task_type===taskType&&task.parameters&&
+      Object.entries(parameters).every(([k,v])=>Object.hasOwn(task.parameters,k)&&JSON.stringify(task.parameters[k])===JSON.stringify(v));
+    try {
+      const result=await runtime.control('POST','/api/web/tasks',{task_type:taskType,parameters,assistant_task_id:taskId});
+      if(!stillCurrent()||!matches(result?.task))throw new Error('音频任务状态待核对，勿重复提交');
+      return result;
+    } catch(error) {
+      const definitelyRejected=[400,401,402,403,422].includes(error?.status)||
+        (error?.status===503&&error?.code==='assistant_audio_create_once_unavailable');
+      if(definitelyRejected&&record.newMarker&&stillCurrent()&&window.localStorage.getItem(record.key)===record.value){
+        window.localStorage.removeItem(record.key);throw error;
+      }
+      if(stillCurrent()){
+        try {const existing=await runtime.control('GET','/api/web/tasks/'+taskId,undefined,{assistantRecoveryMode:'shared'});
+          if(stillCurrent()&&matches(existing?.task))return existing;
+        } catch {}
+      }
+      if(error?.status===409)throw error;
+      throw Object.assign(new Error('音频任务状态待核对，勿重复提交'),{code:'assistant-audio-status-unknown',taskId});
+    }
+  }
+  async function submit(taskType, kind, label, parameters, { strict = false, signal, assistantTaskId, assistantSessionCurrent, assistantOwnerCurrent, assistantOutputCurrent } = {}) {
     const runtime = window.NovaFlowWebRuntime;
     if (!runtime) { if (strict) throw new Error('音频算力接口尚未就绪'); return; }
     if (signal?.aborted) throw new Error('音频生成已停止');
     const pending = { id: 'pending-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), kind, name: kind === 'music' ? '音乐 生成中' : '音效 生成中', label, pending: true, progress: 0 };
+    const assistant=Boolean(assistantTaskId);
+    const ownerCurrent=()=>!assistant||(typeof assistantOwnerCurrent==='function'&&assistantOwnerCurrent()===true);
+    // An AI result card belongs to the initiating account/session, not the
+    // board active at completion. It does not mutate any board automatically.
+    const outputCurrent=()=>ownerCurrent()&&(!assistant||!signal?.aborted);
+    if(assistant&&Number.isFinite(assistantOwnerCurrent?.expiresAtMs))Object.defineProperty(outputCurrent,'expiresAtMs',{value:assistantOwnerCurrent.expiresAtMs});
+    const discardPending=()=>{state.resources=state.resources.filter(r=>r!==pending);renderList();};
+    let task,entry;
+    const ownerChanged=()=>{if(!ownerCurrent()){discardPending();if(task&&state.running.get(task.id)===entry)state.running.delete(task.id);}};
+    if(assistant){
+      if(!ownerCurrent()||!outputCurrent())throw new Error('音频工作区已变化，未提交');
+      assistantPendingOwners.set(pending,ownerCurrent);
+      window.addEventListener?.('novaflow-client-auth-changed',ownerChanged);
+      window.addEventListener?.('storage',ownerChanged);
+    }
+    const removeOwnerListeners=()=>{if(assistant){window.removeEventListener?.('novaflow-client-auth-changed',ownerChanged);window.removeEventListener?.('storage',ownerChanged);}};
     state.resources.unshift(pending);
     renderList();
-    let task;
     try {
-      const created = await runtime.control('POST', '/api/web/tasks', { task_type: taskType, parameters });
+      const created = assistantTaskId
+        ? await createAssistantAudioTaskOnce(runtime,taskType,parameters,assistantTaskId,assistantSessionCurrent)
+        : await runtime.control('POST', '/api/web/tasks', { task_type: taskType, parameters });
       task = created?.task;
       if (!task?.id) throw new Error('任务未创建');
     } catch (error) {
-      failPending(pending, String(error?.message || error));
+      if(assistant&&!ownerCurrent()){discardPending();error=new Error('音频任务归属已变化');}else failPending(pending, String(error?.message || error));
+      removeOwnerListeners();
       if (strict) throw error;
       return;
     }
-    const entry = { cancelled: false, pending };
+    if(assistant&&!ownerCurrent()){discardPending();removeOwnerListeners();throw new Error('音频任务归属已变化');}
+    entry = { cancelled: false, pending };
     state.running.set(task.id, entry);
     pending.taskId = task.id;
-    const abort = () => { entry.cancelled = true; void runtime.control('POST', '/api/web/tasks/' + task.id + '/cancel').catch(() => {}); };
+    const abort = () => { entry.cancelled = true; if(assistant&&!ownerCurrent()){discardPending();return;} void runtime.control('POST', '/api/web/tasks/' + task.id + '/cancel').catch(() => {}); };
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
     tell();
     try {
-      const finished = await waitForTask(runtime, task.id, (t) => { pending.progress = Number(t.progress) || 0; ui.statusPct.textContent = Math.round(pending.progress) + '%'; setProgress(pending.progress); renderProgress(pending); }, signal);
+      const finished = await waitForTask(runtime, task.id, (t) => { if(assistant&&!outputCurrent())return; pending.progress = Number(t.progress) || 0; ui.statusPct.textContent = Math.round(pending.progress) + '%'; setProgress(pending.progress); renderProgress(pending); }, signal, assistant ? ownerCurrent : null);
       if (entry.cancelled) throw new Error('音频生成已停止');
       if (finished.status !== 'completed') throw new Error(finished.error_message || ('任务' + finished.status));
       const files = (finished.output_manifest?.files || []).filter((f) => /\.(wav|flac|mp3|ogg)$/i.test(f.name));
       if (!files.length) throw new Error('没有产出音频文件');
+      if(assistant&&!outputCurrent())throw new Error('音频工作区已变化');
       const bytes = await runtime.fetchTaskOutput(finished, files[0].name);
+      if(assistant&&!outputCurrent())throw new Error('音频工作区已变化');
       const blob = new Blob([bytes], { type: 'audio/wav' });
-      const resource = await completed(pending, kind, label, parameters, files[0], blob, finished);
-      return {ok:true,taskId:task.id,resourceId:resource.id,name:resource.name,seconds:resource.seconds,bytes:blob.size};
+      const resource = await completed(pending, kind, label, parameters, files[0], blob, finished, assistant ? outputCurrent : null);
+      return {ok:true,taskId:task.id,resourceId:resource.id,name:resource.name,seconds:resource.seconds,bytes:blob.size,...(assistant?{autoPublicationDeferred:true}:{})};
     } catch (error) {
-      if (!entry.cancelled) failPending(pending, String(error?.message || error));
+      if(assistant&&(!ownerCurrent()||!outputCurrent())) {
+        discardPending();
+        const sameOwner=ownerCurrent();
+        error=Object.assign(new Error(sameOwner?'音频任务已提交，请在原任务记录查看':'音频任务归属已变化'),{code:'assistant-audio-output-detached',...(sameOwner?{taskId:task.id}:{})});
+      } else if (!entry.cancelled) failPending(pending, String(error?.message || error));
       else {state.resources = state.resources.filter(r=>r!==pending);renderList();}
       if (strict) throw error;
     } finally {
-      state.running.delete(task.id);
+      if(state.running.get(task.id)===entry)state.running.delete(task.id);
       signal?.removeEventListener('abort', abort);
-      tell();
+      removeOwnerListeners();
+      if(!assistant||ownerCurrent())tell();
     }
   }
-  async function waitForTask(runtime, id, onTick, signal) {
+  async function waitForTask(runtime, id, onTick, signal, ownerCurrent) {
     const started = Date.now();
     for (;;) {
       if (signal?.aborted) throw new Error('音频生成已停止');
       await new Promise((r) => setTimeout(r, 1000));
+      if(ownerCurrent&&!ownerCurrent())throw new Error('音频任务归属已变化');
       const { task } = await runtime.control('GET', '/api/web/tasks/' + id);
+      if(ownerCurrent&&!ownerCurrent())throw new Error('音频任务归属已变化');
       if (!task) throw new Error('任务不存在');
       onTick(task);
       if (['completed', 'failed', 'cancelled', 'expired'].includes(task.status)) return task;
@@ -1629,22 +1819,36 @@
     ui.statusErr.textContent = message;
     ui.statusErr.title = message;
   }
-  async function completed(pending, kind, label, parameters, file, blob, task) {
-    state.counter[kind] += 1;
-    const serial = String(state.counter[kind]).padStart(3, '0');
-    const name = (kind === 'music' ? 'Music_' : 'Sfx_') + serial;
+  async function completed(pending, kind, label, parameters, file, blob, task, outputCurrent) {
+    let name;
+    if(!outputCurrent){state.counter[kind] += 1;name=(kind === 'music' ? 'Music_' : 'Sfx_') + String(state.counter[kind]).padStart(3,'0');}
     const buffer = await decode(blob);
+    if(outputCurrent){
+      if(!outputCurrent())throw new Error('音频工作区已变化');
+      state.counter[kind] += 1;name=(kind === 'music' ? 'Music_' : 'Sfx_') + String(state.counter[kind]).padStart(3,'0');
+    }
     const resource = {
       id: 'res-' + task.id, kind, name, label, caption: String(file.caption || ''), parameters,
       seconds: buffer ? buffer.duration : Number(file.duration_seconds) || 0,
       blob, buffer, url: URL.createObjectURL(blob), task, loopable: kind === 'music' && parameters.loop !== false
     };
+    if(outputCurrent){
+      assistantPendingOwners.set(resource,outputCurrent);assistantAudioArtifacts.add(resource);assistantArtifactIds.add(resource.id);
+      const expiresAt=Number(outputCurrent.expiresAtMs);
+      if(Number.isFinite(expiresAt)){
+        const expire=()=>{if(!assistantAudioVisible(resource))return discardExpiredAssistantAudio();
+          const timer=window.setTimeout(expire,Math.max(1,Math.min(2147483647,expiresAt-Date.now())));assistantArtifactTimers.set(resource,timer);};
+        const timer=window.setTimeout(expire,Math.max(1,Math.min(2147483647,expiresAt-Date.now())));assistantArtifactTimers.set(resource,timer);
+      }
+    }
     const index = state.resources.indexOf(pending);
     if (index >= 0) state.resources.splice(index, 1, resource); else state.resources.unshift(resource);
     renderList();
-    if (buffer) editor.addClip({ buffer, name, kind, loopable: resource.loopable });
-    await publishAudio(resource, name + '.wav');
-    try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: name + '.wav' }); } catch (_) { /* the warehouse reports its own state */ }
+    if (!outputCurrent&&buffer) editor.addClip({ buffer, name, kind, loopable: resource.loopable });
+    if(!outputCurrent){
+      await publishAudio(resource, name + '.wav');
+      try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: name + '.wav' }); } catch (_) { /* the warehouse reports its own state */ }
+    }
     return resource;
   }
 
@@ -1672,9 +1876,12 @@
   }
   async function resolveResourceMedia(resourceId) {
     const local = state.resources.find((x) => x.publishedId === resourceId || x.id === resourceId);
+    if(local&&!assistantAudioVisible(local))throw new Error('音频结果的会话已失效');
+    if(local&&assistantAudioArtifacts.has(local))throw new Error('请在音频结果卡中手动添加到时间线');
+    if(assistantArtifactIds.has(resourceId))throw new Error('音频结果的会话已失效');
     if (local && local.blob) return { blob: local.blob, fileName: local.name + '.wav', url: local.url, buffer: local.buffer, name: local.name };
     const bridge = window.NovaFlowAiSequenceVideoMergeResourceBridge;
-    const adapter = bridge && bridge.createAdapter ? bridge.createAdapter({}) : null;
+    const adapter = bridge && bridge.createAdapter ? bridge.createAdapter({allowAudio:true}) : null;
     if (!adapter) throw new Error('资源桥未加载');
     const d = await adapter.resolveResource(resourceId);
     let blob = d.file || d.blob || null;
@@ -1779,9 +1986,10 @@
   function renderList() {
     if (!ui || !ui.list || ui.sidebar?.hidden) return;
     ui.list.replaceChildren();
-    ui.count.textContent = String(state.resources.filter((r) => !r.pending).length);
-    if (!state.resources.length) { ui.list.appendChild(el('div', 'nf-as-side-empty', '暂无内容')); return; }
-    for (const res of state.resources) ui.list.appendChild(resourceCard(res));
+    const visible=state.resources.filter(assistantAudioVisible);
+    ui.count.textContent = String(visible.filter((r) => !r.pending).length);
+    if (!visible.length) { ui.list.appendChild(el('div', 'nf-as-side-empty', '暂无内容')); return; }
+    for (const res of visible) ui.list.appendChild(resourceCard(res));
   }
   function renderProgress(pending) {
     const bar = ui.list.querySelector('[data-res-id="' + pending.id + '"] .nf-as-res-progress i');
@@ -1809,21 +2017,23 @@
     nameRow.appendChild(el('small', null, editor.formatTime(res.seconds)));
     node.appendChild(nameRow);
     const actions = el('div', 'nf-as-res-actions');
-    const act = (text, title, fn, cls) => { const b = el('button', cls || null, text); b.type = 'button'; b.title = title; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); actions.appendChild(b); };
+    const act = (text, title, fn, cls) => { const b = el('button', cls || null, text); b.type = 'button'; b.title = title; b.addEventListener('click', (e) => { e.stopPropagation(); if(assistantAudioVisible(res))fn(e); }); actions.appendChild(b); };
     act('▶', '试听', () => previewResource(res, node));
     act('×', '删除', () => removeResource(res), 'danger');
     node.appendChild(actions);
-    node.draggable = true;
+    node.draggable = !assistantAudioArtifacts.has(res);
     node.addEventListener('dragstart', (event) => {
+      if(!assistantAudioVisible(res)||assistantAudioArtifacts.has(res)){event.preventDefault();return;}
       event.dataTransfer.setData('application/x-novaflow-audio', res.id);
       event.dataTransfer.effectAllowed = 'copy';
     });
-    node.addEventListener('dblclick', () => editor.addClip({ buffer: res.buffer, name: res.name, kind: res.kind, loopable: res.loopable }));
+    node.addEventListener('dblclick', event => {if(assistantAudioVisible(res)&&(!assistantAudioArtifacts.has(res)||event.isTrusted===true))editor.addClip({ buffer: res.buffer, name: res.name, kind: res.kind, loopable: res.loopable });});
     node.addEventListener('click', () => { for (const n of ui.list.children) n.removeAttribute('data-selected'); node.setAttribute('data-selected', '1'); });
-    requestAnimationFrame(() => drawThumb(canvas, res.buffer));
+    requestAnimationFrame(() => {if(assistantAudioVisible(res))drawThumb(canvas, res.buffer);});
     return node;
   }
   function removeResource(res) {
+    const timer=assistantArtifactTimers.get(res);if(timer)window.clearTimeout(timer);
     stopPreview();
     state.resources = state.resources.filter((r) => r !== res);
     if (res.url) URL.revokeObjectURL(res.url);
@@ -1858,6 +2068,7 @@
     try { return await audioContext().decodeAudioData(await blob.arrayBuffer()); } catch (_) { return null; }
   }
   function previewResource(res, node) {
+    if(!assistantAudioVisible(res))return;
     if (state.preview && state.preview.res === res) { stopPreview(); return; }
     stopPreview();
     if (!res.buffer) return;
@@ -1901,7 +2112,7 @@
   }
   // 保存到资源列表 (音频编辑): the mixdown into the shared resource list and the
   // warehouse; with a reference video placed, that video with the mix as its sound too.
-  async function saveMix() {
+  async function saveMix(options = {}) {
     if (saving) return;
     saving = true;
     try {
@@ -1930,10 +2141,12 @@
       }
       ui.saveNote.textContent = note;
       busy('done', '已保存', note, null);
+      return {ok:true,action:'save_mix',target:'audio',resourceId:resource.id,publishedId:resource.publishedId||'',name:name+'.wav',bytes:blob.size,seconds:resource.seconds};
     } catch (error) {
       const message = String(error?.message || error);
       ui.statusErr.textContent = message;
       busy('error', '保存失败', message, null);
+      if(options.fromAgent)throw error;
     } finally { saving = false; }
   }
   let saving = false;
@@ -2002,15 +2215,53 @@
 
   window.NovaFlowAudioStudio = {
     open: activate, close: deactivate,
+    assistantAudioActionEnabled:()=>ASSISTANT_AUDIO_ACTION_ENABLED,
+    pendingAssistantAudioTasks,checkAssistantAudioTask,acknowledgeAssistantAudioTask,
+    previewAssistantAudioParameters,stageAssistantAudioReview,cancelAssistantAudioReview,executeAssistantAudioReview,validateAssistantAudioGrant,
     isOpen: () => state.active,
     sub: () => (state.active ? state.sub : ''),
+    // Capture the Studio object identity together with this monotonic value.
+    // A return to the same sub-page must not revive an older review.
+    routeRevision: () => textReviewEpoch,
     setMode,
-    resources: () => state.resources.slice(),
+    resources: () => state.resources.filter(assistantAudioVisible),
     importFile,
     editor: () => editor,
     agentSettings: () => ({mode:state.mode,board:state.boards[state.board]?.id || '',music:{...state.music},sfx:{...state.sfx}}),
+    captureTextReview(kind) {
+      if(!state.active||state.sub!=='audio'||!['music','sfx'].includes(kind)||state.mode!==kind)throw new Error('请先打开对应的音乐或音效提示词页面。');
+      const board=state.boards[state.board],epoch=textReviewEpoch,before={...state[kind]},signature=JSON.stringify(before);
+      if(!board||!board.id||!ui?.textarea)throw new Error('音频工作区尚未就绪，请稍后重试。');
+      let phase='pending',after='';
+      const workspaceCurrent=()=>state.active&&state.sub==='audio'&&state.mode===kind&&state.boards[state.board]===board&&textReviewEpoch===epoch;
+      const current=()=>workspaceCurrent()&&JSON.stringify(state[kind])===signature;
+      const binding=fn=>typeof fn==='function'&&fn()===true;
+      const compileInput=prompt=>{
+        if(!current()||typeof prompt!=='string'||!prompt.trim())throw new Error('音频提示词或页面状态已变化，未提交。');
+        // Compile the chosen source with the existing native style/mood/loop
+        // rules; never pull in the unchosen text or mutate the active page.
+        const selected={...before,text:prompt.trim(),optimized:''};
+        const result=kind==='music'?musicCaption(selected):sfxCaption(selected);
+        if(!result||result.length>1500)throw new Error('音频提示词过长，请精简后重试。');
+        return result;
+      };
+      const applyDraft=(prompt,{userConfirmed=false,bindingCurrent}={})=>{
+        if(phase!=='pending'||userConfirmed!==true||!binding(bindingCurrent)||!current()||typeof prompt!=='string'||!prompt.trim()||prompt.length>4000||!ui?.textarea)throw new Error('音频草稿或页面状态已变化，未应用。');
+        // The confirmed English text becomes the editor prompt; mark it as
+        // optimized so the original generator does not rewrite it a second time.
+        state[kind].text=prompt;state[kind].optimized=prompt;ui.textarea.value=prompt;
+        after=JSON.stringify(state[kind]);phase='applied';return {phase:'applied'};
+      };
+      const undoDraft=({userConfirmed=false,bindingCurrent}={})=>{
+        if(phase!=='applied'||userConfirmed!==true||!binding(bindingCurrent)||!workspaceCurrent()||JSON.stringify(state[kind])!==after||!ui?.textarea)throw new Error('音频提示词或页面已变化，未撤销。');
+        state[kind].text=before.text;
+        if(Object.hasOwn(before,'optimized'))state[kind].optimized=before.optimized;else delete state[kind].optimized;
+        ui.textarea.value=before.text;phase='undone';return {phase:'undone'};
+      };
+      return Object.freeze({kind,prompt:String(before.text||''),settings:{...before},isCurrent:current,compileInput,applyDraft,undoDraft});
+    },
     async agentImportResource(id, {signal} = {}) {activate('audio');const source=await resourceAudio(id);if(signal?.aborted)throw new Error('音频导入已停止');return editor.addClip(source);},
-    async agentGenerate(op, {signal} = {}) {
+    async agentGenerate(op, {signal,analysisProvider='local',assistantSelectionScope='',selectionStillCurrent,onOptimizationStatus=()=>{},assistantAudioGrant,assistantAudioPlanId} = {}) {
       const music = op.action === 'generate_music', kind = music ? 'music' : 'sfx';
       if (!['generate_music','generate_sfx'].includes(op.action) || typeof op.prompt !== 'string' || !op.prompt.trim()) throw new Error('缺少音频生成描述');
       const seconds = op.seconds ?? state[kind].seconds;
@@ -2019,20 +2270,77 @@
       if (music && (!Number.isInteger(bpm) || bpm < 40 || bpm > 220)) throw new Error('音乐节拍超出范围');
       const count=music?1:op.count??state.sfx.count;
       if(!Number.isInteger(count)||count<1||count>4)throw new Error('音效数量超出原有范围');
+      const scoped=assistantSelectionScope==='xiaotao';
+      const controller=scoped?window.NovaFlowXiaotaoArtAgent?.panel?.controller:null;
+      const chosen=scoped?controller?.businessModelSnapshot?.():null;
+      const current=()=>!signal?.aborted&&(!scoped||(window.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&
+        chosen&&chosen.provider===analysisProvider&&Number.isSafeInteger(chosen.epoch)&&
+        (()=>{const now=controller.businessModelSnapshot();return now?.provider===chosen.provider&&now?.modelId===chosen.modelId&&now?.epoch===chosen.epoch;})()&&
+        (typeof selectionStillCurrent!=='function'||selectionStillCurrent()===true)));
+      if(scoped&&!current())throw new Error('小桃模型选择已变化，未提交音频任务。');
+      const assistantGrant=ASSISTANT_AUDIO_ACTION_ENABLED&&music&&scoped&&chosen.provider==='api'?consumeAssistantAudioGrant(assistantAudioGrant,assistantAudioPlanId,op):null;
+      if(assistantGrant&&count!==1)throw new Error('在线音频仅支持确认单一任务，未提交');
+      if(scoped&&state[kind].rewrite===true&&chosen.provider==='api'&&!assistantGrant)
+        throw new Error('小桃多步操作中的在线音频文字改写暂不支持同次操作结算，未提交生成。请先单独改写并确认提示词。');
+      if(scoped&&state[kind].rewrite===true&&!assistantGrant&&(chosen.provider!=='local'||chosen.modelId!=='qwen3.5-9b-heretic'))
+        throw new Error('所选模型尚未接通音频文字改写，未切换模型或提交生成。');
       activate('audio');setMode(kind);
       Object.assign(state[kind],{text:op.prompt,optimized:'',seconds,...(music?{bpm,loop:op.loop ?? state.music.loop}:{})});
       syncDockValues();
+      let caption=music?musicCaption():sfxCaption(),reprompt=assistantGrant?false:state[kind].rewrite===true,optimization;
+      if(scoped&&reprompt){
+        const rewrite=window.electronAPI?.promptAssistantRewriteAudioPrompt;
+        const requestId=window.crypto?.randomUUID?.();
+        if(typeof rewrite!=='function'||!requestId)throw new Error('所选模型的音频文字改写尚未就绪，未提交生成。');
+        const binding=JSON.stringify(state[kind]);
+        const cancel=()=>{void Promise.resolve(window.electronAPI?.promptAssistantCancelRequest?.({requestId})).catch(()=>{});};
+        signal?.addEventListener('abort',cancel,{once:true});
+        let response;try{
+          onOptimizationStatus('正在按所选本地模型改写音频文字提示词…');
+          response=await rewrite({requestId,kind,input:caption,seconds,...(music?{bpm}:{}),assistantSelectionScope:'xiaotao',assistantProvider:chosen.provider,assistantModelId:chosen.modelId,assistantSelectionEpoch:chosen.epoch});
+        }finally{signal?.removeEventListener('abort',cancel);}
+        if(!current()||JSON.stringify(state[kind])!==binding)throw new Error('音频参数或模型选择已变化，未提交生成。');
+        const result=response?.result||response?.data||response;
+        const compiled=String(result?.prompt||'').trim();
+        if(!response||response.ok===false||!compiled||compiled.length>4000||result?.analysisBackend!=='qwen-cpu'||
+          result?.modelIdentity?.id!=='qwen35-heretic'||!['server-model-id','server-weight-path'].includes(result?.modelIdentity?.verification)||
+          result?.resourcesReleased!==true||result?.generationReady!==true)
+          throw new Error(response?.error||'所选本地模型未返回可核验的文字改写及资源释放回执，未提交生成。');
+        caption=compiled;reprompt=false;
+        optimization={framework:music?'native-audio-music':'native-audio-sfx',analysisProvider:'local',model:'qwen3.5-9b-heretic',modelPrompt:caption};
+      } else if(analysisProvider==='api'&&reprompt){
+        const optimize=window.electronAPI?.smartAiPromptOptimize;
+        if(typeof optimize!=='function')throw new Error('在线音频提示词优化尚未就绪，未提交生成');
+        const binding=JSON.stringify(state[kind]);
+        onOptimizationStatus('正在按原有音频规则优化提示词…');
+        const response=await optimize({surface:'audio',purpose:music?'audio-music':'audio-sfx',prompt:caption,durationSeconds:seconds,...(music?{bpm}:{}),supportsNegativePrompt:false});
+        if(signal?.aborted)throw new Error('音频生成已停止');
+        if(JSON.stringify(state[kind])!==binding)throw new Error('音频参数已变化，未提交旧的优化结果');
+        const result=response?.result||response?.data||response;
+        const compiled=String(result?.prompt||result?.positivePrompt||result?.positive_prompt||result?.output_text||'').trim();
+        if(!response||response.ok===false||!compiled||compiled.length>4000)throw new Error(response?.error||'在线音频优化未返回有效提示词，未提交生成');
+        caption=compiled;reprompt=false;
+        optimization={framework:music?'native-audio-music':'native-audio-sfx',analysisProvider:'api',modelPrompt:caption};
+      }
+      const taskParameters={prompt:caption,duration_seconds:assistantGrant?Math.round(seconds*10)/10:seconds,reprompt,
+        ...(music ? {bpm,loop:state.music.loop,crossfade_ms:800} : {})};
+      if(assistantGrant&&JSON.stringify({taskType:music?'audio_music':'audio_sfx',rewritePolicy:state[kind].rewrite?'skip-for-confirmed-task':'respect-disabled',parameters:taskParameters})!==JSON.stringify(assistantGrant.expectedParameters))
+        throw new Error('确认后的音频参数已变化，未提交');
+      const outputBoard=state.boards[state.board],outputEpoch=textReviewEpoch;
+      const outputCurrent=()=>state.active&&state.sub==='audio'&&state.mode===kind&&state.boards[state.board]===outputBoard&&textReviewEpoch===outputEpoch;
       const receipts=[];
       for(let i=0;i<count;i++){
         if(signal?.aborted)throw new Error('已停止剩余音效任务，已完成的结果保留');
-        const receipt = await submit(music ? 'audio_music' : 'audio_sfx',kind,op.prompt,{prompt:music?musicCaption():sfxCaption(),duration_seconds:seconds,reprompt:state[kind].rewrite===true,
-          ...(music ? {bpm,loop:state.music.loop,crossfade_ms:800} : {})},{strict:true,signal});
+        if(scoped&&!current())throw new Error('模型选择已变化，未提交剩余音频任务。');
+        const receipt = await submit(music ? 'audio_music' : 'audio_sfx',kind,op.prompt,taskParameters,{strict:true,signal,
+          ...(assistantGrant?{assistantTaskId:assistantGrant.taskId,assistantSessionCurrent:()=>current()&&assistantGrant.sessionCurrent()===true&&assistantGrant.owner.current()===true,assistantOwnerCurrent:assistantGrant.owner.current,assistantOutputCurrent:outputCurrent}:{})});
         if (!receipt?.ok || !receipt.resourceId || !receipt.taskId) throw new Error('音频工具没有返回新生成结果');
         receipts.push(receipt);
       }
       const resources=receipts.map(receipt=>({id:receipt.resourceId,name:receipt.name+'.wav',taskId:receipt.taskId,seconds:receipt.seconds,kind:'audio'}));
-      return {...receipts[0],action:op.action,target:'audio',name:resources.map(r=>r.name).join('、'),...(count===1?{fileName:resources[0].name}:{}),resources};
+      return {...receipts[0],action:op.action,target:'audio',name:resources.map(r=>r.name).join('、'),...(count===1?{fileName:resources[0].name}:{}),resources,...(optimization?{optimization}:{})};
     },
+    async agentSaveMix() {const result=await saveMix({fromAgent:true});if(!result)throw new Error('音频混音保存未完成');closeBusy();return result;},
     async agentExport() {
       const {blob,name} = await mixdown();
       const resource = {id:'res-mix-'+Date.now(),kind:'import',name,seconds:editor.projectEnd(),blob,buffer:await decode(blob),url:URL.createObjectURL(blob),loopable:true};

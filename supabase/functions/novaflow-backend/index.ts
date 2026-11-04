@@ -3,18 +3,19 @@ import {
   buildGrokImageReverseRequest,
   buildGrokPromptOptimizeRequest,
   callGrokResponseWithVisualRetry,
+  grokResponseTimeBudgetMs,
   grokResponsesPublicResult,
   grokVisualFailureEnvelope,
   miniMaxH3FailureEnvelope,
   miniMaxH3ReversePreflightFailure,
   normalizeGrokResponseUsage
 } from "./smart-ai-grok.workflow.mjs";
-import { readRunningHubLlmConfig, postRunningHubResponses, uiCatalogResponsesRequest, responsesOutputText, DEFAULT_RUNNINGHUB_LLM_MODEL } from "../_art-shared/runninghub-llm.mjs";
-import { createOnlineAiCharge } from "../_art-shared/online-ai-charge.mjs";
-import { createFeatureCreditPorts, normalizeCreditConfig, publicCreditError } from "../_art-shared/feature-credits.mjs";
-import {readRunningHubImageConfig,quoteGptImage,formatCreditButtonLabel,formatCreditButtonTitle,runChargedGptImage,readImagePoolAccount} from "../_art-shared/runninghub-gpt-image.mjs";
+import { readRunningHubLlmConfig, postRunningHubResponses, uiCatalogResponsesRequest, responsesOutputText, DEFAULT_RUNNINGHUB_LLM_MODEL } from "../_art-shared/backend-legacy-v249-runninghub-llm.mjs";
+import { createOnlineAiCharge } from "../_art-shared/backend-legacy-v249-online-ai-charge.mjs";
+import { createFeatureCreditPorts, normalizeCreditConfig, publicCreditError } from "../_art-shared/backend-legacy-v249-feature-credits.mjs";
+import {readRunningHubImageConfig,quoteGptImage,formatCreditButtonLabel,formatCreditButtonTitle,runChargedGptImage,readImagePoolAccount} from "../_art-shared/backend-legacy-v249-runninghub-gpt-image.mjs";
 import { RELEASE_VERSION } from "../_art-shared/release.mjs";
-import { createRunningHubServerConfig } from "../_art-shared/runninghub-server-config.mjs";
+import { createRunningHubServerConfig } from "../_art-shared/backend-legacy-v249-runninghub-server-config.mjs";
 import {
   licenseVerificationRejected,
   normalizeLicenseVerificationInput,
@@ -1209,14 +1210,14 @@ function isGrokResponseAttemptResultUsable(result: AnyRecord, resultOptions: Any
     && result?.h3VisualFacts?.schema === "nf.visual.v2";
 }
 
-async function callGrokResponseAttempt(body: AnyRecord, inputMeta: AnyRecord, resultOptions: AnyRecord = {}): Promise<AnyRecord> {
+async function callGrokResponseAttempt(body: AnyRecord, inputMeta: AnyRecord, resultOptions: AnyRecord = {}, deadlineAt = Date.now() + 45000): Promise<AnyRecord> {
   const config = runningHubLlm();
   const startedAt = Date.now();
   let attemptUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   try {
-    // Interactive optimizers cannot spend three provider timeout windows
-    // inside one Edge request; report/release the failed attempt promptly.
-    const posted = await postRunningHubResponses({ body:{...body,reasoning:{effort:'low'}}, config, timeoutMs: 45000, maxRetries: 0 });
+    const timeoutMs = deadlineAt - Date.now();
+    if (timeoutMs <= 0) throw Object.assign(new Error('在线模型响应超时'), {statusCode:504,errorCode:'timeout',code:'ETIMEDOUT',providerCallStarted:false});
+    const posted = await postRunningHubResponses({ body:{...body,reasoning:{effort:'low'}}, config, timeoutMs, maxRetries: 0 });
     const data = posted.data;
     attemptUsage = normalizeGrokResponseUsage(data);
     const result = grokResponsesPublicResult(data, {
@@ -1270,12 +1271,101 @@ async function chargeOnlineAi(user: PublicUser, input: { feature: string; amount
 }
 
 async function callGrokResponse(body: AnyRecord, inputMeta: AnyRecord, resultOptions: AnyRecord = {}): Promise<AnyRecord> {
+  const deadlineAt = Date.now() + grokResponseTimeBudgetMs(inputMeta, resultOptions);
   return await callGrokResponseWithVisualRetry(
     body,
     inputMeta,
     resultOptions,
-    (attemptBody: AnyRecord) => callGrokResponseAttempt(attemptBody, inputMeta, resultOptions)
+    (attemptBody: AnyRecord) => callGrokResponseAttempt(attemptBody, inputMeta, resultOptions, deadlineAt)
   ) as AnyRecord;
+}
+
+const legacyXiaotaoCreditGuard = (() => {
+// Compatibility guard for the identified 2.0.261 XiaoTao GPT Image route.
+// The marker identifies an old UI request; it is not an authentication claim.
+function isLegacyXiaotaoGptImageOptimize(payload) {
+  return payload?.surface === 'art' && payload?.purpose === 'optimize'
+    && payload?.targetEngine === 'gpt-image-2.5' && payload?.completeVisualBrief === true;
+}
+
+const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const isFiniteNonnegative = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+function validStoredCreditConfig(config) {
+  if (!isObject(config) || !isObject(config.prices) || !isObject(config.token_billing)) return false;
+  const p = config.prices, t = config.token_billing;
+  return isFiniteNonnegative(p.prompt_optimize) && isFiniteNonnegative(p.image_reverse)
+    && typeof config.credits_per_usd === 'number' && Number.isFinite(config.credits_per_usd) && config.credits_per_usd > 0
+    && typeof t.markup === 'number' && Number.isFinite(t.markup) && t.markup > 0 && t.markup <= 1000
+    && ['ceil', 'floor', 'round'].includes(t.round)
+    && isFiniteNonnegative(t.min_credits_per_image) && Number.isInteger(t.min_credits_per_image)
+    && typeof t.settle_cap_credits === 'number' && Number.isFinite(t.settle_cap_credits)
+    && t.settle_cap_credits > 0 && t.min_credits_per_image <= t.settle_cap_credits
+    && isObject(t.estimate_credits) && Object.keys(t.estimate_credits).length > 0;
+}
+
+// This is a compatibility marker, never an authentication or billing grant.
+// The independent UI uses the legacy feature's existing price; XiaoTao's
+// decimal operation must use its own operation-scoped charging path instead.
+const INDEPENDENT_UI_CONTRACT = 'independent-ui-v263';
+
+async function legacyXiaotaoCreditGuard(payload, readConfig, options = {}) {
+  const route = options.route || 'prompt-optimize';
+  const uiRequest = route === 'ui-catalog' || payload?.surface === 'ui-design'
+    || String(payload?.purpose || '').startsWith('ui-design-');
+  const legacyArt = route === 'prompt-optimize' && isLegacyXiaotaoGptImageOptimize(payload);
+  // Only new requests are stopped. A handler that has already reserved can
+  // finish with the pricing snapshot under which that request was accepted.
+  if (options.maintenance === true && (route === 'prompt-optimize' || uiRequest)) return 'maintenance';
+  if (!legacyArt && !uiRequest) return null;
+  let config;
+  try { config = await readConfig(); } catch { return 'unavailable'; }
+  if (!validStoredCreditConfig(config)) return 'unavailable';
+  const locations = [config.xiaotao_online, config.token_billing?.xiaotao_online];
+  if (locations.some(value => value != null && !isObject(value))) return 'unavailable';
+  // A confirmed older stored schema has no xiaotao_online object at all;
+  // the pricing layer supplies its legacy defaults.  Distinguish that schema
+  // from a missing/corrupt configuration before allowing legacy requests.
+  if (!locations.some(value => isObject(value) && Object.keys(value).length > 0)) {
+    return null;
+  }
+  const policies = locations.filter(value => value != null);
+  let decimal = false, legacy = false;
+  for (const policy of policies) {
+    const hasDecimal = ['credit_amount_policy', 'credit_precision', 'credit_rounding'].some(key => Object.hasOwn(policy, key));
+    if (hasDecimal || (policy.minimum_positive_credits != null && policy.minimum_positive_credits !== 1)) {
+      if (policy.credit_amount_policy !== 'decimal-v1' || policy.credit_precision !== 6
+          || policy.credit_rounding !== 'ceil' || policy.minimum_positive_credits !== 0) return 'unavailable';
+      decimal = true;
+    } else legacy = true;
+  }
+  if (decimal && legacy) return 'unavailable';
+  if (decimal && (legacyArt || (uiRequest && payload?.foartUiContract !== INDEPENDENT_UI_CONTRACT))) return 'refresh';
+  return null;
+}
+
+return legacyXiaotaoCreditGuard;
+})();
+// Compatibility and maintenance gate only.  It never authorizes a request or
+// replaces the existing user/session and feature-credit checks.
+async function legacyCreditGate(req: Request, payload: AnyRecord, route: string): Promise<Response | null> {
+  const result = await legacyXiaotaoCreditGuard(payload, async () => {
+    const { data, error } = await adminClient().from("system_settings").select("value")
+      .eq("key", "feature_credit_config").maybeSingle();
+    if (error || !data) throw new Error("feature credit configuration unavailable");
+    return (data as AnyRecord).value;
+  }, { route, maintenance: env("NOVAFLOW_LEGACY_UI_CREDIT_MAINTENANCE") === "true" });
+  if (!result) return null;
+  return jsonResponse(req, result === "refresh" ? 409 : 503, {
+    ok: false,
+    error: result === "refresh"
+      ? "当前页面版本需要更新，请刷新网页后重新发起；本次未提交，也未扣积分。"
+      : result === "maintenance"
+        ? "提示词优化正在短暂维护，请稍后重试；本次未提交，也未扣积分。"
+        : "暂时无法核验积分规则，请稍后刷新网页重试；本次未提交，也未扣积分。",
+    errorCode: result === "refresh" ? "xiaotao_client_refresh_required"
+      : result === "maintenance" ? "legacy_ui_credit_maintenance" : "xiaotao_credit_policy_unavailable"
+  });
 }
 
 async function handleGrokPromptOptimize(
@@ -1289,6 +1379,8 @@ async function handleGrokPromptOptimize(
   } catch (error) {
     return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
   }
+  const gate = await legacyCreditGate(req, payload, "prompt-optimize");
+  if (gate) return gate;
   let request: AnyRecord;
   try {
     request = buildGrokPromptOptimizeRequest(payload, grokModel()) as AnyRecord;
@@ -1425,6 +1517,8 @@ async function handleGrokImageReverse(
   } catch (error) {
     return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
   }
+  const gate = await legacyCreditGate(req, payload, "image-reverse");
+  if (gate) return gate;
   let request: AnyRecord;
   try {
     request = buildGrokImageReverseRequest(payload, grokModel()) as AnyRecord;
@@ -1557,6 +1651,8 @@ async function handleRunningHubUiCatalog(req: Request, session: { user: PublicUs
   } catch (error) {
     return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
   }
+  const gate = await legacyCreditGate(req, payload, "ui-catalog");
+  if (gate) return gate;
   const requestId = String(payload.requestId || "").trim();
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) return jsonResponse(req, 400, { ok: false, error: "分析请求标识无效" });
   let responsesBody: AnyRecord;

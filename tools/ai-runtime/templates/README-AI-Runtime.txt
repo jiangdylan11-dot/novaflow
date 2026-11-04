@@ -1,11 +1,11 @@
-NovaFlow AI Runtime
+Foart AI Runtime
 
-这是 NovaFlow 唯一需要安装的 AI 运行环境（ComfyUI 0.37，端口 8188）。
+这是 Foart 唯一需要安装的 AI 运行环境（ComfyUI 0.37，端口 8188）。
 生图、美工（扩图 / 局部编辑 / 智能补图 / 角度调整 / 万物迁移 / 拆图 / 抠图 / 放大 / 去除物体）
 和视频（AI 序列动画 / AI 特效，MiniMax H3）都在这一个环境里运行，不再需要单独的 H3 视频环境。
 
 安装：
-1. 先退出 NovaFlow。
+1. 先退出 Foart。
 2. 双击 setup.exe。
 3. Runtime 目录保持默认，或自选。
 4. 资源目录（放模型和插件的地方）保持默认，或自选。
@@ -32,11 +32,11 @@ prompt_assistant\cache\Huihui-Qwen3-VL-8B-Instruct-Abliterated-novaflow-bnb-nf4-
 text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors 已不再使用，可以删掉。
 
 升级已有的 Runtime：
-- 先退出 NovaFlow。setup.exe 会把旧的 engine 挪到 engine.previous，再装新的；
+- 先退出 Foart。setup.exe 会把旧的 engine 挪到 engine.previous，再装新的；
   想退回旧版时，删掉 engine，把 engine.previous 改名为 engine 即可。
 - 资源目录里已有的模型和你自己加的插件不会被删除。
 
-以前装过单独的 H3 视频环境（C:\ProgramData\NovaFlow\AI-Runtime-H3）的，装完新版 NovaFlow 助手后
+以前装过单独的 H3 视频环境（C:\ProgramData\NovaFlow\AI-Runtime-H3）的，装完新版 Foart 助手后
 可以删除那个文件夹；它和这个环境共用同一批模型，删了不会丢模型。
 
-安装后由 NovaFlow 自动启动和管理 Runtime，不需要手动启动。
+安装后由 Foart 自动启动和管理 Runtime，不需要手动启动。

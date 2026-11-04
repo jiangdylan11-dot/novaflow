@@ -20,10 +20,13 @@
     "license-admin-online.js",
     "license-admin-gui/**/*",
     "license-public-key.b64",
-    ".secrets/license-private-key.pem",
     "package.json",
     "prompt_assistant/h3_prompt_enhance_policy.json",
     "!**/tests/**/*",
+    "!**/.secrets/**",
+    "!**/.env",
+    "!**/.env.*",
+    "!**/*private-key*",
     "build/foart-admin-brush.ico"
   ],
   "directories": {
@@ -51,6 +54,7 @@
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "installerIcon": "build/foart-admin-brush.ico",

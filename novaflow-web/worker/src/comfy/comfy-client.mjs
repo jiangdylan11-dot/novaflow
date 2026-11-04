@@ -134,8 +134,8 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
       return await json('/history/' + encodeURIComponent(promptId), { method: 'GET' });
     },
 
-    async queueState() {
-      return await json('/queue', { method: 'GET' });
+    async queueState({ signal } = {}) {
+      return await json('/queue', { method: 'GET', signal });
     },
 
     async interrupt() {
@@ -143,8 +143,8 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
     },
 
     /** Unload every model and release cached memory (VRAM and the RAM copies ComfyUI keeps). */
-    async freeMemory() {
-      await json('/free', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }) });
+    async freeMemory({ signal } = {}) {
+      await json('/free', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }) });
     },
 
     async cancelPrompt(promptId) {

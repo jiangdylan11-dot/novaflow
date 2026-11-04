@@ -30,6 +30,9 @@
   let observer = null;
   let refreshTimer = 0;
   let sessionRefreshTimer = 0;
+  let sessionExpiryTimer = 0;
+  let sessionIdentityRevision = 0;
+  let expiredNoticeRevision = -1;
   let globalActionClickBound = false;
   let focusRefreshBound = false;
   let providerSettlementRefreshBound = false;
@@ -176,6 +179,42 @@
     return true;
   }
 
+  // Notify same-tab consumers without exposing the session or account data.
+  // Other tabs receive the browser's native storage event instead.
+  function authSessionIdentity(value) {
+    if (!value || typeof value !== "object" || !value.token) return null;
+    return [String(value.token), String(value.refreshToken || ""), String(value.expiresAt || "")];
+  }
+
+  function storedSessionIdentity() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? authSessionIdentity(JSON.parse(raw)?.session) : null;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function sameSessionIdentity(left, right) {
+    return left === null && right === null || Array.isArray(left) && Array.isArray(right) &&
+      left.length === right.length && left.every((value, index) => value === right[index]);
+  }
+
+  // A boolean only: callers never receive the token or other identity fields.
+  function hasPersistedSessionIdentity() {
+    const active = authSessionIdentity(state.session);
+    return Array.isArray(active) && sameSessionIdentity(active, storedSessionIdentity());
+  }
+
+  function notifyAuthSessionChanged(identityChanged = true) {
+    if (identityChanged) sessionIdentityRevision += 1;
+    try {
+      if (typeof window.Event === "function" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(new window.Event("novaflow-client-auth-changed"));
+      }
+    } catch { /* Never let notification alter authentication behavior. */ }
+  }
+
   function loadStoredSession() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -195,20 +234,24 @@
   }
 
   function saveStoredSession() {
+    const previous = storedSessionIdentity();
+    const next = authSessionIdentity(state.session);
+    let changed = !sameSessionIdentity(previous, next);
     try {
       if (!state.session || !state.session.token) {
         localStorage.removeItem(STORAGE_KEY);
-        return;
+      } else {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          session: state.session,
+          user: state.user,
+          credits: state.credits,
+          providerQuotas: state.providerQuotas
+        }));
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        session: state.session,
-        user: state.user,
-        credits: state.credits,
-        providerQuotas: state.providerQuotas
-      }));
     } catch {
-      void 0;
+      changed = true; // Fail closed if persistence could not be verified.
     }
+    if (changed) notifyAuthSessionChanged();
   }
 
   function sessionExpiryMs(value) {
@@ -219,6 +262,30 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  function clearSessionExpiryTimer() {
+    if (!sessionExpiryTimer) return;
+    window.clearTimeout(sessionExpiryTimer);
+    sessionExpiryTimer = 0;
+  }
+
+  function scheduleSessionExpiryNotice() {
+    clearSessionExpiryTimer();
+    if (!state.session?.token) return;
+    const expiry = sessionExpiryMs(state.session.expiresAt);
+    if (!expiry) return;
+    const revision = sessionIdentityRevision;
+    const delay = Math.min(2_147_483_647, Math.max(0, expiry - Date.now()));
+    sessionExpiryTimer = window.setTimeout(() => {
+      sessionExpiryTimer = 0;
+      if (revision !== sessionIdentityRevision || !state.session?.token || sessionExpiryMs(state.session.expiresAt) !== expiry) return;
+      if (Date.now() < expiry) return scheduleSessionExpiryNotice();
+      if (expiredNoticeRevision === revision) return;
+      expiredNoticeRevision = revision;
+      notifyAuthSessionChanged(false);
+    }, delay);
+    sessionExpiryTimer?.unref?.();
+  }
+
   function clearSessionRefreshTimer() {
     if (!sessionRefreshTimer) return;
     window.clearTimeout(sessionRefreshTimer);
@@ -227,6 +294,7 @@
 
   function scheduleSessionRefresh() {
     clearSessionRefreshTimer();
+    scheduleSessionExpiryNotice();
     if (!state.session?.token || !state.session?.refreshToken) return;
     const expireMs = sessionExpiryMs(state.session.expiresAt);
     if (!expireMs) return;
@@ -243,6 +311,9 @@
 
   function clearStoredSession() {
     clearSessionRefreshTimer();
+    clearSessionExpiryTimer();
+    const previous = storedSessionIdentity();
+    const hadSession = !!state.session?.token || previous === undefined || previous !== null;
     sessionRevision += 1;
     state.loading = false;
     state.session = null;
@@ -254,6 +325,7 @@
     } catch {
       void 0;
     }
+    if (hadSession) notifyAuthSessionChanged();
   }
 
   function setMessage(message, kind) {
@@ -1017,6 +1089,7 @@
 
   function init() {
     loadStoredSession();
+    scheduleSessionExpiryNotice();
     bindGlobalActionCapture();
     bindFocusRefresh();
     bindProviderSettlementRefresh();
@@ -1037,6 +1110,7 @@
       return ensureAutomaticAuthHostMounted(automaticHost);
     },
     createAuthorizationContext,
+    hasPersistedSessionIdentity,
     refresh: () => refreshBootstrap("manual"),
     logout,
     authorizeAiTask,

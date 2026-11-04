@@ -9,6 +9,12 @@
   const IMAGE_MAX_BYTES = 24 * 1024 * 1024;
   const MEDIA_MAX_BYTES = 64 * 1024 * 1024;
   const FORMATS = Object.freeze([
+    format('atlas', 'tool', ['text/plain','application/octet-stream',''], IMAGE_MAX_BYTES, '24MB'),
+    format('json', 'tool', ['application/json','text/plain',''], IMAGE_MAX_BYTES, '24MB'),
+    format('skel', 'tool', ['application/octet-stream',''], IMAGE_MAX_BYTES, '24MB'),
+    format('gif', 'video', ['image/gif'], MEDIA_MAX_BYTES, '64MB'),
+    format('avi', 'tool', ['video/x-msvideo','video/avi',''], MEDIA_MAX_BYTES, '64MB'),
+    format('mkv', 'tool', ['video/x-matroska',''], MEDIA_MAX_BYTES, '64MB'),
     format('png', 'image', ['image/png'], IMAGE_MAX_BYTES, '24MB'),
     format('jpg', 'image', ['image/jpeg'], IMAGE_MAX_BYTES, '24MB'),
     format('jpeg', 'image', ['image/jpeg'], IMAGE_MAX_BYTES, '24MB'),
@@ -76,7 +82,7 @@
     const known = formatByExtension(ext);
     if (!known) return {ok:false, message:`不支持 ${name}：只能上传 PNG、JPG、JPEG、WEBP、MP4、MOV、WEBM、MP3、WAV、M4A、AAC、OGG、FLAC`};
     const mime = mimeOf(file?.type);
-    if (!mime || !known.mimes.includes(mime)) return {ok:false, message:`${name} 的扩展名和文件类型不一致`};
+    if (!known.mimes.includes(mime)) return {ok:false, message:`${name} 的扩展名和文件类型不一致`};
     const size = Number(file?.size);
     if (!Number.isFinite(size) || size <= 0) return {ok:false, message:`${name} 是空文件`};
     if (size > known.maxBytes) return {ok:false, message:`${name} 超过 ${known.maxLabel}`};
@@ -141,47 +147,50 @@
   }
   // Route from the requested deliverable, independently of the currently open page.
   // Unassigned attachments remain conversation inputs; slot names are never a user decision.
-  function positiveTaskText(message){return String(message||'').replace(/(?:不要|不用|无需|不需要|别|先不|暂不)[^，。；;！？!?\n]*/g,'');}
+  function positiveTaskText(message){return String(message||'').replace(/(?:不要|不用|无需|不需要|(?<![分识区类告差鉴])别|先不|暂不|不(?:再|重新|额外)?(?:生成|生图|制作|导出|保存|新建|修改|改动|改变|合并|隐藏|删除|切换|引用|合成|重绘|执行|处理)|不AI改绘)[^，。；;！？!?\n]*/g,'');}
   function inferTask(message, files = [], previous = null) {
     const text = String(message || '').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1).trim();
-    const kinds = Array.from(files || []).map(file => file.kind);
+    const kinds = Array.from(files || []).map(file => file.kind),positive=positiveTaskText(text),previousSurface=previous?.surface || previous?.kind;
     let discussion = question(text) || /怎么|如何|为什么|是什么|能不能|可不可以|能否|是否|(?:只|仅).{0,8}(?:分析|看看|提示词|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,8}(?:生成|执行|制作|修改)/.test(text);
     const promptEdit=/(?:提示词.{0,6}(?:优化|修改|调整|改|写入|填入)|(?:优化|修改|调整|写入|填入).{0,6}提示词)/.test(text);
     const editing=/剪辑|裁切|裁剪|分割|截取|音量|淡入|淡出|循环\s*\d+\s*次|导出|变速|时间轴|帧编辑|倒放|镜像/.test(positiveTaskText(text));
     if(editing&&!question(text)&&!/(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,6}(?:执行|制作|修改|处理)/.test(text))discussion=false;
     if(promptEdit && !question(text) && !/怎么|如何|为什么|能不能|可不可以|能否|是否|(?:不要|不用|别|先不|暂不).{0,6}(?:优化|修改|写入|填入)|(?:只|仅).{0,6}(?:分析|讨论|解释)/.test(text))discussion=false;
-    const artTool=/美工|图层|画布扩展|姿势参考|智能补图|局部编辑|去背|UI设计/.test(text)&&!/视频|音频|音效|音乐/.test(text);
-    const imageEdit = artTool||/换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(text);
-    const video = /视频|动画|动效|动态|动起来|动一动|跑起来|转起来|循环动|首尾帧|首帧|尾帧|多参|镜头|剪辑|时间轴/.test(text);
-    const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(text);
-    let surface = imageEdit && !/视频|片段/.test(text) ? 'image' : audio&&!/视频|动画|动效|动态|首尾帧|多参/.test(text)?'audio':video ? 'video' : audio ? 'audio'
-      : /生图|出图|做图|画图|绘图|静态图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(text) || kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(text) ? 'image' : 'chat';
+    const animationExport=/导出/.test(positive)&&(/骨骼动画|Spine|(?:当前|现有|这个|idle).{0,8}动画/i.test(positive)||previousSurface==='animation'&&!/美工|图层|画布|图片|UI设计|PNG压缩|JPG压缩|工具版块|音视|视频(?:版块|编辑|剪辑)|首尾帧|多参|图生视频|文生视频/.test(positive));
+    const animationAuthoring=animationExport||/骨骼|蒙皮|权重|关键帧|\broot\b|(?:动画|Spine).{0,8}(?:工程|版块|模块)|Spine\s*编辑/i.test(positiveTaskText(text))&&!/视频|音视|音频|音效|首尾帧|图生|文生|多参/.test(positiveTaskText(text));
+    const artTool=/美工|图层|画布扩展|姿势参考|智能补图|局部编辑|去背|UI设计/.test(positive)&&!/视频|音频|音效|音乐/.test(positive);
+    const imageEdit = artTool||/换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(positive);
+    const video = /视频|动画|动效|动态|动起来|动一动|跑起来|转起来|循环动|首尾帧|首帧|尾帧|多参|镜头|剪辑|时间轴/.test(positive);
+    const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(positive);
+    let surface = imageEdit && !/视频|片段/.test(positive) ? 'image' : audio&&!/视频|动画|动效|动态|首尾帧|多参/.test(positive)?'audio':video ? 'video' : audio ? 'audio'
+      : /生图|出图|做图|画图|绘图|静态图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(positive) || kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(positive) ? 'image' : 'chat';
+    if(imageEdit&&!video&&!audio&&/调用|请|帮我|换|改|抠图|去背|拆图|放大|扩图|裁切|导出/.test(positive)&&!question(text)&&!/怎么|如何|为什么|能否|是否|(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不|不)执行/.test(text))discussion=false;
+    if(animationAuthoring)surface='animation';
     if (discussion) surface = 'chat';
     const newTask=/新建|新的任务|另一个任务|另外做|重新开始|不要原来|独立制作/.test(text);
-    const feedback=/不符合|不满意|性格|凶悍|凶一点|需要|重新做|重做|换|改|调整|优化|提示词|表情|动作|呲牙|龇牙|刚才|这个|再来|继续|还是|不对|效果|更.{0,8}(?:点|一些|一点)/.test(text);
-    const explicitImage=artTool||/图生图|生图|出图|静态图|(?:画|生成|制作).{0,5}(?:一张|图片|张图)/.test(text);
-    const explicitVideo=/视频|动画|动效|动态/.test(text);
-    const previousSurface=previous?.surface || previous?.kind;
+    const feedback=/不符合|不满意|性格|凶悍|凶一点|需要|重新做|重做|换|改|调整|优化|提示词|表情|动作|呲牙|龇牙|刚才|这个|再来|继续|导出|还是|不对|效果|更.{0,8}(?:点|一些|一点)/.test(text);
+    const explicitImage=artTool||/图生图|生图|出图|静态图|(?:画|生成|制作).{0,5}(?:一张|图片|张图)/.test(positive);
+    const explicitVideo=!animationAuthoring&&/视频|动画|动效|动态/.test(positive)&&!(previousSurface==='animation'&&!/视频|首尾帧|多参|图生|文生/.test(positiveTaskText(text)));
     const revision=!!previous && !discussion && !newTask && feedback && (!explicitImage || previousSurface==='image') && (!explicitVideo || previousSurface==='video') && (!(audio&&!explicitVideo)||previousSurface==='audio');
     if(revision)surface=previousSurface;
-    const loop = surface === 'video' && (/循环|无缝|loop/i.test(text) || revision && previous.loop===true);
-    const named = discussion ? [] : namedDestinations(text);
+    const loop = surface === 'video' && (/循环|无缝|loop/i.test(positive) || revision && previous.loop===true);
+    const named = discussion ? [] : namedDestinations(positive);
     let mode = surface === 'image' ? (kinds.includes('image') ? 'img2img' : 'txt2img')
-      : surface === 'video' ? kinds.some(kind => kind !== 'image') || /多参/.test(text) ? 'multi_reference'
-        : /首尾帧|首帧|尾帧/.test(text) || loop && kinds.includes('image') ? 'first_last'
+      : surface === 'video' ? kinds.some(kind => kind !== 'image') || /多参/.test(positive) ? 'multi_reference'
+        : /首尾帧|首帧|尾帧/.test(positive) || loop && kinds.includes('image') ? 'first_last'
           : kinds.includes('image') ? 'image_video' : 'text_video' : '';
-    if (imageEdit && kinds.includes('image')) mode = 'img2img';
-    const explicitVideoModes=[...text.matchAll(/文生视频|图生视频|首尾帧(?:视频)?|多参(?:视频)?/g)].map(m=>({'文生视频':'text_video','图生视频':'image_video'}[m[0]]||(/首尾帧/.test(m[0])?'first_last':'multi_reference')));
+    if (surface==='image' && imageEdit && kinds.includes('image')) mode = 'img2img';
+    const explicitVideoModes=[...positive.matchAll(/文生视频|图生视频|首尾帧(?:视频)?|多参(?:视频)?/g)].map(m=>({'文生视频':'text_video','图生视频':'image_video'}[m[0]]||(/首尾帧/.test(m[0])?'first_last':'multi_reference')));
     if(surface==='video'&&new Set(explicitVideoModes).size===1)mode=explicitVideoModes[0];
     else if(revision && previous.mode&&!named.length)mode=previous.mode;
-    const duration = text.match(/(\d+(?:\.\d+)?)\s*(?:秒|s\b)/i);
+    const duration = positive.match(/(\d+(?:\.\d+)?)\s*(?:秒|s\b)/i);
     return {surface, mode, loop, discussion, named,revision, ...(duration ? {seconds:Number(duration[1])} : revision && Number.isFinite(previous.seconds)?{seconds:previous.seconds}:{})};
   }
   function planRoutes(message, files, previous=null) {
     const text = String(message || '').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1).trim();
     const asking = question(text);
     const task = inferTask(message, files,previous);
-    const named = asking || task.discussion ? [] : namedDestinations(text);
+    const named = asking || task.discussion ? [] : namedDestinations(positiveTaskText(text));
     const place = [];
     const ask = [];
     const reject = [];
@@ -289,9 +298,13 @@
   }
   function slotNode(doc, names) {
     for (const name of names) {
+      const node = doc?.querySelector?.(`[data-ais-import="${name}"]`);
+      const proxy=node?.querySelector?.('input[data-novaflow-ai-sequence-upload-click-proxy="1"]');
+      // The original visible picker dispatches both native input and drop.
+      // Its offscreen input alone may be cleared before the drop bridge runs.
+      if(proxy)return proxy;
       const input = doc?.querySelector?.(`input[data-novaflow-ai-sequence-upload-zone="${name}"]`);
       if (input) return input;
-      const node = doc?.querySelector?.(`[data-ais-import="${name}"]`);
       if (node) return node;
     }
     return null;
@@ -391,7 +404,23 @@
           const limit = MULTI_LIMITS[item.kind] || 1;
           const media = scope.NovaFlowH3Media;
           const boardId=scope.NovaFlowAiSequenceGeneration?.capture?.().boardId;
-          const current=media?.store?.get?.(boardId);
+          // Opening the board starts asynchronous IndexedDB restoration. Wait
+          // for it before comparing bytes, or a restored file is imported twice.
+          const current=typeof media?.snapshot==='function'?await media.snapshot(boardId):typeof media?.store?.snapshot==='function'?await media.store.snapshot(boardId):media?.store?.get?.(boardId);
+          // A follow-up often reattaches the same file. Reuse only identical
+          // bytes, never just a matching name (a revised file may keep its name).
+          const digest=async blob=>Array.from(new Uint8Array(await scope.crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))).join(',');
+          if(scope.crypto?.subtle&&typeof file.arrayBuffer==='function'){
+            let incomingHash;
+            for(const entry of current||[]){
+              if(entry.kind!==item.kind||entry.fileName!==file.name||entry.size!==file.size)continue;
+              let blob=entry.blob;
+              if(!blob&&entry.dataUrl&&typeof scope.fetch==='function')blob=await(await scope.fetch(entry.dataUrl)).blob();
+              if(!blob||typeof blob.arrayBuffer!=='function')continue;
+              incomingHash??=await digest(file);
+              if(await digest(blob)===incomingHash){const reused={id:destination.id,kind:item.kind,name:item.name,module:destination.module,mode:destination.mode,uploadedName,reused:true,sourceId:entry.sourceId};placed.push(reused);return reused;}
+            }
+          }
           if (current?.filter(entry=>entry.kind===item.kind).length >= limit) throw new Error(`${item.kind === 'video' ? '参考视频' : item.kind === 'audio' ? '参考音频' : '参考图'}已满`);
           if (typeof media?.importFiles === 'function') {
             const imported = await media.importFiles(item.kind, [file], {representation:'object-url'});
@@ -406,12 +435,13 @@
         } else {
           await openVideo(destination.mode);
           const node = await ready(() => slotNode(doc, destination.slots), `${destination.label}尚未就绪，素材已保留，请重试`);
+          const key=destination.id==='last_frame'?'last_frame':'first_frame';
+          const beforeResource=scope.NovaFlowAiSequenceGeneration?.optimizationContext?(await scope.NovaFlowAiSequenceGeneration.optimizationContext()).resources.find(resource=>resource.key===key):null;
           assignFiles(node.querySelector?.('input') || node, [file], true);
           node.setAttribute?.('data-novaflow-resource-occupied', '1');
           if(scope.NovaFlowAiSequenceGeneration?.optimizationContext) await ready(async()=>{
             const context=await scope.NovaFlowAiSequenceGeneration.optimizationContext();
-            const key=destination.id==='last_frame'?'last_frame':'first_frame';
-            return context.resources.some(resource=>resource.key===key&&resource.occupied);
+            return context.resources.some(resource=>resource.key===key&&resource.occupied&&resource.fileName===file.name&&resource.sourceId&&resource.sourceId!==beforeResource?.sourceId);
           },'参考图片仍未导入完成，未提交生成');
         }
         // Importing the same file into the general resource list triggers another

@@ -1,5 +1,11 @@
 # NovaFlow 后台管理
 
+## 本机签发私钥
+
+管理后台安装包不包含签发私钥。默认读取本机 Documents 目录下 `NovaFlow-License/keys/license-private-key.pem`；也可在启动后台前将 `FOART_LICENSE_PRIVATE_KEY_PATH` 指向本机已有私钥文件的绝对路径。私钥不存在或路径配置无效时，签发会明确报错，不会生成或替换密钥。公钥优先使用同一 `NovaFlow-License` 目录里的文件，不存在时验签使用随包公钥；生成和删除操作仍使用外部公钥路径。
+
+升级旧版前请先确认已有私钥在安装目录之外可用；不要将私钥发给其他人或上传。安装程序不删除应用用户数据，也不会替用户复制或迁移密钥。
+
 这是 NovaFlow 的独立后台管理端。积分流水在 `credit_ledger`，算力任务在 `web_ai_tasks`。后台不保存完整 Workflow 与生成产物。
 
 ## 当前模块

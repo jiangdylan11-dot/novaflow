@@ -3,6 +3,8 @@ param(
   [string] $SourceComfyRoot,
   [string] $SourcePythonRoot,
   [string] $SourceStrataRoot,
+  [string] $SourceQwenRunnerRoot,
+  [ValidateSet('none','cpu')][string] $QwenRunnerProfile = 'none',
   [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime")),
   [string] $InstallPath = "C:\ProgramData\NovaFlow\AI-Runtime",
   [string] $AssetsPath,
@@ -13,6 +15,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# CPU-only packaging is explicit and uses a source-pinned inventory; a
+# caller-supplied manifest or a GPU build cannot activate this path.
+$qwenRunnerInventorySHA256 = 'b6f573fbd0a7487610b345e1b390f3629fb9d482f9c4a3ac651bca6f7c52d26e'
+. (Join-Path $PSScriptRoot 'qwen-runner-component.ps1')
+if (($QwenRunnerProfile -eq 'cpu') -ne [bool]$SourceQwenRunnerRoot) { throw 'Qwen CPU packaging requires both -QwenRunnerProfile cpu and -SourceQwenRunnerRoot.' }
 
 function Convert-ToFullPath {
   param([Parameter(Mandatory=$true)][string] $Path)
@@ -437,6 +445,13 @@ $SourceStrataRoot = Convert-ToFullPath $SourceStrataRoot
 # Fail before removing an existing package or copying the large ComfyUI tree.
 $strataLayout = Get-StrataRuntimeLayout -SourceRoot $SourceStrataRoot
 $strataNotices = Get-StrataNoticeLayout -Root (Join-Path $PSScriptRoot "notices/strata")
+$qwenRunnerLayout = $null
+if ($SourceQwenRunnerRoot) {
+  $qwenRunnerLayout = Test-QwenRunnerOfficialInventory -Root $SourceQwenRunnerRoot `
+    -InventoryPath (Join-Path $PSScriptRoot 'manifests/qwen-ollama-v0.40.13.inventory.json') `
+    -TrustedInventorySHA256 $qwenRunnerInventorySHA256 -Profile cpu
+  $null = Test-QwenRunnerCpuNotices -NoticesRoot (Join-Path $PSScriptRoot 'notices/qwen')
+}
 
 $OutputRoot = Convert-ToFullPath $OutputRoot
 $packageRoot = Join-Path $OutputRoot "package"
@@ -539,6 +554,12 @@ Remove-TorchStaticLibraries -PythonRoot $pythonDest
 
 Write-Host "Copying verified portable Strata control and CUDA13 engine from $SourceStrataRoot"
 Copy-StrataRuntime -Layout $strataLayout -Destination (Join-Path $engineRoot "strata") -Notices $strataNotices
+if ($qwenRunnerLayout) {
+  Copy-QwenRunnerCpuCandidate -Root $SourceQwenRunnerRoot `
+    -InventoryPath (Join-Path $PSScriptRoot 'manifests/qwen-ollama-v0.40.13.inventory.json') `
+    -TrustedInventorySHA256 $qwenRunnerInventorySHA256 -NoticesRoot (Join-Path $PSScriptRoot 'notices/qwen') `
+    -Destination (Join-Path $engineRoot 'llama/ollama-v0.40.13') | Out-Null
+}
 
 # The two NovaFlow patches are pinned to ComfyUI 0.24.1 file hashes (and the INT8 one to
 # comfy-kitchen 0.2.11). ComfyUI 0.37 ships INT8 TensorWise itself and no longer has the lines the

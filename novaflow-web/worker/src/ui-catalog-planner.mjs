@@ -294,6 +294,27 @@ export function buildUiCatalogGraph({ system, context, images = [], observation 
   return graph;
 }
 
+// Preflight the exact CPU-only modules and packaged JSON, never load a model.
+export function probeUiCatalogCpu({python,serviceScript}) {
+  if (!python || !serviceScript) return Promise.resolve(false);
+  const code = `import json
+from pathlib import Path
+import PIL, jsonschema
+import prompt_assistant.ui_catalog_cli
+from prompt_assistant import grok_ui_vision
+from prompt_assistant.ui_native import service
+json.loads(grok_ui_vision.RECIPE.read_text(encoding='utf-8'))
+[json.loads((service.ROOT/'assets'/name).read_text(encoding='utf-8')) for name in ('natural.json','grid.json','controls.json','art.json','grok-catalog.json')]`;
+  return new Promise(resolve=>{
+    let done=false, child;
+    const finish=ok=>{if(done)return;done=true;clearTimeout(timer);resolve(ok);};
+    try { child=spawn(python,['-B','-c',code],{cwd:dirname(serviceScript),windowsHide:true,stdio:'ignore'}); }
+    catch {resolve(false);return;}
+    const timer=setTimeout(()=>{child.kill();finish(false);},10000);timer.unref?.();
+    child.once('error',()=>finish(false));child.once('exit',code=>finish(code===0));
+  });
+}
+
 export function cpuCatalog({ python, serviceScript }, payload) {
   return new Promise((resolve, reject) => {
     const child = spawn(python, ['-B', '-m', 'prompt_assistant.ui_catalog_cli'], { cwd: dirname(serviceScript), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });

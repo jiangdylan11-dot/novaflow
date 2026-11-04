@@ -235,7 +235,7 @@
     const windowRef = documentRef.defaultView || root
     const documentHost = documentRef.body
     const electronAPI = config.electronAPI || root.electronAPI || {}
-    const dropAdapter = modules.bridge.createAdapter({ assetBridge: config.assetBridge })
+    const dropAdapter = modules.bridge.createAdapter({ assetBridge: config.assetBridge, allowAudio: true, allowImages: true })
     const assetBridge = config.assetBridge || root.NovaFlowAiSequenceAssetBridge || null
     const $ = (id) => shell.querySelector('#' + id) || leftPanel.querySelector('#' + id)
     const audioContext = (() => { let ctx = null; return () => { if (!ctx) ctx = new (windowRef.AudioContext || windowRef.webkitAudioContext)(); return ctx } })()
@@ -443,12 +443,12 @@
     function cardMediaDescriptor(resourceId) {
       const card = documentRef.querySelector('[data-novaflow-ai-resource-card="1"][data-novaflow-ai-resource-id="' + CSS_escape(resourceId) + '"]')
       if (!card) return null
-      const media = card.querySelector('img, video')
+      const media = card.querySelector('img, video, audio')
       const src = media && (media.currentSrc || media.src)
       if (!src) return null
       // the card's own file name (its text), never a button's title
-      const name = text(card.getAttribute('data-novaflow-ai-resource-name') || Array.from(card.querySelectorAll('*')).map((n) => (n.childElementCount ? '' : n.textContent || '').trim()).find((t) => /\.(png|jpe?g|webp|gif|bmp|mp4|webm)$/i.test(t) || /^(Image|Video)_/.test(t)) || (media.tagName === 'IMG' ? 'image.png' : 'clip.mp4'), 'clip')
-      return { resourceId, objectUrl: src, fileName: name, mimeType: media.tagName === 'IMG' ? 'image/png' : 'video/mp4' }
+      const name = text(card.getAttribute('data-novaflow-ai-resource-name') || Array.from(card.querySelectorAll('*')).map((n) => (n.childElementCount ? '' : n.textContent || '').trim()).find((t) => /\.(png|jpe?g|webp|gif|bmp|mp4|webm|wav|mp3|ogg|m4a|aac|flac)$/i.test(t) || /^(Image|Video)_/.test(t)) || (media.tagName === 'IMG' ? 'image.png' : media.tagName === 'AUDIO' ? 'audio.wav' : 'clip.mp4'), 'clip')
+      return { resourceId, objectUrl: src, fileName: name, mimeType: media.tagName === 'IMG' ? 'image/png' : isAudioName(name) || media.tagName === 'AUDIO' ? 'audio/wav' : 'video/mp4' }
     }
     function CSS_escape(value) { return (root.CSS && root.CSS.escape) ? root.CSS.escape(value) : String(value).replace(/["\\]/g, '\\$&') }
     async function resolveResourceId(resourceId) {

@@ -131,6 +131,106 @@
       known = next;
     }
   }
+  // Async writer paths must yield a macrotask: awaiting an already-resolved
+  // promise alone keeps the browser in the microtask queue and cannot paint.
+  function createCooperator(signal, isDisposed = () => false) {
+    const now = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
+    let last = now();
+    return async function checkpoint(force = false) {
+      if (signal?.aborted || isDisposed()) throw new DOMException('Export cancelled', 'AbortError');
+      if (force || now() - last >= 12) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        last = now();
+        if (signal?.aborted || isDisposed()) throw new DOMException('Export cancelled', 'AbortError');
+      }
+    };
+  }
+  async function resampleResponsive(rgba, width, height, percent, checkpoint) {
+    const w = Math.max(1, Math.round(width * percent / 100)), h = Math.max(1, Math.round(height * percent / 100)), out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      if ((y & 15) === 0) await checkpoint();
+      const y0 = Math.floor(y * height / h), y1 = Math.max(y0 + 1, Math.floor((y + 1) * height / h));
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.floor(x * width / w), x1 = Math.max(x0 + 1, Math.floor((x + 1) * width / w));
+        let r = 0, g = 0, b = 0, a = 0, n = 0;
+        for (let sy = y0; sy < y1; sy++) for (let sx = x0; sx < x1; sx++) {
+          const i = (sy * width + sx) * 4, alpha = rgba[i + 3];
+          r += rgba[i] * alpha; g += rgba[i + 1] * alpha; b += rgba[i + 2] * alpha; a += alpha; n++;
+        }
+        if (!a) continue;
+        const o = (y * w + x) * 4;
+        out[o] = Math.round(r / a); out[o + 1] = Math.round(g / a); out[o + 2] = Math.round(b / a); out[o + 3] = Math.round(a / n);
+      }
+    }
+    return { rgba: out, width: w, height: h };
+  }
+  async function trimBoundsResponsive(rgba, width, height, settings, checkpoint) {
+    if (!settings.trim) return { x: 0, y: 0, width, height, blank: false };
+    let left = width, top = height, right = -1, bottom = -1;
+    for (let y = 0; y < height; y++) {
+      if ((y & 15) === 0) await checkpoint();
+      for (let x = 0; x < width; x++) {
+        if (rgba[(y * width + x) * 4 + 3] <= settings.alphaThreshold) continue;
+        left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+      }
+    }
+    return right < 0 ? { x: 0, y: 0, width: 1, height: 1, blank: true }
+      : { x: left, y: top, width: right - left + 1, height: bottom - top + 1, blank: false };
+  }
+  async function bleedPixelsResponsive(pixels, width, height, checkpoint) {
+    let known = new Uint8Array(width * height);
+    for (let i = 0; i < known.length; i++) {
+      if ((i & 65535) === 0) await checkpoint();
+      known[i] = pixels[i * 4 + 3] > 0 ? 1 : 0;
+    }
+    for (let pass = 0; pass < 2; pass++) {
+      const next = known.slice();
+      for (let y = 0; y < height; y++) {
+        if ((y & 15) === 0) await checkpoint();
+        for (let x = 0; x < width; x++) {
+          const i = y * width + x;
+          if (known[i]) continue;
+          let source = -1;
+          if (x > 0 && known[i - 1]) source = i - 1;
+          else if (x + 1 < width && known[i + 1]) source = i + 1;
+          else if (y > 0 && known[i - width]) source = i - width;
+          else if (y + 1 < height && known[i + width]) source = i + width;
+          if (source < 0) continue;
+          pixels[i * 4] = pixels[source * 4]; pixels[i * 4 + 1] = pixels[source * 4 + 1]; pixels[i * 4 + 2] = pixels[source * 4 + 2]; next[i] = 1;
+        }
+      }
+      known = next;
+    }
+  }
+  async function placeResponsive(free, width, height, checkpoint) {
+    let best = null, score = Infinity;
+    for (let i = 0; i < free.length; i++) {
+      if ((i & 255) === 0) await checkpoint();
+      const rect = free[i];
+      if (width > rect.width || height > rect.height) continue;
+      const next = Math.min(rect.width - width, rect.height - height) * 8192 + Math.max(rect.width - width, rect.height - height);
+      if (next < score) { best = { x: rect.x, y: rect.y, width, height }; score = next; }
+    }
+    if (!best) return null;
+    const split = [];
+    for (let i = 0; i < free.length; i++) {
+      if ((i & 255) === 0) await checkpoint();
+      const rect = free[i];
+      if (best.x >= rect.x + rect.width || best.x + width <= rect.x || best.y >= rect.y + rect.height || best.y + height <= rect.y) { split.push(rect); continue; }
+      if (best.x > rect.x) split.push({ ...rect, width: best.x - rect.x });
+      if (best.x + width < rect.x + rect.width) split.push({ ...rect, x: best.x + width, width: rect.x + rect.width - best.x - width });
+      if (best.y > rect.y) split.push({ ...rect, height: best.y - rect.y });
+      if (best.y + height < rect.y + rect.height) split.push({ ...rect, y: best.y + height, height: rect.y + rect.height - best.y - height });
+    }
+    free.length = 0;
+    for (let i = 0; i < split.length; i++) {
+      if ((i & 15) === 0) await checkpoint();
+      const rect = split[i];
+      if (!split.some((other, j) => j !== i && (j < i || other.x !== rect.x || other.y !== rect.y || other.width !== rect.width || other.height !== rect.height) &&
+        rect.x >= other.x && rect.y >= other.y && rect.x + rect.width <= other.x + other.width && rect.y + rect.height <= other.y + other.height)) free.push(rect);
+    }
+    return best;
+  }
   const crcTable = Uint32Array.from({ length: 256 }, (_, n) => {
     let c = n; for (let i = 0; i < 8; i++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0;
   });
@@ -141,10 +241,11 @@
     view.setUint32(result.length - 4, (crc ^ 0xffffffff) >>> 0); return result;
   }
   // Encode RGBA bytes directly: canvas PNG export would round premultiplied RGB.
-  async function encodePng(rgba, width, height, premultiplyAlpha = false) {
+  async function encodePng(rgba, width, height, premultiplyAlpha = false, checkpoint = createCooperator()) {
     if (typeof CompressionStream !== 'function') throw new Error('当前浏览器不支持 PNG 图集编码，请更新浏览器后重试');
     const rows = new Uint8Array((width * 4 + 1) * height);
     for (let y = 0; y < height; y++) {
+      if ((y & 15) === 0) await checkpoint();
       const target = y * (width * 4 + 1) + 1;
       rows.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), target);
       if (premultiplyAlpha) for (let x = 0; x < width; x++) {
@@ -153,9 +254,20 @@
       }
     }
     const compressed = new Uint8Array(await new Response(new Blob([rows]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+    await checkpoint();
     const header = new Uint8Array(13), view = new DataView(header.buffer);
     view.setUint32(0, width); view.setUint32(4, height); header[8] = 8; header[9] = 6;
-    return new Uint8Array(await new Blob([Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10), chunk('IHDR', header), chunk('IDAT', compressed), chunk('IEND', new Uint8Array())]).arrayBuffer());
+    const chunkResponsive = async (type, data) => {
+      const result = new Uint8Array(data.length + 12), view = new DataView(result.buffer);
+      view.setUint32(0, data.length); result.set(new TextEncoder().encode(type), 4); result.set(data, 8);
+      let crc = 0xffffffff;
+      for (let i = 4; i < result.length - 4; i++) {
+        if ((i & 65535) === 0) await checkpoint();
+        crc = crcTable[(crc ^ result[i]) & 255] ^ (crc >>> 8);
+      }
+      view.setUint32(result.length - 4, (crc ^ 0xffffffff) >>> 0); return result;
+    };
+    return new Uint8Array(await new Blob([Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10), await chunkResponsive('IHDR', header), await chunkResponsive('IDAT', compressed), await chunkResponsive('IEND', new Uint8Array())]).arrayBuffer());
   }
   function makeAtlas(pages, settings, version = '4.1') {
     return pages.map(page => [page.fileName, `size: ${page.width},${page.height}`, 'format: RGBA8888', 'filter: Linear,Linear', 'repeat: none',
@@ -210,30 +322,43 @@
     }
     return skeleton;
   }
-  function createFileWriter({ api, dir, handle }) {
+  function createFileWriter({ api, dir, handle, signal }) {
+    const checkCancelled = () => { if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError'); };
     return async (relativeName, data) => {
+      checkCancelled();
       const parts = relativeName.split('/');
       if (parts.some(part => !part || part === '.' || part === '..' || /[\\]/.test(part))) throw new Error('导出路径无效');
       const fileName = parts.pop();
       if (api?.writeBinaryFile && dir) {
         const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data;
+        checkCancelled();
         const target = [String(dir).replace(/[\\/]+$/, ''), ...parts].join('/');
         const result = await api.writeBinaryFile({ dir: target, fileName, bytes, spineSequenceNamed: true });
+        checkCancelled();
         if (result?.canceled) throw new Error('已取消文件保存');
         if (!result || result.ok === false) throw new Error(String(result?.error || '文件写入失败'));
         return;
       }
       if (!handle) throw new Error('未选择导出目录');
       let folder = handle;
-      for (const part of parts) folder = await folder.getDirectoryHandle(part, { create: true });
-      const writable = await (await folder.getFileHandle(fileName, { create: true })).createWritable();
-      try { await writable.write(data); await writable.close(); } catch (error) { try { await writable.abort(); } catch {} throw error; }
+      for (const part of parts) { folder = await folder.getDirectoryHandle(part, { create: true }); checkCancelled(); }
+      const target = await folder.getFileHandle(fileName, { create: true });
+      checkCancelled();
+      const writable = await target.createWritable();
+      try {
+        checkCancelled();
+        await writable.write(data);
+        checkCancelled();
+        await writable.close();
+        checkCancelled();
+      } catch (error) { try { await writable.abort(); } catch {} throw error; }
     };
   }
   function createWriter(options) {
     const settings = normalizeSettings(options.settings), baseName = options.exactBaseName ? String(options.baseName) : safeName(options.baseName), packed = options.packed === true;
     const frames = [], pages = [], names = new Set(), seen = new Map(), counters = new Map();
-    let pixels = null, free = [], regions = [], usedWidth = 0, usedHeight = 0, finished = false, previous = null;
+    let pixels = null, free = [], regions = [], usedWidth = 0, usedHeight = 0, finished = false, disposed = false, busy = false, previous = null;
+    const checkpoint = createCooperator(options.signal, () => disposed);
     // Unique frames are numbered consecutively per name prefix so native Sequences stay contiguous after duplicates drop out.
     function describe(name, rgba, width, height, sourceWidth, sourceHeight) {
       const match = /^(.*?)(\d+)$/.exec(name), prefix = match ? match[1] : name;
@@ -250,9 +375,11 @@
     async function flush() {
       if (!regions.length) return;
       const rgba = new Uint8Array(usedWidth * usedHeight * 4);
-      for (let y = 0; y < usedHeight; y++) rgba.set(pixels.subarray(y * settings.maxWidth * 4, (y * settings.maxWidth + usedWidth) * 4), y * usedWidth * 4);
+      for (let y = 0; y < usedHeight; y++) { if ((y & 15) === 0) await checkpoint(); rgba.set(pixels.subarray(y * settings.maxWidth * 4, (y * settings.maxWidth + usedWidth) * 4), y * usedWidth * 4); }
       const fileName = `${baseName}${pages.length ? '_' + (pages.length + 1) : ''}.png`;
-      await options.write(fileName, await encodePng(rgba, usedWidth, usedHeight, settings.premultiplyAlpha));
+      const png = await encodePng(rgba, usedWidth, usedHeight, settings.premultiplyAlpha, checkpoint);
+      await checkpoint();
+      await options.write(fileName, png);
       pages.push({ fileName, width: usedWidth, height: usedHeight, regions });
       pixels = null; free = []; regions = []; usedWidth = usedHeight = 0;
     }
@@ -261,28 +388,35 @@
       free = [{ x: 0, y: 0, width: settings.maxWidth, height: settings.maxHeight }];
     }
     async function addRgba(rgba, width, height, name = frameName(baseName, frames.length)) {
+      if (busy) throw new Error('Atlas writer is already processing an image');
+      busy = true;
+      try {
+      await checkpoint();
       if (finished) throw new Error('导出已结束');
       if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || rgba.length !== width * height * 4) throw new Error('序列帧像素尺寸无效');
       if (names.has(name)) throw new Error('序列帧名称重复：' + name);
       const sourceWidth = width, sourceHeight = height;
-      if (packed && settings.scale < 100) ({ rgba, width, height } = resample(rgba, width, height, settings.scale));
+      if (packed && settings.scale < 100) ({ rgba, width, height } = await resampleResponsive(rgba, width, height, settings.scale, checkpoint));
       const frame = describe(name, rgba, width, height, sourceWidth, sourceHeight);
-      const bounds = packed ? trimBounds(rgba, width, height, settings) : { x: 0, y: 0, width, height };
+      const bounds = packed ? await trimBoundsResponsive(rgba, width, height, settings, checkpoint) : { x: 0, y: 0, width, height };
       if (!frame.unique) {
         // Same pixels as an earlier frame of this sequence: no region, no file; the skeleton holds the earlier one.
       } else if (!packed) {
-        await options.write(`images/${frame.region}.png`, await encodePng(rgba, width, height));
+        const png = await encodePng(rgba, width, height, false, checkpoint);
+        await checkpoint();
+        await options.write(`images/${frame.region}.png`, png);
       } else {
         const paddedWidth = bounds.width + px * 2, paddedHeight = bounds.height + py * 2;
         if (paddedWidth > settings.maxWidth || paddedHeight > settings.maxHeight) throw new Error(`图片「${name}」需要 ${paddedWidth}×${paddedHeight}（含间距），超出图集尺寸 ${settings.maxWidth}×${settings.maxHeight}，请增大图集或减小导出缩放`);
         if (!pixels) newPage();
-        let placement = place(free, paddedWidth, paddedHeight);
-        if (!placement) { await flush(); newPage(); placement = place(free, paddedWidth, paddedHeight); }
+        let placement = await placeResponsive(free, paddedWidth, paddedHeight, checkpoint);
+        if (!placement) { await flush(); newPage(); placement = await placeResponsive(free, paddedWidth, paddedHeight, checkpoint); }
         const cropped = new Uint8Array(bounds.width * bounds.height * 4);
-        if (!bounds.blank) for (let y = 0; y < bounds.height; y++) cropped.set(rgba.subarray(((bounds.y + y) * width + bounds.x) * 4, ((bounds.y + y) * width + bounds.x + bounds.width) * 4), y * bounds.width * 4);
-        if (settings.bleed && !settings.premultiplyAlpha) bleedPixels(cropped, bounds.width, bounds.height);
+        if (!bounds.blank) for (let y = 0; y < bounds.height; y++) { if ((y & 15) === 0) await checkpoint(); cropped.set(rgba.subarray(((bounds.y + y) * width + bounds.x) * 4, ((bounds.y + y) * width + bounds.x + bounds.width) * 4), y * bounds.width * 4); }
+        if (settings.bleed && !settings.premultiplyAlpha) await bleedPixelsResponsive(cropped, bounds.width, bounds.height, checkpoint);
         const x = placement.x + px, y = placement.y + py;
         for (let row = 0; row < bounds.height; row++) {
+          if ((row & 15) === 0) await checkpoint();
           const from = row * bounds.width * 4, to = ((y + row) * settings.maxWidth + x) * 4;
           pixels.set(cropped.subarray(from, from + bounds.width * 4), to);
           if (settings.duplicatePadding) for (let edge = 1; edge <= px; edge++) {
@@ -300,6 +434,11 @@
       }
       names.add(name); frames.push(frame);
       options.onProgress?.({ frames: frames.length, pages: pages.length + (regions.length ? 1 : 0) });
+      await checkpoint();
+      } catch (error) {
+        if (error?.name === 'AbortError') { disposed = true; finished = true; pixels = null; free = []; regions = []; previous = null; }
+        throw error;
+      } finally { busy = false; }
     }
     async function addCanvas(canvas, name) {
       const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -314,8 +453,12 @@
       } finally { image.close(); }
     }
     async function finish(json) {
+      if (busy) throw new Error('Atlas writer is already processing an image');
+      busy = true;
+      try {
+      await checkpoint();
       if (finished || (!frames.length && !(json && (typeof json === 'string' || json.bones?.length)))) throw new Error('没有可导出的序列帧');
-      if (packed) { await flush(); await options.write(`${baseName}.atlas`, makeAtlas(pages, settings, options.version)); }
+      if (packed) { await flush(); await checkpoint(); await options.write(`${baseName}.atlas`, makeAtlas(pages, settings, options.version)); }
       const skeleton = json ? normalizeSkeleton(json, frames, packed) : makeSkeleton({ ...options, baseName, frames, packed });
       // Normalization uses the editor's array skins internally; restore the 3.7 wire format last.
       if (String(skeleton.skeleton?.spine).startsWith('3.7') && Array.isArray(skeleton.skins))
@@ -324,12 +467,17 @@
         // .skel: the same skeleton as Spine 3.8 binary (renderer/spine-binary-write.js)
         const B = globalThis.NovaFlowSpineBinary;
         if (!B || typeof B.write !== 'function') throw new Error('二进制写入器没有加载');
-        await options.write(`${baseName}.skel`, B.write(skeleton, options.version));
-      } else await options.write(`${baseName}.json`, JSON.stringify(skeleton));
+        const encoded = B.write(skeleton, options.version); await checkpoint(); await options.write(`${baseName}.skel`, encoded);
+      } else { const encoded = JSON.stringify(skeleton); await checkpoint(); await options.write(`${baseName}.json`, encoded); }
+      await checkpoint();
       finished = true;
       return { frames: frames.length, regions: frames.filter(frame => frame.unique).length, pages: pages.length, packed, baseName };
+      } catch (error) {
+        if (error?.name === 'AbortError') { disposed = true; finished = true; pixels = null; free = []; regions = []; previous = null; }
+        throw error;
+      } finally { busy = false; }
     }
-    return { addRgba, addCanvas, addPng, finish, dispose() { pixels = null; free = []; regions = []; previous = null; finished = true; } };
+    return { addRgba, addCanvas, addPng, finish, dispose() { disposed = true; pixels = null; free = []; regions = []; previous = null; finished = true; } };
   }
   root.NovaFlowSequenceAtlas = Object.freeze({ defaults, normalizeSettings, safeName, resample, trimBounds, encodePng, makeAtlas, makeSkeleton, createFileWriter, createWriter });
 })(globalThis);

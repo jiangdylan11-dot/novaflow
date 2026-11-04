@@ -62,7 +62,7 @@ from prompt_assistant.art_prompt_contract import (
     terminal_constraint_text as art_prompt_terminal_constraint_text,
 )
 from prompt_assistant.qwen3_vl_adapter import Qwen3VLProviderError
-from prompt_assistant.qwen21_prompt_policy import inject_policy as inject_qwen21_policy, policy_for as qwen21_policy_for, compile_agent_english, VERSION as QWEN21_POLICY_VERSION
+from prompt_assistant.qwen21_prompt_policy import inject_policy as inject_qwen21_policy, policy_for as qwen21_policy_for, compile_agent_english, compile_agent_native, NATIVE_CONTRACT as QWEN21_NATIVE_CONTRACT, VERSION as QWEN21_POLICY_VERSION
 from prompt_assistant.pe_adapter import ComfyPEAdapter
 from prompt_assistant.flash_adapter import (
     FlashAdapter, flash_backend_enabled, begin_flash_request, end_flash_request, flash_request_summary,
@@ -115,7 +115,7 @@ if hasattr(sys.stdin, "reconfigure"):
     sys.stdin.reconfigure(encoding="utf-8")
 
 
-MODEL_TYPE = "swift15_qwen38_flash_next_iq2_xs" if flash_backend_enabled() else "qwen35_pe_i2i"
+MODEL_TYPE = ("qwen35_heretic_local" if os.environ.get("NOVAFLOW_QWEN_STDIO_BRIDGE") == "v1" else "swift15_qwen38_flash_next_iq2_xs") if flash_backend_enabled() else "qwen35_pe_i2i"
 DEFAULT_RUNTIME_JSON = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\runtime.json")
 DEFAULT_COMFY_ROOT = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\engine\ComfyUI")
 DEFAULT_REVERSE_QWEN3_MODEL_PATH = Path(
@@ -14762,7 +14762,7 @@ class PromptAssistant:
         if configured and runtime_status == "未配置模型":
             runtime_status = "模型可用"
         return {
-            "modelType": "swift15_qwen38_flash_next_iq2_xs" if flash_backend_enabled() else MODEL_TYPE,
+            "modelType": MODEL_TYPE,
             "modelPath": str(model_path),
             "enabled": configured,
             "runtimeStatus": runtime_status,
@@ -21911,7 +21911,7 @@ assistant = PromptAssistant()
 def handle_request(payload: dict) -> dict:
     if not flash_backend_enabled():
         return _handle_request(payload)
-    token = begin_flash_request()
+    token = begin_flash_request(payload.get("id"))
     command = str(payload.get("command") or "")
     try:
         result = _handle_request(payload)
@@ -21931,7 +21931,27 @@ def _handle_request(payload: dict) -> dict:
     command = str(payload.get("command") or "")
     if command == "status":
         return assistant.status_payload()
+    if command == "qwenImageEdit":
+        # The scoped worker verifies the owner/node/task/attempt lease before
+        # and after this operation. Never expose it through ordinary business.
+        from prompt_assistant.qwen21_image_edit import compile_image_edit
+        data = {key: value for key, value in payload.items() if key not in ("id", "command")}
+        art_reference_block_sensitive_minor(str(data.get("currentPrompt") or "") + "\n" + str(data.get("requirements") or ""), static_rule=False)
+        def tensor_from_image(image):
+            import numpy as np
+            import torch
+            return torch.from_numpy(np.asarray(image).astype("float32") / 255.0).unsqueeze(0)
+        result = compile_image_edit(data, assistant.generate, tensor_from_image)
+        art_reference_block_sensitive_minor(result["displayPrompt"] + "\n" + result["modelPrompt"], static_rule=False)
+        return result
     if command == "optimizePrompt":
+        if payload.get("promptContract") == QWEN21_NATIVE_CONTRACT:
+            source = str(payload.get("currentPrompt") or payload.get("prompt") or "")
+            requirements = str(payload.get("requirements") or "")
+            art_reference_block_sensitive_minor(source + "\n" + requirements, static_rule=False)
+            result = compile_agent_native(payload, assistant.generate)
+            art_reference_block_sensitive_minor(result["displayPrompt"] + "\n" + result["modelPrompt"], static_rule=False)
+            return result
         result = assistant.optimize_prompt(payload)
         if isinstance(result, dict) and qwen21_policy_for(payload):
             result = compile_agent_english(payload, result, assistant.generate)

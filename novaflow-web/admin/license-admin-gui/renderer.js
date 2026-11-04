@@ -2627,6 +2627,7 @@ function renderFeaturePriceFields(prices) {
   }
 }
 
+let featureCreditConfigRevision = null;
 async function renderFeatureCreditAdmin() {
   const status = $("featureCreditStatus");
   if (!$("featureCreditPanel") || typeof window.adminAPI?.getFeatureCreditAdmin !== "function") return;
@@ -2634,6 +2635,8 @@ async function renderFeatureCreditAdmin() {
     const response = await window.adminAPI.getFeatureCreditAdmin();
     if (response?.ok === false) throw new Error("余额读取失败");
     const result = response?.result || response;
+    if (!result?.configRevision || result?.error) throw new Error(result?.error || "积分配置版本读取失败");
+    if (!featureCreditConfigRevision || !$('featureCreditPanel')?.contains(document.activeElement)) featureCreditConfigRevision = result.configRevision;
     const config = result?.config || {};
     const prices = config.prices || {
       xiaotao_vision: 4, online_chat_turn: 4, prompt_optimize: 4, image_reverse: 4,
@@ -2712,6 +2715,7 @@ async function renderFeatureCreditAdmin() {
     if (status) status.textContent = balanceError || "已读取";
     return !balanceError;
   } catch (err) {
+    featureCreditConfigRevision = null;
     if (status) status.textContent = "余额读取失败";
     renderDashboardRhCard({ state: "error", message: "余额读取失败" });
     return false;
@@ -2720,6 +2724,10 @@ async function renderFeatureCreditAdmin() {
 
 async function saveFeatureCreditForm() {
   const status = $("featureCreditStatus");
+  if (!featureCreditConfigRevision) {
+    if (status) status.textContent = "请先成功读取最新积分配置再保存";
+    return;
+  }
   const prices = {};
   document.querySelectorAll("[data-feature-price]").forEach((input) => {
     prices[input.dataset.featurePrice] = input.value;
@@ -2733,6 +2741,7 @@ async function saveFeatureCreditForm() {
   });
   try {
     const response = await window.adminAPI.saveFeatureCreditAdmin({
+      config_revision: featureCreditConfigRevision,
       prices,
       credits_to_cny: $("featureCreditCny")?.value ?? "",
       low_balance_usd: $("featureCreditLowBalance")?.value ?? "",
@@ -2758,6 +2767,7 @@ async function saveFeatureCreditForm() {
     });
     if (!response?.ok) throw new Error(response?.error || "保存失败");
     if (status) status.textContent = "已保存";
+    featureCreditConfigRevision = null;
     await renderFeatureCreditAdmin();
   } catch (err) {
     if (status) status.textContent = String(err?.message || err);

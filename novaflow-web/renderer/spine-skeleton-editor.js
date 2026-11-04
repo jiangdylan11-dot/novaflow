@@ -118,6 +118,7 @@
     initialJson: null, // the project as imported (还原初始图层 / 还原原始权重)
     unticked: new Set(), // 自动蒙皮 / 自动权重: layers (slot names) left out; one tick for both panels
     frameSet: null, // 序列K帧 / 序列扫光: the pictures on the cards (null = the image folder's root), [{ name, file?, region? }]
+    imgSel: new Map(), // 工程树 图片 node: the picked picture rows, name -> drag payload
     imgOpen: new Set(), // 工程树 图片 node: the subfolders unfolded (paths)
     frameUnticked: { sequence: new Set(), sweep: new Set() }, // 序列K帧: pictures (names) left out
     sweepTicked: new Set(), // 特效扫光: the pictures ticked (starts empty: only the picked layer's picture, else none)
@@ -411,7 +412,7 @@
     state.initialJson = state.json
     state.unticked = new Set()
     state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepTicked = new Set(); state.sweepStart = 0; state.sweepEnd = 0; state.sweepGen = null
-    state.imgOpen = new Set(); imgTree = { key: '', nodes: new Map(), pending: new Set() }
+    state.imgOpen = new Set(); state.imgSel = new Map(); imgTree = { key: '', nodes: new Map(), pending: new Set() }
     frameRoot = null; frameRootPending = null; frameThumbs.clear()
     state.frameBone = state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name || ''
     state.anim = Object.keys(state.json.animations || {})[0] || ''
@@ -2160,6 +2161,7 @@
   /** Pick something; the properties under the tree follow it (Spine). */
   function select(sel, additive, opts) {
     state.dopeExtra = null
+    state.imgSel?.clear()
     if (state.weightEdit && state.weightEdit.binding && sel && sel.kind === 'bone' && rt.skeleton && rt.skeleton.findBone(sel.name)) {
       toggleBind(rt.skeleton.findBone(sel.name).data.index)
       return
@@ -7186,6 +7188,7 @@
         if (payload.type === 'att' && selectedAttachments().length > 1) { e.preventDefault(); status('拖动附件：请先选择一个附件'); return }
         try { state.drag = payload.type === 'bone' ? { ...payload, projectId: projects[activeProject].id, packet: bonePacket(selectedBones().includes(payload.name) ? selectedBones() : [payload.name]) } : payload }
         catch (error) { e.preventDefault(); status(error.message, 'error'); return }
+        if (payload.type === 'image' && state.imgSel.size > 1 && state.imgSel.has(payload.name)) state.drag = { ...payload, pictures: [...state.imgSel.values()] }
         e.dataTransfer.effectAllowed = 'copyMove'
         e.dataTransfer.setData('text/plain', payload.name)
       })
@@ -8444,6 +8447,22 @@
     }, 2500)
   }
 
+  // 图片 rows are files, not project items, so they keep their own selection
+  let imgShown = [], imgAnchor = null
+  function pickImage(picture, e) {
+    const sel = state.imgSel, at = (name) => imgShown.findIndex((x) => x.name === name)
+    if (e.shiftKey && at(imgAnchor) >= 0) {
+      const a = at(imgAnchor), b = at(picture.name)
+      sel.clear()
+      for (const x of imgShown.slice(Math.min(a, b), Math.max(a, b) + 1)) sel.set(x.name, x)
+    } else {
+      if (e.ctrlKey || e.metaKey) { if (!sel.delete(picture.name)) sel.set(picture.name, picture) }
+      else { sel.clear(); sel.set(picture.name, picture) }
+      imgAnchor = picture.name
+    }
+    renderTree()
+  }
+
   function renderImagesNode(rows, pad) {
     const closed = state.sections.has('images')
     watchImageFolder(true)
@@ -8460,6 +8479,7 @@
       h('span', { class: 'meta' }, `目录：${state.imagePath || '.'}${folder ? '' : '（未连接）'}`)))
     if (closed) return
     const used = imagesInUse()
+    const shown = imgShown = []
     const walk = (path, depth) => {
       const l = imagesListing(path)
       if (!l) { rows.push(h('div', { class: 'row', style: pad(depth) }, caret(null), h('span', { class: 'label dim' }, '读取中…'))); return }
@@ -8474,7 +8494,11 @@
         const name = folderPictureName(f)
         const row = h('div', { class: 'row', style: pad(depth), 'data-unused': used.has(name) ? null : '1', 'data-used': used.has(name) ? '1' : null, title: used.has(name) ? `${name}（工程里已用）` : `${name}（工程里还没用到：拖到骨骼 / 插槽 / 画板上）` },
           caret(null), h('span', { class: 'ico', html: ICON.region }), h('span', { class: 'label' }, f.name.replace(/\.[^.]+$/, '')))
-        wireDrag(row, { type: 'image', name, rel: f.rel, file: f.file, region: f.region }, null)
+        const picture = { type: 'image', name, rel: f.rel, file: f.file, region: f.region }
+        if (state.imgSel.has(name)) row.setAttribute('data-selected', '1')
+        row.addEventListener('click', (e) => pickImage(picture, e))
+        wireDrag(row, picture, null)
+        shown.push(picture)
         rows.push(row)
       }
       if (!l.dirs.length && !l.files.length) rows.push(h('div', { class: 'row', style: pad(depth) }, caret(null), h('span', { class: 'label dim' }, '（空）')))
@@ -8509,6 +8533,7 @@
 
   async function placeImage(payload, where) {
     if (!state.json) return
+    if (payload.pictures) { for (const picture of payload.pictures) await placeImage(picture, where); return }
     try { await bringFramesIn([payload]) } catch (e) { status(e.message, 'error'); return }
     const image = payload.name, short = image.split('/').pop()
     const size = regionSize(image) || { width: 1, height: 1 }
@@ -10311,36 +10336,20 @@
     return out
   }
 
-  /** One placeholder, one image per skin; the first skin is shown so the result is visible at once. */
-  function mergeToPlaceholder(list) {
-    edit(`已合并 ${list.length} 张图为一个皮肤占位符`, (j) => Ops.mergeIntoPlaceholder(j, list), (r) => {
-      state.multiAtts = []; state.attachmentAnchor = null
-      state.collapsed.delete('s:' + r.slot)
-      state.sel = { kind: 'ph', slot: r.slot, name: r.placeholder }; revealInTree(state.sel)
-      if (r.firstSkin) setSkin(r.firstSkin)
-      status(`占位符 ${r.placeholder}：${Object.keys(r.skins).length} 个皮肤各一张图` + (r.created.length ? `，新建皮肤 ${r.created.length} 个` : ''))
-    })
-  }
-
-  /** Placeholders in the project sharing this one's name without the trailing number (draw_b_00, draw_b_01 ...). */
-  function placeholderSiblings(sel) {
-    const stem = (n) => String(n).replace(/[\s_.\/-]*\d+$/, '')
-    if (stem(sel.name) === sel.name) return []
-    const out = []
-    for (const s of state.json.slots || []) for (const ph of Ops.placeholderList(state.json, s.name)) if (stem(ph.name) === stem(sel.name)) out.push({ slot: s.name, name: ph.name })
-    return out
-  }
-
   function batchConvertToPlaceholders() {
     const list = selectedAttachments()
     if (!list.length) return
-    mergeToPlaceholder(list)
+    edit(`已把 ${list.length} 个附件各转为皮肤占位符`, (j) => Ops.convertToPlaceholders(j, list, { preferredSkin: state.skin }), (r) => {
+      state.multiAtts = []; state.attachmentAnchor = null
+      state.sel = { kind: 'ph', slot: r.placeholders[0].slot, name: r.placeholders[0].name }; revealInTree(state.sel)
+    })
   }
 
   function multiAttachmentBody() {
     const list = selectedAttachments()
     const canCopy = list.every((a) => !Ops.isPlaceholder(state.json, a.slot, a.name))
-    const canConvert = list.length > 1 && list.every((a) => {
+    const hasTarget = state.skin !== 'default' && !!skinOf(state.skin)
+    const canConvert = hasTarget && list.every((a) => {
       const att = skinOf(a.skin)?.attachments[a.slot]?.[a.name]
       return a.skin === 'default' && att && !['linkedmesh','clipping','boundingbox','path'].includes(att.type) && !Ops.isPlaceholder(state.json, a.slot, a.name)
     })
@@ -10350,7 +10359,7 @@
     h('div', { class: 'hint' }, 'Ctrl 点选加选 / 取消，Shift 连选，Ctrl+A 全选当前插槽的附件。'),
     h('div', { class: 'hint' }, list.map((a) => h('div', {}, a.name))),
     h('div', { class: 'btns' }, btn('\u8f6c\u4e3a\u76ae\u80a4\u5360\u4f4d\u7b26', batchConvertToPlaceholders, { full: true, disabled: !canConvert,
-      title: canConvert ? '合成一个占位符，每个皮肤一张图' : '\u53ea\u80fd\u9009\u62e9 default \u76ae\u80a4\u4e2d\u53ef\u8f6c\u6362\u7684\u666e\u901a\u9644\u4ef6' }))]
+      title: canConvert ? '每个附件各转为一个皮肤占位符' : !hasTarget ? '先选择目标非 default 皮肤' : '\u53ea\u80fd\u9009\u62e9 default \u76ae\u80a4\u4e2d\u53ef\u8f6c\u6362\u7684\u666e\u901a\u9644\u4ef6' }))]
   }
 
   /** The picked image (an attachment in the default skin, or one skin's content of a placeholder). */
@@ -11184,8 +11193,6 @@
       textInput(sel.name, (v) => edit(`已改名占位符 → ${v}`, (j) => Ops.renameAttachment(j, sel.slot, sel.name, v), (r) => { state.sel = { ...sel, name: r.attachment } }), { rename: true }),
       ibtn('trash', '删除占位符', deleteSelection)))
     kids.push(field('当前皮肤', h('span', {}, state.skin)))
-    const siblings = placeholderSiblings(sel)
-    if (siblings.length > 1) kids.push(h('div', { class: 'btns' }, btn(`合并同组 ${siblings.length} 个占位符`, () => mergeToPlaceholder(siblings), { primary: true, full: true, title: '合成一个占位符，每个皮肤一张图' })))
     if (image) {
       if (image.skin !== state.skin) kids.push(h('div', { class: 'hint' }, '当前显示 default 皮肤的图片，编辑会作用于这张默认图片。'))
       // Keep the placeholder's rename/delete header, and reuse the image's mesh/export controls.

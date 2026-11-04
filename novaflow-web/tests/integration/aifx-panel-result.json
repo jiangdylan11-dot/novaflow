@@ -1,0 +1,1 @@
+{"ok":true,"choices":[{"value":"local","visible":true},{"value":"grok","visible":true},{"value":"xiaotao","visible":true}],"cancellation":{"calls":1,"notices":0,"confirmations":1,"state":"failed"},"success":{"calls":2,"notices":1,"confirmations":3,"state":"ready"}}

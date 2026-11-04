@@ -1,0 +1,21 @@
+// Isolated Chromium DOM with simulated quota; no account or network access.
+const {app,BrowserWindow,session}=require('electron'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict'),{pathToFileURL}=require('node:url');
+const root=path.resolve(__dirname,'../..');
+(async()=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'foart-billing-notice-'));app.setPath('userData',path.join(dir,'profile'));await app.whenReady();session.defaultSession.webRequest.onBeforeRequest((details,callback)=>callback({cancel:!details.url.startsWith('file:')}));
+ const {normalizeCreditConfig}=await import(pathToFileURL(path.join(root,'packages/shared/src/feature-credits.mjs')).href);
+ const policy={version:'sha256:'+'a'.repeat(64),expiresAt:Date.now()+600000,defaultModel:'xai/grok-4.7',config:normalizeCreditConfig({}),models:[{id:'xai/grok-4.7',available:true}]};
+ const js=await fs.readFile(path.join(root,'renderer/xiaotao-art-agent.js'),'utf8');
+ const bootstrap=`window.__calls=0;window.NovaFlowFoartToolContract={FOART_TOOL_SCHEMA:'nf.foart.tool-plan.v1',foartUnsupportedMediaAnalysis:()=>false,foartAnimationExportAllowed:()=>true,validateFoartPlan:p=>p};
+ window.NovaFlowFoartTools={capture:()=>({schema:'nf.foart.tool-plan.v1',controls:[]}),images:async()=>[],settlePending:async()=>null,setUploads(){},execute:async op=>({action:op.action,phase:'opened',surface:op.surface,message:'已打开音频'})};
+ window.electronAPI={companionPricing:async()=>({ok:true,policy:${JSON.stringify(policy)}}),artAgentChat:async()=>++__calls===1?{ok:true,data:{quota:{status:'settled',settled_credits:3},toolPlan:{schema:'nf.foart.tool-plan.v1',status:'act',reply:'继续',operations:[{action:'open',surface:'audio'}]}}}:{ok:false,error:'网络故障'}};`;
+ const html=path.join(dir,'index.html');await fs.writeFile(html,`<!doctype html><meta charset="utf-8"><body><script>${bootstrap}</script><script>${js}</script></body>`);
+ const win=new BrowserWindow({show:false,width:1100,height:850,webPreferences:{contextIsolation:true,nodeIntegration:false}}),run=code=>win.webContents.executeJavaScript(code);await win.loadFile(html);await run('NovaFlowXiaotaoArtAgent.panel.open();void 0');
+ await run(`(async()=>{let c=NovaFlowXiaotaoArtAgent.panel.controller;c.setProvider('api');await c.refreshPricingPolicy();await c.send('请打开音频')})()`);
+ const first=await run(`(()=>{let n=document.querySelector('.nf-xiaotao-billing-alerts'),c=NovaFlowXiaotaoArtAgent.panel.controller;return {text:n.innerText,hidden:n.hidden,model:c.state.modelId,calls:__calls}})()`);
+ assert.equal(first.calls,2);assert.equal(first.hidden,false);assert.match(first.text,/已确认小桃模型扣 3 分/);assert.match(first.text,/其余请求积分状态待核对/);
+ await run(`NovaFlowXiaotaoArtAgent.panel.controller.setModel('qwen3.5-9b-heretic');void 0`);const next=await run(`({model:NovaFlowXiaotaoArtAgent.panel.controller.state.modelId,text:document.querySelector('.nf-xiaotao-billing-alerts').innerText,messages:NovaFlowXiaotaoArtAgent.panel.controller.state.messages})`);
+ assert.equal(next.model,'qwen3.5-9b-heretic');assert.deepEqual(next.messages,[]);assert.match(next.text,/已确认小桃模型扣 3 分/);
+ await win.loadFile(html);await run('NovaFlowXiaotaoArtAgent.panel.open();void 0');const restored=await run(`({model:NovaFlowXiaotaoArtAgent.panel.controller.state.modelId,text:document.querySelector('.nf-xiaotao-billing-alerts').innerText})`);
+ assert.equal(restored.model,'qwen3.5-9b-heretic');assert.match(restored.text,/已确认小桃模型扣 3 分/);assert.match(restored.text,/待核对/);
+ console.log('Real DOM: confirmed partial charge and unknown remainder remain visible across model switch and reload.');win.destroy();app.exit(0);
+})().catch(error=>{console.error(error);app.exit(1)});setTimeout(()=>app.exit(2),30000);

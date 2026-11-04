@@ -21,4 +21,4 @@ for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{
   if(stopping)return;stopping=true;await assistant.stop();process.exit(0);
 });
 await assistant.start();
-console.log('Foart 算力助手已启动；请在 https://foart.net/ 使用编辑器，机器权限由后台管理。');
+console.log('Foart已启动；请在 https://foart.net/ 使用编辑器，机器权限由后台管理。');

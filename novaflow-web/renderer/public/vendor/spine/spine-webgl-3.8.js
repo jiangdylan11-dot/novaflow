@@ -6861,7 +6861,7 @@ var spine;
 					bone.worldY += (temp.y - bone.worldY) * translateMix;
 					modified = true;
 				}
-				if (scaleMix > 0) {
+				if (scaleMix != 0) {
 					var s = Math.sqrt(bone.a * bone.a + bone.c * bone.c);
 					var ts = Math.sqrt(ta * ta + tc * tc);
 					if (s > 0.00001)
@@ -6876,7 +6876,7 @@ var spine;
 					bone.d *= s;
 					modified = true;
 				}
-				if (shearMix > 0) {
+				if (shearMix != 0) {
 					var b = bone.b, d = bone.d;
 					var by = Math.atan2(d, b);
 					var r = Math.atan2(td, tb) - Math.atan2(tc, ta) - (by - Math.atan2(bone.c, bone.a));
@@ -6926,7 +6926,7 @@ var spine;
 					bone.worldY += temp.y * translateMix;
 					modified = true;
 				}
-				if (scaleMix > 0) {
+				if (scaleMix != 0) {
 					var s = (Math.sqrt(ta * ta + tc * tc) - 1 + this.data.offsetScaleX) * scaleMix + 1;
 					bone.a *= s;
 					bone.c *= s;
@@ -6935,7 +6935,7 @@ var spine;
 					bone.d *= s;
 					modified = true;
 				}
-				if (shearMix > 0) {
+				if (shearMix != 0) {
 					var r = Math.atan2(td, tb) - Math.atan2(tc, ta);
 					if (r > spine.MathUtils.PI)
 						r -= spine.MathUtils.PI2;
@@ -6984,7 +6984,7 @@ var spine;
 				if (shearMix != 0) {
 					var r = target.ashearY - shearY + this.data.offsetShearY;
 					r -= (16384 - ((16384.499999999996 - r / 360) | 0)) * 360;
-					bone.shearY += r * shearMix;
+					shearY += r * shearMix;
 				}
 				bone.updateWorldTransformWith(x, y, rotation, scaleX, scaleY, bone.ashearX, shearY);
 			}

@@ -1,6 +1,7 @@
 // GENERATED COPY - source: packages/shared/src/runninghub-llm.mjs
 // Online text and vision go through one RunningHub LLM host and one API key.
 // GPT image stays a later phase and is not a text model here.
+import {hasXiaotaoModelRate} from './xiaotao-model-rates.mjs';
 export const DEFAULT_RUNNINGHUB_LLM_BASE_URL = 'https://llm.runninghub.ai/v1';
 export const DEFAULT_RUNNINGHUB_LLM_MODEL = 'xai/grok-4.7';
 const LLM_HOSTS = new Set(['llm.runninghub.ai', 'llm.runninghub.cn']);
@@ -193,8 +194,39 @@ function choiceText(content) {
   return content.map(part => partText(part)).filter(Boolean).join('\n');
 }
 
+// The guarded art path requests this extra signal before aliases are flattened.
+// Other callers retain the established response shape and billing semantics.
+function invalidBillingUsage(usage) {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage) || usage.tokenUsage != null || usage.token_usage != null) return true;
+  const count = value => {
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) value = Number(value);
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  };
+  const read = keys => {
+    const values = keys.map(key => usage[key]).filter(value => value != null).map(count);
+    return !values.length || values.some(value => value == null) || new Set(values).size !== 1 ? null : values[0];
+  };
+  const input=read(['prompt_tokens','input_tokens']), output=read(['completion_tokens','output_tokens']);
+  if (input == null || output == null || !Number.isSafeInteger(input+output) || input+output <= 0) return true;
+  if (usage.total_tokens != null && count(usage.total_tokens) !== input+output) return true;
+  const details=['prompt_tokens_details','input_tokens_details'].map(key => usage[key]).filter(value => value != null);
+  if (details.some(value => !value || typeof value !== 'object' || Array.isArray(value))) return true;
+  const cached=details.map(value => value.cached_tokens == null ? undefined : count(value.cached_tokens));
+  if (cached.some(value => value === null || value > input)) return true;
+  const present=cached.filter(value => value !== undefined);
+  if (present.length > 0 && (present.length !== cached.length || new Set(present).size !== 1)) return true;
+  const hit=usage.prompt_cache_hit_tokens == null ? undefined : count(usage.prompt_cache_hit_tokens);
+  const miss=usage.prompt_cache_miss_tokens == null ? undefined : count(usage.prompt_cache_miss_tokens);
+  if (hit === null || miss === null || (hit !== undefined && hit > input) || (miss !== undefined && miss > input)) return true;
+  if (hit !== undefined && present.length && hit !== present[0]) return true;
+  const knownHit=hit ?? present[0];
+  // A lone miss count is not sufficient evidence to silently infer a hit.
+  if (miss !== undefined && (knownHit === undefined || knownHit + miss !== input)) return true;
+  return false;
+}
+
 /** RunningHub chat completion -> Responses-shaped result the existing parsers already read. */
-export function chatCompletionToResponses(data) {
+export function chatCompletionToResponses(data, { includeBillingIntegrity = false } = {}) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw Object.assign(new Error('在线模型未返回完整回答'), { statusCode: 502 });
   }
@@ -220,11 +252,13 @@ export function chatCompletionToResponses(data) {
   const inputTokens = inputRaw == null ? null : Number(inputRaw);
   const outputTokens = outputRaw == null ? null : Number(outputRaw);
   const details = usage.prompt_tokens_details ?? usage.input_tokens_details;
-  const cachedTokens = details && typeof details === 'object' ? details.cached_tokens : undefined;
+  const cachedRaw = (details && typeof details === 'object' ? details.cached_tokens : undefined) ?? usage.prompt_cache_hit_tokens;
+  const cachedTokens = typeof cachedRaw === 'string' && /^\d+$/.test(cachedRaw.trim()) ? Number(cachedRaw) : cachedRaw;
   return {
     id: String(data.id || ''),
     model: String(data.model || ''),
     status: completed ? 'completed' : 'incomplete',
+    finish_reason: finish,
     output_text: text,
     output,
     usage: {
@@ -234,6 +268,7 @@ export function chatCompletionToResponses(data) {
       prompt_tokens: inputTokens,
       completion_tokens: outputTokens,
       ...(cachedTokens == null ? {} : { prompt_tokens_details: { cached_tokens: cachedTokens } }),
+      ...((includeBillingIntegrity || hasXiaotaoModelRate(data.model)) ? { billing_token_usage_invalid: invalidBillingUsage(usage) } : {}),
       thirdPartyConsumeMoney: usage.thirdPartyConsumeMoney ?? null,
       consumeMoney: usage.consumeMoney ?? null
     }
@@ -260,7 +295,7 @@ function defaultRetryDelay(attempt) {
   return new Promise((resolve) => setTimeout(resolve, 200 * (2 ** attempt)));
 }
 
-export async function postRunningHubResponses({ body, config, fetchImpl = fetch, timeoutMs = 60000, signal, maxRetries = 2, delay = defaultRetryDelay } = {}) {
+export async function postRunningHubResponses({ body, config, fetchImpl = fetch, timeoutMs = 60000, signal, maxRetries = 2, delay = defaultRetryDelay, includeBillingIntegrity = false } = {}) {
   if (!config?.apiKey) throw Object.assign(new Error('在线模型尚未配置'), { statusCode: 503, providerCallStarted: false, retryable: false });
   if (!config.baseUrl || !config.model) throw Object.assign(new Error('在线模型配置无效'), { statusCode: 503, providerCallStarted: false, retryable: false });
   const wire = responsesToChatCompletions(body, config.model);
@@ -281,7 +316,7 @@ export async function postRunningHubResponses({ body, config, fetchImpl = fetch,
     } catch (error) {
       if (error?.statusCode) throw error;
       const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
-      lastError = Object.assign(new Error(timedOut ? '在线模型响应超时' : '在线模型暂时不可用'), { statusCode: 502, retryable: timedOut && !signal?.aborted, providerCallStarted: true });
+      lastError = Object.assign(new Error(timedOut ? '在线模型响应超时' : '在线模型暂时不可用'), { statusCode: timedOut ? 504 : 502, ...(timedOut ? {code:'ETIMEDOUT',errorCode:'timeout'} : {}), retryable: timedOut && !signal?.aborted, providerCallStarted: true });
       if (!lastError.retryable || attempt + 1 >= attempts) throw lastError;
       await delay(attempt);
       continue;
@@ -290,7 +325,10 @@ export async function postRunningHubResponses({ body, config, fetchImpl = fetch,
     try {
       const text = await response.text();
       raw = text ? JSON.parse(text) : null;
-    } catch { raw = null; }
+    } catch (error) {
+      if(error?.name==='TimeoutError'||error?.name==='AbortError')throw Object.assign(new Error('在线模型响应超时'),{statusCode:504,code:'ETIMEDOUT',errorCode:'timeout',retryable:!signal?.aborted,providerCallStarted:true});
+      raw = null;
+    }
     const businessFailure = raw && typeof raw === 'object' && ((raw.code !== undefined && raw.code !== 0 && raw.code !== '0' && !raw.choices) || (raw.error && !raw.choices));
     if (!response.ok || !raw || typeof raw !== 'object' || businessFailure) {
       lastError = providerFailure(response.status, raw);
@@ -299,7 +337,7 @@ export async function postRunningHubResponses({ body, config, fetchImpl = fetch,
       continue;
     }
     try {
-      return { wire, data: chatCompletionToResponses(raw), status: response.status, providerCallStarted: true, requestId: String(raw.id || response.headers?.get?.('x-request-id') || '').trim() };
+      return { wire, data: chatCompletionToResponses(raw, { includeBillingIntegrity }), status: response.status, providerCallStarted: true, requestId: String(raw.id || response.headers?.get?.('x-request-id') || '').trim() };
     } catch (error) {
       lastError = Object.assign(error instanceof Error ? error : new Error('在线模型未完成请求'), { statusCode: error?.statusCode || 502, retryable: error?.retryable === true, moderation: error?.moderation === true, providerCallStarted: true });
       if (!lastError.retryable || attempt + 1 >= attempts) throw lastError;

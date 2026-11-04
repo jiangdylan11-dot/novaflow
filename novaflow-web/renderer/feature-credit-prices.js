@@ -235,6 +235,21 @@
       + outputTokens * (high ? rate('high_output', 10.2) : rate('output', 5.1))) / 1000000;
   }
 
+  // The companion publishes these normalized rates from the very same
+  // configuration used to reserve and settle credits. Never fall back to the
+  // generic token rate for the explicitly priced GLM/GPT routes.
+  function modelBudgetUsd(model, inputTokens, outputTokens, online) {
+    var rates = online && online.model_rates && online.model_rates[model];
+    if (!rates || typeof rates !== 'object') return null;
+    var input = Number(rates.input), output = Number(rates.output);
+    if (!isFinite(input) || input < 0 || !isFinite(output) || output < 0) return null;
+    if (rates.highAbove != null && inputTokens > Number(rates.highAbove)) {
+      input = Number(rates.highInput); output = Number(rates.highOutput);
+      if (!isFinite(input) || input < 0 || !isFinite(output) || output < 0) return null;
+    }
+    return (inputTokens * input + outputTokens * output) / 1000000;
+  }
+
   function xiaotaoBillingConfig(override) {
     var effective = override || config || {};
     var online = effective.xiaotao_online || effective.token_billing?.xiaotao_online || {};
@@ -245,11 +260,30 @@
     return billing;
   }
 
+  function xiaotaoDecimalPolicy(effective) {
+    var online = effective && (effective.xiaotao_online || effective.token_billing?.xiaotao_online);
+    return online?.billing_scope === 'operation' && online.credit_amount_policy === 'decimal-v1' && online.credit_precision === 6 && online.credit_rounding === 'ceil' && online.minimum_positive_credits === 0;
+  }
+
+  function xiaotaoCreditsForUsd(usd, effective, billing) {
+    if (!(usd > 0)) return 0;
+    var token = effective && effective.token_billing || {};
+    var raw = usd * billing.perUsd * billing.markup;
+    // The browser amount is only an estimate: actual settlement uses the
+    // server's versioned token rates and rounds the operation once.
+    if (xiaotaoDecimalPolicy(effective)) return Math.ceil(raw * 1e6) / 1e6;
+    var value = token.round === 'floor' ? Math.floor(raw + 1e-9) : token.round === 'round' ? Math.round(raw) : Math.ceil(raw - 1e-9);
+    var minimum = Number(token.min_credits_per_image);
+    return Math.max(Number.isSafeInteger(minimum) && minimum >= 0 ? minimum : 1, value);
+  }
+
   function estimateXiaotaoOnline(input) {
     var spec = input || {};
     var effective = spec.config || config;
     var configuredOnline = effective && (effective.xiaotao_online || effective.token_billing?.xiaotao_online);
     var stored = configuredOnline && typeof configuredOnline === 'object' ? configuredOnline : {};
+    var hasDecimalFields = ['credit_amount_policy','credit_precision','credit_rounding'].some(function (key) { return Object.hasOwn(stored,key); });
+    if (hasDecimalFields && !xiaotaoDecimalPolicy(effective) || stored.billing_scope === 'operation' && !xiaotaoDecimalPolicy(effective) && (hasDecimalFields || stored.minimum_positive_credits !== 1)) return null;
     var files = stored.file_tokens && typeof stored.file_tokens === 'object' ? stored.file_tokens : {};
     var cap = Math.round(Number(stored.message_cap_credits));
     var charsPer = Math.round(Number(stored.chars_per_token));
@@ -287,12 +321,15 @@
     if (!isFinite(outputBudget) || outputBudget < 0) outputBudget = policy.output_tokens;
     var inputTokens = Math.ceil(chars / policy.chars_per_token) + fileTokens;
     var tokens = inputTokens + outputBudget;
-    var usd = isGrok47(spec.model) ? grok47Usd(inputTokens, outputBudget, stored) : tokens / 1000000 * policy.usd_per_million_tokens;
-    var raw = Math.ceil(usd * billing.perUsd * billing.markup - 1e-9);
-    if (usd > 0) raw = Math.max(1, raw);
+    var pricedModel = /^(?:glm\/glm-5\.3-flash|openai\/gpt-6\.1-sol-saver)$/.test(String(spec.model || ''))
+      || xiaotaoDecimalPolicy(effective) && spec.model === 'deepseek/deepseek-v4.1-flash';
+    var modelUsd = pricedModel ? modelBudgetUsd(spec.model, inputTokens, outputBudget, stored) : null;
+    if (pricedModel && modelUsd == null) return null;
+    var usd = isGrok47(spec.model) ? grok47Usd(inputTokens, outputBudget, stored) : pricedModel ? modelUsd : tokens / 1000000 * policy.usd_per_million_tokens;
+    var raw = xiaotaoCreditsForUsd(usd, effective, billing);
     return {
       tokens: tokens,
-      credits: active ? Math.max(1, Math.min(policy.message_cap_credits, Math.max(0, raw || 0))) : 0,
+      credits: active ? Math.max(xiaotaoDecimalPolicy(effective) ? 0 : 1, Math.min(policy.message_cap_credits, Math.max(0, raw || 0))) : 0,
       counts: counts,
       cap: policy.message_cap_credits
     };
@@ -302,6 +339,7 @@
   // uncertain forecast and never changes the reservation or the provider limit.
   function predictXiaotaoOnline(input) {
     var spec = input || {}, held = estimateXiaotaoOnline(Object.assign({}, spec, {model:spec.model || 'xai/grok-4.7'}));
+    if (!held) return null;
     var effective = spec.config || config || {}, online = effective.xiaotao_online || effective.token_billing?.xiaotao_online || {}, billing = xiaotaoBillingConfig(effective);
     var outputLimit = spec.outputTokens == null ? Number(online.output_tokens == null ? XIAOTAO_ONLINE.output_tokens : online.output_tokens) : Number(spec.outputTokens);
     if (!isFinite(outputLimit) || outputLimit < 0) outputLimit = XIAOTAO_ONLINE.output_tokens;
@@ -332,9 +370,10 @@
     // 4.7 is the default. For other known models retain their configured prior.
     // No cache hit is assumed, because it cannot be predicted before the call.
     var grok47 = !spec.model || isGrok47(spec.model);
+    var selectedModelUsd = modelBudgetUsd(spec.model, inputTokens, output, online);
     var priorUsd = grok47
       ? grok47Usd(inputTokens, output, online)
-      : baseTokens / 1000000 * (isFinite(Number(online.usd_per_million_tokens)) ? Number(online.usd_per_million_tokens) : XIAOTAO_ONLINE.usd_per_million_tokens);
+      : selectedModelUsd != null ? selectedModelUsd : baseTokens / 1000000 * (isFinite(Number(online.usd_per_million_tokens)) ? Number(online.usd_per_million_tokens) : XIAOTAO_ONLINE.usd_per_million_tokens);
     var expectedUsd = priorUsd, lowUsd = priorUsd * 0.6, highUsd = Math.max(priorUsd * 1.4, held.credits / (billing.perUsd * billing.markup));
     if (observations.length) {
       // Compare only nearby workloads. The observed USD includes hidden reasoning
@@ -350,7 +389,7 @@
         if (costs.length < 3) { lowUsd = Math.min(lowUsd, priorUsd * 0.6); highUsd = Math.max(highUsd, priorUsd * 1.4); }
       }
     }
-    function amount(usd) { return held.credits ? Math.max(1, Math.min(held.cap, Math.ceil(usd * billing.perUsd * billing.markup - 1e-9))) : 0; }
+    function amount(usd) { return held.credits ? Math.max(xiaotaoDecimalPolicy(effective) ? 0 : 1, Math.min(held.cap, xiaotaoCreditsForUsd(usd, effective, billing))) : 0; }
     return {credits:amount(expectedUsd), low:amount(lowUsd), high:amount(highUsd), reservedCredits:held.credits, cap:held.cap,
       baseTokens:baseTokens, inputTokens:inputTokens, outputTokens:output, group:group, model:String(spec.model || ''),
       sampleCount:observations.length, confidence:observations.length >= 3 ? 'calibrated' : 'initial'};

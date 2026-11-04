@@ -74,6 +74,10 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
           if (req.method === 'POST' && action === 'reverse-image-prompt') return json(200, await promptAssistant.reverseImagePrompt(body));
           if (req.method === 'POST' && action === 'cancel-request') return json(200, await promptAssistant.cancelRequest(body));
           if (req.method === 'POST' && action === 'describe-art-style') return json(200, await promptAssistant.describeArtStyle(body));
+          if (req.method === 'POST' && action === 'rewrite-audio-prompt') {
+            if(body?.assistantProvider!=='local' || body?.assistantModelId!=='qwen3.5-9b-heretic')return json(400,{ok:false,error:'请明确选择可用的本地大脑，本次未调用模型'});
+            return json(200, await promptAssistant.rewriteAudioPrompt(body));
+          }
           if (req.method === 'POST' && action === 'art-agent-chat') {
             const {accountId,accountToken,...payload}=body;let ownerId=null,learningAllowed=!accountId||accountId===s.boundAccount?.id;
             if(artActor){try{ownerId=await artActor.identify(body);learningAllowed=true;}catch{learningAllowed=false;}}

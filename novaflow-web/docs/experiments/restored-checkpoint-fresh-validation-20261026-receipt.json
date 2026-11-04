@@ -1,0 +1,454 @@
+{
+  "kind": "five fresh English visual analyses and native Qwen generations; no prior prompt supplied",
+  "newAnalysisRequests": 5,
+  "newGenerationJobs": 5,
+  "extraTranslationCalls": 0,
+  "extraManualEditAnalysisCalls": 0,
+  "freeze": {
+    "sourceHead": "c2d75e291fdd36c809d7490899b4055e7089db9a",
+    "sourceHashes": {
+      "renderer/art-generate-model.resource.js": "b9c39685e77ba28c7cd5d9b31b7474514368cbc17eb66cdfda8b2949ab0f07c8",
+      "renderer/art-direction.workflow.js": "5f96dd4814d95995273a809512d3350d388883a6066b2a83bcbc9a95f9fb13a7",
+      "renderer/xiaotao-art-agent.js": "f0c879d2678bc35f3830b95a4b59248c216e58b3c1ee9402776b845f856b403f",
+      "worker/src/flash-art-agent.mjs": "0925ab510edbebcdfcd102a449c406f24b7dad203ba132c090d51bc1cb29f78c",
+      "worker/src/flash-art-direction.mjs": "2521cf3172f1bd2778ac782abe929b21e62794406e137760d0a333e5e76cf14e",
+      "worker/src/art-skills/style-transfer.v1.json": "88736571d0185d7793e098b0ba9e4811da0f8ddfeaff1aad0bd78ad4f1ae569f",
+      "worker/src/strata-prompt-assistant.mjs": "12041a911dfb855e51dfcca5a3353a4ea678d7fefe1d7587180ca641b460a44c",
+      "worker/src/flash-brain-session.mjs": "4b8177911fec566b37717b48f1d2e78ef09894ebde65eee7b39f30026aebcd41",
+      "packages/shared/src/art-prompt-language.mjs": "3ce97592a2db7183cbaa3a93624777cd588030b7ee905362026cbb5f7bf1dac8",
+      "worker/src/art-skill-service.mjs": "475b6a7b8c2a72905b3003a5b18618e7f91c5c96eac2de7b5aa6874f21307101",
+      "worker/src/art-learning.mjs": "a08138e795314d861b2c70328cc4d6f73a888ff6a62275b50de9d6a2659b59fd"
+    },
+    "artRuleVersion": "1.0.13",
+    "promptLanguage": "en",
+    "compareTo": "owner-selected-baseline",
+    "baselineArtRule": "1.0.13 with local feedback in dark/graphic",
+    "sameArtRulesAsSelectedEnglishBatch": true,
+    "languageAloneNotIsolated": true,
+    "changesToTaskMessages": "Original accepted neutral task wording; prior prompt cleared; no diagnostic image; original negative retained; wet includes direct owner clarification",
+    "noNewArtRuleOrSchedulingChanges": true,
+    "checkpointCommit": "5b6ee8c9",
+    "restorationCommit": "c2d75e29",
+    "candidateSkillInjection": false,
+    "candidate14Adopted": false,
+    "oldEnglishPromptSupplied": false,
+    "oldGeneratedResultSupplied": false,
+    "allFiveRulesFrozenDuringRun": true,
+    "taskManifestExactlyMatches4806": true
+  },
+  "cases": [
+    {
+      "id": "bright",
+      "label": "明亮动漫",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "1b97aeac-c9b6-40bc-8b4b-886292737a02",
+      "analysisRequestId": "chatcmpl-e4f492531a614dec9b0f0f43",
+      "analysisSeconds": 114.74119499999999,
+      "loadSeconds": 32.250974,
+      "unloadSeconds": 3.620061,
+      "requestSeconds": 78.780156,
+      "generationSeconds": 59.45300000000134,
+      "promptCharacters": 1239,
+      "previousPromptSHA": "bef66a751e36851bf2ab9f14f3d5b9a8c9db81740632c013ea8798f0625ba5b0",
+      "newPromptSHA": "e4cd2a688970e24eb050f572a17783b45aa004150f105cc4f2bf76752b2a727a",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "6d08bb7ee1199be0ee0097ff0de18f29b2a329d9097fd7b1ad256232501a8269",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "69ece5c1-47bd-4b6b-ac16-960cc3ed4c06",
+        "resultId": "qa-native-1b97aeac-c9b6-40bc-8b4b-886292737a02",
+        "resultSHA256": "6d08bb7ee1199be0ee0097ff0de18f29b2a329d9097fd7b1ad256232501a8269",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "1b97aeac-c9b6-40bc-8b4b-886292737a02"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "dark",
+      "label": "冷调动漫",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "f235fe7c-f5a6-41bc-8fec-7f0e2bc04b22",
+      "analysisRequestId": "chatcmpl-6cf77bdf91a6484c9dfc86ef",
+      "analysisSeconds": 93.1009587,
+      "loadSeconds": 24.564274,
+      "unloadSeconds": 2.909891,
+      "requestSeconds": 65.47215200000001,
+      "generationSeconds": 59.40599999999904,
+      "promptCharacters": 1451,
+      "previousPromptSHA": "d1bca43bbdbff3bc35a6f463642bc332ffd86c89ff3d1fad771039ac58421d86",
+      "newPromptSHA": "c3e18e1ba1ef3607dfb39cd95deea017daf801edbdf29256e68ba5554c5962c5",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "bcdfd10bbc03241b82cf0188938caa15831d6eafa55aa777919966b308be4c54",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "fb904fe9-df32-4ca4-ad57-e834d62bf3ad",
+        "resultId": "qa-native-f235fe7c-f5a6-41bc-8fec-7f0e2bc04b22",
+        "resultSHA256": "bcdfd10bbc03241b82cf0188938caa15831d6eafa55aa777919966b308be4c54",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "f235fe7c-f5a6-41bc-8fec-7f0e2bc04b22"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "cg",
+      "label": "CG 材质",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "bda44a7e-ffba-4ef8-9714-6140a411e3ce",
+      "analysisRequestId": "chatcmpl-fd443f3df8b64496974f10ed",
+      "analysisSeconds": 101.7123775,
+      "loadSeconds": 28.098104,
+      "unloadSeconds": 3.293686,
+      "requestSeconds": 70.265072,
+      "generationSeconds": 56.26599999999962,
+      "promptCharacters": 1086,
+      "previousPromptSHA": "619d6d9d8788ee9e7d9180ba80666e9a5850897c52156757b1a1fa9658824732",
+      "newPromptSHA": "e7064ded80c5a50edfa7566bebc7775a8680f8e7bab216c36f012fafc447c342",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "f2d889ae0c8158b84c4608bce9b1f3d5013a26b152a406e43b2087960a51c94d",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "8b9704f0-9af8-41e8-bfef-af59829b723d",
+        "resultId": "qa-native-bda44a7e-ffba-4ef8-9714-6140a411e3ce",
+        "resultSHA256": "f2d889ae0c8158b84c4608bce9b1f3d5013a26b152a406e43b2087960a51c94d",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "bda44a7e-ffba-4ef8-9714-6140a411e3ce"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "soft",
+      "label": "柔和插画",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "1ed441f0-d71b-4502-a8dd-6ad7fb131593",
+      "analysisRequestId": "chatcmpl-fd9883caf8d746cfa1577051",
+      "analysisSeconds": 100.07871779999999,
+      "loadSeconds": 25.057717,
+      "unloadSeconds": 2.957328,
+      "requestSeconds": 71.948382,
+      "generationSeconds": 61.03099999999904,
+      "promptCharacters": 1245,
+      "previousPromptSHA": "30829b76d8c370aebb95e4d70d5ce3eb1d04d95ddcf69e0903c622f0b1ec67d1",
+      "newPromptSHA": "69e423a4aa8b04f4b2303f91a08dcd6d4cc8dbe36caa345a64b803c0d6918b04",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "c273e21e5ceec13a306ca4bbf10e44e9e3f1b9539313d1ca59318d8c0a582019",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "bdc44558-423e-4c50-ba28-b6c93c441436",
+        "resultId": "qa-native-1ed441f0-d71b-4502-a8dd-6ad7fb131593",
+        "resultSHA256": "c273e21e5ceec13a306ca4bbf10e44e9e3f1b9539313d1ca59318d8c0a582019",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "1ed441f0-d71b-4502-a8dd-6ad7fb131593"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "wet",
+      "label": "湿润高光",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "1c9fc722-ee4c-4312-a3a9-c12c5a51d405",
+      "analysisRequestId": "chatcmpl-5d81bd204d194e83b4c5714d",
+      "analysisSeconds": 102.49268959999999,
+      "loadSeconds": 23.170043,
+      "unloadSeconds": 3.126757,
+      "requestSeconds": 76.034381,
+      "generationSeconds": 58.15700000000288,
+      "promptCharacters": 1173,
+      "previousPromptSHA": "114ba75376ae70b1b13829a88a3bdd9fe94c31177d8e8c47b51b5f31b864d94b",
+      "newPromptSHA": "a636e3fdbe6eabc666894023c6a3285eab85a6221848599d5cc3fd257cd880a3",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "8ddb914d3bde160ce6f7d1fba1975a99123656273ced1f1de5239f980892c782",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "43ad82c7-338e-4ba9-8269-62016830e4b4",
+        "resultId": "qa-native-1c9fc722-ee4c-4312-a3a9-c12c5a51d405",
+        "resultSHA256": "8ddb914d3bde160ce6f7d1fba1975a99123656273ced1f1de5239f980892c782",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "1c9fc722-ee4c-4312-a3a9-c12c5a51d405"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    }
+  ],
+  "lifecycles": [
+    {
+      "name": "analysis-bright-rIG7XL",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-cg-cFSDxy",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-dark-ZMMhrL",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-soft-ozFisr",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-wet-uNXNWE",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "generation": [
+        "cg",
+        "wet"
+      ],
+      "portClosed": true
+    },
+    {
+      "generation": [
+        "bright",
+        "dark",
+        "soft"
+      ],
+      "portClosed": true
+    }
+  ],
+  "currentSourceMatches": {
+    "renderer/art-generate-model.resource.js": true,
+    "renderer/art-direction.workflow.js": true,
+    "renderer/xiaotao-art-agent.js": true,
+    "worker/src/flash-art-agent.mjs": true,
+    "worker/src/flash-art-direction.mjs": true,
+    "worker/src/art-skills/style-transfer.v1.json": true,
+    "worker/src/strata-prompt-assistant.mjs": true,
+    "worker/src/flash-brain-session.mjs": true,
+    "packages/shared/src/art-prompt-language.mjs": true,
+    "worker/src/art-skill-service.mjs": true,
+    "worker/src/art-learning.mjs": true
+  },
+  "installedUIAutomated": false,
+  "frontendTestIsCPUCodeExecution": true,
+  "languageOnlyQualityCausalityNotEstablished": true,
+  "deploymentChanged": false,
+  "sharedExperiencePublished": false,
+  "nativeRequestEvidence": {
+    "kind": "restored bundled default, five fresh visual analyses, no old prompt or result",
+    "candidateSkillInjected": false,
+    "defaultSkillVersion": "1.0.13",
+    "requests": [
+      {
+        "trace": "D:\\AI_APP\\NovaFlow-Web\\work\\restored-checkpoint-fresh-20261026\\run\\sessions\\analysis-bright-rIG7XL\\native-traces\\9aae290e-905b-433e-8fc9-c3dfc757d888.json",
+        "providerRequestId": "chatcmpl-e4f492531a614dec9b0f0f43",
+        "systemSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+        "model": "swift-1.5-qwen38-iq2-xs",
+        "priorPromptSupplied": false,
+        "priorResultSupplied": false,
+        "historyMessages": 0,
+        "actualImages": 2,
+        "sourceSHA": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "styleSHA": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+        "newPromptSHA": "e4cd2a688970e24eb050f572a17783b45aa004150f105cc4f2bf76752b2a727a",
+        "tool": "propose_art_direction",
+        "requestBodySHA": "1c2def36476261812548437ec51f5741f507327d3c265a8f41e6da335342aad2"
+      },
+      {
+        "trace": "D:\\AI_APP\\NovaFlow-Web\\work\\restored-checkpoint-fresh-20261026\\run\\sessions\\analysis-cg-cFSDxy\\native-traces\\62d29d29-3b7b-4f57-bbde-32bd7cfbca8d.json",
+        "providerRequestId": "chatcmpl-fd443f3df8b64496974f10ed",
+        "systemSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+        "model": "swift-1.5-qwen38-iq2-xs",
+        "priorPromptSupplied": false,
+        "priorResultSupplied": false,
+        "historyMessages": 0,
+        "actualImages": 2,
+        "sourceSHA": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "styleSHA": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+        "newPromptSHA": "e7064ded80c5a50edfa7566bebc7775a8680f8e7bab216c36f012fafc447c342",
+        "tool": "propose_art_direction",
+        "requestBodySHA": "4f5f6167907b31b2aa1f2df6688f069d596f74946f0c16bad0a6196d684a9b27"
+      },
+      {
+        "trace": "D:\\AI_APP\\NovaFlow-Web\\work\\restored-checkpoint-fresh-20261026\\run\\sessions\\analysis-dark-ZMMhrL\\native-traces\\606bc8e2-0eb6-4470-862a-c05b19cf51a8.json",
+        "providerRequestId": "chatcmpl-6cf77bdf91a6484c9dfc86ef",
+        "systemSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+        "model": "swift-1.5-qwen38-iq2-xs",
+        "priorPromptSupplied": false,
+        "priorResultSupplied": false,
+        "historyMessages": 0,
+        "actualImages": 2,
+        "sourceSHA": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "styleSHA": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+        "newPromptSHA": "c3e18e1ba1ef3607dfb39cd95deea017daf801edbdf29256e68ba5554c5962c5",
+        "tool": "propose_art_direction",
+        "requestBodySHA": "107f0813d9008c04075837c00b2621a7e5fed3421f376cbb533bfb0bc4abe900"
+      },
+      {
+        "trace": "D:\\AI_APP\\NovaFlow-Web\\work\\restored-checkpoint-fresh-20261026\\run\\sessions\\analysis-soft-ozFisr\\native-traces\\c4bf7198-efe5-4c8b-8fc7-1db4331805b5.json",
+        "providerRequestId": "chatcmpl-fd9883caf8d746cfa1577051",
+        "systemSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+        "model": "swift-1.5-qwen38-iq2-xs",
+        "priorPromptSupplied": false,
+        "priorResultSupplied": false,
+        "historyMessages": 0,
+        "actualImages": 2,
+        "sourceSHA": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "styleSHA": "95f8b2af105b98da6b6fceb6fc9b41ac690d1c69fac16d16748dedc67b3533f4",
+        "newPromptSHA": "69e423a4aa8b04f4b2303f91a08dcd6d4cc8dbe36caa345a64b803c0d6918b04",
+        "tool": "propose_art_direction",
+        "requestBodySHA": "084ca90993620c85ed5a8a857e8bd47cd3e1963104b980c716f4bc350b0f4f25"
+      },
+      {
+        "trace": "D:\\AI_APP\\NovaFlow-Web\\work\\restored-checkpoint-fresh-20261026\\run\\sessions\\analysis-wet-uNXNWE\\native-traces\\9f1cdfb4-3151-4030-b1ac-7fd884c920ed.json",
+        "providerRequestId": "chatcmpl-5d81bd204d194e83b4c5714d",
+        "systemSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+        "model": "swift-1.5-qwen38-iq2-xs",
+        "priorPromptSupplied": false,
+        "priorResultSupplied": false,
+        "historyMessages": 0,
+        "actualImages": 2,
+        "sourceSHA": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "styleSHA": "f3784778775b5ba030a9640fa2a65a85f3e775986ba98b12e22b9d9f23378b13",
+        "newPromptSHA": "a636e3fdbe6eabc666894023c6a3285eab85a6221848599d5cc3fd257cd880a3",
+        "tool": "propose_art_direction",
+        "requestBodySHA": "0b6000ff3dc3c78d4646ee554e58adfea85708382e221fe3cfc9fbf40a98bf82"
+      }
+    ]
+  },
+  "visualReview": {
+    "conclusion": "五项均完成一次新分析及一次真实生图，过程没有继续改规则，也没有使用旧提示词。结果未通过与认可基线的画质一致性复核：CG 的体积和投影关系恢复，但明亮大面积偏蓝且更平，冷调灰白肤色/红唇与立体塑造明显变化，湿润仍偏硬并出现绿眼，柔和高光与肤色也明显改变。代码和原始绘图指令已恢复，不代表新分析稳定复现了原有效果；本轮不发布、不替换认可图片。",
+    "method": "Assistant inspected full-size raw output PNGs; not an automatic product review or generation loop",
+    "cases": [
+      {
+        "id": "cg",
+        "summary": "方向光、条纹投影、皮肤体积和发丝/杯体反射比 4806 明显，脸颊痣保留，未见新增雀斑；比上轮认可图更偏光滑立体塑造，不能视为完全相同画法。",
+        "sourceRetention": "眨眼、微笑、脸颊痣、条纹服装、杯与吸管、红指甲和机场结构保留。",
+        "attribution": "新分析明确选择 smooth volumetric skin、crisp cast-shadow bands、glossy hair，Qwen 对应执行；保留了旧版常见光影关系，但不是旧提示词重放。"
+      },
+      {
+        "id": "wet",
+        "summary": "皮肤渐变、发束与杯体反射存在，衣服和场景保持干燥；整体仍较硬，柔和光泽与氛围未达到上轮认可图，虹膜明显偏绿，不能判为同等质量。",
+        "sourceRetention": "眨眼、微笑、脸颊痣、服装、杯与机场结构保留；虹膜绿色不是原主体特征。",
+        "attribution": "新分析写 crisp tapered linework、高对比与 saturated anime finish，并没有恢复原稿的具体光影安排；虹膜偏色未由正文明确要求，存在参考内容串入。"
+      },
+      {
+        "id": "bright",
+        "summary": "背景、座椅和环境大面积偏蓝，色块与边缘更平更硬，认可图的局部光源与体积层次未复现；不能判为同等质量。",
+        "sourceRetention": "眨眼、微笑、脸颊痣、服装、红指甲、杯与机场结构保留。",
+        "attribution": "旧稿强调窗口方向光、rim light、gentle bloom、atmospheric depth 与 cool-neutral palette；新分析改为 flat cel color masses 和 luminous cool-dominant palette。新提示词决策变化与输出变化相符，不是参数回退能消除的差异。"
+      },
+      {
+        "id": "dark",
+        "summary": "冷灰肤色、深红唇和立体鼻口塑造明显增强，色调与认可版不同，依然偏写实；不能确认恢复了认可效果。",
+        "sourceRetention": "脸颊痣、眨眼、微笑、服装、杯与机场结构保留；唇色/妆感发生明显变化。",
+        "attribution": "新分析明确选择 smooth volumetric skin、strong cool directional light 和 warm red lips。认可冷调图还含之前的局部动漫化反馈，本轮无旧结果的中性新分析没有复现那次决策。"
+      },
+      {
+        "id": "soft",
+        "summary": "暖光、头发与杯体反射存在，但高光更油亮、肤色偏橙，虹膜金色与五官塑造也有变化，和认可图并不一致。",
+        "sourceRetention": "脸颊痣、眨眼、微笑、条纹服装、杯和机场结构保留；眼睛颜色改变。",
+        "attribution": "新分析强调 airbrushed gradient volume、glossy specular highlight streaks、subsurface warmth，输出更偏光滑高光塑造；没有将原柔和氛围稳定保留下来。"
+      }
+    ]
+  }
+}

@@ -133,10 +133,15 @@ export async function verifySessionToken(token, sessionSecret) {
 // ---------------------------------------------------------------------------
 export async function issueWorkerToken(worker, controlSecret, ttlSeconds = 3600) {
   const iat = nowSeconds();
+  const generation=worker.ownership_generation;
+  if (generation !== undefined && generation !== null &&
+      (typeof generation!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(generation)))
+    throw new Error('invalid worker ownership generation');
   return await signEnvelope('nfw_', {
     kind: 'worker',
     wid: String(worker.id),
     owner: String(worker.owner_id || ''),
+    ...(generation == null ? {} : {ownership_generation:generation}),
     name: String(worker.worker_name || ''),
     iat,
     exp: iat + ttlSeconds,
@@ -182,15 +187,62 @@ export async function deriveWorkerGrantKey(workerId, controlSecret) {
 // nfg_ - short-lived file grant. Bound to user + task + worker + op, so it is
 // useless anywhere else (spec 11).
 // ---------------------------------------------------------------------------
+function validateH3GrantRefs(refs) {
+  if (!Array.isArray(refs) || refs.length !== 2) throw new Error('invalid H3 grant references');
+  const names = new Set();
+  for (const ref of refs) {
+    if (!ref || typeof ref !== 'object' || Array.isArray(ref) ||
+        Object.keys(ref).sort().join(',') !== 'bytes,kind,name,sha256' ||
+        typeof ref.name !== 'string' || !/^h3-[a-f0-9-]{36}-[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9]+)?$/.test(ref.name) ||
+        ref.name.length > 128 || names.has(ref.name.toLowerCase()) || ref.kind !== 'image' || !Number.isSafeInteger(ref.bytes) ||
+        ref.bytes < 1 || ref.bytes > 64 * 1024 * 1024 || !/^[a-f0-9]{64}$/.test(ref.sha256))
+      throw new Error('invalid H3 grant references');
+    names.add(ref.name.toLowerCase());
+  }
+  return refs;
+}
+
+function validateH3GrantFile(taskId, file) {
+  if (!file || typeof file!=='object' || Array.isArray(file) || Object.keys(file).sort().join(',')!=='bytes,kind,name,sha256' ||
+      typeof taskId!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(taskId) ||
+      typeof file.name!=='string' || !new RegExp('^h3-'+taskId+'-result-[1-8]\\.(mp4|webm)$').test(file.name) ||
+      file.kind!=='video' || !Number.isSafeInteger(file.bytes) || file.bytes<1 || file.bytes>8*1024*1024*1024 ||
+      typeof file.sha256!=='string' || !/^[a-f0-9]{64}$/.test(file.sha256))
+    throw new Error('invalid H3 grant output');
+  return file;
+}
+
 export async function issueGrantToken(input, grantKey) {
   const iat = nowSeconds();
   const ttl = Number(input.ttlSeconds) > 0 ? Number(input.ttlSeconds) : 900;
+  const scoped = input.scope !== undefined;
+  const h3 = input.scope === 'h3-idempotent-v1', h3Download=input.scope==='h3-download-v1';
+  if (h3) {
+    if (input.op !== 'upload' || !Number.isSafeInteger(input.attempt) || input.attempt < 1 || input.attempt > 20 ||
+        typeof input.ownership_generation!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.ownership_generation))
+      throw new Error('invalid H3 grant operation or attempt');
+    validateH3GrantRefs(input.refs);
+    if (!input.refs.every((ref,index)=>ref.name.startsWith(`h3-${input.taskId}-${index===0?'first':'last'}.`)))
+      throw new Error('H3 grant task binding mismatch');
+  } else if (h3Download) {
+    if (input.op!=='download' || !Number.isSafeInteger(input.attempt) || input.attempt<1 || input.attempt>20 ||
+        typeof input.ownership_generation!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.ownership_generation) ||
+        typeof input.proof!=='string' || !input.proof.startsWith('nfh_') || input.proof.length>8192)
+      throw new Error('invalid H3 download grant');
+    validateH3GrantFile(String(input.taskId),input.file);
+  } else if (scoped && (!['qwen-foart-plan-v1','qwen21-local-image-edit-v1'].includes(input.scope) ||
+      !Number.isSafeInteger(input.attempt) || input.attempt < 1 || input.attempt > 20)) {
+    throw new Error('invalid grant scope or attempt');
+  }
   return await signEnvelope('nfg_', {
     kind: 'grant',
     sub: String(input.userId),
     task: String(input.taskId),
     wid: String(input.workerId),
     op: String(input.op),
+    ...(h3 ? {scope:input.scope,attempt:input.attempt,ownership_generation:input.ownership_generation,refs:input.refs}
+      : h3Download ? {scope:input.scope,attempt:input.attempt,ownership_generation:input.ownership_generation,file:input.file,proof:input.proof}
+      : scoped ? {scope:input.scope,attempt:input.attempt} : {}),
     iat,
     exp: iat + ttl,
     nonce: randomId()
@@ -200,9 +252,106 @@ export async function issueGrantToken(input, grantKey) {
 export async function verifyGrantToken(token, grantKey, expect = {}) {
   const payload = await verifyEnvelope('nfg_', token, grantKey);
   if (payload.kind !== 'grant') throw new Error('invalid token');
+  if (payload.scope === 'h3-idempotent-v1') {
+    if (payload.op !== 'upload' || !Number.isSafeInteger(payload.attempt) || payload.attempt < 1 || payload.attempt > 20 ||
+        typeof payload.ownership_generation!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(payload.ownership_generation))
+      throw new Error('invalid H3 grant operation or attempt');
+    validateH3GrantRefs(payload.refs);
+    if (!payload.refs.every((ref,index)=>ref.name.startsWith(`h3-${payload.task}-${index===0?'first':'last'}.`)))
+      throw new Error('H3 grant task binding mismatch');
+  } else if (payload.scope==='h3-download-v1') {
+    if(payload.op!=='download' || !Number.isSafeInteger(payload.attempt) || payload.attempt<1 || payload.attempt>20 ||
+       typeof payload.ownership_generation!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(payload.ownership_generation) ||
+       typeof payload.proof!=='string' || !payload.proof.startsWith('nfh_') || payload.proof.length>8192)
+      throw new Error('invalid H3 download grant');
+    validateH3GrantFile(String(payload.task),payload.file);
+  } else if (payload.scope !== undefined && (!['qwen-foart-plan-v1','qwen21-local-image-edit-v1'].includes(payload.scope) ||
+      !Number.isSafeInteger(payload.attempt) || payload.attempt < 1 || payload.attempt > 20)) {
+    throw new Error('invalid grant scope or attempt');
+  }
   if (expect.taskId && String(payload.task) !== String(expect.taskId)) throw new Error('grant task mismatch');
   if (expect.workerId && String(payload.wid) !== String(expect.workerId)) throw new Error('grant worker mismatch');
   if (expect.op && String(payload.op) !== String(expect.op)) throw new Error('grant op mismatch');
+  return payload;
+}
+
+// Worker grant keys are known to workers; this independent proof is signed
+// with a server-only derived key and is always revalidated against live state.
+async function h3DownloadProofKey(controlSecret) {
+  if (typeof controlSecret!=='string' || !controlSecret.trim()) throw new Error('control secret is not configured');
+  return await hmacSha256('novaflow-web-h3-download-proof:v1',controlSecret);
+}
+function validateH3DownloadProof(payload) {
+  const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  if (!payload || payload.kind!=='h3-download-proof-v1' || payload.aud!=='novaflow-web-h3-download' ||
+      !uuid.test(String(payload.sub||'')) || !uuid.test(String(payload.sid||'')) || !uuid.test(String(payload.wid||'')) ||
+      !Number.isSafeInteger(payload.attempt) || payload.attempt<1 || payload.attempt>20 ||
+      typeof payload.ownership_generation!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(payload.ownership_generation) ||
+      !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.exp<=payload.iat || payload.exp-payload.iat>60)
+    throw new Error('invalid H3 download proof');
+  validateH3GrantFile(String(payload.task),payload.file);
+}
+export async function issueH3DownloadProof(input,controlSecret) {
+  const iat=nowSeconds();
+  if(!Number.isSafeInteger(input?.sessionExpiresAt) || !Number.isSafeInteger(input?.resultExpiresAt))
+    throw new Error('invalid H3 download expiry');
+  const payload={kind:'h3-download-proof-v1',aud:'novaflow-web-h3-download',sub:input.userId,sid:input.sessionId,
+    task:input.taskId,wid:input.workerId,attempt:input.attempt,ownership_generation:input.ownershipGeneration,file:input.file,
+    iat,exp:Math.min(iat+60,input.sessionExpiresAt,input.resultExpiresAt)};
+  validateH3DownloadProof(payload);
+  return await signEnvelope('nfh_',payload,await h3DownloadProofKey(controlSecret));
+}
+export async function verifyH3DownloadProofSignature(token,controlSecret) {
+  if(typeof token!=='string' || token.length>8192)throw new Error('invalid H3 download proof');
+  const payload=await verifyEnvelope('nfh_',token,await h3DownloadProofKey(controlSecret));
+  validateH3DownloadProof(payload);
+  if(payload.iat>nowSeconds())throw new Error('invalid H3 download proof');
+  return payload;
+}
+
+// This proof is for server-to-server validation of the reserved Qwen
+// rotation candidate only. It is never an authorization decision by itself:
+// the control plane must also re-check the stored task, owner, session,
+// attempt and operation transactionally. The worker receives neither the
+// control secret nor this derived key.
+const QWEN_ROTATION_PROOF_PREFIX = 'nfr_';
+const QWEN_ROTATION_PROOF_MAX_SECONDS = 60;
+const QWEN_ROTATION_TASK_ID = /^fa047a0a-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const rotationProofOp = value => value === 'upload' || value === 'download';
+async function rotationProofKey(controlSecret) {
+  if (typeof controlSecret !== 'string' || !controlSecret.trim()) throw new Error('control secret is not configured');
+  return await hmacSha256('novaflow-web-qwen-rotation-proof:v1', controlSecret);
+}
+function validRotationProofFields(payload) {
+  return payload && payload.kind === 'qwen-rotation-proof-v1' &&
+    payload.scope === 'qwen-foart-rotation-candidate-v1' && payload.aud === 'novaflow-web-candidate-verifier' &&
+    QWEN_ROTATION_TASK_ID.test(payload.task) && CANONICAL_UUID.test(payload.wid) &&
+    CANONICAL_UUID.test(payload.sub) && CANONICAL_UUID.test(payload.sid) &&
+    Number.isSafeInteger(payload.attempt) && payload.attempt > 0 &&
+    rotationProofOp(payload.op) && Number.isSafeInteger(payload.iat) &&
+    Number.isSafeInteger(payload.exp) && payload.exp > payload.iat &&
+    payload.exp - payload.iat <= QWEN_ROTATION_PROOF_MAX_SECONDS;
+}
+
+export async function issueQwenRotationProof(input, controlSecret) {
+  const iat = nowSeconds();
+  if (!input || !Number.isSafeInteger(input.sessionExpiresAt) || input.sessionExpiresAt <= iat)
+    throw new Error('invalid candidate session expiry');
+  const payload = {kind:'qwen-rotation-proof-v1',scope:'qwen-foart-rotation-candidate-v1',
+    aud:'novaflow-web-candidate-verifier',sub:input.userId,sid:input.sessionId,
+    task:input.taskId,wid:input.workerId,attempt:input.attempt,op:input.op,iat,
+    exp:Math.min(input.sessionExpiresAt,iat+QWEN_ROTATION_PROOF_MAX_SECONDS)};
+  if (!validRotationProofFields(payload)) throw new Error('invalid candidate proof');
+  return await signEnvelope(QWEN_ROTATION_PROOF_PREFIX,payload,await rotationProofKey(controlSecret));
+}
+
+// Signature validation only; callers must reject on an unavailable/negative
+// authoritative database check, even if this signature is valid.
+export async function verifyQwenRotationProofSignature(token, controlSecret) {
+  if (typeof token !== 'string' || token.length > 8192) throw new Error('invalid candidate proof');
+  const payload = await verifyEnvelope(QWEN_ROTATION_PROOF_PREFIX,token,await rotationProofKey(controlSecret));
+  if (!validRotationProofFields(payload) || payload.iat > nowSeconds()) throw new Error('invalid candidate proof');
   return payload;
 }
 

@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 export const UI_BROWSER_DEPENDENCIES = ['ui-smart-split.core.js', 'ui-design.smart-split.js', 'ui-design-style-reference.js', 'ui-design.drawing.js'];
 
-export async function verifyScriptReferences(webRoot) {
-  const html = await readFile(join(webRoot, 'index.html'), 'utf8');
+export async function verifyScriptReferences(webRoot, entry = 'index.html') {
+  const html = await readFile(join(webRoot, entry), 'utf8');
   const scripts = [];
   for (const match of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*(["'])(.*?)\1/gi)) {
     const value = match[2];
@@ -21,8 +21,13 @@ export async function verifyScriptReferences(webRoot) {
   return { html, scripts };
 }
 
-export async function verifyUiReleaseAssets({ webRoot, workerSrcRoot, workerRendererRoot, desktopRoot }) {
-  const { scripts } = await verifyScriptReferences(webRoot);
+export async function verifyUiReleaseAssets({ webRoot, workerSrcRoot, workerRendererRoot, desktopRoot, editorEntry = null }) {
+  if (!editorEntry) {
+    try { await access(join(webRoot, 'editor.html')); editorEntry = 'editor.html'; }
+    catch { editorEntry = 'index.html'; }
+  }
+  if (editorEntry !== 'index.html') await verifyScriptReferences(webRoot, 'index.html');
+  const { scripts } = await verifyScriptReferences(webRoot, editorEntry);
   const requirements = [
     ...UI_BROWSER_DEPENDENCIES.map(name => [webRoot, name]),
     [workerSrcRoot, 'prompt-assistant.mjs'], [workerSrcRoot, 'complete-ui-draft.mjs'], [workerSrcRoot, 'native-ui-draft.mjs'], [workerSrcRoot, 'ui-catalog-planner.mjs'],

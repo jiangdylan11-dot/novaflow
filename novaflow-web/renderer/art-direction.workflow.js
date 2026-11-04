@@ -3,7 +3,7 @@
   const SCHEMA = 'nf.art.direction.v1';
   const ROLES = Object.freeze({ subject: '主体', style: '风格', pose: '姿势', background: '背景', material: '材质', color: '配色', composition: '构图', lighting: '光影', object: '物件', none: '不使用' });
   const TASKS = Object.freeze({ auto: '自动理解', anime: '转二次元', game_cg: '转游戏 CG', style: '参考画风', preserve: '精修原图' });
-  const GENERATION_SETTINGS=['provider','mode','prompt','negativePrompt','width','height','count','seed','randomSeed','nsfw','loras','samplingOverrides','gptQualityTxt2img','gptQualityImg2img','gptSize','gptCustomWidth','gptCustomHeight','googleAspectRatioTxt2img','googleAspectRatioImg2img','googleResolution','localDrawEngine','localQwen21Variant','drawingTask','drawingAnalysisEngine'];
+  const GENERATION_SETTINGS=['provider','mode','prompt','negativePrompt','width','height','count','seed','randomSeed','nsfw','nsfwLoraEnabled','nsfwLoraName','loras','samplingOverrides','gptQualityTxt2img','gptQualityImg2img','gptSize','gptCustomWidth','gptCustomHeight','googleAspectRatioTxt2img','googleAspectRatioImg2img','googleResolution','localDrawEngine','localQwen21Variant','drawingTask','drawingAnalysisEngine'];
   const TASK_BRIEFS=Object.freeze({auto:'依照用户要求处理主体参考，未指定改变的内容保持',anime:'保留主体身份、设计和数量，将整幅照片重新绘制为精致二次元插画，使用明确的手绘轮廓、概括造型与分层明暗，不保留摄影皮肤纹理',game_cg:'保留主体身份、服饰、姿势和数量，将整幅照片重新绘制为高完成度的半写实游戏角色宣传插画。使用数字厚涂、概括而精准的手绘体积塑造、精致五官与头发分组、统一的绘画光影和材质笔触。人物、衣服和环境都必须重新绘画，呈现明确的游戏原画CG质感，去除摄影皮肤毛孔与镜头散景，不是照片美化或摄影滤镜',style:'保留主体内容，采用指定风格的绘画语言',preserve:'精修原图，保持原有设计'});
   const STYLE_BOUNDARY='主体辨识特征、主要动作、服饰类别、持有物和场景类型取自主体参考；人物比例与轮廓、头发组织、衣褶、背景安排均按目标画风整体重构，不锁死摄影轮廓和写实五官比例。配色、肤色表现、材质与打光优先采用目标风格，成图质量与协调氛围优先，无需逐处复现照片。风格参考人物和场景物件不作为新增内容。用户明确的保留要求与另外指定的参考职责优先。';
   const CACHE = new Map();
@@ -17,13 +17,14 @@
   const isNative=e=>e?.kind===NATIVE_KIND&&e.version===NATIVE_VERSION;
   function nativeMetadata(e) {
     const identity=e.modelIdentity,policy=e.providerPolicy,provenance=e.sourceCacheProvenance;
-    if(e.analysisBackend!=='strata'||e.resourcesReleased!==true||e.generationReady!==true
+    const validBackend=e.analysisBackend==='strata'||(e.analysisBackend==='qwen-cpu'&&identity?.id==='qwen35-heretic');
+    if(!validBackend||e.resourcesReleased!==true||e.generationReady!==true
       ||!identity||typeof identity!=='object'||!text(identity.id)
       ||!['server-model-id','server-weight-path','server-model-id-and-weight-path'].includes(identity.verification)||text(e.model)!==text(identity.id)
       ||!policy||policy.schema!=='nf.qwen21-native-provider.v1'||!Number.isFinite(policy.cfg)||policy.cfg<1||policy.cfg>10
       ||provenance!==undefined&&(!provenance||typeof provenance!=='object'||Array.isArray(provenance)))
       throw new Error('本地AI完整提示词的来源或资源交接凭据无效，未提交生成');
-    return {analysisBackend:'strata',modelIdentity:copy(identity),providerPolicy:copy(policy),
+    return {analysisBackend:e.analysisBackend,modelIdentity:copy(identity),providerPolicy:copy(policy),
       ...(provenance!==undefined?{sourceCacheProvenance:copy(provenance)}:{}),resourcesReleased:true,generationReady:true};
   }
   const abortError = () => Object.assign(new Error('任务已中止'), { name: 'AbortError' });
@@ -159,12 +160,18 @@
   function input(context) {
     const s = context.state;
     const prompt=text(s.prompt);
+    const selection=context.assistantSelection;
+    if(selection && (selection.provider!=='local'||selection.modelId!=='qwen3.5-9b-heretic'||!Number.isSafeInteger(selection.epoch)))throw new Error('当前所选模型不支持本地双图分析，未提交。');
+    if(selection && String(context.assistantRequirements||'').length>2000)throw new Error('要求过长，请缩短后重试；参考图未提交。');
     return { prompt, literalPrompt:String(s.prompt??''), mode:s.mode||'img2img', negativePrompt: text(s.negativePrompt), literalNegativePrompt:String(s.negativePrompt??''), task: TASKS[s.drawingTask] ? s.drawingTask : 'auto', engine: engine(s),
-      provider: s.provider || 'local', width: s.width, height: s.height, nsfw: s.nsfw === true,
+      provider: s.provider || 'local', width: s.width, height: s.height, nsfw: s.nsfw === true, nsfwLoraEnabled:s.nsfwLoraEnabled===true, nsfwLoraName:String(s.nsfwLoraName||''),
+      ...(selection?{assistantSelection:{provider:selection.provider,modelId:selection.modelId,epoch:selection.epoch},assistantRequirements:String(context.assistantRequirements||'')}:{ }),
       references: requestedRoles(prompt,(s.mode==='txt2img'?[]:context.references || []).map((ref, index) => ref?.dataUrl ? { ...ref, source: index + 1, role: Object.hasOwn(ROLES,ref.drawingRole) ? ref.drawingRole : 'auto' } : null).filter(Boolean)) };
   }
   function same(a, b) {
-    return ['prompt', 'literalPrompt', 'mode', 'negativePrompt', 'literalNegativePrompt', 'task', 'engine', 'provider', 'width', 'height', 'nsfw'].every(k => a[k] === b[k])
+    return ['prompt', 'literalPrompt', 'mode', 'negativePrompt', 'literalNegativePrompt', 'task', 'engine', 'provider', 'width', 'height', 'nsfw', 'nsfwLoraEnabled', 'nsfwLoraName'].every(k => a[k] === b[k])
+      && JSON.stringify(a.assistantSelection||null)===JSON.stringify(b.assistantSelection||null)
+      && a.assistantRequirements===b.assistantRequirements
       && a.references.length === b.references.length && a.references.every((r, i) => r.source === b.references[i].source && r.dataUrl === b.references[i].dataUrl && r.role === b.references[i].role);
   }
   async function key(value) {
@@ -211,6 +218,7 @@
     let editEnhancer;
     if(raw.editEnhancer){
       const e=raw.editEnhancer,order=e.sourceOrder,slots=[...text(e.prompt).matchAll(/<image(\d+)>/g)].map(m=>Number(m[1]));
+      if(isNative(e)&&e.analysisBackend!==(source.assistantSelection?'qwen-cpu':'strata'))throw new Error('分析模型与当前选择不一致，结果未应用。');
       const supported=isNative(e)||e.kind==='qwen21-pe-i2i'&&e.version==='drawing-style-v1'||e.kind==='qwen21-style-observation'&&e.version==='drawing-style-observation-v1'||e.kind==='qwen21-scoped-style'&&e.version==='scoped-style-v1';
       if(source.engine!=='local'||source.provider!=='local'||!supported||!Array.isArray(order)||order.length!==2||new Set(order).size!==2||order.some(n=>!sources.has(n))||text(e.prompt).length>12000||slots.some(n=>n<1||n>2)||new Set(slots).size!==2||references.flatMap(r=>r.uses.map(u=>u.role)).sort().join(',')!=='style,subject')throw new Error('本地AI编辑指令或参考编号无效，未提交生成');
       if(isNative(e)&&(typeof raw.prompt!=='string'||typeof e.prompt!=='string'||raw.prompt!==e.prompt))throw new Error('本地AI完整提示词存在不一致的正文副本，未提交生成');
@@ -228,6 +236,7 @@
     return data.artDirection || data.art_direction || data.plan || data.rawOutput || data.prompt || data.positivePrompt;
   }
   async function acceptsOriginalAnalysisImages(api, source) {
+    if(source.assistantSelection)return source.engine==='local'&&api.qwenBusinessAvailableSync?.()===true;
     if(source.engine!=='local'||!source.references.length||typeof api.promptAssistantGetStatus!=='function')return false;
     let capability=analysisCapabilities.get(api);
     if(!capability){
@@ -261,10 +270,11 @@
       analysisImages.push({ dataUrl: originalImages?dataUrl:await analysisImage(dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
     }
     const requestId=analysisRequestId();
-    const payload = { requestId, surface: 'art', purpose: 'art-director', promptLanguage:'en', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
+    const payload = { requestId, surface: 'art', purpose: 'art-director', promptLanguage:'en', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.assistantRequirements || source.prompt,
       negativePrompt: source.negativePrompt, nsfw: source.nsfw, supportsNegativePrompt: false,
       artContext: { task: source.task, width: source.width, height: source.height,...(usePe?{editEnhancer:'qwen21-pe-i2i'}:{}),references: source.references.map(r => ({ source: r.source, role: r.role, roles:r.roles,...(r.excludedRoles?{excludedRoles:r.excludedRoles}:{}) })) },
       images: analysisImages };
+    if(source.assistantSelection)Object.assign(payload,{assistantSelectionScope:'xiaotao',assistantProvider:source.assistantSelection.provider,assistantModelId:source.assistantSelection.modelId,assistantSelectionEpoch:source.assistantSelection.epoch});
     if(originalImages&&new TextEncoder().encode(JSON.stringify(payload)).byteLength>24*1024*1024)throw new Error('完整参考图分析请求超过24MB，请减少图片数量或先缩小图片；本次未压缩或截断提交');
     const fn = source.engine === 'grok' ? api.smartAiImageReverse : api.promptAssistantReverseImagePrompt;
     if (typeof fn !== 'function') throw new Error('所选绘图分析线路未就绪');
@@ -275,6 +285,7 @@
     try {
       dispatched=true;
       const raw = await Promise.race([fn.call(api, payload), stopped]);
+      if(source.assistantSelection&&raw?.ok!==false){const handoff=raw?.data||raw?.result||raw;if(handoff?.ok!==false&&(handoff?.analysisBackend!=='qwen-cpu'||handoff?.modelIdentity?.id!=='qwen35-heretic'||handoff.resourcesReleased!==true||handoff.generationReady!==true))throw new Error('所选 Qwen 模型或资源释放状态未确认，结果未应用。');}
       if (raw?.ok !== false) {
         const settled = creditSettlement(raw);
         if (settled) onStatus(settled);
@@ -621,10 +632,13 @@
   }
   async function prepare(context) {
     if (controller) throw new Error('请等待当前绘图分析结束');
+    const source=input(context);
     const current=new AbortController();controller=current;
-    const source=input(context),status=context.onProgress||(()=>{});let preparing=true,expectedSource=source;
+    const abortExternal=()=>current.abort();
+    if(context.signal?.aborted)current.abort();else context.signal?.addEventListener?.('abort',abortExternal,{once:true});
+    const status=context.onProgress||(()=>{});let preparing=true,expectedSource=source;
     previews.delete(context.state);
-    const check=()=>{if(current.signal.aborted)throw abortError();if(!same(expectedSource,input(context.getCurrentContext?context.getCurrentContext():context)))throw new Error('参考图、用途、需求或尺寸已变化，旧分析未提交，请重新生成');if(preparing&&context.getCurrentContext?.().generationSurface && context.getCurrentContext().generationSurface!=='drawing')throw new Error('绘图页面已切换，旧任务未提交');};
+    const check=()=>{if(typeof context.isOwnerCurrent==='function'&&context.isOwnerCurrent()!==true)throw new Error('当前会话已变化，准备已停止');if(current.signal.aborted)throw abortError();if(context.assistantSelection&&context.isStillCurrent?.()!==true)throw new Error('模型、账号或参考图已变化，旧分析未提交。');if(!same(expectedSource,input(context.getCurrentContext?context.getCurrentContext():context)))throw new Error('参考图、用途、需求或尺寸已变化，旧分析未提交，请重新生成');if(preparing&&context.getCurrentContext?.().generationSurface && context.getCurrentContext().generationSurface!=='drawing')throw new Error('绘图页面已切换，旧任务未提交');};
     try {
       if(!source.prompt&&!source.references.length)throw new Error('请写一句需求，或添加参考图后直接生成');
       if(source.references.length>(context.referenceLimit||10))throw new Error(`当前模型支持 ${context.referenceLimit||10} 张参考图，请减少图片或切换模型；本次未截断提交`);
@@ -635,7 +649,7 @@
         writtenReferencePolicies.delete(context.state);written=null;
       }
       const cacheKey=await key(source);check();
-      let prepared=CACHE.get(cacheKey);
+      let prepared=source.assistantSelection?null:CACHE.get(cacheKey);
       if(!prepared){
         if(source.engine==='direct'){
           status('正在准备直接生成…');prepared=directPreparation(source);check();
@@ -645,7 +659,7 @@
           if(plan.clarification)throw new Error(`需要补充一句：${plan.clarification}`);
           prepared={...(await compile(plan,source,status,check,context.referenceLimit||10)),plan};check();
         }
-        CACHE.set(cacheKey,prepared);if(CACHE.size>4)CACHE.delete(CACHE.keys().next().value);
+        if(!source.assistantSelection){CACHE.set(cacheKey,prepared);if(CACHE.size>4)CACHE.delete(CACHE.keys().next().value);}
       }
       // Apply state-specific replay outside CACHE: a new direct request with the
       // same text must not inherit another state object's AI routing policy.
@@ -686,7 +700,7 @@
           return true;
         },
         recordReview:review=>{const previous=previews.get(context.state);if(previous)previous.review=review;}};
-    } finally {if(controller===current)controller=null;}
+    } finally {context.signal?.removeEventListener?.('abort',abortExternal);if(controller===current)controller=null;}
   }
   async function review(prepared, outputUrl, onProgress = () => {}) {
     if(prepared.direct){

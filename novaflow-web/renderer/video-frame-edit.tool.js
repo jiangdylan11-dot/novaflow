@@ -23,6 +23,7 @@
   const ACCENT = '#1ea672'
   const BODY_ATTR = 'data-novaflow-video-frame-edit-open'
 
+  let lastAppliedResult = null
   const state = {
     open: false,
     busy: false,
@@ -135,6 +136,12 @@
     if (name) return name
     const fromUrl = /^https?:/.test(src) ? decodeURIComponent(src.split('?')[0].split('/').pop() || '') : ''
     return fromUrl || 'video'
+  }
+  function previewContext() {
+    const video=findStageVideo(findViewport());if(!video)return null
+    const stageSrc=video.currentSrc||video.src,src=window.NovaFlowSeamlessLoop?.originalSrc?.(stageSrc)||stageSrc
+    const card=Array.from(document.querySelectorAll('[data-novaflow-ai-resource-id]')).find(card=>Array.from(card.querySelectorAll('video,img')).some(media=>(media.currentSrc||media.src)===src))
+    return {resourceId:card?.getAttribute('data-novaflow-ai-resource-id')||'',sourceName:findSourceName(src),ready:video.readyState>=2&&video.videoWidth>0,width:video.videoWidth,height:video.videoHeight}
   }
   function readDockFps() {
     const input = document.querySelector('[data-novaflow-ai-bottom-workspace="1"] [data-novaflow-ai-timeline-edit-group-locked] input:not([type="range"]):not([type="checkbox"])')
@@ -661,11 +668,12 @@
     if (state.busy) return false
     const coreApi = core()
     const bridge = api()
-    if (!coreApi?.createModel) { notify('帧编辑组件未加载，请刷新网页后重试。'); return false }
-    if (!bridge?.exportDecodeVideoFrames || !bridge.exportCreateTempDir || !bridge.exportEncodeFramesToVideo || !bridge.writeBinaryFile) { notify('当前环境不支持帧编辑。'); return false }
+    const reportError = message => { if(typeof options.onError==='function')options.onError(String(message));else notify(message) }
+    if (!coreApi?.createModel) { reportError('帧编辑组件未加载，请刷新网页后重试。'); return false }
+    if (!bridge?.exportDecodeVideoFrames || !bridge.exportCreateTempDir || !bridge.exportEncodeFramesToVideo || !bridge.writeBinaryFile) { reportError('当前环境不支持帧编辑。'); return false }
     const viewport = findViewport()
     const video = findStageVideo(viewport)
-    if (!video) { notify('请先把视频加载到画板，再进入帧编辑。'); return false }
+    if (!video) { reportError('请先把视频加载到画板，再进入帧编辑。'); return false }
     // The loop overlay may have the stage on a video-only copy: decode and name the clip the page put there.
     const stageSrc = video.currentSrc || video.src
     const src = window.NovaFlowSeamlessLoop?.originalSrc?.(stageSrc) || stageSrc
@@ -717,12 +725,30 @@
     } catch (error) {
       releaseBitmaps()
       state.model = null
-      notify(String(error?.message || error || '帧编辑打开失败'))
+      reportError(String(error?.message || error || '帧编辑打开失败'))
       return false
     } finally {
       state.busy = false
       emitState()
     }
+  }
+
+  async function openForAgent() {
+    const postSection=document.querySelector('[data-novaflow-ai-post-section="1"]')
+    if(!(postSection instanceof HTMLElement))throw new Error('原生帧编辑工具组尚未就绪')
+    if(postSection.getAttribute('data-novaflow-ai-post-collapsed')==='1'){
+      const heading=postSection.querySelector('[data-novaflow-ai-collapse-heading="post"]')
+      if(!heading)throw new Error('原生帧编辑工具组无法展开')
+      heading.click()
+    }
+    let error=''
+    const opened=await open({postSection,onError:message=>{error=message}})
+    if(!opened)throw new Error(error||'原生帧编辑未能打开指定视频')
+    return agentContext()
+  }
+
+  function agentContext() {
+    return state.open && state.model ? {sourceName:state.sourceName,frames:state.model.length,order:state.model.order,fps:state.fps,width:state.width,height:state.height,selected:state.model.selection,dirty:state.model.dirty,busy:state.busy} : null
   }
 
   function close() {
@@ -786,6 +812,7 @@
       for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
       const file = new File([bytes], name, { type: encoded.mimeType || (state.alpha ? 'video/webm' : 'video/mp4') })
       if (!addToResourceList(file)) throw new Error('资源列表不可用，结果已存入仓库')
+      lastAppliedResult = { fileName: name, sourceName: state.sourceName, sourceFrames: state.frames.length, frames: order.length, fps: state.fps, width: state.width, height: state.height, bytes: file.size }
       close()
       return true
     } catch (error) {
@@ -862,14 +889,17 @@
   }
 
   window.NovaFlowVideoFrameEditTool = Object.freeze({
+    previewContext,
+    lastResult: () => lastAppliedResult ? { ...lastAppliedResult } : null,
     isOpen: () => state.open,
     isBusy: () => state.busy,
     open,
+    agentOpen: openForAgent,
     close,
     toggle,
     apply,
     canOpen: () => Boolean(findStageVideo(findViewport())),
-    agentContext: () => state.open && state.model ? {frames:state.model.length,order:state.model.order,fps:state.fps,width:state.width,height:state.height,selected:state.model.selection,dirty:state.model.dirty,busy:state.busy} : null,
+    agentContext,
     agentSelectRange(start, end) {
       if (!state.open || !state.model || state.busy) throw new Error('请先打开可编辑的视频帧');
       if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end >= state.model.length) throw new Error('帧选择超出当前视频范围');

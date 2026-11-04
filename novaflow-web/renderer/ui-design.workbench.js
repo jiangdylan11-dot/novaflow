@@ -165,6 +165,24 @@
       }
       save(); status('布局参考已启用，后续编辑会自动更新')
     }
+    function applyLayout(spec) {
+      const width=spec?.width,height=spec?.height,blocks=spec?.blocks;
+      if(!Number.isInteger(width)||!Number.isInteger(height)||width<320||height<320||width>8192||height>8192||!Array.isArray(blocks)||!blocks.length||blocks.length>40)throw Error('UI布局尺寸或模块数量无效');
+      const current=layout(),known=new Set(current?.data.blocks.map(b=>b.id)||[]),seen=new Set();
+      for(const block of blocks){
+        if(!block||Object.keys(block).some(key=>!['id','name','purpose','requirements','x','y','width','height'].includes(key))||typeof block.name!=='string'||!block.name.trim()||block.name.length>100)throw Error('UI布局模块无效');
+        if(block.id&&(!known.has(block.id)||seen.has(block.id)))throw Error('UI布局模块已变化');if(block.id)seen.add(block.id);
+        for(const key of ['purpose','requirements'])if(block[key]!==undefined&&(typeof block[key]!=='string'||block[key].length>1000))throw Error('UI布局说明过长');
+        if(!['x','y','width','height'].every(key=>Number.isInteger(block[key]))||block.x<0||block.y<0||block.width<32||block.height<24||block.x+block.width>width||block.y+block.height>height)throw Error('UI布局模块超出画板');
+      }
+      showLayout();patchGeneratorOutput(activeId,{width,height});
+      for(const block of blocks){
+        if(!block.id)addBlock();
+        const node=layout(),id=block.id||node.data.blocks.at(-1).id,{id:ignored,...patch}=block;
+        patchSelection({nodeId:node.id,blockId:id},patch);
+      }
+      useLayout();return copy(layout());
+    }
     function referenceEntries() {
       return graph.edges.filter(e => e.toNodeId === activeId && ['reference', 'iteration'].includes(e.kind))
         .sort((a,b) => Number(b.kind === 'iteration') - Number(a.kind === 'iteration'))
@@ -376,8 +394,9 @@
       getActiveGeneratorId: () => activeId, getGeneratorSettings: profile, patchGeneratorSettings, patchGeneratorOutput,
       setGeneratorStatus(id, text, opts = {}) { statuses.set(id || activeId, { message: text, ...opts }); if (!id || id === activeId) { status(text, opts.error); renderControls() } },
       recordOptimization(id, input, result) { mutate('updateGraphNode', id, { data: { optimization: { originalPrompt: input.prompt, prompt: result.prompt, negativePrompt: result.negativePrompt || '', engine: input.engine } } }); save(false) },
-      showStatus: status, showImage, showLayout, addBlock, useLayout, patchSelection, removeSelection,
+      showStatus: status, showImage, showLayout, addBlock, useLayout, applyLayout, patchSelection, removeSelection,
       getLayout: () => layout() ? copy(layout()) : null,
+      selectBlock(id) { if(!layout()?.data.blocks.some(block=>block.id===id))throw Error('UI模块已不存在');view='layout';selectBlock(id);render();return getSelection() },
       setTool(tool) { if (tool === 'region') addBlock(); else showLayout() }, getTool: () => 'select',
       addReferenceResource,
       addResultNode(item, sourceNodeId) { const result = mutate('createGraphNode', { type: 'result', data: { resultId: item.id, sourceNodeId } }); if (result.ok) save(false); showImage(item); return result },

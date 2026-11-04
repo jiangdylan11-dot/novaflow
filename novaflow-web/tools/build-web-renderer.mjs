@@ -20,10 +20,11 @@ import { dirname, join, resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
+import { RELEASE_VERSION as BASE_RELEASE_VERSION } from '../packages/shared/src/release.mjs';
 import { syncBrandAssets } from './sync-brand-assets.mjs';
 import { syncButtonTheme } from './sync-button-theme.mjs';
-import './sync-foart-tool-contract.mjs';
+import {isolatedUiPlan,prepareIsolatedUiStage,inspectIsolatedUiInputs,omitIsolatedUiAsset,permitIsolatedUiInput} from './isolated-ui-build-policy.mjs';
+import {fullPlan,prepareFullStage,createVersionView,omitFullAsset,loadReviewedOverrides} from './isolated-full-site-policy.mjs';
 import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
@@ -37,8 +38,18 @@ import { verifyUiReleaseAssets } from './verify-ui-release-assets.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const SRC = join(ROOT, 'renderer');
-const WEB_OUT = join(ROOT, 'web-dist');
-const WORKER_OUT = join(ROOT, 'worker-renderer');
+const ISOLATED_PLAN = isolatedUiPlan(ROOT);
+const FULL_PLAN = fullPlan(ROOT);
+const RELEASE_VERSION = FULL_PLAN?.version || BASE_RELEASE_VERSION;
+if(FULL_PLAN){
+  process.env.FOART_ISOLATED_BUILD_TAG=FULL_PLAN.tag; // Guard generated sources against writes.
+  globalThis.fetch=async()=>{throw Error('Network downloads disabled for isolated full build');};
+}
+// Validate flags before any generated-source imports can run.
+await import('./sync-foart-tool-contract.mjs');
+await import('./connect-xiaotao-production-bundle.mjs');
+const WEB_OUT = ISOLATED_PLAN ? join(ISOLATED_PLAN.stage, 'web-dist') : FULL_PLAN ? join(FULL_PLAN.stage,'web-dist') : join(ROOT, 'web-dist');
+const WORKER_OUT = ISOLATED_PLAN ? join(ISOLATED_PLAN.stage, 'worker-renderer') : FULL_PLAN ? join(FULL_PLAN.stage,'worker-renderer') : join(ROOT, 'worker-renderer');
 
 // Directories carried across untouched. `src/` is the TypeScript the bundle in
 // assets/ was already built from, so it is not shipped.
@@ -92,7 +103,7 @@ const COMPUTE_NODE_SHIM = 'novaflow-web-compute-node.js';
 const WAREHOUSE_SHIM = 'novaflow-web-warehouse.js';
 
 const TEMPLATE_SHIM = 'novaflow-web-templates.js';
-const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM, COMPUTE_NODE_SHIM, WAREHOUSE_SHIM, TEMPLATE_SHIM]);
+const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM, COMPUTE_NODE_SHIM, WAREHOUSE_SHIM, TEMPLATE_SHIM, 'home-shell.js', 'home-frame-bridge.js']);
 
 const REPLACEMENT = (moduleName) => (fn) => {
   // The catalog is UI data. Its desktop fallback mentions a Comfy node, which
@@ -155,8 +166,13 @@ async function emptyDir(dir) {
 
 export async function buildWebRenderer({ logger, clean = true, minify = false } = {}) {
   const log = logger || (() => {});
-  await syncBrandAssets();
-  await syncButtonTheme();
+  await syncBrandAssets({check:Boolean(ISOLATED_PLAN||FULL_PLAN)});
+  await syncButtonTheme({check:Boolean(ISOLATED_PLAN||FULL_PLAN)});
+  const isolatedInputs = ISOLATED_PLAN ? await inspectIsolatedUiInputs(SRC) : null;
+  const reviewedOverrides = FULL_PLAN ? await loadReviewedOverrides(FULL_PLAN) : new Map();
+  const isolatedFilter = ISOLATED_PLAN ? async path => omitIsolatedUiAsset(relative(SRC,path)) ? false : permitIsolatedUiInput(SRC,path,isolatedInputs.approved) : FULL_PLAN ? async path => !omitFullAsset(SRC,path) : null;
+  if (ISOLATED_PLAN) await prepareIsolatedUiStage(ROOT, ISOLATED_PLAN.tag);
+  if (FULL_PLAN) {await prepareFullStage(FULL_PLAN);await createVersionView(FULL_PLAN,ROOT,BASE_RELEASE_VERSION);}
 
   if (clean) {
     await emptyDir(WEB_OUT);
@@ -169,7 +185,9 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   // committed; see tools/fetch-ffmpeg-core.mjs. Offline, the build still goes
   // through and the page says the component is missing.
   try {
-    const core = await fetchFfmpegCore();
+    const core = ISOLATED_PLAN||FULL_PLAN ? null : await fetchFfmpegCore();
+    if (ISOLATED_PLAN||FULL_PLAN) log('offline build: no ffmpeg download', {});
+    else
     log('ffmpeg core', { bytes: core.bytes, downloaded: core.downloaded });
   } catch (error) {
     log('ffmpeg core missing', String((error && error.message) || error));
@@ -179,7 +197,9 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   // like ffmpeg's core, the model is exported once by tools/export-browser-matting-model.py. Without
   // either the site still builds; matting then needs a compute node, as before.
   try {
-    const ort = await fetchOnnxRuntimeWeb();
+    const ort = ISOLATED_PLAN||FULL_PLAN ? null : await fetchOnnxRuntimeWeb();
+    if (ISOLATED_PLAN||FULL_PLAN) log('offline build: no onnxruntime download', {});
+    else
     log('onnxruntime-web', { bytes: ort.bytes, downloaded: ort.downloaded });
   } catch (error) {
     console.warn('  onnxruntime-web not available: ' + String((error && error.message) || error));
@@ -194,20 +214,22 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   const entries = await readdir(SRC, { withFileTypes: true });
   const report = {
     modules: [], copied: 0, redactedModules: 0,
-    totalRedacted: 0, totalRegistered: 0, mismatches: [], leaks: []
+    totalRedacted: 0, totalRegistered: 0, mismatches: [], leaks: [],
+    ...(ISOLATED_PLAN ? {uiOnly:true, omitted:isolatedInputs.omitted} : {})
   };
 
   // -------------------------------------------------------------- js modules
   const forceNames = allWorkflowEntryMethods();
   for (const entry of entries) {
     if (!entry.isFile() || extname(entry.name) !== '.js') continue;
+    if (isolatedFilter) await isolatedFilter(join(SRC,entry.name));
     // eslint.config.js and friends are build tooling that happens to end in
     // .js. Neither a browser nor a compute node has any use for them.
     if (!isShippable(entry.name)) {
       report.notShipped = (report.notShipped || []).concat(entry.name);
       continue;
     }
-    const source = await readFile(join(SRC, entry.name), 'utf8');
+    const source = reviewedOverrides.has(entry.name) ? reviewedOverrides.get(entry.name) : await readFile(join(SRC, entry.name), 'utf8');
     const moduleName = entry.name.replace(/\.js$/, '');
 
     if (BROWSER_ONLY.has(entry.name)) {
@@ -235,7 +257,7 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
       replacement: REPLACEMENT(WORKFLOW_SOURCE_MODULES[moduleName] || moduleName)
     });
     const instrumented = instrumentModule(source, { moduleName, forceNames: moduleName === 'novaflow-brand-runtime'
-      ? ['buildArtGenerateRunWorkflow'] : moduleName === 'spine-split-runtime' ? ['buildGenerativeSplitWorkflow'] : [] });
+      ? ['buildArtGenerateRunWorkflow'] : moduleName === 'spine-split-runtime' ? ['buildGenerativeSplitWorkflow', 'defaultQwenLoraInpaintWorkflow'] : [] });
 
     await writeFile(join(WEB_OUT, entry.name), redacted.code, 'utf8');
     await writeFile(join(WORKER_OUT, entry.name), instrumented.code, 'utf8');
@@ -281,21 +303,23 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
     if (entry.isDirectory()) {
       if (SKIP_DIRS.includes(entry.name)) continue;
       if (!ASSET_DIRS.includes(entry.name)) continue;
+      if (isolatedFilter) await isolatedFilter(join(SRC,entry.name));
       if (entry.name === 'assets') {
         await copyAssets(join(SRC, 'assets'), join(WEB_OUT, 'assets'), {
-          referenced: referencedAssets, report, forceNames
+          referenced: referencedAssets, report, forceNames, isolatedFilter
         });
         continue;
       }
       await cp(join(SRC, entry.name), join(WEB_OUT, entry.name), {
         recursive: true,
-        filter: (src) => isShippable(src.split(/[\\/]/).pop() || '')
+        filter: async src => isShippable(src.split(/[\\/]/).pop() || '') && (!isolatedFilter || await isolatedFilter(src))
       });
       continue;
     }
     if (!entry.isFile()) continue;
+    if (isolatedFilter) await isolatedFilter(join(SRC,entry.name));
     if (extname(entry.name) === '.js') continue;
-    if (entry.name === 'index.html') continue;
+    if (entry.name === 'index.html' || entry.name === 'home-shell.html') continue;
     if (!isShippable(entry.name)) {
       report.notShipped = (report.notShipped || []).concat(entry.name);
       continue;
@@ -337,10 +361,17 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
 
   // ------------------------------------------------------------- index.html
   const appPackage = JSON.parse(await readFile(join(ROOT, 'worker/package.json'), 'utf8'));
-  if (appPackage.version !== RELEASE_VERSION) throw new Error('Application release version mismatch');
+  if (appPackage.version !== BASE_RELEASE_VERSION) throw new Error('Application release version mismatch');
   await writeFile(join(WEB_OUT, 'release.json'), JSON.stringify({ version: RELEASE_VERSION, product: 'Foart', art: { skillVersion: JSON.parse(await readFile(join(ROOT,'worker/src/art-skills/style-transfer.v1.json'),'utf8')).version, parentSystemSHA256: (await import('../worker/src/flash-art-agent.mjs')).FLASH_ART_AGENT_PARENT_SYSTEM_SHA256, systemSHA256: (await import('../worker/src/flash-art-agent.mjs')).FLASH_ART_AGENT_SYSTEM_SHA256 } }, null, 2) + '\n');
   const html = await readFile(join(SRC, 'index.html'), 'utf8');
-  await writeFile(join(WEB_OUT, 'index.html'), rewriteIndexHtml(html), 'utf8');
+  const markUiOnly = value => {
+    if (!ISOLATED_PLAN) return value;
+    if (!/<body(?:\s[^>]*)?>/i.test(value)) throw Error('UI-only build cannot mark the page');
+    return value.replace(/<body(?:\s[^>]*)?>/i, match => match + '<div style="position:fixed;bottom:0;left:0;z-index:2147483647;background:#a11;color:white;padding:3px 8px;font:12px sans-serif">UI-only validation — NOT DEPLOYABLE — assets omitted</div>');
+  };
+  await writeFile(join(WEB_OUT, 'editor.html'), markUiOnly(rewriteIndexHtml(html)), 'utf8');
+  const homeHtml = await readFile(join(SRC, 'home-shell.html'), 'utf8');
+  await writeFile(join(WEB_OUT, 'index.html'), markUiOnly(rewriteHomeHtml(homeHtml)), 'utf8');
 
   // The Cloudflare Pages gate rides along in the zip root. Copied after any
   // minify pass and left as-is (it runs on Cloudflare, never in a browser, so
@@ -353,7 +384,7 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   // value is baked into THIS zip's _worker.js as a fallback. It lands only in
   // the shipped zip (server-side only, never served to a browser), never in the
   // repo. The source stays env-only.
-  let gateSource = await readFile(join(ROOT, 'deploy/_worker.js'), 'utf8');
+  let gateSource = ISOLATED_PLAN ? `export default {fetch(){return new Response('NON-DEPLOYABLE UI-ONLY VALIDATION',{status:503})}};\n` : await readFile(join(ROOT, 'deploy/_worker.js'), 'utf8');
   const embedSecret = String(process.env.NOVAFLOW_EMBED_SESSION_SECRET || '').trim();
   if (embedSecret) {
     const line = 'const secret = env && env.NOVAFLOW_SESSION_SECRET;';
@@ -362,11 +393,12 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
     log('embedded gate secret into _worker.js', { bytes: embedSecret.length });
   }
   await writeFile(join(WEB_OUT, '_worker.js'), gateSource, 'utf8');
+  if (ISOLATED_PLAN) await writeFile(join(WEB_OUT, 'NON-DEPLOYABLE-UI-ONLY.txt'), 'UI-only validation; runtime assets omitted; do not deploy.\n');
 
   // Last, once every file is on disk: give each local asset a ?v= derived
   // from its own bytes.
   await stampCacheTokens();
-  report.uiDependencies = await verifyUiReleaseAssets({ webRoot: WEB_OUT, workerSrcRoot: join(ROOT, 'worker/src'),
+  report.uiDependencies = await verifyUiReleaseAssets({ webRoot: WEB_OUT, editorEntry:'editor.html', workerSrcRoot: join(ROOT, 'worker/src'),
     workerRendererRoot: WORKER_OUT, desktopRoot: resolve(ROOT, '../particle-editor-desktop') });
 
   log('web renderer built', {
@@ -394,14 +426,33 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
  * redacted: eight megabytes of dead code is not something to carry, and
  * scanning it for leaks would only ever report on code no browser loads.
  */
-async function copyAssets(from, to, { referenced, report, forceNames }) {
+// Apply the requested home surface before the prebuilt React app initializes.
+// The original app entry source is unavailable; strict unique anchors make a
+// future bundle change fail the build instead of silently restoring animation.
+async function patchInitialSurfaceBundle(file) {
+  let code = await readFile(file, 'utf8');
+  const replaceOne = (from, to) => {
+    if (code.split(from).length !== 2) throw new Error('Cannot safely patch initial workspace: app bundle changed');
+    code = code.replace(from, to);
+  };
+  const primary = '[K,ie]=(0,_.useState)(`particle`),[ae,q]=(0,_.useState)(()=>`particle_effect`),[oe,J]=(0,_.useState)(()=>`ai_animation`),[se,ce]=(0,_.useState)(`root`)';
+  const art = '[_e,ve]=(0,_.useState)(null),[ye,be]=(0,_.useState)(()=>`ui`),[xe,Se]=(0,_.useState)(()=>`prototype`)';
+  const target = '(()=>{const s=new URLSearchParams(window.location.search).get("surface");return s==="animation"||s==="video"?"spine":s==="drawing"||s==="ui"?"ai_design":s==="tools"?"tools":"particle"})';
+  const artTarget = '(()=>new URLSearchParams(window.location.search).get("surface")==="drawing"?"drawing":"ui")';
+  replaceOne(primary, primary.replace('(0,_.useState)(`particle`)', '(0,_.useState)(' + target + ')'));
+  replaceOne(art, art.replace('(0,_.useState)(()=>`ui`)', '(0,_.useState)(' + artTarget + ')'));
+  await writeFile(file, code, 'utf8');
+}
+
+async function copyAssets(from, to, { referenced, report, forceNames, isolatedFilter }) {
   await mkdir(to, { recursive: true });
   const list = await readdir(from, { withFileTypes: true });
   for (const entry of list) {
+    if (isolatedFilter && !await isolatedFilter(join(from,entry.name))) continue;
     if (entry.isDirectory()) {
       await cp(join(from, entry.name), join(to, entry.name), {
         recursive: true,
-        filter: (src) => isShippable(src.split(/[\\/]/).pop() || '')
+        filter: async src => isShippable(src.split(/[\\/]/).pop() || '') && (!isolatedFilter || await isolatedFilter(src))
       });
       continue;
     }
@@ -431,6 +482,7 @@ async function copyAssets(from, to, { referenced, report, forceNames }) {
     await mkdir(join(WORKER_OUT, 'assets'), { recursive: true });
     await writeFile(join(WORKER_OUT, 'assets', entry.name), instrumented.code, 'utf8');
 
+    if (/^index-[A-Za-z0-9_-]+\.js$/.test(entry.name) && referenced.has(entry.name)) await patchInitialSurfaceBundle(join(to, entry.name));
     const targeted = redactBundleFile(join(to, entry.name));
     report.bundleEdits = (report.bundleEdits || []).concat({ file: entry.name, ...targeted });
 
@@ -465,13 +517,6 @@ async function copyAssets(from, to, { referenced, report, forceNames }) {
  * those names already carry the bundler's own content hash.
  */
 async function stampCacheTokens() {
-  const indexPath = join(WEB_OUT, 'index.html');
-  let html;
-  try {
-    html = await readFile(indexPath, 'utf8');
-  } catch {
-    return;
-  }
   const tokens = new Map();
   const tokenFor = async (name) => {
     if (tokens.has(name)) return tokens.get(name);
@@ -484,32 +529,44 @@ async function stampCacheTokens() {
     tokens.set(name, token);
     return token;
   };
-  const found = [];
-  const pattern = /(src|href)="\.\/([^"?#]+?)(?:\?v=[^"#]*)?"/g;
-  for (let match = pattern.exec(html); match; match = pattern.exec(html)) found.push(match);
-  let out = html;
-  for (const [whole, attribute, name] of found) {
-    if (name.startsWith('assets/')) continue;
-    const token = await tokenFor(name);
-    if (!token) continue;
-    out = out.split(whole).join(`${attribute}="./${name}?v=${token}"`);
+  for (const name of ['index.html', 'editor.html']) {
+    const path = join(WEB_OUT, name);
+    const html = await readFile(path, 'utf8');
+    const found = [];
+    const pattern = /(src|href)="\.\/([^"?#]+?)(?:\?v=[^"#]*)?"/g;
+    for (let match = pattern.exec(html); match; match = pattern.exec(html)) found.push(match);
+    let out = html;
+    for (const [whole, attribute, asset] of found) {
+      if (asset.startsWith('assets/') && !/^assets\/index-[A-Za-z0-9_-]+\.js$/.test(asset)) continue;
+      const token = await tokenFor(asset);
+      if (!token) continue;
+      out = out.split(whole).join(`${attribute}="./${asset}?v=${token}"`);
+    }
+    if (out !== html) await writeFile(path, out, 'utf8');
   }
-  if (out !== html) await writeFile(indexPath, out, 'utf8');
 }
 
-export function rewriteIndexHtml(html) {
-  let out = html;
-
-  // A config block the deployment can rewrite without touching the bundle.
-  const configTag =
+function webConfigTag() {
+  return (
     '    <script>\n' +
     '      // Filled in at deploy time. See docs/DEPLOY.md.\n' +
     '      window.NOVAFLOW_RELEASE_VERSION = ' + JSON.stringify(RELEASE_VERSION) + ';\n' +
     '      window.NOVAFLOW_WEB_CONFIG = window.NOVAFLOW_WEB_CONFIG || {\n' +
     '        controlUrl: "http://127.0.0.1:4890",\n' +
-    '        authUrl: "https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend"\n' +
+    '        authUrl: "https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend",\n' +
+    '        xiaotaoQwenBusinessEnabled: true\n' +
     '      };\n' +
-    '    </script>\n';
+    '    </script>\n');
+}
+
+export function rewriteHomeHtml(html) {
+  if (!html.includes('<script>window.NOVAFLOW_LIGHT_HOME = true;</script>')) throw new Error('missing light home marker');
+  return html.replace('<script>window.NOVAFLOW_LIGHT_HOME = true;</script>', webConfigTag() + '<script>window.NOVAFLOW_LIGHT_HOME = true;</script>');
+}
+
+export function rewriteIndexHtml(html) {
+  let out = html;
+  const configTag = webConfigTag();
 
   // The config goes first, because modules read it as they load. The shims go
   // last - see below.
@@ -535,7 +592,8 @@ export function rewriteIndexHtml(html) {
     '    <script src="./' + CAPABILITY_SHIM + '?v=web-board-fps-20261006-1"></script>\n' +
     '    <script src="./' + TEMPLATE_SHIM + '?v=templates-1"></script>\n' +
     '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n' +
-    '    <script src="./' + COMPUTE_NODE_SHIM + '?v=web-1"></script>\n';
+    '    <script src="./' + COMPUTE_NODE_SHIM + '?v=web-1"></script>\n' +
+    '    <script src="./home-frame-bridge.js?v=home-1"></script>\n';
   const lastScript = out.lastIndexOf('</script>');
   if (lastScript >= 0) {
     const insertAt = lastScript + '</script>'.length;
@@ -607,7 +665,7 @@ export async function checkSyntax(dir) {
   return bad;
 }
 
-export const PATHS = { SRC, WEB_OUT, WORKER_OUT };
+export const PATHS = { SRC, WEB_OUT, WORKER_OUT, ISOLATED_UI_ONLY:Boolean(ISOLATED_PLAN), FULL_PLAN };
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('build-web-renderer.mjs');
 if (invokedDirectly) {

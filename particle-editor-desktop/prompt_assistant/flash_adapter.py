@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -29,24 +30,26 @@ MAX_IMAGE_TOTAL_BYTES = 48 * 1024 * 1024
 MAX_TEXT_CHARS = 160000
 MAX_IMAGES = 16
 _BUSINESS_REQUEST_CALLS = ContextVar("novaflow_flash_business_request_calls", default=None)
+_BRIDGE_REQUEST_ID = ContextVar("novaflow_qwen_bridge_request_id", default=None)
 
 
 def flash_backend_enabled() -> bool:
     return os.environ.get("NOVAFLOW_PROMPT_ASSISTANT_BACKEND", "").strip().lower() == "strata"
 
 
-def begin_flash_request():
+def begin_flash_request(request_id=None):
     """One stdin business request, including calls from separate adapter objects."""
-    return _BUSINESS_REQUEST_CALLS.set([])
+    return (_BUSINESS_REQUEST_CALLS.set([]), _BRIDGE_REQUEST_ID.set(request_id))
 
 
 def end_flash_request(token):
-    _BUSINESS_REQUEST_CALLS.reset(token)
+    _BUSINESS_REQUEST_CALLS.reset(token[0])
+    _BRIDGE_REQUEST_ID.reset(token[1])
 
 
 def flash_request_summary(command=""):
     requests = list(_BUSINESS_REQUEST_CALLS.get() or [])
-    return {"analysisBackend": "strata", "scope": "python-business-request",
+    return {"analysisBackend": "qwen-cpu" if os.environ.get("NOVAFLOW_QWEN_STDIO_BRIDGE") == "v1" else "strata", "scope": "python-business-request",
             "command": str(command or "")[:80], "inferencePerformed": bool(requests),
             "requestCount": len(requests), "requestMs": round(sum(item["requestMs"] for item in requests), 3),
             "maxImageCount": max((item["imageCount"] for item in requests), default=0), "requests": requests}
@@ -119,11 +122,12 @@ class FlashAdapter:
         self.model = self.processor = None
         self.last_generation_diagnostics = {}
         self.last_load_diagnostics = {}
+        self.stdio_bridge = os.environ.get("NOVAFLOW_QWEN_STDIO_BRIDGE", "") == "v1"
         base_url = os.environ.get("NOVAFLOW_FLASH_BASE_URL", "").strip()
         match = re.fullmatch(r"http://127\.0\.0\.1:(\d{1,5})/?", base_url)
-        if not match or not 1 <= int(match[1]) <= 65535:
+        if not self.stdio_bridge and (not match or not 1 <= int(match[1]) <= 65535):
             raise Qwen3VLProviderError("strata-invalid-config", "Flash requires http://127.0.0.1:port")
-        self.base_url = base_url.rstrip("/")
+        self.base_url = "private-stdio" if self.stdio_bridge else base_url.rstrip("/")
         self.model_id = os.environ.get("NOVAFLOW_FLASH_MODEL_ID", "").strip()
         if not self.model_id or len(self.model_id) > 2000 or any(ord(c) < 32 for c in self.model_id):
             raise Qwen3VLProviderError("strata-invalid-config", "Verified Flash model ID is required")
@@ -235,6 +239,28 @@ class FlashAdapter:
             chunks.extend(chunk)
         return bytes(chunks)
 
+    @staticmethod
+    def _stdio_infer(body):
+        request_id = _BRIDGE_REQUEST_ID.get()
+        if type(request_id) is not int or request_id < 1:
+            raise Qwen3VLProviderError("qwen-bridge-invalid-request", "Missing private request identity")
+        call_id = uuid.uuid4().hex
+        frame = {"type": "qwen-infer-v1", "requestId": request_id, "callId": call_id, "body": body}
+        sys.stdout.write(json.dumps(frame, ensure_ascii=False, separators=(",", ":")) + "\n")
+        sys.stdout.flush()
+        line = sys.stdin.readline(MAX_RESPONSE_BYTES + 4096)
+        if not line or not line.endswith("\n"):
+            raise Qwen3VLProviderError("qwen-bridge-closed", "Private inference channel closed")
+        try:
+            reply = json.loads(line)
+        except (TypeError, ValueError) as exc:
+            raise Qwen3VLProviderError("qwen-bridge-invalid-response", "Invalid private inference response") from exc
+        if not isinstance(reply, dict) or reply.get("type") != "qwen-infer-result-v1" or reply.get("requestId") != request_id or reply.get("callId") != call_id:
+            raise Qwen3VLProviderError("qwen-bridge-invalid-response", "Private inference response identity mismatch")
+        if reply.get("ok") is not True or not isinstance(reply.get("response"), dict):
+            raise Qwen3VLProviderError("qwen-bridge-inference-failed", "Local Qwen inference failed or was cancelled")
+        return json.dumps(reply["response"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
     def _write_trace(self, trace, diagnostics):
         if self.trace_dir is None:
             return
@@ -258,7 +284,7 @@ class FlashAdapter:
         requested = int(self.max_new_tokens if max_new_tokens is None else max_new_tokens)
         minimum = (self.reasoning_budget if self.reasoning_effort != "none" else 0) + 512
         effective = min(self.token_cap, max(128, minimum, requested))
-        diagnostics = {"modelSource": "strata", "modelId": self.model_id,
+        diagnostics = {"modelSource": "qwen-cpu" if self.stdio_bridge else "strata", "modelId": self.model_id,
                        "requestedTokenLimit": requested, "generationTokenLimit": effective,
                        "reasoningEffort": self.reasoning_effort, "reasoningBudgetTokens": self.reasoning_budget,
                        "externallyManaged": True, "retryCount": 0}
@@ -297,15 +323,18 @@ class FlashAdapter:
             trace["request"] = {**body, "messages": ([{"role": "system", "content": system}] if system else [])
                                 + [{"role": "user", "content": trace_content}], "endpoint": self.base_url + "/v1/chat/completions"}
             diagnostics.update(imageCount=len(image_sizes), imageSizes=image_sizes, imageBytes=image_bytes)
-            request = urllib.request.Request(self.base_url + "/v1/chat/completions",
-                                             data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-                                             headers={"Content-Type": "application/json"}, method="POST")
             remaining = started + self.timeout - time.perf_counter()
             if remaining <= 0:
                 raise TimeoutError("Flash request exceeded its deadline before transport")
             diagnostics["httpAttempted"] = True
-            with self._opener.open(request, timeout=remaining) as response:
-                raw = self._read_response(response, started + self.timeout)
+            if self.stdio_bridge:
+                raw = self._stdio_infer(body)
+            else:
+                request = urllib.request.Request(self.base_url + "/v1/chat/completions",
+                                                 data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                                                 headers={"Content-Type": "application/json"}, method="POST")
+                with self._opener.open(request, timeout=remaining) as response:
+                    raw = self._read_response(response, started + self.timeout)
             if len(raw) > MAX_RESPONSE_BYTES:
                 raise Qwen3VLProviderError("strata-response-too-large", "Flash response exceeds 2 MiB")
             try:

@@ -2,10 +2,13 @@
 const { app, BrowserWindow, ipcMain, shell, Tray, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
+const { execFile } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
+const { cpuSnapshot, cpuPercent, gpuRows } = require('../src/resource-telemetry.cjs');
 const WEBSITE = 'https://foart.net/';
 const CONTROL = 'https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web';
-app.setName('Foart 算力助手');
+app.setName('Foart');
 app.setAppUserModelId('com.novaflow.compute');
 app.setPath('userData', path.join(app.getPath('appData'), 'Foart Compute'));
 const dataDir = process.env.NOVAFLOW_COMPUTE_DATA_DIR || path.join(app.getPath('userData'), 'data');
@@ -13,6 +16,28 @@ const configFile = path.join(dataDir, 'compute.config.json');
 fs.mkdirSync(dataDir, { recursive: true });
 let win, tray, assistant, assistantFactory, operation = null, lastError = '', paused = false, quitting = false;
 let queue = Promise.resolve();
+let resources = { ram: null, vram: null, cpu: null, gpu: null };
+let previousCpu = null;
+let samplingResources = false;
+function sampleResources() {
+  if (samplingResources) return;
+  samplingResources = true;
+  const total = os.totalmem(), free = os.freemem();
+  resources.ram = total > 0 ? { used: total - free, total } : null;
+  let currentCpu = null;
+  try { currentCpu = cpuSnapshot(os.cpus()); } catch { /* CPU telemetry unavailable */ }
+  const percent = cpuPercent(previousCpu, currentCpu);
+  previousCpu = currentCpu;
+  // Windows has no consistently available unprivileged CPU temperature API.
+  resources.cpu = { percent, temperature: null };
+  execFile('nvidia-smi', ['--query-gpu=name,memory.used,memory.total,temperature.gpu,utilization.gpu', '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 5000 }, (error, stdout) => {
+    const rows = error ? [] : gpuRows(stdout);
+    const name = assistant?.getState().gpu?.name;
+    resources.vram = rows.find(row => row.name === name) || (rows.length === 1 ? rows[0] : null);
+    resources.gpu = resources.vram ? {percent: resources.vram.percent, temperature: resources.vram.temperature} : null;
+    samplingResources = false; emit();
+  });
+}
 const lines = [];
 const serial = fn => { const next = queue.then(fn); queue = next.catch(() => {}); return next; };
 const defaults = () => ({ workerName: ('foart-' + require('node:os').hostname()).slice(0, 80), modelsRoot: '' });
@@ -22,7 +47,7 @@ function readConfig() {
 }
 function state() {
   const value = assistant?.getState() || {};
-  return { ...value, version: app.getVersion(), operation, lastError: lastError || value.lastError || '', paused };
+  return { ...value, version: app.getVersion(), resources, operation, lastError: lastError || value.lastError || '', paused };
 }
 function emit() { if (win && !win.isDestroyed()) win.webContents.send('compute:state', state()); }
 function log(message, meta) {
@@ -39,9 +64,17 @@ async function connect() {
   try {
     if (!assistant) {
       if (!assistantFactory) ({ createComputeAssistant: assistantFactory } = await import(pathToFileURL(path.join(__dirname, '../src/compute-assistant.mjs')).href));
+      const { QWEN_ROTATION_RELEASE_POLICY } = await import(pathToFileURL(path.join(__dirname, '../src/qwen-rotation-release-policy.mjs')).href);
       assistant = await assistantFactory({ modelsRoot: config.modelsRoot || '', workerName: defaults().workerName, controlUrl: CONTROL, dataDir,
         configPath: path.join(dataDir, 'identity.json'), workflowDir: path.join(__dirname, '../workflows'),
         rendererDir: resource('compute-renderer'), gatewayPort: 8791,
+        // The 286 candidate enables only the bounded text bridge; media stays gated.
+        enableQwenBusinessBridge: true, qwenBusinessTextOnly: true,
+        qwenImageEditEnabled: true,
+        qwenRotationVerificationEnabled: QWEN_ROTATION_RELEASE_POLICY.verificationEnabled === true,
+        qwenRotationCandidateEnabled: QWEN_ROTATION_RELEASE_POLICY.verificationEnabled === true && QWEN_ROTATION_RELEASE_POLICY.candidateEnabled === true,
+        qwenPlanVerificationEnabled: QWEN_ROTATION_RELEASE_POLICY.planVerificationEnabled === true,
+        qwenPlanEnabled: QWEN_ROTATION_RELEASE_POLICY.planVerificationEnabled === true && QWEN_ROTATION_RELEASE_POLICY.planEnabled === true,
         logger: log, onProgress(percent, message) { operation = { percent, message }; emit(); } });
       assistant.onChange(emit);
     }
@@ -61,7 +94,7 @@ async function quit() { quitting = true; await serial(stop).catch(() => {}); app
 function show() {
   if (!win || win.isDestroyed()) {
     win = new BrowserWindow({ width: 560, height: 480, resizable: false, maximizable: false, fullscreenable: false,
-      title: 'Foart 算力助手', backgroundColor: '#141414', autoHideMenuBar: true,
+      title: 'Foart', backgroundColor: '#141414', autoHideMenuBar: true,
       titleBarStyle: 'hidden', titleBarOverlay: { color: '#242424', symbolColor: '#e5e7eb', height: 38 },
       icon: path.join(__dirname, 'assets/foart-brush.ico'),
       webPreferences: { preload: path.join(__dirname, 'compute-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
@@ -84,12 +117,29 @@ handle('state', state);
 handle('website', () => shell.openExternal(WEBSITE));
 handle('logs', () => shell.openPath(dataDir));
 handle('getLogs', () => lines.slice());
+handle('pauseClaims', async () => {
+  if (!assistant?.getState().sharing || typeof assistant.pauseClaims !== 'function') throw new Error('请先连接支持安全暂停的算力节点');
+  const result = await assistant.pauseClaims({ timeoutMs: 30000 });
+  const messages = {'pause-timeout':'已暂停新接单，仍在等待当前任务完成。',
+    'claim-outcome-unknown':'已暂停新接单，但控制面领取结果未知，请先核对任务。',
+    'pause-resumed':'暂停已取消。'};
+  return { ...result, ...(result.ok ? {} : { error: messages[result.reason] || '暂停状态未确认' }), state: state() };
+});
+handle('resumeClaims', async () => {
+  if (!assistant || typeof assistant.resumeClaims !== 'function') throw new Error('算力节点尚未连接');
+  assistant.resumeClaims();
+  return { ok: true, state: state() };
+});
 handle('freeMemory', async () => {
   if (!assistant?.getState().sharing) throw new Error('请先连接算力节点');
-  const result = await assistant.promptAssistant.releaseRuntimes();
-  if (!result.ok) throw new Error(result.errorCode === 'runtime-generation-busy' ? '正在执行任务，完成后再释放显存' : result.error || '释放显存失败');
-  if (!result.released) throw new Error('生成服务未运行，无需释放');
-  log('已释放显存');
+  if (typeof assistant.worker?.releaseIdleModels !== 'function') throw new Error('当前运行环境不支持安全释放，请更新后重试');
+  const result = await assistant.worker.releaseIdleModels();
+  if (!result.ok) {
+    const reasons = {'runtime-unavailable':'生成服务未运行或不可用', 'runtime-busy':'正在执行任务，请完成后重试', 'queue-unknown':'无法确认任务队列，请稍后重试', 'release-unknown':'释放结果未知，请稍后查看资源占用'};
+    throw new Error((result.requested ? '部分服务已收到释放请求；' : '') + (reasons[result.code] || '暂时无法安全释放模型资源'));
+  }
+  log('已请求生成服务释放模型资源');
+  sampleResources();
   return { ok: true };
 });
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -97,10 +147,13 @@ else {
   app.on('second-instance', show);
   app.whenReady().then(() => {
     show();
+    sampleResources();
+    const resourceTimer = setInterval(sampleResources, 5000);
+    resourceTimer.unref();
     tray = new Tray(path.join(__dirname, 'assets/foart-brush.ico'));
-    tray.setToolTip('Foart 算力助手'); tray.on('click', show);
-    tray.setContextMenu(Menu.buildFromTemplate([{ label: '显示算力助手', click: show },
-      { label: '打开 Foart 官网', click: () => shell.openExternal(WEBSITE) }, { label: '退出算力助手', click: quit }]));
+    tray.setToolTip('Foart'); tray.on('click', show);
+    tray.setContextMenu(Menu.buildFromTemplate([{ label: '显示 Foart', click: show },
+      { label: '打开 Foart 官网', click: () => shell.openExternal(WEBSITE) }, { label: '退出 Foart', click: quit }]));
     void serial(connect);
     // Retry temporary network/environment failures; an explicit pause wins.
     const retry = setInterval(() => {

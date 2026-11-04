@@ -15,8 +15,8 @@
 
   const CAPABILITIES = Object.freeze({
     local: Object.freeze({
-      txt2img: capability(0, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true),
-      img2img: capability(3, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true),
+      txt2img: capability(0, ['width', 'height', 'steps', 'cfg', 'seed'], true),
+      img2img: capability(3, ['width', 'height', 'steps', 'cfg', 'seed'], true),
     }),
     gpt: Object.freeze({
       txt2img: capability(0, ['quality', 'size'], false),
@@ -29,10 +29,10 @@
   // with the run. There is one layout: 2.1 has no quality or edit-strength setting; its img2img
   // takes up to 10 references (the model card's limit, as in the UI module) and keeps W / H, which
   // a new reference 1 fills with its size; the negative prompt stays (a filled one switches the run
-  // to real guidance). NSFW keeps Rapid AIO (2511) with its own limits.
+  // to real guidance). The old Rapid AIO drawing route is retired.
   const LOCAL_QWEN21_CAPABILITIES = Object.freeze({
-    txt2img: Object.freeze({ ...capability(0, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
-    img2img: Object.freeze({ ...capability(10, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
+    txt2img: Object.freeze({ ...capability(0, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfwLora'], true), engine: 'qwen-2.1' }),
+    img2img: Object.freeze({ ...capability(10, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfwLora'], true), engine: 'qwen-2.1' }),
   })
 
   function localQwen21Drawing(state) {

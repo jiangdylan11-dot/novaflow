@@ -278,19 +278,30 @@ export function createFlashBrainSession({ baseUrl = FLASH_BRAIN_BASE_URL, expect
           });
           const maxTokens = input.maxTokens ?? defaults.maxTokens, temperature = input.temperature ?? defaults.temperature;
           requireValue(Number.isInteger(maxTokens) && maxTokens >= 1 && maxTokens <= 131072 && Number.isFinite(temperature) && temperature >= 0 && temperature <= 2, 'strata-invalid-request', 'Flash 生成参数无效');
+          // Sampling overrides belong only to the explicitly bound private
+          // Qwen business bridge; preserve existing Flash and chat behavior.
+          const businessSampling = identity.id === 'qwen35-heretic' && stage === 'qwen-python-business';
+          const topP=businessSampling ? input.topP ?? defaults.topP : defaults.topP;
+          const seed=businessSampling ? input.seed ?? defaults.seed : defaults.seed;
+          if (businessSampling) requireValue(Number.isFinite(topP) && topP>0 && topP<=1 && Number.isSafeInteger(seed), 'strata-invalid-request', 'Invalid sampling settings');
           const reasoningEffort = input.reasoningEffort ?? defaults.reasoningEffort;
           const reasoningBudgetTokens = input.reasoningBudgetTokens ?? defaults.reasoningBudgetTokens;
           requireValue(['none', 'minimal', 'low', 'medium', 'high'].includes(reasoningEffort)
             && Number.isInteger(reasoningBudgetTokens) && reasoningBudgetTokens >= 0 && reasoningBudgetTokens <= 131072,
           'strata-invalid-request', 'Flash 单次思考设置无效');
-          const format = conversationMode ? undefined : responseFormat(input.responseFormat === undefined ? defaults.responseFormat : input.responseFormat);
+          // Conversation requests only opt in to an explicit format; never
+          // inherit the legacy infer default or combine JSON output with tools.
+          const format = conversationMode
+            ? responseFormat(input.responseFormat)
+            : responseFormat(input.responseFormat === undefined ? defaults.responseFormat : input.responseFormat);
+          requireValue(!(format && conversationMode && conversation.tools.length), 'strata-invalid-request', 'JSON format and native tools cannot be combined');
           const content = [{ type: 'text', text: user }];
           images.forEach((image, index) => {
             content.push({ type: 'text', text: `<image${index + 1}>${image.name ? `: ${image.name}` : ''}` }, { type: 'image_url', image_url: { url: image.dataUrl, detail: 'auto' } });
           });
           const body = { model: identity.id, messages: conversation?.messages || [{ role: 'system', content: system }, { role: 'user', content }], stream: false,
-            max_tokens: maxTokens, temperature, top_p: defaults.topP, top_k: defaults.topK, min_p: defaults.minP,
-            seed: defaults.seed, reasoning_effort: reasoningEffort,
+            max_tokens: maxTokens, temperature, top_p: topP, top_k: defaults.topK, min_p: defaults.minP,
+            seed, reasoning_effort: reasoningEffort,
             reasoning_budget_tokens: reasoningBudgetTokens, presence_penalty: 0, frequency_penalty: 0, repetition_penalty: defaults.repetitionPenalty,
             ...(format ? { response_format: format } : {}),
             ...(conversationMode && conversation.tools.length ? { tools: conversation.tools, tool_choice: input.toolChoice || 'auto', parallel_tool_calls: false } : {}) };

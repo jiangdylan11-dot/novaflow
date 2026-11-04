@@ -5,6 +5,24 @@
   'use strict'
 
   let mounted = null, preparation = null
+  // One conservative change counter per project store; any store mutation invalidates captured drafts.
+  const uiDraftStoreRevisions = new WeakMap()
+  function uiDraftRevisionFor(store) {
+    if (!store || typeof store.subscribe !== 'function') throw new Error('UI 工程状态无法核验，请重新打开后重试')
+    let revision=uiDraftStoreRevisions.get(store)
+    if (!revision) { revision={value:0}; store.subscribe(() => { revision.value+=1 }); uiDraftStoreRevisions.set(store,revision) }
+    return revision
+  }
+  // No reference images are read or uploaded: capture before asking the user which prompt to use.
+  function capturePromptSourceGuard() {
+    const target=mounted, rt=root.__NovaFlowArtGenerate
+    if (!isActive() || !target || !rt?.captureContext) throw new Error('请先打开 UI 工作区')
+    const revision=uiDraftRevisionFor(target.store), context=rt.captureContext()
+    if (context?.generationSurface!=='ui' || !Number.isSafeInteger(context.routeRevision)) throw new Error('页面状态无法核验，请重新打开后重试')
+    const initialRevision=revision.value, routeRevision=context.routeRevision
+    return Object.freeze({isCurrent(){try { return mounted===target && root.__NovaFlowArtGenerate===rt && isActive() &&
+      revision.value===initialRevision && rt.captureContext()?.generationSurface==='ui' && rt.captureContext()?.routeRevision===routeRevision } catch { return false }}})
+  }
 
   const copy = value => JSON.parse(JSON.stringify(value))
 
@@ -375,6 +393,13 @@
     return {
 
       workspaceHandle: editor, inspectorHandle: inspector, sync,
+      applyAgentLayout(spec) {
+        const api=drawing(),existing=editor.getLayout(),refs=api.references();
+        if(!refs.some(ref=>!ref?.dataUrl||ref.uiLayoutId===existing?.id)&&refs.filter(ref=>ref?.dataUrl).length>=api.referenceLimit())throw Error('参考图已满，请先移除一张再添加布局');
+        const node=editor.applyLayout(spec);publishLayout(true);
+        if(!api.references().some(ref=>ref?.uiLayoutId===node.id&&ref.dataUrl))throw Error('原生布局参考尚未生成');
+        return node;
+      },
 
       destroy() {
 
@@ -416,7 +441,7 @@
 
       const index = Number(match[1]) - 1, source = references[index]
 
-      if (!source || source.uiLayoutId || (source.role && source.role !== 'reference')) continue
+      if (!source) continue
 
       const label = match[2], role = /材质|质感/.test(label) ? 'material'
 
@@ -426,6 +451,10 @@
 
             : /配色/.test(label) ? 'color' : /素材/.test(label) ? 'asset' : 'content'
 
+      const existingRole = source.uiLayoutId ? 'layout' : (source.role || 'reference')
+
+      if (existingRole !== 'reference' && existingRole !== role) throw new Error('参考图' + (index + 1) + '已有用途与文字要求冲突，请先确认用途')
+
       if (assigned.has(index) && assigned.get(index) !== role) throw new Error('参考图' + (index + 1) + '被指定为不同用途，请保留一个明确用途')
 
       assigned.set(index, role)
@@ -434,6 +463,13 @@
 
     return references.map((reference, index) => assigned.has(index) ? { ...reference, role: assigned.get(index) } : reference)
 
+  }
+
+  // Check declared roles before uploading or quoting; do not mutate references.
+  function preflightSelectedIntent(context, {prompt} = {}) {
+    if (!context || !Array.isArray(context.references)) throw new Error('无法确认当前 UI 参考图用途，未上传或提交')
+    assignExplicitReferenceRoles(context.references, String(prompt || ''))
+    return true
   }
 
   function requestIntent(prompt) { if (/局部(?:修改|调整|替换)|\b(?:edit|replace|change) (?:only )?(?:the )?selected\b/iu.test(prompt)) return 'iteration'; if (!explicitLocalEdit(prompt) && root.NovaFlowUiDesignPromptPipeline.requestsThemeRedesign?.({ prompt })) return 'redesign'; return /(?:不(?:需要|用|必)?保留任何(?:元素|内容|东西)|无需保留任何|(?:全部|整体)重做|整(?:个|张)\s*(?:UI|界面).{0,8}重新设计|start over)/i.test(prompt)
@@ -500,7 +536,7 @@
 
   }
 
-  function inputFor({ state, references, referenceLimit, selection }) {
+  function inputFor({ state, references, referenceLimit, selection, agentAnalysisEngine }, options = {}) {
 
     const intent = requestIntent(String(state.prompt || ''))
 
@@ -514,7 +550,7 @@
 
       if (![size.width,size.height].every(n => Number.isInteger(Number(n)) && Number(n) >= 64 && Number(n) <= 4096 && Number(n) % 8 === 0) || Number(size.width) !== Number(canvas.width) || Number(size.height) !== Number(canvas.height)) throw new Error('修改区域与输出尺寸不匹配，请核对尺寸并重新选区')
 
-      if (mounted && mounted.getSelectionBinding?.() !== selectionSourceBinding(selected, references, state.prompt)) throw new Error('修改底图或画板尺寸已变化，请重新选中修改区域；本次未提交生成')
+      if (mounted && mounted.getSelectionBinding?.() !== selectionSourceBinding(selected, options.bindingReferences || references, state.prompt)) throw new Error('修改底图或画板尺寸已变化，请重新选中修改区域；本次未提交生成')
 
     }
 
@@ -536,7 +572,7 @@
 
     const snapshot = snapshotLayoutReferences(references, live?.node?.id, liveStructure, referenceLimit)
 
-    if (!snapshot.length) root.NovaFlowUiDesignPromptPipeline.requireLayoutReferences(snapshot)
+    if (!snapshot.length && options.allowNoReferences !== true) root.NovaFlowUiDesignPromptPipeline.requireLayoutReferences(snapshot)
 
     const numbered = new Map()
 
@@ -552,13 +588,17 @@
 
     })
 
-    const refs = root.NovaFlowUiDesignPromptPipeline.requireLayoutReferences(assignExplicitReferenceRoles(snapshot, prompt))
+    const originalRefs = assignExplicitReferenceRoles(snapshot, prompt)
+    const refs = originalRefs.length ? root.NovaFlowUiDesignPromptPipeline.requireLayoutReferences(originalRefs) : []
 
     const layout = refs.find(ref => ref.uiLayoutId)
 
     return {
 
-      uiCatalogEnabled: true, provider: state.provider || 'local', engine: analysisEngine(),
+      uiCatalogEnabled: true, provider: state.provider || 'local', engine: ['grok','local'].includes(agentAnalysisEngine)?agentAnalysisEngine:analysisEngine(),
+      // Compatibility only: the shared legacy UI optimizer must not mistake
+      // an assistant-origin request for the separately priced UI workflow.
+      foartUiContract: agentAnalysisEngine ? undefined : 'independent-ui-v263',
       targetEngine: (state.provider || 'local') === 'local' ? root.NovaFlowArtGenerateModels?.capabilityFor?.('local', state.mode, state)?.engine || '' : '',
 
       prompt, negativePrompt: String(state.negativePrompt || ''),
@@ -574,6 +614,7 @@
       structure: editRegion ? modelStructure({ ...outputSize(state), regions: [{ x: editRegion.x * outputSize(state).width, y: editRegion.y * outputSize(state).height, width: editRegion.width * outputSize(state).width, height: editRegion.height * outputSize(state).height, purpose: '本次选中的局部修改区域；其余区域保持' }] }) : modelStructure(layout?.uiStructure),
 
       references: refs.map((ref, index) => ({ ...ref, ...(ref.uiStructure ? { uiStructure: modelStructure(ref.uiStructure) } : {}), id: ref.id || `drawing-ref-${index}`, role: ref.uiLayoutId ? 'layout' : (ref.role || 'reference') })),
+      ...(options.includeOriginalReferences === true ? { originalReferences: originalRefs.map((ref, index) => ({ ...ref, id: ref.id || `drawing-ref-${index}`, role: ref.uiLayoutId ? 'layout' : (ref.role || 'reference') })) } : {}),
 
       electronAPI: root.electronAPI, getSessionToken: mounted?.getSessionToken,
 
@@ -609,6 +650,7 @@
 
   async function prepare(context) {
 
+    if (typeof context.isOwnerCurrent === 'function' && context.isOwnerCurrent() !== true) throw new Error('当前会话已变化，准备已停止')
     const repair = root.NovaFlowUiSmartSplit?.prepareRepair(context)
 
     if (repair) return repair
@@ -633,6 +675,8 @@
       const revision = root.NovaFlowUiDesignPromptPipeline.key(input)
 
       function assertCurrent() {
+
+        if (typeof context.isOwnerCurrent === 'function' && context.isOwnerCurrent() !== true) throw new Error('当前会话已变化，准备已停止')
 
         if (controller.signal.aborted || session !== mounted) throw new Error('任务已中止')
 
@@ -716,6 +760,7 @@
 
         if (controller.signal.aborted) throw new Error('生成已终止');
 
+        assertCurrent()
         styleSamples.show(references);
 
         return { promptSnapshot: { prompt: compiled.prompt, negativePrompt: input.negativePrompt || result.negativePrompt || '' },
@@ -837,14 +882,142 @@
 
   }
 
+  // Read the active drawing form without changing references, prompt content,
+  // or preparing a generation. Blob URLs are materialised into private copies;
+  // every async boundary rechecks the full UI project, selection and source.
+  async function captureUiDraftSnapshot({requestId,requirements='',sourcePrompt,signal,referenceTransaction}={}) {
+    const rt=root.__NovaFlowArtGenerate, pipeline=root.NovaFlowUiDesignPromptPipeline;
+    if(!isActive()||!mounted||!rt?.captureContext||!rt?.capturePrompt||typeof pipeline?.key!=='function'||
+      !root.crypto?.subtle||!root.FileReader||typeof requirements!=='string'||requirements.length>4000||
+      (sourcePrompt!==undefined&&(typeof sourcePrompt!=='string'||!sourcePrompt.trim()||sourcePrompt.length>6000))||
+      typeof requestId!=='string'||!/^[0-9a-f-]{36}$/i.test(requestId))throw new Error('UI 草稿上下文不可用，未提交。');
+    if(referenceTransaction&&(!Object.isFrozen(referenceTransaction)||!Object.isFrozen(referenceTransaction.requestReferences)||
+      !Array.isArray(referenceTransaction.requestReferences)||referenceTransaction.requestReferences.length<1||referenceTransaction.requestReferences.length>3||
+      referenceTransaction.requestReferences.some(ref=>!Object.isFrozen(ref))||typeof referenceTransaction.apply!=='function'||
+      typeof referenceTransaction.undo!=='function'||typeof referenceTransaction.isCurrent!=='function'||typeof referenceTransaction.cancel!=='function'))
+      throw new Error('UI 参考图事务无法核验，未提交。');
+    const draftStore=mounted.store, storeRevision=uiDraftRevisionFor(draftStore);
+    const stateKeys=['provider','mode','prompt','negativePrompt','width','height','gptSize','gptCustomWidth','gptCustomHeight'];
+    function read() {
+      if(signal?.aborted||!isActive()||!mounted)throw new Error('UI 已变化，未提交。');
+      rt.capturePrompt();
+      const context=rt.captureContext();if(root.__NovaFlowArtGenerate!==rt||context?.generationSurface!=='ui'||context.state!==rt.state||context.state?.running===true||!Array.isArray(context.references))throw new Error('当前不是可编辑的 UI 绘图界面。');
+      const state=Object.fromEntries(stateKeys.map(k=>[k,context.state?.[k]]));
+      // Preserve existing UI reference metadata/structure in the local copy.
+      // If it cannot be snapshotted, fail instead of silently dropping fields.
+      const references=context.references.map(r=>r?copy(r):null);
+      const selection=copy(mounted.editor?.getSelection?.()||null);
+      const project=copy(mounted.store?.getState?.()?.project||null);
+      if(!project)throw new Error('UI 项目状态不可核对，未提交。');
+      if(!Number.isSafeInteger(context.routeRevision))throw new Error('UI 页面状态无法核验，请重新打开后重试');
+      return {state,references,referenceLimit:context.referenceLimit,routeRevision:context.routeRevision,selection,project};
+    }
+    const initial=read(),binding=JSON.stringify(initial),initialStoreRevision=storeRevision.value;
+    let phase='preview',expectedPrompt=initial.state.prompt,expectedNegative=initial.state.negativePrompt;
+    const stillCurrent=()=>{try{if(mounted?.store!==draftStore||storeRevision.value!==initialStoreRevision)return false;
+      const now=read();if(now.state.prompt!==expectedPrompt||now.state.negativePrompt!==expectedNegative)return false;
+      if(referenceTransaction&&phase==='applied'){
+        if(referenceTransaction.isCurrent()!==true)return false;
+        now.references=initial.references;
+      }
+      now.state.prompt=initial.state.prompt;now.state.negativePrompt=initial.state.negativePrompt;
+      return mounted?.store===draftStore&&storeRevision.value===initialStoreRevision&&JSON.stringify(now)===binding;}catch{return false;}};
+    const ensure=()=>{if(!stillCurrent())throw new Error('UI 项目、选区或参考图已变化，未提交。');};
+    const refs=[];let bytes=0;
+    const selectedReferences=referenceTransaction?referenceTransaction.requestReferences:initial.references;
+    if(referenceTransaction&&initial.selection?.kind&&initial.selection.kind!=='none')throw new Error('请先清除局部选区再使用对话参考图，未提交。');
+    for(const ref of selectedReferences) {
+      if(!ref){refs.push(null);continue;}
+      const url=ref.dataUrl||ref.imageUrl;
+      if(!url)throw new Error('参考图不可读取，未提交。');
+      let dataUrl=url;
+      if(url.startsWith('blob:')) {
+        const response=await root.fetch(url);ensure();if(!response.ok)throw new Error('参考图无法读取，未提交。');
+        const blob=await response.blob();ensure();if(!/^image\/(png|jpeg|webp)$/.test(blob.type)||blob.size>20*1024*1024)throw new Error('参考图格式或大小不支持，未提交。');
+        dataUrl=await new Promise((resolve,reject)=>{const reader=new root.FileReader();reader.onerror=()=>reject(new Error('参考图无法读取，未提交。'));reader.onload=()=>resolve(reader.result);reader.readAsDataURL(blob);});ensure();
+      }
+      const match=typeof dataUrl==='string'&&/^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+      if(!match||match[1].length%4)throw new Error('参考图格式不支持，未提交。');
+      bytes+=match[1].length/4*3-(match[1].endsWith('==')?2:match[1].endsWith('=')?1:0);
+      refs.push({...ref,dataUrl});
+    }
+    if(refs.filter(Boolean).length>3||bytes>20*1024*1024)throw new Error('UI 草稿最多 3 张参考图，合计不超过 20 MiB，未提交。');
+    ensure();
+    const selectedState=sourcePrompt===undefined?initial.state:{...initial.state,prompt:sourcePrompt};
+    const input=inputFor({state:selectedState,references:refs,referenceLimit:initial.referenceLimit,selection:initial.selection},{includeOriginalReferences:true,bindingReferences:initial.references,allowNoReferences:true});
+    const references=input.originalReferences.map(({id,role,uiLayoutId,dataUrl})=>({id,role,...(uiLayoutId?{uiLayoutId}:{}),dataUrl}));
+    let finalBytes=0;
+    for(const reference of references){const m=/^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(reference.dataUrl||'');
+      if(!m||m[1].length%4)throw new Error('UI 参考图格式不支持，未提交。');
+      finalBytes+=m[1].length/4*3-(m[1].endsWith('==')?2:m[1].endsWith('=')?1:0);}
+    if(references.length>3||finalBytes>20*1024*1024)throw new Error('UI 草稿最多 3 张参考图，含布局引导图，合计不超过 20 MiB，未提交。');
+    const hash=await root.crypto.subtle.digest('SHA-256',new TextEncoder().encode(binding));ensure();
+    const revision=Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('');
+    const requireConfirmation=options=>{if(options?.userConfirmed!==true||typeof options.bindingCurrent!=='function'||options.bindingCurrent()!==true||!stillCurrent())throw new Error('账号、模型、UI 工程或提示词已变化，未应用。');};
+    function requireNegativeSupport(negativePrompt){
+      if(!negativePrompt.trim())return;
+      const capability=root.NovaFlowArtGenerateModels?.capabilityFor?.(rt.state.provider,rt.state.mode,{...rt.state,nsfw:false});
+      if(capability?.negativePrompt!==true)throw new Error('当前生成模型不支持负面提示词，草稿未应用；请更换支持负面提示词的模型或保留草稿。');
+    }
+    function setPromptPair(prompt,negativePrompt){
+      if(typeof rt.render!=='function')throw new Error('UI 提示词输入框不可用，未应用。');
+      const beforePrompt=expectedPrompt,beforeNegative=expectedNegative;
+      try {
+        rt.state.prompt=prompt;rt.state.negativePrompt=negativePrompt;
+        expectedPrompt=prompt;expectedNegative=negativePrompt;
+        rt.render({forceBottom:true});
+        if(!stillCurrent())throw new Error('UI 提示词状态已变化，请检查输入框。');
+      } catch (error) {
+        // Roll back only our own synchronous write, never a later user edit.
+        if(root.__NovaFlowArtGenerate===rt&&mounted?.store===draftStore&&storeRevision.value===initialStoreRevision&&
+          rt.state.prompt===prompt&&rt.state.negativePrompt===negativePrompt){
+          rt.state.prompt=beforePrompt;rt.state.negativePrompt=beforeNegative;
+          try{rt.render({forceBottom:true});}catch{}
+        }
+        expectedPrompt=beforePrompt;expectedNegative=beforeNegative;
+        throw error;
+      }
+    }
+    const applyDraft=async(draft,options)=>{
+      if(phase!=='preview'||!draft||typeof draft!=='object'||typeof draft.prompt!=='string'||!draft.prompt.trim()||draft.prompt.length>30000||typeof draft.negativePrompt!=='string'||draft.negativePrompt.length>15000)throw new Error('UI 草稿无效或已使用。');
+      if(String(initial.state.negativePrompt||'').trim()&&!draft.negativePrompt.trim())throw new Error('草稿缺少原有负面约束，未应用。');
+      requireConfirmation(options);requireNegativeSupport(draft.negativePrompt);
+      if(referenceTransaction){
+        if(typeof rt.render!=='function')throw new Error('UI 提示词输入框不可用，未应用。');
+        try{
+          referenceTransaction.apply({prompt:draft.prompt,negativePrompt:draft.negativePrompt});
+          phase='applied';expectedPrompt=draft.prompt;expectedNegative=draft.negativePrompt;
+          rt.render({forceBottom:true});
+          if(!stillCurrent())throw new Error('UI 提示词或参考图状态已变化，请检查页面。');
+        }catch(error){
+          if(referenceTransaction.isCurrent()===true){try{referenceTransaction.undo();rt.render({forceBottom:true});}catch{}}
+          phase='closed';expectedPrompt=initial.state.prompt;expectedNegative=initial.state.negativePrompt;throw error;
+        }
+      }else{setPromptPair(draft.prompt,draft.negativePrompt);phase='applied';}
+      return {phase};
+    };
+    const undoDraft=async(options)=>{
+      if(phase!=='applied')throw new Error('UI 草稿没有可撤销的应用。');
+      requireConfirmation(options);
+      if(referenceTransaction){referenceTransaction.undo();expectedPrompt=initial.state.prompt;expectedNegative=initial.state.negativePrompt;phase='undone';rt.render({forceBottom:true});if(!stillCurrent())throw new Error('撤销后 UI 状态无法确认，请检查页面。');}
+      else{setPromptPair(initial.state.prompt,initial.state.negativePrompt);phase='undone';}
+      return {phase};
+    };
+    const cancelDraft=()=>{if(phase!=='preview')return false;phase='closed';return referenceTransaction?referenceTransaction.cancel():true;};
+    return {request:{requestId,revision,prompt:sourcePrompt===undefined?input.prompt:sourcePrompt,requirements,negativePrompt:input.negativePrompt,generationIntent:input.generationIntent,preserveLayout:input.preserveLayout,size:input.size,structure:input.structure,references},isCurrent:stillCurrent,applyDraft,undoDraft,cancelDraft};
+  }
+
   function recordResult(result, prepared) {
 
     prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt, uiPlan: prepared.uiPlan || null, analysisUiPlan:prepared.analysisUiPlan || null, uiCatalog:prepared.uiCatalog || null, referenceTreatments:(prepared.references || []).map(ref=>ref.uiReferenceTreatment).filter(Boolean) })
 
   }
 
-  root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, shouldPrepare, renderAnalysisSelector, inputFor, selectedEditRegion, snapshotLayoutReferences, prepare, openAssistant, recordResult, generationOptions,
+  root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, capturePromptSourceGuard, preflightSelectedIntent, shouldPrepare, renderAnalysisSelector, inputFor, selectedEditRegion, snapshotLayoutReferences, captureUiDraftSnapshot, prepare, openAssistant, recordResult, generationOptions,
     syncOutputSize() { mounted?.syncSize() },
+    agentSelection: () => mounted?.editor?.getSelection?.() || null,
+    selectAgentBlock(id) { if(!mounted)throw Error('请先打开UI设计');return mounted.editor.selectBlock(id) },
+    requestIntent,
 
     cancelPreparation() { if (!preparation) return false; preparation.abort(); return true },
 

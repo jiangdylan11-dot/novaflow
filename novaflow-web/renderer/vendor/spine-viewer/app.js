@@ -2708,6 +2708,11 @@ function syncViewerPlayback() {
 }
 window.NovaFlowSpineViewer = {
   setActive(value) { viewerHostActive = Boolean(value); syncViewerPlayback(); },
+  importFiles: enqueueFiles,
+  agentContext: () => ({loaded:state.loaded,runtime:state.activeRuntime,status:elements.statusText.textContent,
+    projects:state.projects.map(item=>({name:item.label||item.name})),
+    layers:state.sceneItems.map(item=>({id:item.id,name:item.label||item.name})),
+    animation:elements.animationSelect.value,skin:elements.skinSelect.value}),
 };
 document.addEventListener("visibilitychange", syncViewerPlayback);
 

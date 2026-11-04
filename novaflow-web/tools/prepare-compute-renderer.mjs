@@ -47,7 +47,7 @@ export async function prepareComputeRenderer({ sourceDir = join(ROOT, 'renderer'
     const source = await readFile(join(sourceDir, name), 'utf8');
     const moduleName = name.slice(0, -3);
     const forceNames = moduleName === 'novaflow-brand-runtime' ? ['buildArtGenerateRunWorkflow']
-      : moduleName === 'spine-split-runtime' ? ['buildGenerativeSplitWorkflow'] : [];
+      : moduleName === 'spine-split-runtime' ? ['buildGenerativeSplitWorkflow', 'defaultQwenLoraInpaintWorkflow'] : [];
     const result = instrumentModule(source, { moduleName, forceNames });
     await writeFile(join(output, name), result.code, 'utf8');
     files.push({ file: name, bytes: Buffer.byteLength(result.code), sha256: createHash('sha256').update(result.code).digest('hex') });

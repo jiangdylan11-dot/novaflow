@@ -18,7 +18,7 @@
 //                                      derives per-worker grant keys
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { createControlPlane } from './control-plane.mjs';
+import { createControlPlane, qwenRotationControlOptions } from './control-plane.mjs';
 import { resolveControlSecret } from './tokens.mjs';
 
 const FUNCTION_NAME = 'novaflow-web';
@@ -239,11 +239,65 @@ const supabaseStore = {
     return unwrapRpc(data);
   },
 
+  async createAudioTaskOnce({ userId, taskId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }: any) {
+    const { data, error } = await admin().rpc('novaflow_web_create_audio_once_v1', {
+      p_user_id: userId, p_task_id: taskId, p_task_type: taskType, p_model_id: modelId,
+      p_input_manifest: inputManifest || {}, p_estimated_credit_cost: estimatedCreditCost, p_expires_at: expiresAt
+    });
+    if (error) throw error;
+    const result=unwrapRpc(data);
+    if(!result?.task || typeof result.idempotent!=='boolean')throw new Error('assistant_audio_status_unknown');
+    return {task:result.task,idempotent:result.idempotent};
+  },
+
+  async createH3TaskOnce({ userId, taskId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }: any) {
+    const { data, error } = await admin().rpc('novaflow_web_create_h3_once_v1', {
+      p_user_id:userId, p_task_id:taskId, p_task_type:taskType, p_model_id:modelId,
+      p_input_manifest:inputManifest || {}, p_estimated_credit_cost:estimatedCreditCost, p_expires_at:expiresAt
+    });
+    if(error) throw error;
+    const result=unwrapRpc(data);
+    if(!result?.task || typeof result.idempotent!=='boolean')throw new Error('h3_status_unknown');
+    return {task:result.task,idempotent:result.idempotent};
+  },
+
+  async countH3CapableWorkers(minVramMb: number, heartbeatTimeoutSeconds: number, targetWorkerId: string | null,
+    allowPremiumNodes: boolean, userId: string | null, allowShared: boolean) {
+    const {data,error}=await admin().rpc('novaflow_web_count_h3_idempotent_workers_v1', {
+      p_min_vram_mb:minVramMb, p_heartbeat_timeout_seconds:heartbeatTimeoutSeconds,
+      p_target_worker_id:targetWorkerId, p_allow_premium_nodes:allowPremiumNodes,
+      p_user_id:userId, p_allow_shared:allowShared
+    });
+    if(error) throw error;
+    return data;
+  },
+
+  async claimH3Task({workerId,ownerId,ownershipGeneration,heartbeatTimeoutSeconds}: any) {
+    const {data,error}=await admin().rpc('novaflow_web_h3_claim_task_v1', {
+      p_worker_id:workerId,p_expected_owner:ownerId,p_expected_generation:ownershipGeneration,
+      p_heartbeat_timeout_seconds:heartbeatTimeoutSeconds
+    });
+    if(error)throw error;
+    const result=unwrapRpc(data);
+    return result?.id ? result : null;
+  },
+
   async getTask(taskId: string) {
     if (!UUID_RE.test(String(taskId || ''))) return null;
     const { data, error } = await admin()
       .from('web_ai_tasks').select('*').eq('id', taskId).maybeSingle();
     if (error) throw error;
+    return data;
+  },
+
+  async getH3RecoverySnapshot(taskId: string, workerId: string) {
+    if (!UUID_RE.test(String(taskId || '')) || !UUID_RE.test(String(workerId || ''))) return null;
+    // A single joined read gives the task and its current node owner under one
+    // database snapshot; worker-owned grant keys are not owner proof.
+    const {data,error}=await admin().from('web_ai_tasks')
+      .select('id,user_id,task_type,model_id,status,prompt_id,input_manifest,output_manifest,result_expired,assigned_worker_id,attempt_count,credit_settled,recovery_user:users!web_ai_tasks_user_id_fkey(id,plan,status,expires_at),recovery_worker:gpu_workers!web_ai_tasks_assigned_worker_id_fkey(id,owner_id,enabled,owner_enabled,sharing_enabled,sharing_scope,allowed_user_ids,tier,endpoint_url,transport,ownership_generation,capabilities:worker_models!worker_models_worker_id_fkey(model_id,status))')
+      .eq('id',taskId).eq('assigned_worker_id',workerId).maybeSingle();
+    if(error) throw error;
     return data;
   },
 
@@ -283,6 +337,21 @@ const supabaseStore = {
     };
   },
 
+  async stopWorkerTask({taskId,workerId,attempt}: any) {
+    const {data,error}=await admin().rpc('novaflow_web_stop_worker_task_v1',{
+      p_task_id:taskId,p_worker_id:workerId,p_expected_attempt:attempt
+    });
+    if(error)throw error;
+    return unwrapRpc<any>(data);
+  },
+
+  async workerStopReady(signal: AbortSignal) {
+    const {data,error}=await admin().rpc('novaflow_web_worker_stop_readiness_v1').abortSignal(signal);
+    if(error)throw error;
+    const result=unwrapRpc<any>(data);
+    return result?.ready===true && result?.protocol==='worker-stop-v1';
+  },
+
   async claimTask(workerId: string, heartbeatTimeoutSeconds: number) {
     const { data, error } = await admin().rpc('novaflow_web_claim_task', {
       p_worker_id: workerId,
@@ -314,6 +383,108 @@ const supabaseStore = {
     });
     if (error) throw error;
     return unwrapRpc(data);
+  },
+
+  async updateH3TaskStatus({ taskId, workerId, ownerId, ownershipGeneration, attempt, expectedStatus, toStatus, progress, note, detail }: any) {
+    const {data,error}=await admin().rpc('novaflow_web_h3_update_task_status_v1', {
+      p_task_id:taskId, p_worker_id:workerId, p_expected_owner:ownerId, p_expected_generation:ownershipGeneration,
+      p_attempt:attempt, p_expected_status:expectedStatus,
+      p_to_status:toStatus, p_progress:progress, p_progress_note:note || '', p_detail:detail || {}
+    });
+    if(error) throw error;
+    const result=unwrapRpc(data);
+    if(!result?.id)throw new Error('h3_status_unknown');
+    return result;
+  },
+
+  async completeH3AndSettle({taskId,workerId,ownerId,ownershipGeneration,attempt,inputManifest,promptId,outputManifest,chargeAmount,pricingSource,pricingDetails}: any) {
+    const {data,error}=await admin().rpc('novaflow_web_h3_complete_and_settle_v1', {
+      p_task_id:taskId,p_worker_id:workerId,p_expected_owner:ownerId,p_expected_generation:ownershipGeneration,
+      p_attempt:attempt,p_expected_input_manifest:inputManifest,p_prompt_id:promptId,p_output_manifest:outputManifest,
+      p_charge_amount:chargeAmount,p_pricing_source:pricingSource,p_pricing_details:pricingDetails
+    });
+    if(error) throw error;
+    const result=unwrapRpc(data);
+    if(!result?.task || typeof result.idempotent!=='boolean' || !result.settlement)throw new Error('h3_settlement_unknown');
+    return result;
+  },
+
+  async verifyQwenImageEditLease({taskId,workerId,userId,sessionId,attempt,op,sha256=null,bytes=null}: any) {
+    const {data,error}=await admin().rpc('novaflow_qwen_image_edit_authorize_v1',{
+      p_task_id:taskId,p_worker_id:workerId,p_user_id:userId,p_session_id:sessionId,
+      p_attempt:attempt,p_op:op,p_sha256:sha256,p_bytes:bytes
+    });
+    if(error)throw error;
+    return data===true;
+  },
+
+  async authorizeQwenRotationLease({ taskId, workerId, userId, sessionId, attempt, op, proofExpiresAtMs, uploadSha256=null, uploadBytes=null }: any) {
+    const { data, error } = await admin().rpc('novaflow_qwen_rotation_authorize_v1', {
+      p_task_id: taskId, p_worker_id: workerId, p_user_id: userId, p_session_id: sessionId,
+      p_attempt: attempt, p_op: op, p_proof_expires_at_ms: proofExpiresAtMs,
+      p_upload_sha256: uploadSha256, p_upload_bytes: uploadBytes
+    });
+    if (error) throw error;
+    return data === true;
+  },
+
+  async createQwenRotationCandidate({ userId, sessionId, sessionExpiresAt, workerId, requestId, sha256, bytes }: any) {
+    const { data, error } = await admin().rpc('novaflow_qwen_rotation_create_v1', {
+      p_user_id:userId, p_session_id:sessionId, p_session_expires_epoch:sessionExpiresAt,
+      p_worker_id:workerId, p_request_id:requestId, p_request_digest:sha256, p_input_bytes:bytes
+    });
+    if (error) throw error;
+    return unwrapRpc(data);
+  },
+
+  async listQwenRotationCandidates({ workerId, ownerId, limit }: any) {
+    const { data, error } = await admin().from('web_ai_tasks').select('id')
+      .eq('status','queued').eq('user_id',ownerId).eq('model_id','qwen3.5-9b-heretic-foart-rotation-candidate-v1')
+      .gte('id','fa047a0a-0000-0000-0000-000000000000').lt('id','fa047a0b-0000-0000-0000-000000000000')
+      .eq('input_manifest->>target_worker_id',workerId).order('created_at').limit(Math.min(4,Math.max(1,Number(limit)||4)));
+    if (error) throw error;
+    return data || [];
+  },
+
+  async claimQwenRotationCandidate({taskId,workerId,userId,sessionId,sessionExpiresAt,expectedAttempt,heartbeatTimeoutSeconds}: any) {
+    const {data,error}=await admin().rpc('novaflow_qwen_rotation_claim_v1',{
+      p_task_id:taskId,p_worker_id:workerId,p_user_id:userId,p_session_id:sessionId,
+      p_session_expires_epoch:sessionExpiresAt,p_expected_attempt:expectedAttempt,p_heartbeat_timeout_seconds:heartbeatTimeoutSeconds
+    });
+    if(error)throw error;
+    const row=unwrapRpc<any>(data);return row && row.id ? row : null;
+  },
+
+  async startQwenRotationCandidate({taskId,workerId,userId,sessionId,attempt,proofExpiresAtMs,sha256,bytes}: any) {
+    const {data,error}=await admin().rpc('novaflow_qwen_rotation_start_v1',{
+      p_task_id:taskId,p_worker_id:workerId,p_user_id:userId,p_session_id:sessionId,p_attempt:attempt,
+      p_proof_expires_at_ms:proofExpiresAtMs,p_uploaded_sha256:sha256,p_uploaded_bytes:bytes
+    });
+    if(error)throw error;return data===true;
+  },
+
+  async completeQwenRotationCandidate({taskId,workerId,userId,sessionId,attempt,proofExpiresAtMs,bytes}: any) {
+    const {data,error}=await admin().rpc('novaflow_qwen_rotation_complete_v1',{
+      p_task_id:taskId,p_worker_id:workerId,p_user_id:userId,p_session_id:sessionId,p_attempt:attempt,
+      p_proof_expires_at_ms:proofExpiresAtMs,p_result_bytes:bytes
+    });
+    if(error)throw error;return data===true;
+  },
+
+  async failQwenRotationCandidate({taskId,workerId,userId,sessionId,attempt,proofExpiresAtMs}: any) {
+    const {data,error}=await admin().rpc('novaflow_qwen_rotation_fail_v1',{
+      p_task_id:taskId,p_worker_id:workerId,p_user_id:userId,p_session_id:sessionId,p_attempt:attempt,
+      p_proof_expires_at_ms:proofExpiresAtMs
+    });
+    if(error)throw error;return data===true;
+  },
+
+  async cancelQwenRotationCandidate({taskId,userId,sessionId,sessionExpiresAt,expectedAttempt}: any) {
+    const {data,error}=await admin().rpc('novaflow_qwen_rotation_cancel_v1',{
+      p_task_id:taskId,p_user_id:userId,p_session_id:sessionId,p_session_expires_epoch:sessionExpiresAt,
+      p_expected_attempt:expectedAttempt
+    });
+    if(error)throw error;return data===true;
   },
 
   async markCharged(taskId: string, amount: number) {
@@ -436,6 +607,23 @@ const CORS = {
 
 const plane = createControlPlane({
   store: supabaseStore,
+  // Do not enable until the worker protocol, scheduling filter and RPC are verified together.
+  h3CreateOnceEnabled: false,
+  h3RecoveryEnabled: false,
+  h3DownloadEnabled: false,
+  h3AtomicCompletionEnabled: false,
+  // Non-secret opt-in; every advertisement and stop checks the DB readiness
+  // RPC as well. The RPC and its limited ACL require separate deployment.
+  workerExplicitStopEnabled: env('FOART_WORKER_EXPLICIT_STOP_ENABLED')==='true',
+  workerStopReadiness: ({signal}: {signal:AbortSignal}) => supabaseStore.workerStopReady(signal),
+  // Default closed until the separately reviewed RPC and client flow exist.
+  assistantAudioCreateOnceEnabled: env('FOART_ASSISTANT_AUDIO_CREATE_ONCE_ENABLED')==='true',
+  // Deployment-only, non-secret opt-ins. Creation can be stopped while the
+  // verifier remains available to finish and download already-created work.
+  ...qwenRotationControlOptions({verify:env('FOART_QWEN_ROTATION_VERIFY_ENABLED'),create:env('FOART_QWEN_ROTATION_CREATE_ENABLED')}),
+  // Release-managed, non-secret gate for the verified ordinary-task 9B preview.
+  // Set false in a rollback after draining existing preview tasks.
+  qwenPlanEnabled: true,
   secrets: { sessionSecret: sessionSecret(), controlSecret: await resolveControlSecret({ controlSecret: controlSecret(), sessionSecret: sessionSecret() }) },
   logger: (message: string, meta: unknown) =>
     console.log(JSON.stringify({ fn: FUNCTION_NAME, message, meta }))

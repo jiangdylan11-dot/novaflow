@@ -6,6 +6,27 @@ export const NATIVE_UI_PLANNER = 'native-catalog-v3';
 export const NATIVE_UI_METHOD = 'native-source-catalog-v3';
 const sha = text => createHash('sha256').update(text).digest('hex');
 
+// After Comfy accepted an owned prompt, retain the caller's task lease until
+// history confirms a terminal result. A timeout, cancellation or temporary
+// network error does not prove that the GPU task stopped.
+export async function waitForOwnedUiPrompt({promptId,history,isCancelled=()=>false,timeoutMs,pollMs,now=Date.now,sleep=ms=>new Promise(r=>setTimeout(r,ms))}) {
+  const start=now();let deferred='';
+  for (;;) {
+    if (!deferred && isCancelled()) deferred='cancelled';
+    if (!deferred && now()-start>=timeoutMs) deferred='timeout';
+    let h;
+    try { h=await history(promptId); } catch { await sleep(pollMs); continue; }
+    if (h?.status?.status_str==='error') throw new Error('UI analysis model failed for prompt '+promptId);
+    if (h?.status?.completed) {
+      if (h.status.status_str!=='success') throw new Error('UI analysis did not complete successfully for prompt '+promptId);
+      if (deferred==='cancelled') throw new Error('UI analysis was cancelled after its model task finished');
+      if (deferred==='timeout') throw new Error('UI analysis timed out; its model task has now finished');
+      return h;
+    }
+    await sleep(pollMs);
+  }
+}
+
 export async function planNativeUiDraft({baseUrl,payload,cpu,infer,fetchImpl=fetch,pollMs=1000,timeoutMs=300000,isCancelled=()=>false}) {
   if(infer!==undefined&&typeof infer!=='function')throw new Error('UI 原生推理接口无效');
   const images=payload.images,request=String(payload.currentPrompt||'').trim();
@@ -59,18 +80,11 @@ export async function planNativeUiDraft({baseUrl,payload,cpu,infer,fetchImpl=fet
     const sent=await json('/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({client_id:dispatchClientId,prompt:bindViews(graph)})});
     if(!sent.prompt_id)throw new Error('模型提交结果未确认，请核对队列；不会自动重提');
     ids.push(sent.prompt_id);
-    while(Date.now()-start<timeoutMs){
-      const h=(await json('/history/'+sent.prompt_id))[sent.prompt_id];
-      if(h?.status?.status_str==='error')throw new Error('模型分析失败，任务 '+sent.prompt_id);
-      if(h?.status?.completed){
-        if(h.status.status_str!=='success')throw new Error('模型任务未成功：'+sent.prompt_id);
-        const raw=h.outputs?.['4']?.text,text=Array.isArray(raw)?raw.join(''):String(raw||'');
-        if(!text.trim())throw new Error('模型分析没有返回有效内容；未提交生图');
-        timings.push({stage,promptId:sent.prompt_id,wallMs:Date.now()-start,rawChars:text.length});active();return text;
-      }
-      await new Promise(r=>setTimeout(r,pollMs));
-    }
-    throw new Error('分析等待超时，任务 '+sent.prompt_id+'；请先核对终态，勿重复提交');
+    const h=await waitForOwnedUiPrompt({promptId:sent.prompt_id,history:async id=>(await json('/history/'+id))[id],
+      isCancelled:()=>Boolean(isCancelled() || payload.signal?.aborted),timeoutMs,pollMs});
+    const raw=h.outputs?.['4']?.text,text=Array.isArray(raw)?raw.join(''):String(raw||'');
+    if(!text.trim())throw new Error('UI analysis produced no valid text');
+    timings.push({stage,promptId:sent.prompt_id,wallMs:Date.now()-start,rawChars:text.length});active();return text;
   };
   try {
     if(!infer){await idle();const available=await json('/object_info/CLIPLoader');

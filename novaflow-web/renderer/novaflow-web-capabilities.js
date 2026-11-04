@@ -318,7 +318,7 @@
       const format = String(options.format || '').toLowerCase();
       if (['mp4', 'webm', 'gif'].includes(format)) {
         let name = videoStem(options.baseName || options.fileName || 'video', 'video') + '.' + format;
-        if (typeof root.showDirectoryPicker === 'function') {
+        if (typeof root.showDirectoryPicker === 'function' || root.NovaFlowAgentExportSession) {
           const picked = await api.pickDirectory();
           if (picked && picked.canceled) return { ok: true, canceled: true };
           if (!picked || !picked.dir) return fail((picked && picked.error) || '没有选择导出文件夹', { canceled: false });
@@ -338,6 +338,7 @@
     // Tools hand bytes over the way the desktop IPC takes them, as a plain
     // Array; a Blob would write that as text.
     const blob = data instanceof Blob ? data : new Blob([Array.isArray(data) ? Uint8Array.from(data) : data], { type: mime });
+    if(root.NovaFlowAgentExportSession?.files instanceof Map){root.NovaFlowAgentExportSession.files.set(suggestedName,blob);return ok({queued:true,name:suggestedName,via:'agent-buffer'});}
 
     if (canUseFileSystemAccess) {
       try {
@@ -2199,6 +2200,20 @@
     }
   };
 
+  // These operations share one ffmpeg.wasm worker, filesystem and log owner.
+  // A resource metadata probe can start while its frame editor is decoding;
+  // serialize the whole operation, including readback and cleanup, so neither
+  // job replaces ffmpegJob or removes another job's decoder state mid-read.
+  let ffmpegOperationTail=Promise.resolve();
+  for(const name of ['compressMp4','convertVideoFormat','extractAudioTrack','exportEncodeFramesToVideo','exportEncodeVideoToVideo','exportDecodeAlphaVideoFrames','exportVideoOnlyCopy','exportDecodeVideoFrames','aiSeqProbeVideoMeta','videoCompositorExport','videoEditorExport','videoEditorMux']){
+    const execute=api[name];
+    api[name]=function(...args){
+      const operation=ffmpegOperationTail.then(()=>execute.apply(this,args));
+      ffmpegOperationTail=operation.catch(()=>{});
+      return operation;
+    };
+  }
+
   runtime.capabilities = {
     fileSystemAccess: canUseFileSystemAccess,
     directoryPicker: typeof root.showDirectoryPicker === 'function',
@@ -2935,6 +2950,22 @@
   };
 
   api.pickDirectory = async () => {
+    // Xiaotao exports are authorized by its typed tool operation. Its asynchronous
+    // work has no browser click activation for a folder picker, so collect the
+    // ORIGINAL encoder's files in memory and let the controller download them.
+    // This grants no filesystem access and never changes manual picker behavior.
+    const agent = root.NovaFlowAgentExportSession;
+    if(agent?.files instanceof Map){
+      const folder=(prefix='')=>({kind:'directory',name:'下载',queryPermission:async()=> 'granted',requestPermission:async()=> 'granted',
+        getDirectoryHandle:async name=>folder(prefix+String(name).replace(/[\\/]/g,'_')+'/'),
+        getFileHandle:async(name,options={})=>{
+          const key=prefix+String(name).replace(/[\\/]/g,'_');
+          if(!options.create&&!agent.files.has(key))throw new DOMException('Not found','NotFoundError');
+          return {kind:'file',name:String(name),getFile:async()=>agent.files.get(key),createWritable:async()=>{let data;return {write:async value=>{data=value;},close:async()=>{if(data==null)throw Error('原生导出没有写入文件');agent.files.set(key,data instanceof Blob?data:new Blob([Array.isArray(data)?Uint8Array.from(data):data]));},abort:async()=>{data=null;}};}};
+        }});
+      const handle=folder(),dir='web-directory://agent-'+(++directorySeq)+'/下载';directoryHandles.set(dir,handle);
+      return {ok:true,canceled:false,dir,name:handle.name,handle,path:dir};
+    }
     if (typeof root.showDirectoryPicker !== 'function') {
       return fail('这个浏览器不支持选择文件夹，请改用拖拽或逐个选择文件', { canceled: false });
     }

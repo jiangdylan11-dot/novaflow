@@ -1,7 +1,7 @@
 (() => {
   const api = window.foartCompute;
   const $ = id => document.getElementById(id);
-  let current = {}, freeing = false;
+  let current = {}, freeing = false, freeMessage = '';
   function tab(name) {
     document.querySelectorAll('.tab').forEach(button => {
       const active = button.dataset.tab === name;
@@ -24,15 +24,34 @@
     $('activityBadge').dataset.active = String(ready);
     $('gpu').textContent = value.gpu?.name || '—';
     $('gpu').title = value.gpu?.name || '';
-    $('vram').textContent = value.gpu?.vramMb ? (value.gpu.vramMb / 1024).toFixed(1).replace(/\.0$/, '') + ' GB' : '—';
+    for (const key of ['cpu', 'gpu']) {
+      const usage = value.resources?.[key];
+      const valid = Number.isFinite(usage?.percent) && usage.percent >= 0 && usage.percent <= 100;
+      const temp = Number.isFinite(usage?.temperature) && usage.temperature >= 0 && usage.temperature <= 150 ? Math.round(usage.temperature) + '°C' : '温度不可用';
+      $(key + 'Usage').textContent = (valid ? usage.percent.toFixed(0) + '%' : '暂不可用') + ' · ' + temp;
+      $(key + 'Bar').style.width = (valid ? usage.percent : 0) + '%';
+    }
+    for (const key of ['ram', 'vram']) {
+      const usage = value.resources?.[key];
+      const valid = Number.isFinite(usage?.used) && Number.isFinite(usage?.total) && usage.total > 0;
+      const percent = valid ? Math.max(0, Math.min(100, usage.used / usage.total * 100)) : 0;
+      $(key + 'Usage').textContent = valid ? (usage.used / 1073741824).toFixed(1) + ' / ' + (usage.total / 1073741824).toFixed(1) + ' GB · ' + percent.toFixed(0) + '%' : '暂不可用';
+      $(key + 'Bar').style.width = percent + '%';
+    }
     $('task').textContent = value.currentTaskId ? '执行中' : ready ? '空闲' : '未接收任务';
     $('stats').textContent = (value.stats?.completed || 0) + ' / ' + (value.stats?.failed || 0);
     $('comfy').textContent = value.runtimeStarting ? '启动中' : value.runtimeReady === false ? '未就绪' : value.comfy ? value.comfy.image || value.comfy.video ? '已连接' : '未就绪' : '—';
-    $('freeMemory').disabled = freeing || !online || value.runtimeReady === false || !!value.currentTaskId || (!value.comfy?.image && !value.comfy?.video);
+    $('freeMemory').disabled = freeing || !online || value.runtimeReady === false || value.claimBusy === true || !!value.currentTaskId || (!value.comfy?.image && !value.comfy?.video);
+    $('freeMemory').textContent = freeing ? '请求中…' : freeMessage || '释放模型资源';
+    const claimsPaused = value.claimsPaused === true;
+    if (claimsPaused) {
+      $('activityBadge').textContent = value.claimOutcomeUnknown ? '领取状态待核对' : value.claimBusy || value.currentTaskId ? '等待任务完成' : '接单已暂停';
+      $('activityBadge').dataset.active = 'false';
+    }
     const policy = value.policy;
     const sharing = ready && policy?.sharing_enabled;
-    $('sharing').textContent = value.pendingApproval ? '待审批' : !policy ? '分享未开通' : !policy.enabled ? '节点已停用' : !policy.sharing_enabled ? '分享未开通' : sharing ? '算力分享中' : '分享已开通';
-    $('sharing').dataset.active = String(!!sharing);
+    $('sharing').textContent = claimsPaused ? '接单已暂停' : value.pendingApproval ? '待审批' : !policy ? '分享未开通' : !policy.enabled ? '节点已停用' : !policy.sharing_enabled ? '分享未开通' : sharing ? '算力分享中' : '分享已开通';
+    $('sharing').dataset.active = String(!!sharing && !claimsPaused);
     $('policy').textContent = value.pendingApproval ? '设备已自动登记，等待管理员命名、分配账号和开通权限。' : !policy ? '算力节点自动连接，使用权限由后台开通。' : policy.enabled === false ? '后台已停用此节点，停止接收新任务' :
       '本人使用：' + (policy.owner_enabled ? '已开通' : '未开通') + '　对外分享：' + (policy.sharing_enabled ? policy.sharing_scope === 'selected' ? '指定用户' : '共享算力池' : '未开通');
     $('error').textContent = value.lastError || '';
@@ -47,8 +66,8 @@
   $('website').onclick = openWebsite;
   $('openLogs').onclick = () => api.logs();
   $('freeMemory').onclick = async () => {
-    if (freeing) return; freeing = true; render();
-    try { const result = await api.freeMemory(); if (result?.ok === false) current = { ...current, lastError: result.error || '释放失败' }; }
+    if (freeing) return; freeing = true; freeMessage = ''; render();
+    try { const result = await api.freeMemory(); if (result?.ok === false) current = { ...current, lastError: result.error || '释放失败' }; else { current = { ...current, lastError: '' }; freeMessage = '已请求，完成未确认'; } }
     catch (error) { current = { ...current, lastError: error.message || String(error) }; }
     finally { freeing = false; render(); }
   };

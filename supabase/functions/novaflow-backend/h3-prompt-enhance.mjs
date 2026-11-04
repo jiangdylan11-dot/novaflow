@@ -110,7 +110,7 @@ const zhWordRule = '颜色词与景别词逐一准确对应英文（如 navy 藏
 const referenceResultInstruction = 'Return a bilingual object with modelPrompt, displayPrompt and editPolicy. The two prompts contain the same six H3 fields. editPolicy contains only the three internal booleans defined in the instructions. modelPrompt has English prose for H3; displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every media tag, subject ID, task, retention relation, time, direction, dialogue and constraint identical in meaning. Do not add creative changes while translating.';
 function referenceFrames(value, requirements = '') {
   if (value == null) return [];
-  if (!Array.isArray(value) || value.length > 13) throw new Error('H3 参考画面数量无效');
+  if (!Array.isArray(value) || value.length > 36) throw new Error('H3 参考画面数量无效');
   const labels = new Set((requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || '').match(/<(?:Picture|Video) [1-9]\d*>/g) || []);
   const seen = new Map();
   let bytes = 0;

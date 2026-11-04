@@ -66,7 +66,12 @@ while (queue.length) {
     if (current.replace(/\r\n/g, '\n') !== wanted.replace(/\r\n/g, '\n')) throw new Error('novaflow-backend shared copy drift: ' + name + '. Run: node novaflow-web/tools/sync-novaflow-backend-shared.mjs');
   } else {
     await mkdir(dirname(copyPath), { recursive: true });
-    await writeFile(copyPath, wanted);
+    let current = '';
+    try { current = await readFile(copyPath, 'utf8'); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    // Avoid reopening unchanged generated modules while other release tools or
+    // editors are reading them. Windows can transiently reject those writes.
+    if (current.replace(/\r\n/g, '\n') !== wanted.replace(/\r\n/g, '\n')) await writeFile(copyPath, wanted);
   }
   for (const dep of relativeImports(source)) queue.push(dep);
 }

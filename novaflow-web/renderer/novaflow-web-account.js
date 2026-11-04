@@ -5,7 +5,7 @@
 // button that opens the existing full-screen gate. The old account dialog is gone.
 //
 // The balance is the account service's own read (clientAuthAccountDetails,
-// the same call the modal used). It runs on mount, on the existing 15s poll,
+// the same call the modal used). It runs on mount, on the 60s idle poll,
 // and again when a charge or refund lands (task settlement, feature quota,
 // or the provider-usage message the desktop account card already listens for).
 
@@ -14,6 +14,7 @@
 
   const STRIP_ID = 'novaflow-web-account-header';
   const GATE_ID = 'novaflow-web-login-gate';
+  const BALANCE_POLL_MS = 60000;
 
   const api = () => root.electronAPI || {};
   let refreshStarted = false;
@@ -24,11 +25,12 @@
   let balanceTimer = 0;
   let seatTimer = 0;
   let pollBound = false;
+  let accountEpoch = 0;
   let disposeLoginAtmosphere = null;
 
   const styles = el('style', '', `
 #novaflow-web-account-header{display:inline-flex!important;align-items:center;gap:8px;height:28px;margin-left:10px;color:#d7dbe2;font:400 12px/1 "Segoe UI","Microsoft YaHei",sans-serif;white-space:nowrap;-webkit-app-region:no-drag}
-#novaflow-web-account-header[data-novaflow-account-pending="1"]{visibility:hidden!important}
+#novaflow-web-account-header[data-novaflow-account-pending="1"]{opacity:.75}
 #novaflow-web-account-header [data-novaflow-account-name]{display:block;max-width:140px;overflow:hidden;text-overflow:ellipsis;color:#e8eaed;font-weight:500}
 #novaflow-web-account-header [data-novaflow-account-credits]{display:block;color:rgba(230,239,255,.74);font-variant-numeric:tabular-nums}
 #novaflow-web-account-header button{height:24px;min-height:24px;padding:0 8px;border:1px solid #333;border-radius:6px;background:#24262a;color:#e8eaed;font:inherit;font-size:12px;font-weight:400;line-height:1;cursor:pointer;-webkit-app-region:no-drag}
@@ -56,13 +58,15 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   function displayNumber(value) {
     const amount = numeric(value);
     if (amount == null) return '—';
+    if (amount > 0 && amount < 0.000001) return '<0.000001';
     return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(amount);
   }
 
   function creditText(value) {
+    if (value && typeof value === 'object' && ['unconfigured','error'].includes(value.status)) return '积分暂不可用';
     const raw = value && typeof value === 'object' ? (value.balance_text ?? value.balance) : value;
     const text = displayNumber(raw);
-    return text === '—' ? '—' : text + ' 积分';
+    return text === '—' ? '积分暂不可用' : text + ' 积分';
   }
 
   function stripNode() {
@@ -104,13 +108,19 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     strip.id = STRIP_ID;
     strip.setAttribute('data-novaflow-account-header', '1');
     strip.setAttribute('data-novaflow-account-pending', '1');
-    const name = el('div');
+    const name = el('div', '', '账号信息加载中');
     name.setAttribute('data-novaflow-account-name', '1');
-    name.hidden = true;
-    const credits = el('div');
+    name.hidden = false;
+    const credits = el('div', '', '积分加载中');
     credits.setAttribute('data-novaflow-account-credits', '1');
     credits.title = '剩余积分';
-    credits.hidden = true;
+    credits.hidden = false;
+    const retry = el('button', '', '重试');
+    retry.type = 'button';
+    retry.setAttribute('data-novaflow-account-retry', '1');
+    retry.setAttribute('aria-label', '重新获取账号和积分');
+    retry.hidden = true;
+    retry.addEventListener('click', () => { void refresh(); });
     const logout = el('button', '', '退出');
     logout.type = 'button';
     logout.setAttribute('data-novaflow-account-logout', '1');
@@ -131,6 +141,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     });
     strip.appendChild(name);
     strip.appendChild(credits);
+    strip.appendChild(retry);
     strip.appendChild(logout);
     strip.appendChild(login);
     return strip;
@@ -148,11 +159,13 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     if (!strip) return;
     const name = part(strip, 'name');
     const credits = part(strip, 'credits');
+    const retry = part(strip, 'retry');
     const logout = part(strip, 'logout');
     const login = part(strip, 'login');
     if (!account || !account.authenticated) {
       if (name) name.hidden = true;
       if (credits) credits.hidden = true;
+      if (retry) retry.hidden = true;
       if (logout) logout.hidden = true;
       if (login) login.hidden = false;
       strip.removeAttribute('data-novaflow-account-signed-in');
@@ -160,7 +173,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     }
     if (name) {
       name.hidden = false;
-      const text = account.name || '已登录';
+      const text = account.name || '用户名待确认';
       if (name.textContent !== text) name.textContent = text;
       if (name.title !== text) name.title = text;
     }
@@ -169,6 +182,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       const text = creditText(account.credits);
       if (credits.textContent !== text) credits.textContent = text;
     }
+    if (retry) retry.hidden = !account.unavailable && !!account.name && creditText(account.credits) !== '积分暂不可用';
     if (logout) logout.hidden = false;
     if (login) login.hidden = true;
     strip.setAttribute('data-novaflow-account-signed-in', '1');
@@ -189,24 +203,36 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     }
   }
 
-  async function readAccount() {
-    const who = await currentUser();
-    if (!who) return { authenticated: false };
-    let name = who.user && (who.user.display_name || who.user.email) || '已登录';
-    let credits = who.credits || null;
+  async function readAccount(epoch) {
+    let reply = null;
     try {
-      const reply = await api().clientAuthAccountDetails();
-      if (reply && reply.ok !== false && reply.result) {
-        const profile = reply.result;
-        if (profile.user) name = profile.user.display_name || profile.user.email || name;
-        if (profile.credits) credits = profile.credits;
+      reply = await api().clientAuthAccountDetails();
+    } catch (_) {}
+    // Verify once after bootstrap: the runtime binds both requests to the
+    // initiating session, and user IDs must still match before using profile.
+    const latest = await currentUser();
+    // Do not apply even non-visual profile data from a refresh invalidated
+    // while either request was pending.
+    if (epoch !== accountEpoch) return null;
+    if (!latest) return { authenticated: false };
+    const latestId = latest.user && latest.user.id;
+    const profile = reply && reply.ok !== false && reply.result;
+    const profileId = profile && profile.user && profile.user.id;
+    const sameProfile = !!latestId && !!profileId && profileId === latestId;
+    const available = !latest.temporarilyUnavailable;
+    const nameOf = user => user && (user.display_name || user.account || user.username || user.email) || '';
+    let name = available ? nameOf(latest.user) : '';
+    let credits = available ? (latest.credits ?? null) : null;
+    let unavailable = !available || !profile || !sameProfile;
+    if (profile && sameProfile && available) {
+        name = nameOf(profile.user) || name;
+        if (profile.credits != null) credits = profile.credits;
         const prices = root.NovaFlowFeatureCreditPrices;
         if (profile.featureCreditPrices && prices && typeof prices.applyConfig === 'function') {
           prices.applyConfig(profile.featureCreditPrices);
         }
-      }
-    } catch (_) {}
-    return { authenticated: true, name: name, credits: credits };
+    }
+    return { authenticated: true, name: name, credits: credits, unavailable };
   }
 
   async function refresh() {
@@ -218,7 +244,11 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       try {
         do {
           refreshAgain = false;
-          const account = await readAccount();
+          const epoch = accountEpoch;
+          const account = await readAccount(epoch);
+          // A different account may have replaced this one while requests were
+          // in flight. Never repaint the old account over the new session.
+          if (epoch !== accountEpoch) { refreshAgain = true; continue; }
           lastAccount = account;
           paint(account);
           if (!account.authenticated) void guard();
@@ -244,7 +274,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   function startBalancePoll() {
     stopBalancePoll();
     if (!refreshStarted || documentHidden() || typeof root.setInterval !== 'function') return;
-    balanceTimer = root.setInterval(() => { void refresh(); }, 15000) || 0;
+    balanceTimer = root.setInterval(() => { void refresh(); }, BALANCE_POLL_MS) || 0;
   }
 
   function onVisibilityChange() {
@@ -293,7 +323,18 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   function bindLiveRefresh() {
     if (liveBound || typeof root.addEventListener !== 'function') return;
     liveBound = true;
+    const sessionChanged = () => {
+      accountEpoch += 1;
+      lastAccount = null;
+      paint(null);
+      if (refreshStarted) void refresh();
+    };
+    root.addEventListener('novaflow-client-auth-changed', sessionChanged);
+    root.addEventListener('storage', (event) => {
+      if (event && (event.key === 'novaflow_web_session_v1' || event.key === 'novaflow.client.auth.session.v1' || event.key === null)) sessionChanged();
+    });
     root.addEventListener('novaflow:account-balance', (event) => {
+      accountEpoch += 1;
       const balance = event && event.detail ? event.detail.balance : null;
       if (balance != null && balance !== '') paintBalance(balance);
       void refresh();
@@ -302,11 +343,13 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     // account balance with the same call the header uses, rather than guessing.
     root.addEventListener('novaflow:art-generate-credit-updated', (event) => {
       if (!event || !event.detail || event.detail.kind !== 'settlement') return;
+      accountEpoch += 1;
       void refresh();
     });
     root.addEventListener('message', (event) => {
       if (!event || event.source !== root) return;
       if (!event.data || event.data.type !== 'novaflow-provider-usage-settled') return;
+      accountEpoch += 1;
       const credits = event.data.payload && event.data.payload.credits;
       const balance = credits && (credits.balance_text ?? credits.balance);
       if (balance != null && balance !== '') paintBalance(balance);

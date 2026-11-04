@@ -1,0 +1,41 @@
+// Synthetic, offline integration of the real audio page and its draft bridge.
+// It does not call Xiaotao, a provider, production, or create an audio task.
+const {app,BrowserWindow,session}=require('electron');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
+const {pathToFileURL}=require('node:url');
+const profile=fs.mkdtempSync(path.join(os.tmpdir(),'foart-audio-review-'));
+const receipt=process.env.FOART_AUDIO_REVIEW_RECEIPT;
+app.setPath('userData',profile);app.disableHardwareAcceleration();
+const renderer=path.resolve(__dirname,'../../renderer');
+const doc=path.join(profile,'index.html');
+const url=name=>pathToFileURL(path.join(renderer,name)).href;
+fs.writeFileSync(doc,`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;width:1100px;height:800px}</style></head><body><script>window.NovaFlowWebRuntime={control:async()=>({taskTypes:[]})};</script><script src="${url('audio-timeline.editor.js')}"></script><script src="${url('audio-studio.tool.js')}"></script></body></html>`);
+(async()=>{let win,exitCode=0,stage='init';const messages=[];try{
+ await app.whenReady();
+ session.defaultSession.webRequest.onBeforeRequest((details,cb)=>cb({cancel:!details.url.startsWith('file:')}));
+ win=new BrowserWindow({show:false,width:1100,height:800,webPreferences:{contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
+ win.webContents.on('console-message',(_event,level,message)=>messages.push({level,message:String(message).slice(0,600)}));
+ win.webContents.on('did-fail-load',(_event,code,description)=>messages.push({code,description}));
+ stage='load';
+ await win.loadFile(doc);win.webContents.focus();
+ const run=js=>win.webContents.executeJavaScript(js),pause=ms=>new Promise(r=>setTimeout(r,ms));
+ stage='open';await run(`window.NovaFlowAudioStudio.open('audio')`);await pause(100);
+ const click=async sel=>{const p=await run(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)throw Error('missing '+${JSON.stringify(sel)});const r=e.getBoundingClientRect();return {x:Math.floor(r.left+r.width/2),y:Math.floor(r.top+r.height/2),visible:r.width>0&&r.height>0}})()`);assert(p.visible,sel);win.webContents.sendInputEvent({type:'mouseMove',x:p.x,y:p.y});win.webContents.sendInputEvent({type:'mouseDown',x:p.x,y:p.y,button:'left',clickCount:1});win.webContents.sendInputEvent({type:'mouseUp',x:p.x,y:p.y,button:'left',clickCount:1});await pause(30);};
+ const type=async text=>{for(const keyCode of text)win.webContents.sendInputEvent({type:'char',keyCode});await pause(20)};
+ stage='type';await click('.nf-as-prompt textarea');await type('page melody');
+ let state=await run(`(()=>{window.review=NovaFlowAudioStudio.captureTextReview('music');return {prompt:review.prompt,compiled:review.compileInput('chat melody')}})()`);
+ assert.equal(state.prompt,'page melody');assert.match(state.compiled,/chat melody/);assert.doesNotMatch(state.compiled,/page melody/);assert.match(state.compiled,/seamless loop.*BPM: 100/);
+ await run(`window.review.applyDraft('edited melody',{userConfirmed:true,bindingCurrent:()=>true})`);
+ assert.equal(await run(`document.querySelector('.nf-as-prompt textarea').value`),'edited melody');
+ await run(`window.review.undoDraft({userConfirmed:true,bindingCurrent:()=>true})`);
+ assert.equal(await run(`document.querySelector('.nf-as-prompt textarea').value`),'page melody');
+ await run(`window.stale=NovaFlowAudioStudio.captureTextReview('music'); true`);
+ await click('.nf-as-mode-kind button:nth-child(2)');await click('.nf-as-mode-kind button:nth-child(1)');
+ assert.equal(await run(`stale.isCurrent()`),false);
+ await run(`window.staleBoard=NovaFlowAudioStudio.captureTextReview('music'); true`);
+ await click('.nf-as-tab-add');await click('.nf-as-tabs button:first-child');
+ assert.equal(await run(`staleBoard.isCurrent()`),false);
+ assert.equal(await run(`NovaFlowAudioStudio.agentSettings().music.text`),'page melody');
+ const result={ok:true,scope:'synthetic native audio page + programmatic draft bridge',checks:['typed page text','selected source preserves original native rules','confirmed apply and undo','mode and board switch ABA rejected'],network:'blocked',profile};
+ if(receipt)fs.writeFileSync(receipt,JSON.stringify(result,null,2)+'\n',{flag:'wx'});console.log(JSON.stringify(result));
+ }catch(error){if(receipt)fs.writeFileSync(receipt,JSON.stringify({ok:false,error:String(error.stack||error),stage,messages,profile},null,2)+'\n',{flag:'wx'});console.error(error.stack||error);exitCode=1}finally{if(win&&!win.isDestroyed())win.destroy();app.exit(exitCode)}})();

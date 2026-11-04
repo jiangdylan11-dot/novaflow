@@ -86,7 +86,7 @@ export async function syncEdgeFunction({ check = false } = {}) {
     const wanted = BANNER.replace('%NAME%', name) + source;
     let current = '';
     try { current = await readFile(join(DEST, name), 'utf8'); } catch { current = ''; }
-    if (current !== wanted) {
+    if (current.replace(/\r\n/g, '\n') !== wanted.replace(/\r\n/g, '\n')) {
       if (check) {
         drift.push({ file: name, sourceSha: sha(source), copySha: current ? sha(current) : null });
       } else {

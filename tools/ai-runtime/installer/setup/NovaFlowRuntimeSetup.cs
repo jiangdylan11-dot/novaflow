@@ -3,12 +3,38 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace NovaFlow.AiRuntimeSetup
 {
+    [DataContract]
+    internal sealed class RuntimeAssetsInfo
+    {
+        [DataMember(Name = "assetsPath")]
+        public string AssetsPath;
+    }
+
+    // Keep fields that older and newer installers do not understand when an
+    // existing runtime is upgraded. Paths are validated before any copy starts.
+    [DataContract]
+    internal sealed class RuntimeConfiguration : IExtensibleDataObject
+    {
+        [DataMember(Name = "name", EmitDefaultValue = false)] public string Name;
+        [DataMember(Name = "version", EmitDefaultValue = false)] public string Version;
+        [DataMember(Name = "engine", EmitDefaultValue = false)] public string Engine;
+        [DataMember(Name = "port", EmitDefaultValue = false)] public int? Port;
+        [DataMember(Name = "installPath", EmitDefaultValue = false)] public string InstallPath;
+        [DataMember(Name = "assetsPath", EmitDefaultValue = false)] public string AssetsPath;
+        [DataMember(Name = "modelsPath", EmitDefaultValue = false)] public string ModelsPath;
+        [DataMember(Name = "customNodesPath", EmitDefaultValue = false)] public string CustomNodesPath;
+        [DataMember(Name = "useExplicitModelsDirectory", EmitDefaultValue = false)] public bool? UseExplicitModelsDirectory;
+        public ExtensionDataObject ExtensionData { get; set; }
+    }
+
     internal static class Program
     {
         [STAThread]
@@ -29,6 +55,25 @@ namespace NovaFlow.AiRuntimeSetup
         {
             try
             {
+                // Install from an already present, verified upstream directory;
+                // this command does not download or redistribute the files.
+                if (string.Equals(args[0], "--install-qwen-cuda-local", StringComparison.OrdinalIgnoreCase))
+                {
+                    string componentRuntime = GetArgumentValue(args, "--runtime");
+                    string componentSource = GetArgumentValue(args, "--component");
+                    string componentInventory = GetArgumentValue(args, "--inventory");
+                    if (componentRuntime == null || componentSource == null || componentInventory == null) return 2;
+                    QwenComponentInstaller.InstallCuda(componentRuntime, componentSource, componentInventory);
+                    return 0;
+                }
+                if (string.Equals(args[0], "--install-qwen-component", StringComparison.OrdinalIgnoreCase))
+                {
+                    string componentRuntime = GetArgumentValue(args, "--runtime");
+                    string componentSource = GetArgumentValue(args, "--component");
+                    if (componentRuntime == null || componentSource == null) return 2;
+                    QwenComponentInstaller.Install(componentRuntime, componentSource);
+                    return 0;
+                }
                 if (!IsInstallArgument(args[0]))
                 {
                     return 2;
@@ -84,7 +129,7 @@ namespace NovaFlow.AiRuntimeSetup
 
         public SetupForm()
         {
-            Text = "NovaFlow AI Runtime Setup";
+            Text = "Foart AI Runtime Setup";
             Font = new Font("Segoe UI", 9F);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -93,7 +138,7 @@ namespace NovaFlow.AiRuntimeSetup
             ClientSize = new Size(620, 230);
 
             var titleLabel = new Label();
-            titleLabel.Text = "NovaFlow AI Runtime Setup";
+            titleLabel.Text = "Foart AI Runtime Setup";
             titleLabel.Font = new Font("Segoe UI", 14F, FontStyle.Bold);
             titleLabel.AutoSize = true;
             titleLabel.Location = new Point(24, 20);
@@ -133,8 +178,18 @@ namespace NovaFlow.AiRuntimeSetup
             assetsPathTextBox.AccessibleName = "AssetsPathTextBox";
             assetsPathTextBox.Location = new Point(146, 103);
             assetsPathTextBox.Size = new Size(365, 23);
-            assetsPathTextBox.Text = Directory.Exists(@"D:\") ? @"D:\NovaFlow" : @"C:\ProgramData\NovaFlow";
+            assetsPathTextBox.Text = ExistingAssetsPath(runtimePathTextBox.Text);
             Controls.Add(assetsPathTextBox);
+            bool assetsEdited = false;
+            bool changingAssets = false;
+            assetsPathTextBox.TextChanged += delegate { if (!changingAssets) assetsEdited = true; };
+            runtimePathTextBox.TextChanged += delegate
+            {
+                if (assetsEdited) return;
+                changingAssets = true;
+                try { assetsPathTextBox.Text = ExistingAssetsPath(runtimePathTextBox.Text); }
+                finally { changingAssets = false; }
+            };
 
             browseAssetsButton = new Button();
             browseAssetsButton.Name = "BrowseAssetsButton";
@@ -313,52 +368,267 @@ namespace NovaFlow.AiRuntimeSetup
             string modelsPath = Path.Combine(assetsPath, "models");
             string customNodesPath = Path.Combine(assetsPath, "custom_nodes");
 
-            // A copy over an older Runtime would leave its files beside the new ones (an old
-            // comfy_kitchen dist-info next to the new one, stale ComfyUI modules). The engine that is
-            // there moves aside to engine.previous (one generation, for going back by renaming), and
-            // the new engine is copied into an empty folder; logs and the rest stay.
+            // Keep the previous engine and configuration if installation fails.
+            // Any older backup is archived instead of being deleted.
             string engineTarget = Path.Combine(runtimePath, "engine");
-            if (Directory.Exists(engineTarget))
+            string previousEngine = Path.Combine(runtimePath, "engine.previous");
+            string oldPrevious = null;
+            bool oldPreviousMoved = false;
+            string runtimeJson = Path.Combine(runtimePath, "runtime.json");
+            byte[] previousRuntimeJson = File.Exists(runtimeJson) ? File.ReadAllBytes(runtimeJson) : null;
+            RuntimeConfiguration existingConfig = ReadExistingRuntimeConfiguration(previousRuntimeJson);
+            if (existingConfig != null && !String.IsNullOrWhiteSpace(existingConfig.InstallPath) &&
+                !SameRuntimePath(ValidatedRuntimePath(existingConfig.InstallPath, "installPath"), runtimePath))
+                throw new InvalidDataException("Existing runtime.json points to a different installation directory.");
+            if (existingConfig != null && String.IsNullOrWhiteSpace(existingConfig.AssetsPath) &&
+                (existingConfig.ModelsPath != null || existingConfig.CustomNodesPath != null || existingConfig.UseExplicitModelsDirectory == true))
+                throw new InvalidDataException("Existing runtime.json has custom paths but no valid assetsPath.");
+            if (existingConfig != null && !String.IsNullOrWhiteSpace(existingConfig.AssetsPath))
             {
-                string previousEngine = Path.Combine(runtimePath, "engine.previous");
-                if (Directory.Exists(previousEngine))
+                string oldAssets = ValidatedRuntimePath(existingConfig.AssetsPath, "assetsPath");
+                if (SameRuntimePath(oldAssets, assetsPath))
                 {
-                    Directory.Delete(previousEngine, true);
+                    if (existingConfig.ModelsPath != null)
+                        modelsPath = ValidatedRuntimePath(existingConfig.ModelsPath, "modelsPath");
+                    if (existingConfig.CustomNodesPath != null)
+                        customNodesPath = ValidatedRuntimePath(existingConfig.CustomNodesPath, "customNodesPath");
                 }
-                Directory.Move(engineTarget, previousEngine);
+                else
+                {
+                    // A deliberately selected new assets root retains the old
+                    // behaviour: both paths follow the selected root.
+                    // Keep an explicit false value so extension fields that
+                    // followed this property survive DataContract serialization.
+                    existingConfig.UseExplicitModelsDirectory = false;
+                }
             }
-
-            reporter.ReportProgress(0, U("6B63", "5728", "590D", "5236", "0020", "Runtime", "002E", "002E", "002E"));
-            CopyDirectory(sourceRuntime, runtimePath, reporter);
-
-            reporter.ReportProgress(0, U("6B63", "5728", "521B", "5EFA", "8D44", "6E90", "76EE", "5F55", "002E", "002E", "002E"));
-            Directory.CreateDirectory(Path.Combine(modelsPath, "checkpoints"));
-            Directory.CreateDirectory(Path.Combine(modelsPath, "loras"));
-            Directory.CreateDirectory(Path.Combine(modelsPath, "vae"));
-            Directory.CreateDirectory(Path.Combine(modelsPath, "controlnet"));
-            Directory.CreateDirectory(Path.Combine(modelsPath, "rembg"));
-            Directory.CreateDirectory(customNodesPath);
-            Directory.CreateDirectory(Path.Combine(runtimePath, "logs"));
-
-            // The custom nodes NovaFlow's graphs need ship beside the Runtime; they go into the assets
-            // folder ComfyUI reads them from. Nodes the user added there themselves stay untouched.
-            string sourceCustomNodes = Path.Combine(Path.Combine(setupDirectory, "Runtime"), "custom_nodes");
-            if (Directory.Exists(sourceCustomNodes))
+            RuntimeScriptSnapshot[] previousScripts = CaptureRuntimeScripts(runtimePath, sourceRuntime);
+            bool engineMoved = false;
+            bool copyStarted = false;
+            try
             {
-                CopyDirectory(sourceCustomNodes, customNodesPath, reporter);
-            }
+                if (Directory.Exists(engineTarget))
+                {
+                    if (Directory.Exists(previousEngine))
+                    {
+                        oldPrevious = Path.Combine(runtimePath, "engine.previous-" + Guid.NewGuid().ToString("N"));
+                        Directory.Move(previousEngine, oldPrevious);
+                        oldPreviousMoved = true;
+                    }
+                    Directory.Move(engineTarget, previousEngine);
+                    engineMoved = true;
+                }
 
-            reporter.ReportProgress(0, U("6B63", "5728", "5199", "5165", "0020", "runtime.json", "002E", "002E", "002E"));
-            string version = ReadRuntimeVersion(Path.Combine(sourceRuntime, "runtime.json"));
-            File.WriteAllText(Path.Combine(runtimePath, "runtime.json"), BuildRuntimeJson(version, runtimePath, assetsPath, modelsPath, customNodesPath), new UTF8Encoding(false));
-            WriteRuntimeScriptShim(runtimePath, "start-runtime.bat");
-            WriteRuntimeScriptShim(runtimePath, "stop-runtime.bat");
-            WriteRuntimeScriptShim(runtimePath, "check-runtime.bat");
+                reporter.ReportProgress(0, U("6B63", "5728", "590D", "5236", "0020", "Runtime", "002E", "002E", "002E"));
+                copyStarted = true;
+                CopyDirectory(sourceRuntime, runtimePath, reporter, true);
+                QwenComponentInstaller.PreserveForUpgrade(runtimePath, previousEngine, engineMoved);
+
+                reporter.ReportProgress(0, U("6B63", "5728", "521B", "5EFA", "8D44", "6E90", "76EE", "5F55", "002E", "002E", "002E"));
+                Directory.CreateDirectory(Path.Combine(modelsPath, "checkpoints"));
+                Directory.CreateDirectory(Path.Combine(modelsPath, "loras"));
+                Directory.CreateDirectory(Path.Combine(modelsPath, "vae"));
+                Directory.CreateDirectory(Path.Combine(modelsPath, "controlnet"));
+                Directory.CreateDirectory(Path.Combine(modelsPath, "rembg"));
+                Directory.CreateDirectory(customNodesPath);
+                Directory.CreateDirectory(Path.Combine(runtimePath, "logs"));
+
+                // The custom nodes NovaFlow's graphs need ship beside the Runtime; they go into the assets
+                // folder ComfyUI reads them from. Nodes the user added there themselves stay untouched.
+                string sourceCustomNodes = Path.Combine(Path.Combine(setupDirectory, "Runtime"), "custom_nodes");
+                if (Directory.Exists(sourceCustomNodes))
+                {
+                    CopyDirectory(sourceCustomNodes, customNodesPath, reporter);
+                }
+
+                reporter.ReportProgress(0, U("6B63", "5728", "5199", "5165", "0020", "runtime.json", "002E", "002E", "002E"));
+                string version = ReadRuntimeVersion(Path.Combine(sourceRuntime, "runtime.json"));
+                if (existingConfig == null)
+                    File.WriteAllText(runtimeJson, BuildRuntimeJson(version, runtimePath, assetsPath, modelsPath, customNodesPath), new UTF8Encoding(false));
+                else
+                    File.WriteAllBytes(runtimeJson, BuildUpdatedRuntimeJson(existingConfig, version, runtimePath, assetsPath, modelsPath, customNodesPath));
+                WriteRuntimeScriptShim(runtimePath, "start-runtime.bat");
+                WriteRuntimeScriptShim(runtimePath, "stop-runtime.bat");
+                WriteRuntimeScriptShim(runtimePath, "check-runtime.bat");
+            }
+            catch (Exception installError)
+            {
+                string rollbackErrors = "";
+                try
+                {
+                    if (copyStarted && Directory.Exists(engineTarget))
+                    {
+                        string failedEngine = Path.Combine(runtimePath, "engine.failed-" + Guid.NewGuid().ToString("N"));
+                        Directory.Move(engineTarget, failedEngine);
+                    }
+                    if (engineMoved) Directory.Move(previousEngine, engineTarget);
+                }
+                catch (Exception error) { rollbackErrors += " engine: " + error.Message; }
+                try
+                {
+                    if (oldPreviousMoved) Directory.Move(oldPrevious, previousEngine);
+                }
+                catch (Exception error) { rollbackErrors += " previous: " + error.Message; }
+                try
+                {
+                    if (copyStarted)
+                    {
+                        if (previousRuntimeJson != null) File.WriteAllBytes(runtimeJson, previousRuntimeJson);
+                        else if (File.Exists(runtimeJson)) File.Delete(runtimeJson);
+                    }
+                }
+                catch (Exception error) { rollbackErrors += " runtime.json: " + error.Message; }
+                if (copyStarted)
+                {
+                    foreach (RuntimeScriptSnapshot script in previousScripts)
+                    {
+                        try { RestoreRuntimeScript(script); }
+                        catch (Exception error) { rollbackErrors += " script " + script.Path + ": " + error.Message; }
+                    }
+                }
+                if (rollbackErrors.Length > 0) throw new InvalidOperationException("Runtime installation failed; rollback also failed:" + rollbackErrors, installError);
+                throw;
+            }
         }
 
-        private static void WriteRuntimeScriptShim(string runtimePath, string scriptName)
+        private static string ExistingAssetsPath(string runtimePath)
         {
-            string content = string.Join(Environment.NewLine, new[]
+            string defaultPath = Directory.Exists(@"E:\") ? @"E:\Foart" : (Directory.Exists(@"D:\") ? @"D:\Foart" : @"C:\ProgramData\Foart");
+            try
+            {
+                string config = Path.Combine(runtimePath, "runtime.json");
+                if (!File.Exists(config)) return defaultPath;
+                var serializer = new DataContractJsonSerializer(typeof(RuntimeAssetsInfo));
+                RuntimeAssetsInfo info;
+                using (FileStream input = File.OpenRead(config)) info = serializer.ReadObject(input) as RuntimeAssetsInfo;
+                string value = info == null ? null : info.AssetsPath;
+                if (String.IsNullOrWhiteSpace(value) || !Path.IsPathRooted(value)) return "";
+                string normalized = value.Replace('/', '\\').TrimEnd('\\');
+                string full = Path.GetFullPath(value);
+                return String.Equals(normalized, full.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) ? full : "";
+            }
+            catch { return ""; }
+        }
+
+        private static RuntimeConfiguration ReadExistingRuntimeConfiguration(byte[] bytes)
+        {
+            if (bytes == null) return null;
+            try
+            {
+                var serializer = new DataContractJsonSerializer(typeof(RuntimeConfiguration));
+                using (var input = new MemoryStream(bytes))
+                {
+                    var result = serializer.ReadObject(input) as RuntimeConfiguration;
+                    if (result == null) throw new InvalidDataException("Existing runtime.json is empty.");
+                    if (result.Port.HasValue && (result.Port.Value < 1 || result.Port.Value > 65535))
+                        throw new InvalidDataException("Existing runtime.json has an invalid port.");
+                    if (!String.IsNullOrWhiteSpace(result.Engine) && result.Engine != "comfyui-core")
+                        throw new InvalidDataException("Existing runtime.json uses another engine.");
+                    return result;
+                }
+            }
+            catch (InvalidDataException) { throw; }
+            catch (Exception error) { throw new InvalidDataException("Existing runtime.json cannot be read safely.", error); }
+        }
+
+        private static string ValidatedRuntimePath(string value, string field)
+        {
+            if (String.IsNullOrWhiteSpace(value) || !Path.IsPathRooted(value))
+                throw new InvalidDataException("Existing runtime.json has an invalid " + field + ".");
+            string full = Path.GetFullPath(value);
+            string root = Path.GetPathRoot(full);
+            if (String.IsNullOrWhiteSpace(root) || root == "\\")
+                throw new InvalidDataException("Existing runtime.json has an invalid " + field + ".");
+            return full;
+        }
+
+        private static bool SameRuntimePath(string a, string b)
+        {
+            return String.Equals(Path.GetFullPath(a).TrimEnd('\\'), Path.GetFullPath(b).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static byte[] BuildUpdatedRuntimeJson(RuntimeConfiguration config, string version, string installPath,
+                                                       string assetsPath, string modelsPath, string customNodesPath)
+        {
+            if (String.IsNullOrWhiteSpace(config.Name)) config.Name = "NovaFlow AI Runtime";
+            if (String.IsNullOrWhiteSpace(config.Engine)) config.Engine = "comfyui-core";
+            if (!config.Port.HasValue) config.Port = 8188;
+            config.Version = version;
+            config.InstallPath = installPath;
+            config.AssetsPath = assetsPath;
+            config.ModelsPath = modelsPath;
+            config.CustomNodesPath = customNodesPath;
+            var serializer = new DataContractJsonSerializer(typeof(RuntimeConfiguration));
+            using (var output = new MemoryStream())
+            {
+                serializer.WriteObject(output, config);
+                return output.ToArray();
+            }
+        }
+
+        private sealed class RuntimeScriptSnapshot
+        {
+            public string Path;
+            public byte[] Before;
+            public byte[] Copied;
+            public byte[] Shim;
+        }
+
+        private static RuntimeScriptSnapshot[] CaptureRuntimeScripts(string runtimePath, string sourceRuntime)
+        {
+            string scriptDirectory = Path.Combine(runtimePath, "scripts");
+            if (Directory.Exists(scriptDirectory) && (File.GetAttributes(scriptDirectory) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Runtime scripts directory is a link.");
+            string[] names = { "start-runtime.bat", "stop-runtime.bat", "check-runtime.bat" };
+            var snapshots = new RuntimeScriptSnapshot[names.Length * 2];
+            for (int i = 0; i < names.Length; i++)
+            {
+                string relative = Path.Combine("scripts", names[i]);
+                string script = Path.Combine(runtimePath, relative);
+                string source = Path.Combine(sourceRuntime, relative);
+                string shim = Path.Combine(runtimePath, names[i]);
+                string sourceShim = Path.Combine(sourceRuntime, names[i]);
+                foreach (string path in new[] { script, shim })
+                    if (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidDataException("Runtime script is a link: " + path);
+                snapshots[i] = new RuntimeScriptSnapshot { Path = script,
+                    Before = File.Exists(script) ? File.ReadAllBytes(script) : null,
+                    Copied = File.Exists(source) ? File.ReadAllBytes(source) : null };
+                snapshots[i + names.Length] = new RuntimeScriptSnapshot { Path = shim,
+                    Before = File.Exists(shim) ? File.ReadAllBytes(shim) : null,
+                    Copied = File.Exists(sourceShim) ? File.ReadAllBytes(sourceShim) : null,
+                    Shim = Encoding.ASCII.GetBytes(RuntimeScriptShimContent(names[i])) };
+            }
+            return snapshots;
+        }
+
+        private static bool SameBytes(byte[] a, byte[] b)
+        {
+            if (a == null || b == null || a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+            return true;
+        }
+
+        private static void RestoreRuntimeScript(RuntimeScriptSnapshot script)
+        {
+            byte[] current = File.Exists(script.Path) ? File.ReadAllBytes(script.Path) : null;
+            if (SameBytes(current, script.Before) || (current == null && script.Before == null)) return;
+            if (current != null && !SameBytes(current, script.Copied) && !SameBytes(current, script.Shim))
+                throw new IOException("Script changed during installation; not overwritten.");
+            if (script.Before == null)
+            {
+                if (current != null) File.Delete(script.Path);
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(script.Path));
+                File.WriteAllBytes(script.Path, script.Before);
+            }
+        }
+
+        private static string RuntimeScriptShimContent(string scriptName)
+        {
+            return string.Join(Environment.NewLine, new[]
             {
                 "@echo off",
                 "setlocal",
@@ -366,17 +636,21 @@ namespace NovaFlow.AiRuntimeSetup
                 "call \"%SCRIPT_DIR%scripts\\" + scriptName + "\" %*",
                 "exit /b %ERRORLEVEL%"
             }) + Environment.NewLine;
-            File.WriteAllText(Path.Combine(runtimePath, scriptName), content, Encoding.ASCII);
         }
 
-        private static void CopyDirectory(string sourceDirectory, string destinationDirectory, BackgroundWorker reporter)
+        private static void WriteRuntimeScriptShim(string runtimePath, string scriptName)
+        {
+            File.WriteAllText(Path.Combine(runtimePath, scriptName), RuntimeScriptShimContent(scriptName), Encoding.ASCII);
+        }
+
+        private static void CopyDirectory(string sourceDirectory, string destinationDirectory, BackgroundWorker reporter, bool preserveQwenConfig = false)
         {
             Directory.CreateDirectory(destinationDirectory);
             reporter.ReportProgress(0, U("6B63", "5728", "590D", "5236", "0020", "Runtime", "0020", "6587", "4EF6", "002E", "002E", "002E"));
 
             var startInfo = new ProcessStartInfo();
             startInfo.FileName = "robocopy.exe";
-            startInfo.Arguments = Quote(sourceDirectory) + " " + Quote(destinationDirectory) + " /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP";
+            startInfo.Arguments = Quote(sourceDirectory) + " " + Quote(destinationDirectory) + " /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP" + (preserveQwenConfig ? " /XF qwen35-cpu.json" : "");
             startInfo.UseShellExecute = false;
             startInfo.CreateNoWindow = true;
 

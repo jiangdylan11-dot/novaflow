@@ -150,7 +150,19 @@
   }
 
   function activate() {
-    installStyle()
+    // Xiaotao reads native output metadata; it never treats a click as a result.
+  ;(window.NovaFlowProductionTools ||= {})['png_remove_black'] = {
+    snapshot: () => ({ name: 'png_remove_black', active: state.active, busy: state.processing || state.exporting, selectedId:state.selectedId,
+      items: state.items.map(item => ({ id: item.id, name: item.name, status: item.status, sourceMaterialId:item.sourceMaterialId,inputBytes:item.inputBytes||item.bytes,
+        output: item.result ? { id: item.id, name: item.result.fileName || item.result.name || item.name,
+          bytes: item.result.blob?.size || item.result.bytesOut || item.result.bytes?.length || 0,
+          keptOriginal: !!item.result.keptOriginal } : null })),
+      atlases: (state.resultAtlases || []).map(item => ({name: item.fileName, bytes: new TextEncoder().encode(item.text || '').length})) }),
+    run: processAll, export: exportAll, addFiles:async files=>{const before=state.items.length;await addFiles(files);state.items.slice(before).forEach((item,i)=>{item.sourceMaterialId=files[i]?.__nfFoartMaterialId;item.inputBytes=files[i]?.size;});if(state.items.length>before)state.selectedId=state.items.at(-1).id;render();},
+    files: () => state.items.filter(item => item.result).map(item => ({ id: item.id, name: item.result.fileName || item.name, blob: item.result.blob, url: item.result.url }))
+  }
+
+  installStyle()
     state.active = true
     nativeWorkspace = findWorkspace()
     if (nativeWorkspace instanceof HTMLElement) nativeWorkspace.style.setProperty('visibility', 'hidden', 'important')
@@ -217,13 +229,13 @@
     render()
   }
 
-  async function processAll() {
+  async function processAll(inputIds) {
     if (state.processing || !state.items.length) return
     const api = window.NovaFlowBackgroundRemoval
     if (!api?.unmultBlackBackgroundDataUrl) { alert('PNG 去黑能力未加载，请重启 Foart 后重试。'); return }
     state.processing = true
     render()
-    for (const item of state.items) {
+    for (const item of state.items.filter(item => !Array.isArray(inputIds) || inputIds.includes(item.id))) {
       item.status = '正在去黑…'; render()
       try {
         const result = await api.unmultBlackBackgroundDataUrl(item.dataUrl)
@@ -232,7 +244,7 @@
         objectUrls.push(url)
         item.result = { dataUrl: result.dataUrl, blob, url, fileName: outputName(item.name), stats: result.stats }
         item.status = '处理完成'
-      } catch (error) { item.status = String(error?.message || error || '处理失败') }
+      } catch (error) { item.result = null; item.status = String(error?.message || error || '处理失败') }
       render()
     }
     state.processing = false

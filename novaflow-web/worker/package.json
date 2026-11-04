@@ -2,7 +2,7 @@
   "name": "novaflow-worker",
   "productName": "Foart 算力助手",
   "private": true,
-  "version": "2.0.241",
+  "version": "2.0.290",
   "description": "Foart 官网算力助手",
   "type": "commonjs",
   "main": "electron/compute-main.cjs",
