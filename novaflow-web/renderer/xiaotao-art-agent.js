@@ -1550,6 +1550,17 @@
         const media=context.media?.active===false?null:videoEditing?{active:true,sub:'video',video:context.media.video,videoResources:context.media.videoResources,generation:{boardId:context.media.generation?.boardId}}:audioOnly?{active:true,sub:'audio',audio:context.media.audio,audioResources:context.media.audioResources,videoResources:context.media.videoResources,audioSettings:context.media.audioSettings}:context.media;
         return JSON.stringify({art:!mediaActive&&context.art?{...context.art,error:undefined}:null,artEditor:!mediaActive&&context.artEditor?{editingTool:context.artEditor.editingTool,editingAction:context.artEditor.editingAction,objectTransfer:context.artEditor.objectTransfer,source:context.artEditor.source,size:context.artEditor.size,selected:context.artEditor.selected,layers:context.artEditor.layers}:null,media,animation:context.animation?{...context.animation,frame:undefined}:null,uiLayout:context.uiLayout,particle:context.particle,effects:context.effects,productionTools:context.productionTools,lastToolOutput:context.lastToolOutput,pose:context.pose,frameEditor:context.frameEditor,fields:context.controls.filter(c=>!(videoEditing&&c.scope==='video_generation')&&!c.disabled&&['input','textarea','select','checkbox'].includes(c.kind)&&(!controlIds||controlIds.has(c.id))).map(({id,label,section,kind,value})=>({id,label,section,kind,value})).sort((a,b)=>a.id.localeCompare(b.id))});
       };
+      // Placed references finish loading after their receipt and then update the
+      // native controls. Bind a plan only once those values have stopped moving.
+      const settledCapture=async()=>{
+        const read=()=>{const value=tools.capture();return {value,binding:toolBinding(value,new Set(value.controls.filter(c=>!c.volatile).map(c=>c.id)))};};
+        let last=read(),same=0;
+        for(let i=0;i<16&&same<2&&!signal.aborted;i++){
+          await new Promise(resolve=>setTimeout(resolve,300));
+          const next=read();same=next.binding===last.binding?same+1:0;last=next;
+        }
+        return last.value;
+      };
       try{
         // A global request must be planned against the requested editor, not
         // the unrelated editor that happened to be open before the user spoke.
@@ -1576,7 +1587,7 @@
           const imageSourceBefore=imageSourceBinding(tools.capture());
           const images=[];
           if(signal.aborted||operation!==serial||billing&&(state.provider!=='api'||state.modelId!==billing.modelId))return false;
-          const snapshot=tools.capture();let expectedSnapshot=snapshot;
+          const snapshot=await settledCapture();let expectedSnapshot=snapshot;
           if(billing&&images.length&&(!imageGuard()||imageSourceBefore!==imageSourceBinding(snapshot)))fail('参考素材、账号或模型已变化，未上传图片。');
           // Validate an active UI edit's declared reference roles before the
           // paid planner sees any image. This check only inspects the native
