@@ -533,7 +533,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.297";
+const RELEASE_VERSION = "2.0.298";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
