@@ -204,7 +204,7 @@
   }
   // The tool planner only sees file names, so 反推 runs as image chat, where the model sees the picture.
   function imageReverseRequest(message){const text=String(message||'').trim();return /反推/.test(text)&&!/(?:不要|不用|别|无需|不需要)反推|视频|音频|音乐|[?？吗]$/.test(text);}
-  function endsWithQuestion(reply){return /[?？]|请确认|确认后/.test(String(reply||'').trim().split('\n').at(-1).slice(-80));}
+  function endsWithQuestion(reply){return /[?？]|请确认|确认后|请(?:告诉|说明|提供|补充|描述|选择)|告诉我/.test(String(reply||'').trim().split('\n').at(-1).slice(-160));}
   function forbidsGeneration(message){return /(?:不要|不用|不需要|不必|无需|不能|别|先不|暂不)(?:再|实际|立即|直接|马上|自动|开始|继续|重新|帮我|给我|为我|\s)*(?:生成|生图|出图)|\b(?:do not|don't|never)\s+(?:generate|render)\b/i.test(message);}
   function discussionOnly(message){
     const clauses=String(message||'').split(/[，,。；;！？!?\n]+/);

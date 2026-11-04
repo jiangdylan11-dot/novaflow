@@ -62,6 +62,14 @@ test('a pointed reply to a planner question keeps the earlier request, with or w
     assert.doesNotMatch(f.c.state.status,/提示词来源/);
   }
 });
+test('a request for details with no question mark still waits for the answer',async()=>{
+  const ask='参考图1已收到，但还没说明要换成什么衣服。请告诉我新衣服的款式（例如白色衬衫、红色连衣裙、黑色西装），以及是否保留原图的姿势、背景和人物特征，我就用图生图直接改。';
+  const f=await fixture({refs:refs(),prompt:'一位女孩站在海边',foart:[done(ask),done('好的')]});
+  await f.c.send('帮我把图1的衣服换掉');
+  await f.c.send('换成黑色的吊带背心');
+  assert.equal(f.starts.length,2);
+  assert.match(f.starts[1].message,/帮我把图1的衣服换掉[\s\S]*用户回答：换成黑色的吊带背心/);
+});
 test('a question asked in plain chat is answered through the tools with its context',async()=>{
   const f=await fixture({refs:refs(),chat:['你想把衣服换成什么样？'],foart:[done('好的')]});
   await f.c.send('这件衣服不太好看');
