@@ -25,7 +25,7 @@ async function fixture({refs=[],prompt='',foart=[],chat=[]}={}) {
   Object.assign(config.xiaotao_online,{billing_scope:'operation',minimum_positive_credits:1,operation_text_chat_v3:true,operation_vision_chat_v3:true,operation_foart_open_v3:true});
   const policy={version:'sha256:'+'a'.repeat(64),expiresAt:Date.now()+60000,defaultModel:'xai/grok-4.7',config,models:[{id:'xai/grok-4.7',available:true},{id:MODEL,available:true}]};
   const chats=[],starts=[];
-  const api=()=>({captureFoartBillingOwner:()=>({owner:'test-user',current:()=>true}),captureFoartSessionGuard:()=>()=>true,
+  const extra={};const api=()=>({...extra,captureFoartBillingOwner:()=>({owner:'test-user',current:()=>true}),captureFoartSessionGuard:()=>()=>true,
     onlineBusinessAvailableSync:()=>true,artAgentStop:async()=>({ok:true}),artAgentStatus:async()=>({ok:true}),companionPricing:async()=>({ok:true,policy}),
     artAgentChat:async payload=>{chats.push(payload);const next=chat.shift();if(!next)throw Error('unexpected chat');
       return {ok:true,data:{reply:next,history:[...payload.history,{role:'user',content:payload.message},{role:'assistant',content:next}].slice(-12)}};},
@@ -34,7 +34,7 @@ async function fixture({refs=[],prompt='',foart=[],chat=[]}={}) {
     return {artContext:{surface:'drawing'},images:includeDrawingReferences?refs.map((ref,i)=>({source:i+1,role:ref.drawingRole,dataUrl:ref.dataUrl,name:ref.name})):[],drawingPreview};}};
   const c=root.NovaFlowXiaotaoArtAgent.createController({bridge,api});
   assert.equal(c.setModel('xai/grok-4.7'),true);await c.refreshPricingPolicy();
-  return {c,chats,starts,tools:root.NovaFlowFoartTools,setPrompt:value=>{rtState.prompt=value;}};
+  return {c,chats,starts,tools:root.NovaFlowFoartTools,api:extra,setPrompt:value=>{rtState.prompt=value;}};
 }
 const refs=()=>[{name:'a.png',dataUrl:png('a'),drawingRole:'subject'},{name:'b.png',dataUrl:png('b'),drawingRole:'style'}];
 
@@ -122,6 +122,14 @@ test('a mask tool hands the brush to the user instead of failing',async()=>{
   f.tools.execute=async()=>({action:'open',phase:'opened',surface:'drawing',message:'已打开绘图工具'});
   await f.c.send('把图1的人物抠出来');
   assert.match(f.c.state.messages.at(-1).content,/智能抠图.*涂出/);assert.equal(f.c.state.error,'');
+});
+test('a planner timeout after a finished tool closes the turn on the real result',async()=>{
+  const plan={ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:'act',reply:'开始',operations:[{action:'open',surface:'drawing'}]},foartOperationSession:{opaque:true}}};
+  const f=await fixture({refs:refs(),foart:[plan]});
+  f.tools.execute=async()=>({action:'art_action',phase:'completed',name:'imageUpscale',label:'高清放大',message:'完成'});
+  f.api.foartOperationResume=async()=>({ok:false,errorCode:20,error:'操作结果或账单状态待核对，请勿重复提交。'});
+  await f.c.send('把图1高清放大');
+  assert.equal(f.c.state.error,'');assert.match(f.c.state.messages.at(-1).content,/高清放大/);
 });
 test('a failed turn stays in this session context',async()=>{
   const f=await fixture({refs:refs(),foart:[{ok:false,error:'操作未完成'},done('好的')]});
