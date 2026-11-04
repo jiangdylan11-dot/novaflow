@@ -65,7 +65,8 @@ function page({ withState = false, stored = {} } = {}) {
     },
   };
   const context = {
-    console, setTimeout, clearTimeout, URL, Blob, performance, Math, JSON, Promise, AbortController,
+    console, setTimeout, clearTimeout, clearInterval, URL,
+    setInterval: (fn, ms) => { const handle = setInterval(fn, ms); handle.unref?.(); return handle; }, Blob, performance, Math, JSON, Promise, AbortController,
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, String(value)),

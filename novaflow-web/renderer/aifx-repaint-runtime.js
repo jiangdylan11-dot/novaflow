@@ -766,10 +766,11 @@
       /* 风格库's pick and the artist's own pictures are one thing - material sources - so they are
          one list of equal cards, the 风格库 pick first, and the upload box follows the last card at
          the same height. With nothing in it the list is just the upload box. */
-      #${APP_ID} .aifx-material-board { display: grid; gap: 8px; margin-top: 8px; }
+      /* One column that never grows past the panel: a long file name is cut, not the card. */
+      #${APP_ID} .aifx-material-board { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 8px; }
       #${APP_ID} .aifx-material-items { display: contents; }
       #${APP_ID} .aifx-material-tile {
-        position: relative; display: flex; align-items: center; gap: 10px; padding: 8px;
+        position: relative; display: flex; align-items: center; gap: 10px; padding: 8px; min-width: 0; box-sizing: border-box;
         border-radius: 10px; background: #161616; border: 1px solid rgba(255,255,255,0.10);
       }
       #${APP_ID} .aifx-material-tile video, #${APP_ID} .aifx-material-tile img { display: block; width: 72px; height: 72px; flex: none; border-radius: 8px; background: #000; object-fit: cover; pointer-events: none; }
@@ -2051,6 +2052,7 @@
     entry.materialQuota = read ? meta.quota || null : null
     entry.materialError = read ? '' : (meta.error || failureText(activeMaterialModel()))
     entry.materialState = read ? 'ready' : 'failed'
+    entry.readingSince = 0
   }
   const MATERIAL_MODEL_IDS = () => (xiaotaoAgent()?.MODEL_PICKER_GROUPS || []).flatMap((group) => group.ids)
   const setMaterialModel = (value) => {
@@ -2137,7 +2139,9 @@
 
   // Reads one reference's material and puts the outcome on it, while it is still loaded.
   const readEntryMaterial = (entry, stillWanted = () => true) => {
+    if (entry.materialState !== 'reading' || !entry.readingSince) entry.readingSince = Date.now()
     entry.materialState = 'reading'
+    startMaterialTicker()
     const read = readReferenceMaterial(entry.blob, entry.image)
     read.then((material) => {
       if (!state.references.includes(entry) || !stillWanted()) return
@@ -3246,11 +3250,41 @@
     ]
   }
 
+  // A read can wait minutes for a free compute node, so the line says how long it has waited and,
+  // when the pool reports it, that it is queued - a bare "正在识别" looked hung.
+  let materialNodeWait = null
+  let materialWaitHeard = false
+  let materialTicker = 0
+  const startMaterialTicker = () => {
+    if (!materialWaitHeard && typeof window.addEventListener === 'function') {
+      materialWaitHeard = true
+      window.addEventListener('novaflow:web-task-wait', (event) => {
+        if (!state.references.some((entry) => entry.materialState === 'reading')) return
+        materialNodeWait = { seconds: Number(event.detail?.seconds) || 0, at: Date.now() }
+      })
+    }
+    if (materialTicker) return
+    materialTicker = setInterval(() => {
+      if (!state.references.some((entry) => entry.materialState === 'reading')) {
+        clearInterval(materialTicker)
+        materialTicker = 0
+        materialNodeWait = null
+      }
+      put(state.refs.materialStatus, 'textContent', materialStatusText())
+    }, 1000)
+  }
   const materialStatusText = () => {
     const entries = state.references
+    const reading = entries.filter((entry) => entry.materialState === 'reading')
     const failed = entries.find((entry) => entry.materialState === 'failed')
-    return entries.some((entry) => entry.materialState === 'reading') ? '正在识别参考图材质…'
-      : failed ? (failed.materialError || '材质未识别，按参考图直接生成') : ''
+    if (reading.length) {
+      const since = Math.min(...reading.map((entry) => entry.readingSince || Date.now()))
+      const seconds = Math.max(0, Math.round((Date.now() - since) / 1000))
+      const queued = materialNodeWait && Date.now() - materialNodeWait.at < 5000
+      return (queued ? '等待算力节点识别参考图材质' : '正在识别参考图材质')
+        + (seconds >= 3 ? '（已等 ' + seconds + ' 秒）' : '…')
+    }
+    return failed ? (failed.materialError || '材质未识别，按参考图直接生成') : ''
   }
 
   // 提示词补充 can @ any source on the board as @参考图N (the board's own numbering), through the
