@@ -71,11 +71,14 @@
     if(amount>0&&amount<1e-6)return '<0.000001';
     return amount.toFixed(6).replace(/\.?0+$/,'');
   }
-  const cleanBillingNotices = rows => (Array.isArray(rows)?rows:[]).filter(row=>row && typeof row.id==='string' && row.id.length<=100 && CHAT_MODELS[row.modelId]?.provider==='api' && typeof row.unknown==='boolean' && (row.confirmed===null || creditUnits(row.confirmed)!==null) && (row.unknown || row.confirmed!==null) && (row.owner===undefined || typeof row.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(row.owner))).slice(-20).map(({id,modelId,confirmed,unknown,owner})=>({id,modelId,confirmed,unknown,...(owner===undefined?{}:{owner})}));
+  const cleanBillingNotices = rows => (Array.isArray(rows)?rows:[]).filter(row=>row && typeof row.id==='string' && row.id.length<=100 && CHAT_MODELS[row.modelId]?.provider==='api' && typeof row.unknown==='boolean' && (row.confirmed===null || creditUnits(row.confirmed)!==null) && (row.unknown || row.confirmed!==null) && (row.owner===undefined || typeof row.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(row.owner))).slice(-40).map(({id,modelId,confirmed,unknown,owner,turn})=>({id,modelId,confirmed,unknown,...(owner===undefined?{}:{owner}),...(Number.isSafeInteger(turn)&&turn>0?{turn}:{})}));
   const billingNoticeText=row=>`本次扣费 ${displayCredits(row.confirmed)} 积分`;
   // This session's confirmed charge, online models only. Nothing outlives the page.
   const billingNoticeForView=(provider,rows)=>provider==='api'?rows.filter(row=>!row.unknown).at(-1)||null:null;
-  function appendBillingNotice(rows,row) {return cleanBillingNotices([...rows.filter(item=>item.id!==row.id&&(item.unknown||item.owner!==row.owner)),row]);}
+  // A charge stays with the turn that spent it, so every reply keeps its own amount.
+  function appendBillingNotice(rows,row,turn) {const old=rows.find(item=>item.id===row.id),bound=old?.turn??turn;return cleanBillingNotices([...rows.filter(item=>item.id!==row.id),{...row,...(Number.isSafeInteger(bound)&&bound>0?{turn:bound}:{})}]);}
+  // Settled charges per turn (one sum per user message), confirmed amounts only.
+  function billingByTurn(rows) {const totals=new Map();for(const row of rows||[]){if(row.unknown||row.confirmed==null||!Number.isSafeInteger(row.turn))continue;const sum=sumCredits(totals.get(row.turn)??0,row.confirmed);if(sum!==null)totals.set(row.turn,sum);}return totals;}
   const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
   const fail = message => { throw new Error(message); };
   // The root field is supplied by the owned runtime after it has verified the
@@ -1067,10 +1070,10 @@
     }
     let cachedHost = null;
     const host = () => uploadHost || (cachedHost ||= uploadApi()?.createUploadHost?.(root));
+    let turnSeq=0;
     function pushUser(content) {
-      // A charge belongs to its own turn; only an unconfirmed one stays on screen.
-      state.billingNotices=state.billingNotices.filter(item=>item.unknown);
-      const entry = {role:'user', content};
+      // Each user message opens a turn; charges settled during it render under its reply.
+      const entry = {role:'user', content, turn:++turnSeq};
       if (carryAttachments?.length) {entry.attachments = carryAttachments; carryAttachments = null;}
       state.messages.push(entry);
       if (carryAsk) {state.messages.push(carryAsk); carryAsk = null;}
@@ -1198,7 +1201,7 @@
         if(!old && state.billingNotices.filter(item=>item.unknown).length>=20)return false;
         if(old && (old.owner!==row.owner || old.modelId!==row.modelId ||
           old.confirmed!==null && old.confirmed!==row.confirmed || !old.unknown && row.unknown))return false;
-        state.billingNotices=appendBillingNotice(state.billingNotices,row);notify();
+        state.billingNotices=appendBillingNotice(state.billingNotices,row,turnSeq);notify();
         return activeOwner();
       } catch {return false;}
     }
@@ -1234,7 +1237,7 @@
     function publishBilling(billing) {
       if(!billing)return;
       const row={id:billing.id,modelId:billing.modelId,confirmed:billing.confirmedCount?billing.confirmed:null,unknown:billing.unknown||billing.inFlight,...(billing.owner?{owner:billing.owner}:{})};
-      state.billingNotices=appendBillingNotice(state.billingNotices,row);notify();
+      state.billingNotices=appendBillingNotice(state.billingNotices,row,turnSeq);notify();
     }
     function billingOwner() {
       try {const b=api()?.captureFoartBillingOwner?.();return b?.current?.()===true && typeof b.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(b.owner) ? b.owner : undefined;} catch {return undefined;}
@@ -2579,10 +2582,11 @@
     const fab = el('button', 'nf-xiaotao-launcher nf-xiaotao-robot'); fab.type = 'button'; fab.setAttribute('data-novaflow-keep-radius', '1'); fab.setAttribute('aria-expanded', 'false'); fab.setAttribute('aria-controls', 'nf-xiaotao-art-panel');
     fab.innerHTML = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 6v7M13 32H7v13h7m37-13h6v13h-7M23 54v5m18-5v5" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><circle class="nf-xiaotao-antenna" cx="32" cy="5" r="3"/><rect x="12" y="14" width="40" height="41" rx="14" fill="#3b3b3b" stroke="currentColor" stroke-width="2"/><rect x="18" y="23" width="28" height="20" rx="8" fill="#202020"/><g class="nf-xiaotao-eyes"><circle cx="25" cy="32" r="3"/><circle cx="39" cy="32" r="3"/></g><path d="M27 47h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
     const robotLabel = el('span', 'nf-xiaotao-robot-label', '小桃AI'), robotState = el('span', 'nf-xiaotao-robot-state', '待机'); fab.append(robotLabel, robotState);
+    const ICONS={upload:'<path d="M12 5v14M5 12h14"/>',newChat:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',stop:'<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',send:'<path d="M21.5 2.5 10.8 13.2"/><path d="M21.5 2.5 14.7 21.5l-3.9-8.3-8.3-3.9Z" fill="currentColor"/>'};
+    const iconButton=(button,name,label)=>{button.classList.add('nf-xiaotao-icon-button');button.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICONS[name]+'</svg>';button.title=label;button.setAttribute('aria-label',label);return button;};
     const panel = el('aside', 'nf-xiaotao-panel'); panel.id = 'nf-xiaotao-art-panel'; panel.hidden = true; panel.setAttribute('aria-label', '小桃AI对话');
     const header = el('header', 'nf-xiaotao-header'), title = el('div','nf-xiaotao-title'), titleText = el('strong','','小桃AI'), close = el('button', 'nf-xiaotao-icon', '×'); close.type = 'button'; close.setAttribute('aria-label', '关闭对话');
     title.append(titleText); header.append(title, close);
-    const context = el('div', 'nf-xiaotao-context'), contextLabel = el('span'), thumbs = el('div', 'nf-xiaotao-thumbs'); context.append(contextLabel, thumbs);
     const messages = el('div', 'nf-xiaotao-messages'); messages.setAttribute('role', 'log'); messages.setAttribute('aria-label', '小桃全局对话');
     const intro = el('p', 'nf-xiaotao-intro', '上传素材并描述想要的结果，我会根据需求调用美工、音视、特效、动画或工具；拿不准你的意思时，会先向你问清楚。'); messages.append(intro);
     const proposal = el('details', 'nf-xiaotao-proposal'), summary = el('summary', '', '提示词与执行'), proposalText = el('pre'), copyPrompt=el('button','','复制完整提示词'); copyPrompt.type='button'; copyPrompt.onclick=()=>void copyText(controller.state.proposal?.prompt || '',copyPrompt); proposal.hidden = true; proposal.append(summary,copyPrompt,proposalText);
@@ -2595,10 +2599,9 @@
     mediaPromptApply.onclick=event=>void controller.applyMediaPromptReview(event);mediaPromptCancel.onclick=event=>controller.cancelMediaPromptReview(event);mediaPromptUndo.onclick=event=>void controller.undoMediaPromptReview(event);
     mediaPromptActions.append(mediaPromptApply,mediaPromptCancel,mediaPromptUndo);mediaPromptPanel.append(mediaPromptText,mediaPromptActions);
     const tools = el('div', 'nf-xiaotao-tools');
-    const billingAlerts=el('div','nf-xiaotao-billing-alerts');billingAlerts.setAttribute('role','status');billingAlerts.setAttribute('aria-live','polite');billingAlerts.setAttribute('aria-label','小桃模型积分提示');Object.assign(billingAlerts.style,{flex:'0 0 auto'});
     const status = el('div', 'nf-xiaotao-status'); status.setAttribute('role', 'status'); const error = el('p', 'nf-xiaotao-error'); error.setAttribute('role', 'alert');
     const footer = el('form', 'nf-xiaotao-compose'), input = el('textarea'); input.rows = 3; input.placeholder = '有什么需要我帮助的？'; input.setAttribute('aria-label', '给智能助手的消息');
-    const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), modelSelect = el('select', 'nf-xiaotao-model-select'), newConversation = el('button', '', '新对话'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送');
+    const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), modelSelect = el('select', 'nf-xiaotao-model-select'), newConversation = el('button', ''), stop = el('button', ''), send = el('button', 'nf-xiaotao-primary nf-xiaotao-send');
     modelSelect.setAttribute('aria-label','选择小桃AI模型');
     // The native select stays as an internal compatibility mirror.  The visible
     // listbox is rendered inside the panel, avoiding the embedded editor's
@@ -2609,8 +2612,9 @@
     modelTrigger.setAttribute('aria-haspopup','listbox');modelTrigger.setAttribute('aria-controls','nf-xiaotao-model-listbox');modelTrigger.setAttribute('aria-expanded','false');
     // Keep these nodes stable across focus and asynchronous policy refreshes:
     // replacing the pointer-down target before pointer-up can swallow a click.
-    const triggerName=el('span','nf-xiaotao-model-name'),triggerNote=el('span','nf-xiaotao-model-note');
-    modelTrigger.append(triggerName,triggerNote);
+    const triggerName=el('span','nf-xiaotao-model-name'),triggerNote=el('span','nf-xiaotao-model-note'),triggerSizer=el('span','nf-xiaotao-model-sizer');
+    // Invisible copies of every option size the trigger to the longest one, so switching models never changes its width.
+    triggerSizer.setAttribute('aria-hidden','true');modelTrigger.append(triggerName,triggerNote,triggerSizer);const modelSizers=new Map();
     modelMenu.id='nf-xiaotao-model-listbox';modelMenu.setAttribute('role','listbox');modelMenu.setAttribute('aria-label','小桃AI模型');modelMenu.hidden=true;modelBackdrop.hidden=true;modelBackdrop.setAttribute('aria-hidden','true');
     const modelOptions=new Map(),modelButtons=new Map(),modelParts=new Map(),modelIds=[];let onlinePricingGroup=null;
     for (const [label, ids] of [['免费 · 本地', ['qwen3.5-9b-heretic']], ['收费 · 在线', XIAOTAO_ONLINE_MODEL_IDS]]) {
@@ -2619,13 +2623,14 @@
       const groupTitle=el('div','nf-xiaotao-model-group-label',label);groupTitle.setAttribute('aria-hidden','true');menuGroup.append(groupTitle);
       if(ids===XIAOTAO_ONLINE_MODEL_IDS)onlinePricingGroup={group,menuGroup,groupTitle};
       for (const id of ids) {const model=CHAT_MODELS[id], option=el('option','',model.label + (model.available ? '' : ' · 未开通')); option.value=id;modelOptions.set(id,option);group.append(option);
-        const item=el('button','nf-xiaotao-model-option'),name=el('span','nf-xiaotao-model-name',model.label),note=el('span','nf-xiaotao-model-note');item.append(name,note);item.type='button';item.tabIndex=-1;item.id='nf-xiaotao-model-option-'+modelIds.length;item.setAttribute('role','option');item.setAttribute('data-model-id',id);item.setAttribute('aria-selected','false');modelIds.push(id);modelButtons.set(id,item);modelParts.set(id,{name,note});menuGroup.append(item);}
+        const item=el('button','nf-xiaotao-model-option'),name=el('span','nf-xiaotao-model-name',model.label),note=el('span','nf-xiaotao-model-note');item.append(name,note);item.type='button';item.tabIndex=-1;item.id='nf-xiaotao-model-option-'+modelIds.length;item.setAttribute('role','option');item.setAttribute('data-model-id',id);item.setAttribute('aria-selected','false');modelIds.push(id);modelButtons.set(id,item);modelParts.set(id,{name,note});menuGroup.append(item);
+        const sizeName=el('span','nf-xiaotao-model-name'),sizeNote=el('span','nf-xiaotao-model-note');triggerSizer.append(sizeName,sizeNote);modelSizers.set(id,{name:sizeName,note:sizeNote});}
       modelSelect.append(group);
       modelMenu.append(menuGroup);
     }
     const retiredSelection=el('option','','此前模型已移除 · 请选择');
     retiredSelection.value='gemma-4-12b-it'; retiredSelection.disabled=true; retiredSelection.hidden=true;
-    const upload=el('button','nf-xiaotao-upload','上传'),stagedRow=el('div','nf-xiaotao-staged');upload.type='button';upload.setAttribute('aria-label','上传参考资源');stagedRow.hidden=true;
+    const upload=iconButton(el('button','nf-xiaotao-upload'),'upload','上传参考资源'),stagedRow=el('div','nf-xiaotao-staged');upload.type='button';stagedRow.hidden=true;
     function pickBrowserFiles() {
       const accept = root.NovaFlowXiaotaoUpload?.fileAccept?.() || '';
       return new Promise(resolve => {
@@ -2654,22 +2659,22 @@
         if(!result||result.canceled)return;
         const converted=root.NovaFlowXiaotaoUpload?.filesFromIpc?.(result)||{files:[],notes:[]};
         for(const note of converted.notes)activeController.state.messages.push({role:'assistant',content:note});
-        if(await activeController.stageUploads(converted.files)&&!sessionRetired&&controller===activeController){navigation=navigationSelection();contextStamp='';setOpen(true);}
+        if(await activeController.stageUploads(converted.files)&&!sessionRetired&&controller===activeController){navigation=navigationSelection();setOpen(true);}
         return;
       }
       let chosen=[]; try{chosen=await pickBrowserFiles();}catch(error){if(!sessionRetired&&controller===activeController){activeController.state.error=String(error?.message||error);render(activeController.state);}return;}
       if(sessionRetired||controller!==activeController)return;
       if(!chosen.length)return;
-      if(await activeController.stageUploads(chosen)&&!sessionRetired&&controller===activeController){navigation=navigationSelection();contextStamp='';setOpen(true);}
+      if(await activeController.stageUploads(chosen)&&!sessionRetired&&controller===activeController){navigation=navigationSelection();setOpen(true);}
     };
     const listen=(node,type,fn)=>{if(typeof node.addEventListener==='function')node.addEventListener(type,fn);else node['on'+type]=fn;};
     const takeFiles=list=>{if(list?.length)void controller.stageUploads(list);};
     listen(footer,'dragover',event=>{if(event?.dataTransfer)event.preventDefault?.();});
     listen(footer,'drop',event=>{event?.preventDefault?.();takeFiles(Array.from(event?.dataTransfer?.files||[]));});
     listen(input,'paste',event=>{const files=Array.from(event?.clipboardData?.files||[]);if(files.length){event.preventDefault?.();takeFiles(files);}});
-    for (const b of [newConversation, stop]) b.type = 'button'; newConversation.title = '清空当前模型的聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空当前模型的聊天记录并开启新对话'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); const inputBox=el('div','nf-xiaotao-input-box'),inputField=el('div','nf-xiaotao-input-field');inputField.append(input);inputBox.append(stagedRow,inputField);footer.append(inputBox,footerActions);
+    for (const b of [newConversation, stop]) b.type = 'button'; iconButton(newConversation,'newChat','新对话（清空当前聊天记录）'); iconButton(stop,'stop','停止'); iconButton(send,'send','发送'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); const inputBox=el('div','nf-xiaotao-input-box'),inputField=el('div','nf-xiaotao-input-field');inputField.append(input);inputBox.append(stagedRow,inputField);footer.append(inputBox,footerActions);
     providers.append(modelTrigger);
-    panel.append(header, modelMenu, context, messages, mediaPromptPanel, proposal, tools, billingAlerts, status, error, footer); host.append(modelBackdrop, fab, panel); doc.body.append(host);
+    panel.append(header, modelMenu, messages, mediaPromptPanel, proposal, tools, status, error, footer); host.append(modelBackdrop, fab, panel); doc.body.append(host);
     // Same @ references as the prompt boxes: page references first, then this turn's attachments.
     let mentionHandle=null;
     const mentionResources=()=>{
@@ -2683,7 +2688,7 @@
     listen(inputField,'keydown',event=>{if(event.target!==input&&event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.defaultPrevented){event.preventDefault();footer.requestSubmit();}});
     const drag = bindPanelDrag(panel, header, {onStart:()=>{if(modelMenu.hidden)return;const rect=panel.getBoundingClientRect();Object.assign(panel.style,{left:rect.left+'px',top:rect.top+'px'});modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');modelTrigger.removeAttribute('aria-activedescendant');}});
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onEnd:() => {if (open) anchorPanel();}});
-    const bridge = createBridge(); let rendered = [], renderedProposal = null, contextStamp = '', previewImages = [], open = false, lastPricingKey=null,nodeRecheck=null;
+    const bridge = createBridge(); let rendered = [], renderedCharges = '', renderedProposal = null, open = false, lastPricingKey=null,nodeRecheck=null;
     let controller, controllerEpoch=0, sessionRetired=false;
     const makeController=()=>{
       const epoch=++controllerEpoch;
@@ -2709,7 +2714,7 @@
     const restoreSession=()=>{
       if(!sessionRetired)return;
       controller=makeController();sessionRetired=false;
-      input.value='';syncMentions();rendered=[null];renderedProposal=null;contextStamp='';previewImages=[];thumbs.replaceChildren();lastPricingKey=null;
+      input.value='';syncMentions();rendered=[null];renderedProposal=null;lastPricingKey=null;
       render(controller.state);
       nodeRecheck?.reset();
     };
@@ -2751,7 +2756,7 @@
         const device=id==='qwen3.5-9b-heretic' && !status ? qwenExecutionDeviceLabel(controller.state.qwenExecutionDevice) : '';
         const note=[model.provider==='local'?'本地对话免费':rate,device,status].filter(Boolean).join(' · ');
         const optionText=model.label+(rate?' · '+rate:'')+(status?' · '+status:'');if(option.textContent!==optionText)option.textContent=optionText;
-        const item=modelButtons.get(id),parts=modelParts.get(id),ariaLabel=`${displayLabel}${note?'，'+note:''}`,ariaSelected=String(id===controller.state.modelId);if(parts.name.textContent!==displayLabel)parts.name.textContent=displayLabel;if(parts.note.textContent!==note)parts.note.textContent=note;if(item.getAttribute('aria-label')!==ariaLabel)item.setAttribute('aria-label',ariaLabel);if(item.getAttribute('aria-selected')!==ariaSelected)item.setAttribute('aria-selected',ariaSelected);
+        const item=modelButtons.get(id),parts=modelParts.get(id),ariaLabel=`${displayLabel}${note?'，'+note:''}`,ariaSelected=String(id===controller.state.modelId);if(parts.name.textContent!==displayLabel)parts.name.textContent=displayLabel;if(parts.note.textContent!==note)parts.note.textContent=note;const sizer=modelSizers.get(id);if(sizer.name.textContent!==displayLabel)sizer.name.textContent=displayLabel;if(sizer.note.textContent!==note)sizer.note.textContent=note;if(item.getAttribute('aria-label')!==ariaLabel)item.setAttribute('aria-label',ariaLabel);if(item.getAttribute('aria-selected')!==ariaSelected)item.setAttribute('aria-selected',ariaSelected);
         if(id===controller.state.modelId)selected={label:id==='qwen3.5-9b-heretic'?'Qwen3.5 9B':displayLabel,note:model.provider==='local'?['本地·免费',status].filter(Boolean).join(' · '):note};
       }
       const label=selected?.label||retiredSelection.textContent,note=selected?.note||'';
@@ -2760,17 +2765,21 @@
     }
     function render(state) {
       lastPricingKey=controller.pricingPolicyKey();
-      const latestNotice=billingNoticeForView(state.provider,controller.visibleBillingNotices());
-      billingAlerts.replaceChildren();billingAlerts.hidden=!latestNotice;
-      if(latestNotice)billingAlerts.append(el('p','nf-xiaotao-billing-note',billingNoticeText(latestNotice)));
+      const charges=billingByTurn(controller.visibleBillingNotices()),chargeKey=[...charges].join(';');
       if (CHAT_MODELS[state.modelId]?.retired) {retiredSelection.value=state.modelId;if (!retiredSelection.parentNode) modelSelect.prepend(retiredSelection);}
       else if (retiredSelection.parentNode) retiredSelection.remove();
       syncModelOptions();
-      if (state.messages.length !== rendered.length || state.messages.some((m, i) => m !== rendered[i])) {
-        rendered = state.messages.slice(); messages.replaceChildren();
-        const rows = conversationRows(state.messages);
+      if (chargeKey !== renderedCharges || state.messages.length !== rendered.length || state.messages.some((m, i) => m !== rendered[i])) {
+        rendered = state.messages.slice(); renderedCharges = chargeKey; messages.replaceChildren();
+        let turn = 0; const rows = conversationRows(state.messages.map(m => {if (m.role === 'user' && Number.isSafeInteger(m.turn)) turn = m.turn; return {...m, chargeTurn:turn};}));
+        // The charge goes under the last reply of its turn, so each amount sits with what it bought.
+        const lastOfTurn = new Map(); rows.forEach((row, index) => {if (row.chargeTurn && (row.role !== 'user' || !lastOfTurn.has(row.chargeTurn))) lastOfTurn.set(row.chargeTurn, index);});
         if (!rows.length) messages.append(intro);
-        for (const row of rows) messages.append(renderConversationRow(doc, {...row,receipts:[]}, {copyText, chooseUploadDestination:controller.chooseUploadDestination}));
+        rows.forEach((row, index) => {
+          const node = renderConversationRow(doc, {...row,receipts:[]}, {copyText, chooseUploadDestination:controller.chooseUploadDestination}); messages.append(node);
+          const amount = lastOfTurn.get(row.chargeTurn) === index ? charges.get(row.chargeTurn) : undefined;
+          if (amount !== undefined) {const charge = el('div', 'nf-xiaotao-charge nf-xiaotao-charge-' + (row.role === 'user' ? 'user' : 'reply'), billingNoticeText({confirmed:amount})); charge.setAttribute('role','note'); messages.append(charge);}
+        });
         messages.scrollTop = messages.scrollHeight;
       }
       const stagedItems = state.staged || []; if(stagedItems.length!==stagedRow.childElementCount)syncMentions(); stagedRow.hidden = !stagedItems.length; stagedRow.replaceChildren(); for (const item of stagedItems) {const card=el('div','nf-xiaotao-staged-item');card.setAttribute('data-status',item.status);if(item.status==='reading')card.setAttribute('aria-busy','true');const imagePreview=item.kind==='image' && item.previewUrl;const thumb=imagePreview?el('img','nf-xiaotao-staged-thumb'):el('div','nf-xiaotao-staged-fallback',item.kind==='video'?'视频':item.kind==='audio'?'音频':'文件');if(imagePreview){thumb.src=item.previewUrl;thumb.alt=item.name;thumb.setAttribute('alt',item.name);}if(item.status==='reading')card.append(el('span','nf-xiaotao-staged-spinner'));const remove=el('button','nf-xiaotao-staged-remove','×');remove.type='button';remove.setAttribute('aria-label','移除 '+item.name);remove.onclick=event=>{event.preventDefault?.();event.stopPropagation?.();controller.removeStaged(item.id);};card.append(thumb,remove);stagedRow.append(card);}
@@ -2851,7 +2860,7 @@
       modelViewportWidth=root.innerWidth;modelViewportHeight=root.innerHeight;positionModelMenu();
       modelBackdrop.hidden=false;modelMenu.hidden=false;modelTrigger.setAttribute('aria-expanded','true');paintModelActive();
     };
-    const chooseModel=id=>{closeModelMenu();modelSelect.value=id;if(controller.setModel(id)){contextStamp='';if(controller.state.provider==='local')void controller.calibrateLocalStatus();input.focus();}else{modelSelect.value=controller.state.modelId;modelTrigger.focus();}};
+    const chooseModel=id=>{closeModelMenu();modelSelect.value=id;if(controller.setModel(id)){if(controller.state.provider==='local')void controller.calibrateLocalStatus();input.focus();}else{modelSelect.value=controller.state.modelId;modelTrigger.focus();}};
     modelTrigger.onclick=()=>{if(modelMenu.hidden)openModelMenu();else closeModelMenu();};
     modelTrigger.onkeydown=event=>{
       if(event.key==='Tab'){closeModelMenu();return;}
@@ -2893,14 +2902,6 @@
       closeOnNavigation();
       controller.refreshContext(); if (!open) return;
       const policyKey=controller.pricingPolicyKey();if(policyKey!==lastPricingKey){lastPricingKey=policyKey;render(controller.state);}if(controller.state.provider==='api')controller.prefetchPricingPolicy();
-      if(root.NovaFlowAudioStudio?.isOpen?.()) {
-        const media=root.NovaFlowMediaAgent?.capture?.().artContext;
-        contextLabel.textContent='全局助手 · 调用美工、音视、特效、动画和工具';
-        if(previewImages.length){thumbs.replaceChildren();previewImages=[];}
-        return;
-      }
-      try {const snapshot = bridge.captureAny({includeResult:bridge.hasResult()}), stamp = JSON.stringify(snapshot.artContext); if (stamp !== contextStamp || snapshot.images.some((img, i) => img.dataUrl !== previewImages[i]) || snapshot.images.length!==previewImages.length) {contextStamp = stamp; previewImages = snapshot.images.map(img => img.dataUrl); contextLabel.textContent = '全局助手 · 调用美工、音视、特效、动画和工具'; thumbs.replaceChildren(); for (const ref of snapshot.images) {const item = el('span'), img = el('img'), name=ref.role==='subject'?'主体':ref.role==='style'?'画风':'当前成图'; img.src = ref.dataUrl; img.alt=name; item.append(img, el('small', '',ref.source?`图${ref.source} · ${name}`:name)); thumbs.append(item);}}}
-      catch {contextLabel.textContent = '全局助手 · 调用美工、音视、特效、动画和工具'; if (previewImages.length) {thumbs.replaceChildren(); previewImages = [];}}
     }
     render(controller.state); root.setInterval(tick, 500); tick();
     root.NovaFlowXiaotaoArtAgent.panel = Object.freeze({open:() => setOpen(true), close:() => setOpen(false), get controller(){return controller;}});

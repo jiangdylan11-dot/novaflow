@@ -235,7 +235,7 @@ await test('the upload button opens the dialog through IPC and does not send', a
     }
   };
   const ui = mount(env);
-  await ui.click('上传');
+  await ui.click('上传参考资源');
   assert.deepEqual(picks, ['ipc']);
   assert.equal(ui.controller.state.messages.some(item => item.role === 'user'), false);
   assert.equal(ui.controller.state.staged[0].name, 'test.png');
@@ -367,7 +367,7 @@ function mount(env) {
     panel, nodes, controller: env.agent.panel.controller,
     footer: nodes.find(node => node.className === 'nf-xiaotao-compose'),
     input: nodes.find(node => node.getAttribute('aria-label') === '给智能助手的消息'),
-    click(label) { return nodes.find(node => node.tagName === 'BUTTON' && node.textContent === label).click(); }
+    click(label) { return nodes.find(node => node.tagName === 'BUTTON' && (node.textContent === label || node.getAttribute('aria-label') === label)).click(); }
   };
 }
 function flush() { return new Promise(resolve => setTimeout(resolve, 0)); }
