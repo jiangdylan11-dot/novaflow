@@ -856,18 +856,45 @@
     return { ...read, material, colours: pictureColours(read.colours, hues) }
   }
 
-  // A reference read out as { name, elements, colours, breakup } becomes the material sentence the
-  // style path takes; an older node's read (a finished `material` sentence) goes in as it came.
-  function referenceMaterial(entry, { shape = '', spread = '', colour = null } = {}) {
-    const read = entry || {}
-    const elements = String(read.elements || '').trim()
-    if (!elements) return String(read.material || '')
-    const colours = String(read.colours || '').trim()
-    const body = (colour ? recoloured(elements, colour) : elements).replace(/[\s.]+$/, '') + '.'
+  // The panel takes up to this many look references at once; H3 itself addresses more.
+  const MAX_REFERENCE_IMAGES = 4
+
+  // Colour lists from several reads, each colour named once, in the order the pictures came.
+  function mergedColours(lists) {
+    const seen = new Set()
+    const items = []
+    for (const list of lists) {
+      for (const item of String(list || '').split(/\s*(?:[,;/&]|\band\b)\s*/i).map(v => v.trim()).filter(Boolean)) {
+        const key = item.toLowerCase()
+        if (!seen.has(key)) { seen.add(key); items.push(item) }
+      }
+    }
+    return items.join(', ')
+  }
+
+  // The look references read out as { name, elements, colours, breakup } become the one material
+  // sentence the style path takes. Several pictures are blended into one material - each one's
+  // elements named, mixed through the same effect - rather than the last one winning. An older
+  // node's read (a finished `material` sentence) goes in as it came.
+  function referenceMaterial(entries, { shape = '', spread = '', colour = null } = {}) {
+    const reads = (Array.isArray(entries) ? entries : []).filter(Boolean)
+    const withElements = reads.filter(read => String(read.elements || '').trim())
+    const finished = reads.filter(read => !String(read.elements || '').trim())
+      .map(read => String(read.material || '').trim()).filter(Boolean)
+    if (!withElements.length) return finished.join(' ')
+    const parts = withElements.map(read => {
+      const elements = String(read.elements || '').trim()
+      return (colour ? recoloured(elements, colour) : elements).replace(/[\s.]+$/, '')
+    })
+    const body = parts.length === 1
+      ? parts[0] + '.'
+      : 'made of ' + parts.map(part => part.replace(/^made of\s+/i, '')).join(', mixed together with ')
+        + ', all of it blended through one single effect.'
+    const colours = mergedColours(withElements.map(read => read.colours))
     const palette = colour
       ? `All of it in ${colour.words}${colours ? ', NOT ' + colours : ''}.`
       : colours ? `Main colours: ${colours}.` : ''
-    return [body, palette, referenceArrangement(shape || DEFAULT_SHAPE, spread)].filter(Boolean).join(' ')
+    return [body, palette, ...finished, referenceArrangement(shape || DEFAULT_SHAPE, spread)].filter(Boolean).join(' ')
   }
 
   // The same overrides on a 风格库 preset, which has no arrangement of its own to replace.
@@ -885,8 +912,12 @@
     }
   }
 
+  function referenceCountOf(options) {
+    return Math.max(0, Math.round(Number(options && options.referenceCount) || 0))
+  }
+
   function isPromptOnly(options) {
-    return !options.attribute && !options.hasReferenceImage
+    return !options.attribute && !referenceCountOf(options)
       && Boolean(String(options.supplement || '').trim())
   }
 
@@ -895,7 +926,8 @@
     // prompt-only case it comes from the artist's own words; otherwise an
     // unknown or missing attribute is an error rather than a silent default.
     const promptOnly = isPromptOnly(options)
-    const preset = (options.hasReferenceImage || promptOnly) && !options.attribute
+    const referenceCount = referenceCountOf(options)
+    const preset = (referenceCount || promptOnly) && !options.attribute
       ? null
       : resolvePreset(options.attribute)
     const supplement = String(options.supplement || '').trim()
@@ -920,7 +952,7 @@
       // break-up - there is nothing left for the words to argue with.
       return `${LEAD} ${shape}, ${english || supplement} ${shapeSentence(shape, clause)} ${SHOT_TAIL}`
     }
-    if (!options.hasReferenceImage) {
+    if (!referenceCount) {
       const dispersal = options.lifecycle === 'loop' || !preset.breakup ? '' : ' ' + preset.breakup
       // The shape sits between the material's name and its description, which
       // is exactly where the A/B that fixed this put it.
@@ -936,25 +968,33 @@
     // neon capsules, polished gold) where the no-reference control came back
     // as plain white light. So the subject here is the silhouette only, and
     // the panel greys the 基础风格 picker while a reference is loaded.
+    // Several references are one look between them: each <Picture N> is named, and the material is
+    // the blend of all of them, not one picture per part of the effect.
+    const pictures = Array.from({ length: referenceCount }, (_, index) => `<Picture ${index + 1}>`)
+    const all = pictures.length === 1 ? pictures[0]
+      : pictures.slice(0, -1).join(', ') + ' and ' + pictures[pictures.length - 1]
+    const several = pictures.length > 1
     return [
       'subject_definitions:',
-      '<Picture 1>: a still of the target look - its material, colour, surface finish and the way it',
-      'breaks apart.',
+      ...pictures.map(picture => several
+        ? `${picture}: a still of the target look - one of ${pictures.length} looks blended into the same material.`
+        : `${picture}: a still of the target look - its material, colour, surface finish and the way it\nbreaks apart.`),
       `<Subject 1>: a ${refShape}${extra}`,
       '',
       'summary:',
       '[reference generation] Generate a 2D game VFX element on a pure solid black background.',
-      'Source assets: <Picture 1>. <Picture 1> supplies the material, colour and surface of the',
-      'effect; <Subject 1> is only its silhouette.',
+      several
+        ? `Source assets: ${all}. Together ${all} supply the material, colour and surface of the\neffect, blended into one material; <Subject 1> is only its silhouette.`
+        : `Source assets: ${all}. ${all} supplies the material, colour and surface of the\neffect; <Subject 1> is only its silhouette.`,
       '',
       'retention_analysis:',
-      '<Picture 1>: attribute_transfer - its material, colour and surface finish transfer onto the',
-      'effect. Its own subject, framing and composition are not retained.',
+      ...pictures.map(picture => `${picture}: attribute_transfer - its material, colour and surface finish transfer onto the\neffect. Its own subject, framing and composition are not retained.`),
       '<Subject 1>: fully_preserved - the silhouette and its motion.',
       '',
       'detailed_description:',
-      `A single ${refShape} made of exactly the material shown in <Picture 1>, with the same`,
-      'colour, the same surface finish and the same way of breaking apart.',
+      several
+        ? `A single ${refShape} made of exactly the materials shown in ${all}, blended into one material\nwith their colours, surface finishes and ways of breaking apart mixed through the whole effect.`
+        : `A single ${refShape} made of exactly the material shown in ${all}, with the same\ncolour, the same surface finish and the same way of breaking apart.`,
       shapeSentence(refShape, clause),
       SHOT_TAIL,
       '',
@@ -975,7 +1015,12 @@
     const sourceVideo = String(options.sourceVideo || '').trim()
     if (!sourceVideo) throw new TypeError('AI 特效 restyle needs a source clip')
 
-    const referenceImage = String(options.referenceImage || '').trim()
+    const referenceImages = (Array.isArray(options.referenceImages) ? options.referenceImages : [])
+      .map(name => String(name || '').trim()).filter(Boolean)
+    if (referenceImages.length > MAX_REFERENCE_IMAGES) {
+      throw new TypeError('AI 特效 takes at most ' + MAX_REFERENCE_IMAGES + ' reference images')
+    }
+    const referenceCount = referenceImages.length
     const motionReference = String(options.motionReference || '').trim()
     const { width, height } = generationSize(options.width, options.height)
     const steps = Math.max(1, Math.round(Number(options.steps) || DEFAULT_STEPS))
@@ -984,14 +1029,14 @@
     const length = Math.max(5, Math.round(Number(options.length) || timing.length))
     const outputFps = clamp(options.outputFps || timing.fps, 1, 60)
     const desaturate = clamp(options.desaturate == null ? 1 : options.desaturate, 0, 1)
-    const promptOnly = isPromptOnly({ ...options, hasReferenceImage: Boolean(referenceImage) })
+    const promptOnly = isPromptOnly({ ...options, referenceCount })
     // Clearing the style is allowed, but then something has to say what the
     // material is - the words or a picture. Nothing at all used to fall back
     // to 冰霜 without telling anyone.
-    if (!options.attribute && !referenceImage && !promptOnly) {
+    if (!options.attribute && !referenceCount && !promptOnly) {
       throw new TypeError('AI 特效 restyle needs a 风格, a 参考图 or a 提示词补充')
     }
-    const preset = (referenceImage || promptOnly) && !options.attribute
+    const preset = (referenceCount || promptOnly) && !options.attribute
       ? null
       : resolvePreset(options.attribute == null ? 'ice' : options.attribute)
     // The init is painted in the TARGET colour rather than left grey. Colour is
@@ -1005,7 +1050,7 @@
     // init in the CLEARED style's colour is exactly what would fight the
     // words, so that one keeps the grey init.
     const tint = options.tint == null
-      ? (preset && !referenceImage ? String(preset.accent || '') : '')
+      ? (preset && !referenceCount ? String(preset.accent || '') : '')
       : String(options.tint)
     const strength = options.strength == null
       ? (promptOnly
@@ -1018,10 +1063,10 @@
       : clamp(options.denoise, 0.05, 1)
     const prefix = String(options.filenamePrefix || DEFAULT_PREFIX)
     const prompt = options.prompt == null
-      ? composePrompt({ ...options, hasReferenceImage: Boolean(referenceImage), effectTint: tint })
+      ? composePrompt({ ...options, referenceCount, effectTint: tint })
       : String(options.prompt)
 
-    const usesReferences = Boolean(referenceImage || motionReference)
+    const usesReferences = Boolean(referenceCount || motionReference)
     const conditioningClass = usesReferences
       ? 'MiniMaxH3ReferenceToVideo'
       : 'MiniMaxH3ImageToVideo'
@@ -1069,10 +1114,12 @@
       34: node('NovaFlowH3OutputVideoFrames', { images: ['11', 0], fps: OUTPUT_FPS }, '输出帧序列'),
     }
 
-    if (referenceImage) {
-      workflow[20] = node('LoadImage', { image: referenceImage }, '风格参考图')
-      workflow[5].inputs['ref_images.ref_image_0'] = ['20', 0]
-    }
+    // Nodes 20-23 hold the look references in order, so <Picture N> is ref_image_{N-1}.
+    referenceImages.forEach((image, index) => {
+      const id = String(20 + index)
+      workflow[id] = node('LoadImage', { image }, '风格参考图 ' + (index + 1))
+      workflow[5].inputs['ref_images.ref_image_' + index] = [id, 0]
+    })
     if (motionReference) {
       workflow[24] = node('LoadVideo', { file: motionReference }, '运动参考')
       workflow[25] = node('GetVideoComponents', { video: ['24', 0] }, '拆解运动参考')
@@ -1142,6 +1189,8 @@
     supplementClause,
     splitSupplement,
     referenceArrangement,
+    MAX_REFERENCE_IMAGES,
+    mergedColours,
     pictureColours,
     pictureRead,
     referenceMaterial,
