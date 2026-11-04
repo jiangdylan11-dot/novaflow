@@ -1465,6 +1465,8 @@
         for(let round=0;round<planningLimit;round++){
           if(signal.aborted||operation!==serial)return false;
           const pending=await tools.settlePending({signal,onStatus});if(pending)receipts.push(pending);
+          // The planner cannot see the picture, so a mask tool stops here and hands the brush to the user.
+          if(pending?.phase==='returned'&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){pending.plannerPrompt=true;pending.message='已打开'+(pending.label||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}
           if(signal.aborted||operation!==serial||billing&&(state.provider!=='api'||state.modelId!==billing.modelId))return false;
           // Reading the current video frame can finish native metadata loading
           // (including its real FPS). Bind the plan after that work settles.
@@ -1772,7 +1774,7 @@
       const operationVision=operationTextOnly && selectedPricingPayload().operationVisionBillingV3===true;
       const visionUploads=operationVision && invocationUploads.length>0 && invocationUploads.every(item=>item?.kind==='image');
       const operationNeedsTools=!reverseImage&&(includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
-        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|修改|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
+        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|改|换|抠|去掉|去除|擦|放大|扩|拆|补|裁|压缩|画|加上|加个|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
       const operationGeneral=state.provider==='api'&&!capabilityOnly&&!!operationNeedsTools;
       if (!(await ensureStaged())) return false;
       if(operationGeneral){if(!root.NovaFlowFoartTools){state.error='工具尚未就绪，本次未提交。';notify();return false;}

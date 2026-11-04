@@ -58,6 +58,11 @@
       validCreditAmount(receipt.uncollected,decimal);
   }
 
+  // Vision requests send the picture in every stage; full PNGs ran past the request window.
+  async function onlineVisionImage(dataUrl) {
+    if(typeof root.Image!=='function')return dataUrl;
+    try {const next=await prepareOnlineStyleImage(dataUrl,{maxSide:1024,type:'image/jpeg'});return next.length<dataUrl.length?next:dataUrl;}catch{return dataUrl;}
+  }
   const XIAOTAO_ONLINE_ART_RELEASE_ENABLED = false;
   // H3 first/last-frame vision remains closed until real-page and ledger
   // acceptance; its independent video and vision policies must also agree.
@@ -746,11 +751,6 @@
     finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
 
-  // Vision requests send the picture in every stage; full PNGs ran past the request window.
-  async function onlineVisionImage(dataUrl) {
-    if(typeof root.Image!=='function')return dataUrl;
-    try {const next=await prepareOnlineStyleImage(dataUrl,{maxSide:1024,type:'image/jpeg'});return next.length<dataUrl.length?next:dataUrl;}catch{return dataUrl;}
-  }
   async function prepareOnlineStyleImage(dataUrl,{maxSide=768,type='image/png'}={}) {
     return await new Promise((resolve,reject)=>{
       const img=new root.Image();
