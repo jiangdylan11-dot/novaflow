@@ -14,7 +14,7 @@ function setup() {
   assert.ok(begin >= 0 && runBody > begin && apiBegin > runBody && apiEnd > apiBegin);
   const prelude = source.slice(begin, runBody);
   const api = source.slice(apiBegin, apiEnd);
-  const context = vm.createContext({});
+  const context = vm.createContext({ window: {} });
   vm.runInContext(`
     let ART_GENERATE_STATE = { running: false };
     let errors = [];

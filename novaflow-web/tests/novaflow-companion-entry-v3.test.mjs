@@ -4,7 +4,9 @@ import {readFile} from 'node:fs/promises';
 import {createHmac} from 'node:crypto';
 import vm from 'node:vm';
 import {createControlPlane} from '../supabase/functions/_art-shared/control-plane.mjs';
-import {createCompanionPricingContext} from '../supabase/functions/_art-shared/companion-pricing-context.mjs';
+import {createCompanionPricingContext,parseCompanionOnlineOverlay} from '../supabase/functions/_art-shared/companion-pricing-context.mjs';
+import {mergeCapabilityOverrides,OPT_IN_KEYS} from '../supabase/functions/novaflow-companion/capability-overrides.mjs';
+import {createRecoveryOnly} from '../supabase/functions/novaflow-companion/recovery-only.mjs';
 import {createCompanionOperationV3Assembly} from '../supabase/functions/_art-shared/companion-operation-v3-assembly.mjs';
 import {createXiaotaoV3ArtAdapter} from '../supabase/functions/_art-shared/xiaotao-operation-v3-art-adapter.mjs';
 import {createXiaotaoOperationV3Status} from '../supabase/functions/_art-shared/xiaotao-operation-v3-status.mjs';
@@ -24,7 +26,7 @@ async function entry({artOnly=false,v3WithoutRecovery=false}={}){
   const withArt=artOnly?file.replace('const operationV3ArtEnabled=false;','const operationV3ArtEnabled=true;'):file;
   const source=(v3WithoutRecovery?withArt.replace('const operationV3Enabled=false;','const operationV3Enabled=true;'):withArt)
     .replace(/^import .*;\s*$/gm,'').replace(/:(?:string|number|any)\b/g,'');
-  vm.runInNewContext(source,{Deno,createClient:()=>client,createControlPlane,createCompanionPricingContext,createCompanionOperationV3Assembly,createXiaotaoV3ArtAdapter,createXiaotaoOperationV3Status,createOnlineAiCharge,createFeatureCreditPorts,
+  vm.runInNewContext(source,{Deno,createClient:()=>client,createControlPlane,createCompanionPricingContext,parseCompanionOnlineOverlay,mergeCapabilityOverrides,OPT_IN_KEYS,createRecoveryOnly,createCompanionOperationV3Assembly,createXiaotaoV3ArtAdapter,createXiaotaoOperationV3Status,createOnlineAiCharge,createFeatureCreditPorts,
     RELEASE_VERSION:'test',createRunningHubServerConfig:()=>({refresh:async()=>({model:'xai/grok-4.7',configured:false}),status:()=>({})}),
     artBusinessDependencies:()=>({enabled:false,accountingReady:false}),Buffer,Response,Request,URL,TextEncoder,console});
   assert.equal(typeof handler,'function');return {handler,calls};
@@ -42,7 +44,7 @@ test('companion entry forwards exactly the new POST paths through auth and defau
     const request=headers=>new Request(url,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(payload)});
     const before=calls.length;assert.equal((await handler(request({}))).status,401);assert.equal(calls.length,before);
     const closed=await handler(request({authorization:auth()}));const body=await closed.json();
-    assert.equal(closed.status,503);assert.equal(body.code,path.endsWith('/cancel')?'art-business-unavailable':'operation-billing-disabled');
+    assert.deepEqual([closed.status,body.code],path.endsWith('/art/cancel')?[400,'operation-billing-disabled']:path.endsWith('/status')?[503,'operation-billing-disabled']:[503,'operation-billing-unavailable'],path);
     assert.equal((await handler(new Request(url,{method:'GET',headers:{authorization:auth()}}))).status,404);
   }
   assert.ok(calls.every(name=>name==='get_xiaotao_pricing_cap_v2'));

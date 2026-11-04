@@ -20,6 +20,16 @@ test('H3 first-last vision is explicitly enabled and sends two ordered real imag
   assert.deepEqual(wire.messages.at(-1).content.filter(x=>x.type==='image_url').map(x=>x.image_url.url),[one,two]);
   assert.match(JSON.stringify(wire.messages.at(-1).content),/First frame image.*Last frame image/);
 });
+test('H3 image video sends its one opening frame and refuses a second image',()=>{
+  const request=()=>({...input(),h3Mode:'image_video',references:[{key:'first_frame',kind:'image',sourceId:'first-1'}],images:[{key:'first_frame',dataUrl:one}]});
+  assert.throws(()=>canonicalizeXiaotaoV3VideoIntent(request()));
+  const result=canonicalizeXiaotaoV3VideoIntent(request(),{visionEnabled:true});
+  assert.equal(result.compiled.imageCount,1);assert.equal(result.compiled.textOnly,false);
+  assert.deepEqual(result.compiled.input.at(-1).content.filter(x=>x.type==='input_image').map(x=>x.image_url),[one]);
+  assert.match(result.compiled.systemText,/opening frame/i);
+  assert.doesNotMatch(JSON.stringify(result.compiled.input.at(-1).content),/Last frame image/);
+  assert.throws(()=>canonicalizeXiaotaoV3VideoIntent({...request(),images:[{key:'first_frame',dataUrl:one},{key:'last_frame',dataUrl:two}]},{visionEnabled:true}));
+});
 test('the signed hash binds image bytes and their roles',()=>{
   const original=input(),changed=input();changed.images[0].dataUrl=two;
   assert.notEqual(canonicalizeXiaotaoV3VideoIntent(original,{visionEnabled:true}).intentHash,canonicalizeXiaotaoV3VideoIntent(changed,{visionEnabled:true}).intentHash);
@@ -27,7 +37,7 @@ test('the signed hash binds image bytes and their roles',()=>{
   assert.notEqual(canonicalizeXiaotaoV3VideoIntent(original,{visionEnabled:true}).intentHash,canonicalizeXiaotaoV3VideoIntent(swapped,{visionEnabled:true}).intentHash);
 });
 test('reject missing, duplicate, invalid or unsupported reference media before a provider call',()=>{
-  for(const mutate of [r=>r.images.pop(),r=>r.images[1].key='first_frame',r=>r.images[0].dataUrl='https://example.test/private.png',r=>r.h3Mode='image_video',r=>r.images[0].dataUrl='data:image/png;base64,aGVsbG8=']) {
+  for(const mutate of [r=>r.images.pop(),r=>r.images[1].key='first_frame',r=>r.images[0].dataUrl='https://example.test/private.png',r=>r.h3Mode='text_video',r=>r.images[0].dataUrl='data:image/png;base64,aGVsbG8=']) {
     const r=input();mutate(r);assert.throws(()=>canonicalizeXiaotaoV3VideoIntent(r,{visionEnabled:true}));
   }
 });

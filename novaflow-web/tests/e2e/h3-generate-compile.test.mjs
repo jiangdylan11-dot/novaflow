@@ -106,13 +106,14 @@ test('首尾帧视频 uses bare picture labels, 文生视频 has no alignment li
   assert.equal(p.calls.local.length, 0);
 });
 
-test('a missing local H3 compiler does not call the cloud, an old engine still generates with the prompt as written, a newer run discards the result', async () => {
+test('a missing local H3 compiler does not call the cloud and goes out as written, an old engine still generates with the prompt as written, a newer run discards the result', async () => {
   const web = page({ engine: (payload, route) => route === 'grok' ? translate('The girl shown in <Picture 1> waves. The camera holds a static shot.')(payload) : { ok: false, error: '提示词助手在 Web 版通过智能 AI 提供' } });
   const prompt = display('', '@参考图 中的少女挥手。镜头保持固定。');
-  await assert.rejects(() => web.run('image_video', prompt, { aiSeqRefImage: frame('web') }), /本机 H3 提示词编译不可用/);
+  const written = await web.run('image_video', prompt, { aiSeqRefImage: frame('web') });
+  assert.match(written.prompt, /少女挥手/);
   assert.equal(web.calls.local.length, 1);
   assert.equal(web.calls.grok.length, 0);
-  assert.equal(web.calls.built.length, 0);
+  assert.equal(web.calls.built.length, 1);
 
   const old = page({ engine: () => ({ ok: true, prompt: '【任务定位】\n图生视频，时长5秒。' }) });
   // Generation never fails because of the prompt: without the translate step it goes out as written.

@@ -198,14 +198,15 @@
     const references=resources.map(({key,kind,sourceId})=>({key,kind,sourceId:String(sourceId)}));
     let images;
     if(includeReferenceImages===true){
-      if(ctx.mode!=='first_last'||resources.length!==2)fail('此入口目前只支持读取两张首尾帧图片，未提交。');
-      images=['first_frame','last_frame'].map(key=>{
+      const frames=ctx.mode==='first_last'?['first_frame','last_frame']:ctx.mode==='image_video'?['first_frame']:null;
+      if(!frames||resources.filter(item=>item?.kind==='image').length!==frames.length)fail('此入口只支持读取图生或首尾帧的图片，未提交。');
+      images=frames.map(key=>{
         const matches=resources.filter(item=>item?.key===key&&item.kind==='image');
         const dataUrl=matches.length===1?matches[0].previewUrl:'';
-        if(typeof dataUrl!=='string'||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl))fail('首尾帧图片尚未就绪或格式不支持，未提交。');
+        if(typeof dataUrl!=='string'||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl))fail('参考图片尚未就绪或格式不支持，未提交。');
         return {key,dataUrl};
       });
-      if(images.reduce((n,x)=>n+x.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256)fail('首尾帧图片总大小超过 20 MB，未提交。');
+      if(images.reduce((n,x)=>n+x.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256)fail('参考图片总大小超过 20 MB，未提交。');
     }
     // A review owns only a pending prompt write, never a generation action.
     // Re-check the full captured workspace both before writing and before undo;

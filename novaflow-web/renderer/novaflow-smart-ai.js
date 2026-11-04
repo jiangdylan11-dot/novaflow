@@ -5125,31 +5125,28 @@
   }
 
   // Generation turns the editor's H3 prompt into the official English text (文生 / 图生 /
-  // 首尾帧 / 多参). Compilation is local and never spends cloud credits. If this
-  // machine has no Flash compiler, the user sees that it is unavailable.
+  // 首尾帧 / 多参). A prompt node does it for free; a translation with no node goes to
+  // the cheapest online model, and with neither the workflow sends the text as written.
   // A translate-only compile needs no reference frames. H3 text optimize and
   // reverse in the dialog still go online only when the user picked 云端模型.
   async function compileH3ForGeneration(options) {
     const workflow = getMiniMaxH3PromptWorkflow();
-    const unavailable = () => {
-      const error = new Error("本机 H3 提示词编译不可用，请打开本地算力节点后重试");
-      error.h3LocalUnavailable = true;
-      return error;
-    };
-    const machineMissing = (response) => {
-      if (!response || response.ok !== false) return !response;
-      const code = String(response.errorCode || "");
-      if (code === "flash-model-missing" || code === "strata-not-configured" || code === "flash-session-required") return true;
-      return /Web 版通过智能 AI|本地 Flash 模型不可用|Flash 本地模型尚未安装|本机没有提示词助手/.test(String(response.error || ""));
-    };
     return workflow.compileForGeneration(options, async (payload) => {
       const api = window.electronAPI || {};
-      if (typeof api.promptAssistantOptimizePrompt !== "function") throw unavailable();
       const translateOnly = /^H3 compile: translate-only$/m.test(String(payload?.requirements || ""));
       const h3ReferenceFrames = translateOnly ? [] : await captureH3ReferenceFrames({ ...options, mode: "multi_reference" });
-      const response = await api.promptAssistantOptimizePrompt({ ...payload, h3ReferenceFrames });
-      if (machineMissing(response)) throw unavailable();
-      if (!response || response.ok === false) throw new Error(response?.error || "提示词编译失败");
+      const online = async () => {
+        if (!translateOnly) return "";
+        const requirements = String(payload?.requirements || "").replace(/^H3 (?:compile: translate-only|response format: bilingual-v1)\n/gm, "");
+        const text = await window.NovaFlowXiaotaoArtAgent?.panel?.controller?.translateH3Online?.(requirements + "\n\nReply with the English modelPrompt text only, in the same field layout. No JSON, no displayPrompt, no comment.");
+        return text ? JSON.stringify({ modelPrompt: text, displayPrompt: payload.prompt }) : "";
+      };
+      const response = await Promise.resolve().then(() => api.promptAssistantOptimizePrompt({ ...payload, h3ReferenceFrames })).catch(() => null);
+      if (!response || response.ok === false) {
+        const text = await online();
+        if (text) return text;
+        throw new Error(response?.error || "提示词编译失败");
+      }
       return readSmartAiResult(response).prompt;
     });
   }

@@ -625,9 +625,10 @@
       !intent.references.every(ref=>ref&&typeof ref==='object'&&!Array.isArray(ref)&&Object.keys(ref).every(k=>['key','kind','sourceId'].includes(k))&&typeof ref.key==='string'&&ref.key.length>0&&ref.key.length<=80&&['image','video','audio'].includes(ref.kind)&&typeof ref.sourceId==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(ref.sourceId)))
       return no('invalid-request','视频文字草稿输入无效，未提交。');
     const hasImages=Object.hasOwn(intent,'images');
-    if(hasImages&&(XIAOTAO_H3_VISION_RELEASE_ENABLED!==true||intent.h3Mode!=='first_last'||typeof payload.confirmImageUpload!=='function'||
-      !Array.isArray(intent.images)||intent.images.length!==2||intent.images.some((image,index)=>!image||typeof image!=='object'||Array.isArray(image)||
-        Object.keys(image).some(key=>!['key','dataUrl'].includes(key))||image.key!==['first_frame','last_frame'][index]||typeof image.dataUrl!=='string'||
+    const frames=intent.h3Mode==='first_last'?['first_frame','last_frame']:intent.h3Mode==='image_video'?['first_frame']:null;
+    if(hasImages&&(XIAOTAO_H3_VISION_RELEASE_ENABLED!==true||!frames||typeof payload.confirmImageUpload!=='function'||
+      !Array.isArray(intent.images)||intent.images.length!==frames.length||intent.images.some((image,index)=>!image||typeof image!=='object'||Array.isArray(image)||
+        Object.keys(image).some(key=>!['key','dataUrl'].includes(key))||image.key!==frames[index]||typeof image.dataUrl!=='string'||
         !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image.dataUrl))||
       intent.images.reduce((total,image)=>total+image.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256))
       return no('video-vision-unavailable','首尾帧图片分析尚未开通或素材无效，未上传或扣费。');
@@ -655,7 +656,7 @@
         return no('video-vision-unavailable','所选模型尚未开通首尾帧图片分析，未上传或扣费。');
       // prepare already transmits the signed image intent to the server, so
       // explicit user upload consent must occur before that first request.
-      if(hasImages&&(await payload.confirmImageUpload({count:2,images:intent.images,roles:['first_frame','last_frame']})!==true||!current()))
+      if(hasImages&&(await payload.confirmImageUpload({count:frames.length,images:intent.images,roles:frames})!==true||!current()))
         return no('assistant-business-upload-declined','已取消首尾帧上传，未提交或扣费。');
       if(Date.now()>=policy.expiresAt)return no('companion-pricing-changed','在线价格已过期，请重新发送；本次未上传或扣费。');
       timer=setTimeout(onChange,180000);

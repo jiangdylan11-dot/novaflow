@@ -34,8 +34,9 @@ export function createServerOwnedH3Intent({workflow}={}) {
     if(/data:(?:image|audio|video)\//i.test(prompt+' '+requirements))invalid();
     let images,validatedImages;
     if(Object.hasOwn(raw,'images')){
-      if(visionEnabled!==true||raw.h3Mode!=='first_last'||!Array.isArray(raw.images)||raw.images.length!==2||refs.length!==2)invalid();
-      images=['first_frame','last_frame'].map(key=>{
+      const frames=raw.h3Mode==='first_last'?['first_frame','last_frame']:raw.h3Mode==='image_video'?['first_frame']:null;
+      if(visionEnabled!==true||!frames||!Array.isArray(raw.images)||raw.images.length!==frames.length||refs.filter(ref=>ref.kind==='image').length!==frames.length)invalid();
+      images=frames.map(key=>{
         const slots=refs.filter(ref=>ref.key===key&&ref.kind==='image');
         const input=raw.images.filter(image=>plain(image)&&image.key===key);
         if(slots.length!==1||input.length!==1||Object.keys(input[0]).some(k=>!['key','dataUrl'].includes(k))||typeof input[0].dataUrl!=='string')invalid();
@@ -45,7 +46,7 @@ export function createServerOwnedH3Intent({workflow}={}) {
       // image parts, not caller-supplied metadata, are sent to the provider.
       try {validatedImages=companionInput({mode:'chat',requestId:raw.requestId,message:'Validate H3 reference images.',promptLanguage:'en',images:images.map(image=>({role:'reference',dataUrl:image.dataUrl}))});}
       catch {invalid();}
-      if(validatedImages.imageCount!==2||validatedImages.textOnly!==false)invalid();
+      if(validatedImages.imageCount!==images.length||validatedImages.textOnly!==false)invalid();
     }
     const intent={mode:'video-rewrite',requestId:raw.requestId,h3Mode:raw.h3Mode,durationSeconds:raw.durationSeconds,prompt,requirements,references:refs,...(images?{images}:{})};
     const current={modelId:workflow.MINIMAX_H3_MODEL_ID,mode:intent.h3Mode,durationSeconds:intent.durationSeconds,
@@ -56,17 +57,17 @@ export function createServerOwnedH3Intent({workflow}={}) {
     const suffix='Source prompt:\n'+prepared.prompt;
     if(!prepared.requirements.endsWith(suffix))invalid();
     const systemText=prepared.requirements.slice(0,-suffix.length).trim()+(images?
-      '\nThe first supplied image is the first frame and the second is the last frame. Preserve their distinct roles. Describe only visible details; do not claim to hear audio.' :
+      (images.length===2?'\nThe first supplied image is the first frame and the second is the last frame. Preserve their distinct roles.':'\nThe supplied image is the opening frame.')+' Describe only visible details; do not claim to hear audio.' :
       '\nReference labels identify slots only; no reference media has been analysed. Never invent unseen visual or audio facts.');
     let additional;
     try {additional=workflow.toModelReferences(requirements,prepared.protocol.references);} catch {invalid();}
     const userText='Source prompt:\n'+prepared.prompt+(additional?'\n\nUser requirements:\n'+additional:'');
     const imageParts=images?validatedImages.input.at(-1).content.filter(part=>part.type==='input_image'):[];
     const userContent=[{type:'input_text',text:userText},...(images?[
-      {type:'input_text',text:'First frame image:'},imageParts[0],{type:'input_text',text:'Last frame image:'},imageParts[1]
+      {type:'input_text',text:'First frame image:'},imageParts[0],...(imageParts[1]?[{type:'input_text',text:'Last frame image:'},imageParts[1]]:[])
     ]:[])];
     const compiled={input:[{role:'system',content:[{type:'input_text',text:systemText}]},
-      {role:'user',content:userContent}],imageCount:images?2:0,textOnly:!images,systemText,userText,
+      {role:'user',content:userContent}],imageCount:images?images.length:0,textOnly:!images,systemText,userText,
       // A draft is written twice (English and Chinese); 1200 tokens cut wordier models off and it failed its checks.
       outputTokens:3000};
     const intentHash=digest({schema:images?'nf.xiaotao.operation.video-h3-vision.v1':'nf.xiaotao.operation.video-h3-text.v1',intent});

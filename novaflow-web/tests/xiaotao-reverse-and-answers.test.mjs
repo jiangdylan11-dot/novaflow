@@ -166,3 +166,8 @@ test('a failed turn stays in this session context',async()=>{
   await f.c.send('把图2也换成黑白');
   assert.ok(f.starts[1].history.some(row=>row.content==='把图1换成黑白'));
 });
+test('with no prompt node a hand-edited draft goes to the cheapest online model, even with another brain selected',async()=>{
+  const {c,chats}=await fixture({chat:['```\nA cat walks.\n```']});
+  assert.equal(await c.translateH3Online('翻译这段'),'A cat walks.');
+  assert.equal(chats[0].modelId,MODEL);assert.equal(chats[0].expectedModelId,MODEL);assert.equal(chats[0].operationBillingV3,true);assert.equal(chats[0].history.length,0);
+});

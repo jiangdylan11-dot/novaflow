@@ -1501,7 +1501,7 @@
               if(terms?.operation_video_rewrite_v3!==true||typeof capture!=='function'||typeof method!=='function')return op;
               onStatus('正在按视频框架整理提示词…');
               if(root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')await tools.execute({action:'open',surface:'video'},{signal});
-              const includeReferenceImages=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='first_last'&&api()?.onlineVideoVisionAvailableSync?.()===true;
+              const includeReferenceImages=['first_last','image_video'].includes(root.NovaFlowAiSequenceGeneration?.capture?.()?.genType)&&api()?.onlineVideoVisionAvailableSync?.()===true;
               // The framework binds pictures by @参考图N; a brief with model tokens fails its checks.
               const bindMaterials=source=>{
                 const text=source.replace(/(?:@?参考图\s*(\d+))?[（(]?<Picture\s*(\d+)>[）)]?/g,(_,a,b)=>'@参考图'+(a||b)).replace(/(^|[^@参考])图\s*(\d+)/g,'$1@参考图$2').replace(/(^|[^@])参考图\s*(\d+)/g,'$1@参考图$2').replace(/(^|[^@])(?:参考)?视频\s*(\d+)/g,'$1@视频参考$2').replace(/(^|[^@])(?:参考音频|音频|声音参考)\s*(\d+)/g,'$1@声音参考$2');
@@ -1541,7 +1541,9 @@
           return op;
         };
         let pictureFacts='';
-        const videoPictures=state.provider==='api'&&intent?.surface==='video'?freshPictures:[];
+        // 图生 and 首尾帧 hand their frames to the framework itself, so they need no separate look.
+        const framesInDraft=['image_video','first_last'].includes(intent?.mode)&&api()?.onlineVideoVisionAvailableSync?.()===true;
+        const videoPictures=state.provider==='api'&&intent?.surface==='video'&&!framesInDraft?freshPictures:[];
         if(videoPictures.length&&selectedPricingPayload().operationVisionBillingV3===true){
           onStatus('正在看图…');
           // One picture per look: several in one request run past the edge function's limit.
@@ -2101,7 +2103,7 @@
       const current=()=>promptAbort===abort&&bindingCurrent()&&(!source?.workspaceGuard||source.workspaceGuard()===true)&&(!source?.attachmentStillCurrent||source.attachmentStillCurrent()===true)&&(!snapshot||snapshot.isCurrent()===true);
       try {
         const video=root.NovaFlowAiSequenceGeneration?.capture?.(),textOnly=/(?:只|仅).{0,6}(?:文字|文本)|(?:不要|不用|无需|别).{0,6}(?:看|分析).{0,6}(?:图片|首尾帧|参考图)/.test(message);
-        const includeReferenceImages=!local&&video?.genType==='first_last'&&!textOnly;
+        const includeReferenceImages=!local&&['first_last','image_video'].includes(video?.genType)&&!textOnly;
         if(includeReferenceImages&&api()?.onlineVideoVisionAvailableSync?.()!==true)throw Error('首尾帧图片分析尚未通过验收，未上传或扣费；可明确要求只优化文字。');
         snapshot=await capture({requestId,requirements:source?.requirements??message,...(source?{sourcePrompt:source.prompt}:{}),includeReferenceImages});
         if(!current())throw Error('模型或视频上下文已变化，未提交。');
@@ -2311,6 +2313,18 @@
     }
     // Online planner: write the prompt through the billed online drawing
     // optimizer; generation stays with the user.
+    // A hand-edited draft with no prompt node online: the cheapest online model translates it,
+    // whichever brain is selected. Empty means it could not (no credits, signed out, refused),
+    // and the prompt then goes out as written.
+    async function translateH3Online(text){
+      const policy=currentPricingPolicy()||await refreshPricingPolicy();
+      const modelId=['deepseek/deepseek-v4.1-flash','openai/gpt-6.1-sol-saver'].find(id=>policyAllowsOnline(id));
+      if(!policy||!modelId)return '';
+      const terms=policy.config.xiaotao_online,operation=operationCreditsPolicy(terms)&&terms.operation_text_chat_v3===true;
+      const reply=await api()?.artAgentChat?.({requestId:root.crypto.randomUUID(),provider:'api',modelId,expectedModelId:modelId,pricingVersion:policy.version,pricingExpiresAt:policy.expiresAt,
+        ...(operation?{operationBillingV3:true}:{}),mode:'chat',promptLanguage:'en',message:String(text||'').slice(0,12000),history:[],artContext:{},images:[],uploads:[]});
+      return reply?.ok===true?String(reply.data?.reply||'').trim().replace(/^```\w*\s*|\s*```$/g,''):'';
+    }
     async function plannerDrawingPrompt(op,message){
       const rt=root.__NovaFlowArtGenerate;let info=activePromptSource();
       // A collapsed 生图 panel or another section is no reason to stop: the planner chose drawing.
@@ -2546,7 +2560,7 @@
       if(state.promptSourceCancelledNotice)state.status=[state.status,state.promptSourceCancelledNotice].filter(Boolean).join(' ');
       notify(); if(model.provider==='api')void refreshPricingPolicy(); return true;
     }
-    return Object.freeze({state, retire, businessModelSnapshot, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
+    return Object.freeze({state, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
   }
   function mount() {
     if (!root.document?.body || root.document.getElementById('nf-xiaotao-art-root')) return;
