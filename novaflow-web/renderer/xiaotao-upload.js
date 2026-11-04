@@ -201,7 +201,9 @@
     const imageHits = [...new Set(named.filter(id => ['image_video', 'first_frame', 'last_frame', 'multi_reference', 'img2img', 'first_last_pair', 'first_last_unspecified'].includes(id)))];
     const inferred = task.surface === 'image' ? 'img2img' : task.surface === 'video' ? task.mode === 'first_last' ? 'first_frame' : task.mode === 'image_video' ? 'image_video' : task.mode === 'multi_reference' ? 'multi_reference' : '' : '';
     const requestedDecision = imageHits.length === 1 ? imageHits[0] : inferred;
-    const decision=requestedDecision==='first_last_pair'&&images.length===1?'first_frame':requestedDecision;
+    // "首尾帧" with no word on which picture goes where: one picture opens the clip, two fill both ends.
+    const framesNamed=['first_last_pair','first_last_unspecified'].includes(requestedDecision);
+    const decision=framesNamed&&images.length===1?'first_frame':framesNamed&&images.length===2?'first_last_pair':requestedDecision;
     const imageDecision = decision === 'first_last_pair' && images.length === 2 ? 'pair' : decision && decision !== 'first_last_unspecified' ? 'place' : 'conversation';
     let pairIndex = 0;
     for (const file of list) {

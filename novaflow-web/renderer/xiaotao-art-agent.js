@@ -1040,8 +1040,8 @@
       if(action==='compound')return null;
       let workspace;try{workspace=capturePromptWorkspace(info);}catch{state.error='无法确认当前工作区，请稍后重试；未提交或扣费。';state.status='未提交';notify();return {stop:true};}
       const source=helper.resolvePromptSource({pagePrompt:info.pagePrompt,instruction:message});
-      // "换成…" with no prompt anywhere is an edit request, not a prompt to optimize.
-      if(source.reason==='both-prompts-empty'&&!/优化|润色|改写|整理|完善|增强/.test(message))return null;
+      // With no prompt anywhere, only a bare "优化提示词" needs asking; anything with content is a request.
+      if(source.reason==='both-prompts-empty'&&!/^(?:请|帮我|给我|把|将|再|一下|当前|页面|这段|的|提示词|提示语|prompt|优化|润色|改写|整理|完善|增强|[\s，,。.!！])*$/i.test(message))return null;
       if(source.status!=='ready'){askPromptSource(message,info,source,recordMessage,workspace);return {stop:true};}
       return {info,source:{...source,...workspace},message,recordMessage};
     }
@@ -1607,7 +1607,7 @@
             // The upload step already chose the video mode for these frames; a plan
             // may only change it when the user named another mode.
             const modeLabel=current.controls.find(c=>c.id===op.controlId)?.label;
-            if(/^(?:文生视频|图生视频|首尾帧视频|多参视频)$/.test(modeLabel||'')&&lastPreparedTask.startsWith('video:')&&!positiveRequest.includes(modeLabel))continue;
+            if(/^(?:文生视频|图生视频|首尾帧视频|多参视频)$/.test(modeLabel||'')&&lastPreparedTask.startsWith('video:')&&!positiveRequest.includes(modeLabel.replace('视频','')))continue;
             contract.validateFoartPlan({...plan,operations:[op]},current);
             if(signal.aborted||operation!==serial)fail('Foart 操作已停止');
             root.console?.debug?.('[Foart tools] execute',op.action,op.name||op.operation?.action||op.operation||current.controls.find(control=>control.id===op.controlId)?.label||op.resourceId||'',op.value??'');
