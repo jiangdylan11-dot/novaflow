@@ -2675,7 +2675,7 @@
         !confirmed&&!includeResult&&(!state.activeTask||priorAudioNavigation)&&!invocationUploads.length&&task?.surface==='audio'&&!task.discussion&&
         /(?:生成|制作|创建|合成|generate|create).{0,12}(?:音乐|music)|(?:音乐|music).{0,12}(?:生成|制作|创建|合成|generate|create)/i.test(message)&&!forbidsGeneration(message);
       const operationNeedsTools=confirmed||includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
-        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|修改|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成/.test(message);
+        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|修改|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message);
       const operationGeneral=operationTextOnly&&selectedPricingPayload().operationFoartGeneralV3===true&&!capabilityOnly&&!confirmed&&!includeResult&&!!operationNeedsTools;
       if(operationTextOnly && !capabilityOnly && !operationOpen && !operationRotation && !operationAudio && !operationGeneral && operationNeedsTools) {
         state.error=operationVision?'当前操作级计费仅支持独立的文字和图片聊天；工具、作品上下文及音视频附件尚未接入。':'当前操作级计费仅支持独立的纯文字聊天；工具、作品上下文和附件尚未接入。';state.status='未提交，不扣积分';notify();return false;
@@ -3189,8 +3189,12 @@
       const info=activePromptSource(),rt=root.__NovaFlowArtGenerate;
       if(!info||info.surface!=='drawing')throw Error('请先打开绘图页面，再优化提示词');
       if(rt?.state?.mode==='img2img'){
-        const refs=Array.from(rt.references?.()||[]).filter(Boolean),style=/风格|画风|style/i.test(message);
-        refs.forEach((ref,i)=>{if(ref&&!ref.drawingRole)ref.drawingRole=i===0?'subject':style?'style':'reference';});
+        // Roles the router defaulted (every picture a subject) are retyped from the request: "图2的风格" marks picture 2 as style, one subject remains.
+        const refs=Array.from(rt.references?.()||[]).filter(Boolean),styleAt=new Set([...message.matchAll(/图\s*([1-9])\s*(?:的)?(?:风格|画风)/g)].map(m=>Number(m[1])-1));
+        if(!styleAt.size&&/风格|画风|style/i.test(message)&&refs.length>1)styleAt.add(refs.length-1);
+        const subjects=refs.filter(ref=>ref.drawingRole==='subject').length;
+        if(styleAt.size||subjects!==1||refs.some(ref=>!ref.drawingRole)){let subjectSeen=false;refs.forEach((ref,i)=>{
+          if(styleAt.has(i))ref.drawingRole='style';else if(!subjectSeen){ref.drawingRole='subject';subjectSeen=true;}else if(!ref.drawingRole||ref.drawingRole==='subject')ref.drawingRole='reference';});}
       }
       let workspace;try{workspace=capturePromptWorkspace(info);}catch(error){throw Error('当前绘图页面还没准备好：'+String(error?.message||error));}
       const prompt=String(op.prompt||'').trim()||info.pagePrompt.trim()||message;
