@@ -59,9 +59,10 @@
   }
 
   // Vision requests send the picture in every stage; full PNGs ran past the request window.
-  async function onlineVisionImage(dataUrl) {
+  // Several pictures in one request hit the edge function's resource limit (546), so they go smaller.
+  async function onlineVisionImage(dataUrl,count=1) {
     if(typeof root.Image!=='function')return dataUrl;
-    try {const next=await prepareOnlineStyleImage(dataUrl,{maxSide:1024,type:'image/jpeg'});return next.length<dataUrl.length?next:dataUrl;}catch{return dataUrl;}
+    try {const next=await prepareOnlineStyleImage(dataUrl,{maxSide:count>1?640:1024,type:'image/jpeg'});return next.length<dataUrl.length?next:dataUrl;}catch{return dataUrl;}
   }
   const XIAOTAO_ONLINE_ART_RELEASE_ENABLED = false;
   // H3 first/last-frame vision remains closed until real-page and ledger
@@ -632,7 +633,7 @@
       return no('video-vision-unavailable','首尾帧图片分析尚未开通或素材无效，未上传或扣费。');
     if(!onlineOperationModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
       return no('assistant-business-unavailable','所选模型或请求不可用，未提交。');
-    if(hasImages)for(const image of intent.images)image.dataUrl=await onlineVisionImage(image.dataUrl);
+    if(hasImages)for(const image of intent.images)image.dataUrl=await onlineVisionImage(image.dataUrl,intent.images.length);
     const imageStamp=hasImages?JSON.stringify(intent.images):'';
     const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
     if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录状态不可用，未提交。');
@@ -707,7 +708,7 @@
       return no('ui-reference-limit','UI 草稿最多 3 张参考图、合计 20 MiB，未提交。');
     if(!onlineOperationModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
       return no('assistant-business-unavailable','所选模型或请求不可用，未提交。');
-    for(const ref of refs)ref.dataUrl=await onlineVisionImage(ref.dataUrl);
+    for(const ref of refs)ref.dataUrl=await onlineVisionImage(ref.dataUrl,refs.length);
     const referencesStamp=JSON.stringify(refs);
     const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
     if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录状态不可用，未提交。');
@@ -952,7 +953,7 @@
       const match=/^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(image.dataUrl);
       if(!match||match[1].length%4!==0)return no('invalid-request','参考图片格式无效，未提交或扣费。');
       imageBytes+=match[1].length/4*3-(match[1].endsWith('==')?2:match[1].endsWith('=')?1:0);
-      images.push(Object.freeze({role:image.role,dataUrl:await onlineVisionImage(image.dataUrl)}));
+      images.push(Object.freeze({role:image.role,dataUrl:await onlineVisionImage(image.dataUrl,payload.images.length)}));
     }
     if(images.length>3||imageBytes>20*1024*1024)return no('invalid-request','最多支持三张参考图且总计不超过 20 MiB，未提交或扣费。');
     if(images.length&&(typeof payload.confirmImageUpload!=='function'||typeof payload.isImageInputCurrent!=='function'))return no('assistant-business-consent-unavailable','参考图片上传确认或当前选择校验不可用，未提交或扣费。');
@@ -1724,7 +1725,7 @@
     if(payload.images!==undefined&&(!Array.isArray(payload.images)||payload.images.length>3))return {ok:false,error:'一次最多分析三张完整图片'};
     const foartImages=payload.mode==='foart'&&Array.isArray(payload.images)&&payload.images.length>0;
     const guardedImages=foartImages||(visionV3&&Array.isArray(payload.images)&&payload.images.length>0);
-    const requestImages=guardedImages?await Promise.all(payload.images.map(async image=>image&&Object.freeze({...image,dataUrl:await onlineVisionImage(image.dataUrl)}))):payload.images||[];
+    const requestImages=guardedImages?await Promise.all(payload.images.map(async image=>image&&Object.freeze({...image,dataUrl:await onlineVisionImage(image.dataUrl,payload.images.length)}))):payload.images||[];
     const imageSessionGuard=guardedImages?payload.imageSessionGuard:null;
     if(guardedImages&&(typeof payload.confirmImageUpload!=='function'||typeof imageSessionGuard!=='function'))
       return {ok:false,providerSubmitted:false,errorCode:'assistant-business-consent-unavailable',error:'参考图片上传确认不可用，未提交。'};

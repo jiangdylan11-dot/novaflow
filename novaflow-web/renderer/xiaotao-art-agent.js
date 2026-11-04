@@ -1460,15 +1460,32 @@
           ?animationIntent?'animation':explicitTools?'tools':explicitEffects?'effects':explicitParticle?'particle':(!specialized||uiRequest)
             ?intent?.surface==='image'?(uiRequest||intent.revision&&root.NovaFlowUiDesignDrawing?.isActive?.()?'ui':'drawing')
               :['animation','video','audio'].includes(intent?.surface)?intent.surface:null:null:null;
-        // The planner never sees pixels; a video brief needs to know what the picture actually shows.
+        // The planner never sees pixels. One billed look fills that gap; helpful, not required,
+        // so a slow or failed look never holds up the request itself.
+        const lookAt=async(pictures,question)=>{
+          const seen=await Promise.race([api()?.artAgentChat?.({requestId:root.crypto.randomUUID(),provider:'api',...selectedModelPayload(state.modelId),...selectedPricingPayload(),mode:'chat',promptLanguage:'en',
+            message:question,history:[],artContext:{},images:pictures.map((item,index)=>({dataUrl:item.dataUrl,role:'attachment',source:index+1,name:item.name})),uploads:[],
+            imageSessionGuard:imageGuard,confirmImageUpload:async()=>imageGuard()}),new Promise(resolve=>setTimeout(()=>resolve(null),40000))]);
+          if(seen)collectBilling(billing,seen);
+          return seen?.ok===true?String(seen.data?.reply||''):'';
+        };
+        // Mask tools need a painted region: find the target by eye, then paint its box.
+        const paintTarget=async()=>{
+          const dataUrl=root.NovaFlowSpineSplitBridge?.getState?.()?.source?.dataUrl,canvas=tools.capture().controls.find(control=>/选区画布/.test(control.label||'')&&!control.disabled);
+          if(state.provider!=='api'||!dataUrl||!canvas||selectedPricingPayload().operationVisionBillingV3!==true)return false;
+          const reply=await lookAt([{dataUrl,name:'image'}],'用户要求：'+message+'\n找到图片里要处理的目标。只输出 JSON：{"box":[左,上,右,下]}，四个数都是 0 到 1 的比例，框紧贴目标。');
+          const box=(/\[\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]/.exec(reply)||[]).slice(1).map(Number);
+          if(box.length!==4||box.some(value=>!(value>=0&&value<=1))||box[2]<=box[0]||box[3]<=box[1])return false;
+          const points=[];let left=true;
+          for(let y=box[1];y<=box[3];y+=.02){points.push([left?box[0]:box[2],y],[left?box[2]:box[0],y]);left=!left;}
+          await tools.execute({action:'draw',controlId:canvas.id,points},{snapshot:tools.capture(),signal});
+          return true;
+        };
         let pictureFacts='';
         const videoPictures=state.provider==='api'&&intent?.surface==='video'?freshPictures:[];
         if(videoPictures.length&&selectedPricingPayload().operationVisionBillingV3===true){
           onStatus('正在看图…');
-          const seen=await api()?.artAgentChat?.({requestId:root.crypto.randomUUID(),provider:'api',...selectedModelPayload(state.modelId),...selectedPricingPayload(),mode:'chat',promptLanguage:'en',
-            message:'用不超过一百字客观描述图片：人物朝向、姿势、服饰、场景和画风。只输出描述。',history:[],artContext:{},images:videoPictures.map((item,index)=>({dataUrl:item.dataUrl,role:'attachment',source:index+1,name:item.name})),uploads:videoPictures.map(({kind,name})=>({kind,name})),
-            imageSessionGuard:imageGuard,confirmImageUpload:async()=>imageGuard()});
-          collectBilling(billing,seen);if(seen?.ok===true)pictureFacts=String(seen.data?.reply||'').trim().slice(0,400);
+          pictureFacts=(await lookAt(videoPictures,'用不超过一百字客观描述图片：人物朝向、姿势、服饰、场景和画风，多张图按顺序分别写。只输出描述。')).trim().slice(0,400);
         }
         let planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0;const finishedOps=new Set(),opKey=op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
         const enhancementNames={split:'一键拆图',generativeSplit:'对象分离',imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
@@ -1477,7 +1494,9 @@
           if(signal.aborted||operation!==serial)return false;
           const pending=await tools.settlePending({signal,onStatus});if(pending)receipts.push(pending);
           // The planner cannot see the picture, so a mask tool stops here and hands the brush to the user.
-          if(['returned','opened'].includes(pending?.phase)&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){pending.plannerPrompt=true;pending.message='已打开'+({cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体'}[pending.name]||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}
+          if(['returned','opened'].includes(pending?.phase)&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){
+            if(await paintTarget())pending.message='已按看图结果涂好目标区域，不要再绘制。局部编辑先写好修改说明，然后再次执行同一个工具。';
+            else{pending.plannerPrompt=true;pending.message='已打开'+({cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体'}[pending.name]||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}}
           if(signal.aborted||operation!==serial||billing&&(state.provider!=='api'||state.modelId!==billing.modelId))return false;
           // Reading the current video frame can finish native metadata loading
           // (including its real FPS). Bind the plan after that work settles.
