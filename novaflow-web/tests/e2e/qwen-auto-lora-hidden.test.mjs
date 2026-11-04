@@ -36,7 +36,7 @@ function harness(mode, { oldCache = false, selected = [], source = loraSource } 
   const doc = { createElement: tag => new FakeElement(tag, doc) };
   const host = doc.createElement('main');
   const store = new Map();
-  if (oldCache) store.set('nf_art_lora_catalog_v1', JSON.stringify({[`local:${mode}:false:true`]: {names:[target, other], at:Date.now()}}));
+  if (oldCache) store.set('nf_art_lora_catalog_v1', JSON.stringify({[`local:${mode}:false:true`]: {names:[target, other, uc], at:Date.now()}}));
   const localStorage = {getItem:k=>store.get(k) ?? null, setItem:(k,v)=>store.set(k,String(v))};
   const context = createContext({console, localStorage}); context.globalThis = context;
   runInContext(source, context);
@@ -78,6 +78,12 @@ test('redacted website preserves metadata-based filtering without exposing a mod
   assert.deepEqual(h.optionValues(),[other]);
   assert.equal(h.api.verifiedNsfwName({ok:true,features,items:[]}),token);
   assert.throws(()=>h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true},items:[]}),/缺少/);
+  const legacyItems = [{name:target,autoManaged:token},{name:uc.replaceAll('/', '\\')},{name:other}];
+  assert.equal(h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true},items:legacyItems}),token);
+  assert.throws(()=>h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true,qwen21_uc_lora:false},items:legacyItems}),/缺少/);
+  h.setResponse({ok:true,features:{qwen21_nsfw_lora:true},items:legacyItems});
+  h.api.setConnection(true,'legacy-control'); await flush();
+  assert.deepEqual(h.optionValues(),[other]);
 });
 
 for (const mode of ['txt2img','img2img']) test(`${mode}: only ordinary choices hide target; legacy selected item and switch behavior remain`, async () => {
@@ -103,6 +109,7 @@ test('stale pre-marker cache and old server keep unrelated choices and a legacy 
   const empty=harness('img2img',{oldCache:true});
   empty.api.mount(empty.options);
   assert(empty.optionValues().includes(other),'an unrelated cached LoRA remains available before refresh');
+  assert(!empty.optionValues().includes(uc),'the managed UC adapter is hidden even in a cached list');
   empty.select().value=other;
   empty.select().handlers.change();
   assert(empty.state.loras.some(x=>x.name===other),'an unrelated cached LoRA can actually be selected');

@@ -49,6 +49,8 @@
   const UC_LORA = 'qwen/qwen-image-2.1-uncensored-lora.safetensors'
   const managed = /lightning|(?:^|[\\/_-])(?:4|8)steps?|(?:^|[\\/])(?:qwen[-_ ]?image[-_ ]?2\.1[-_ ])?(?:viggle[-_ ])?turbo(?:[-_ .]|$)/i
   const key = (name) => String(name || '').replace(/\\/g, '/').toLowerCase()
+  // Older control releases return the compatible file without a managed marker.
+  const isUcLora = (name) => /^qwen\/qwen-image-2\.1-uncensored-lora\.safetensors$/.test(key(name))
   // What the page shows for a LoRA: its own file name, never the folder (it names the model) or the
   // extension. The full name stays the value that is sent.
   const displayName = (name) => String(name || '').split(/[\\/]/).pop().replace(/\.safetensors$/i, '')
@@ -142,7 +144,8 @@
   function verifiedNsfwName(info) {
     if (info?.ok === false) throw new Error(info.error || '无法读取 Qwen 2.1 LoRA 目录')
     if (info?.features && Object.prototype.hasOwnProperty.call(info.features, 'qwen21_nsfw_lora')) {
-      if (info.features.qwen21_nsfw_lora === true && info.features.qwen21_uc_lora === true) return NSFW_LORA_FEATURE
+      const hasUc = info.features.qwen21_uc_lora ?? (Array.isArray(info.items) && info.items.some(item => isUcLora(item?.name)))
+      if (info.features.qwen21_nsfw_lora === true && hasUc === true) return NSFW_LORA_FEATURE
       throw new Error('当前算力节点缺少破限所需的 LoRA，或与 Qwen 2.1 不兼容；未提交任务')
     }
     const names = catalogFromInfo(info).map(key)
@@ -288,7 +291,7 @@
     const select = element('select', '', 'box-sizing:border-box;width:100%;min-width:0;height:32px;min-height:32px;max-height:32px;background:#262626;color:#e9e9e9;border:1px solid #343434;border-radius:6px;padding:0 26px 0 10px;font-size:12px;appearance:none;-webkit-appearance:none;')
     select.setAttribute('data-novaflow-art-generate-select-field', '1')
     select.setAttribute('aria-label', '添加兼容 LoRA')
-    const available = record.names.filter(name => !record.managedNames.some(managedName => key(managedName) === key(name)) && !items.some(item => key(item.name) === key(name)))
+    const available = record.names.filter(name => !isUcLora(name) && !record.managedNames.some(managedName => key(managedName) === key(name)) && !items.some(item => key(item.name) === key(name)))
     const placeholder = element('option', record.loading ? '正在读取兼容 LoRA…' : !record.metadataReady && record.names.length ? '目录待更新，自动管理项可能仍显示' : available.length ? '请选择兼容 LoRA' : record.names.length ? '所有兼容 LoRA 已添加' : '暂无 LoRA 可用')
     placeholder.value = ''
     select.appendChild(placeholder)
