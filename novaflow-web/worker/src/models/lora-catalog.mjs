@@ -46,10 +46,17 @@ export function createWorkerLoraCatalog({ modelsRoot, image, video }) {
       const qwen21 = nodes.some(([, n]) => /^(?:UnetLoaderGGUF|NovaFlowGGUFBF16Loader|UNETLoader)$/.test(String(n.class_type || '')) && /qwen[-_ ]?image[-_ ]?2\.1/i.test(String(n.inputs?.unet_name || '')));
       const modelName = qwen21 ? nodes.find(([, n]) => /^(?:UnetLoaderGGUF|NovaFlowGGUFBF16Loader|UNETLoader)$/.test(String(n.class_type || '')) && /qwen[-_ ]?image[-_ ]?2\.1/i.test(String(n.inputs?.unet_name || '')))?.[1].inputs.unet_name : '';
       const { items } = await read('qwen', qwen21 ? { engine: 'qwen-2.1', modelName } : { nsfw });
-      const names = new Set(items.map(item => item.name));
-      for (const [, node] of userQwen) if (!names.has(node.inputs?.lora_name)) throw new Error('Qwen LoRA 已变化或不兼容，请刷新列表重新选择');
-      // A 2.1 LoRA trained on the fused MLP runs from its split copy on a split 2.1 build.
-      if (qwen21) for (const [, node] of userQwen) node.inputs.lora_name = qwen.runtimeName21(node.inputs.lora_name, modelName);
+      // The workflow uses slash-separated names, but ComfyUI enumerates Windows paths with backslashes.
+      const names = new Map(items.map(({ name }) => [name.replaceAll('\\', '/'), name]));
+      const resolved = userQwen.map(([, node]) => {
+        const name = names.get(String(node.inputs?.lora_name || '').replaceAll('\\', '/'));
+        if (!name) throw new Error('Qwen LoRA 已变化或不兼容，请刷新列表重新选择');
+        return { node, name };
+      });
+      for (const { node, name } of resolved) {
+        // A 2.1 LoRA trained on the fused MLP runs from its split copy on a split 2.1 build.
+        node.inputs.lora_name = qwen21 ? qwen.runtimeName21(name, modelName) : name;
+      }
     }
     for (const item of parameters.loras || []) {
       if (item.enabled === false) continue;

@@ -49,8 +49,10 @@ test('actual worker graph validator rechecks the chosen model and missing files'
     const catalog = createWorkerLoraCatalog({modelsRoot:dir,image:{},video:{}});
     const graph = {base:{class_type:'UNETLoader',inputs:{unet_name:'qwen-image-2.1.safetensors'}},step:{class_type:'KSampler',inputs:{model:['base',0]}}};
     nodeApi.apply(graph,{provider:'local',mode:'img2img',nsfw:false,nsfwLoraEnabled:true,nsfwLoraName:token});
-    globalThis.__loraTestItems = [{name}];
+    const runtimeName = name.replaceAll('/', '\\');
+    globalThis.__loraTestItems = [{name:runtimeName}];
     await catalog.validateGraph(graph); assert.equal(globalThis.__loraTestModel,'qwen-image-2.1.safetensors');
+    assert.equal(graph.nf_art_lora_1.inputs.lora_name,runtimeName);
     globalThis.__loraTestItems = []; await assert.rejects(catalog.validateGraph(graph));
   } finally { process.resourcesPath = old; delete globalThis.__loraTestModel; delete globalThis.__loraTestItems; fs.rmSync(dir,{recursive:true,force:true}); }
 });
