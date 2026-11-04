@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const RESOURCE_MENTION_TOOL_VERSION = "20260916-mention-surfaces-2";
+  const RESOURCE_MENTION_TOOL_VERSION = "20261104-mention-programmatic-value-1";
 
   const SEEDANCE_RESOURCE_CONFIG = Object.freeze([
     Object.freeze({ key: "ref_image", label: "参考图1", kind: "image" }),
@@ -1210,6 +1210,48 @@
     updateMenuFromCaret(controller);
   }
 
+  // The page (React, 小桃 drafts, history picks) can set the backing textarea's
+  // value without an input event. Wrap the value setter so every programmatic
+  // write repaints the visible editor; otherwise the editor keeps old text
+  // while the page submits the new prompt.
+  function watchBackingValue(controller) {
+    const textarea = controller.textarea;
+    const view = controller.document.defaultView || window;
+    const prototype = view.HTMLTextAreaElement && view.HTMLTextAreaElement.prototype;
+    const own = Object.getOwnPropertyDescriptor(textarea, "value");
+    const base = own || (prototype ? Object.getOwnPropertyDescriptor(prototype, "value") : null);
+    if (!base || typeof base.get !== "function" || typeof base.set !== "function") return;
+    if (own && own.configurable === false) return;
+    let scheduled = false;
+    const repaint = function () {
+      scheduled = false;
+      if (controllerByTextarea.get(textarea) !== controller) return;
+      if (!controller.writingBacking) renderController(controller);
+    };
+    try {
+      Object.defineProperty(textarea, "value", {
+        configurable: true,
+        enumerable: !!base.enumerable,
+        get: function () { return base.get.call(this); },
+        set: function (value) {
+          base.set.call(this, value);
+          if (controller.writingBacking || scheduled) return;
+          scheduled = true;
+          if (typeof view.queueMicrotask === "function") view.queueMicrotask(repaint);
+          else Promise.resolve().then(repaint);
+        }
+      });
+    } catch (error) {
+      return;
+    }
+    controller.restoreBackingValue = function () {
+      try {
+        if (own) Object.defineProperty(textarea, "value", own);
+        else delete textarea.value;
+      } catch (error) {}
+    };
+  }
+
   function bindControllerEvents(controller) {
     const editor = controller.editor;
     const textarea = controller.textarea;
@@ -1438,6 +1480,7 @@
     controllerByTextarea.set(textarea, controller);
     mountedControllers.add(controller);
     bindControllerEvents(controller);
+    watchBackingValue(controller);
     syncSubmissionGuard(controller);
     if (typeof view.ResizeObserver === "function") {
       controller.resizeObserver = new view.ResizeObserver(function () {
@@ -1458,6 +1501,7 @@
     closeMenu(controller);
     clearSubmissionError(controller);
     unbindControllerEvents(controller);
+    if (typeof controller.restoreBackingValue === "function") controller.restoreBackingValue();
     if (controller.resizeObserver) controller.resizeObserver.disconnect();
     if (controller.editor.parentNode) {
       controller.editor.parentNode.removeChild(controller.editor);

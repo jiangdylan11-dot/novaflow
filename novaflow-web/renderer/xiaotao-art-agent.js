@@ -1786,6 +1786,12 @@
       if(explicitDrawingGeneration){const info=activePromptSource();if(!info||info.surface!=='drawing'||!info.pagePrompt.trim()){
         state.error='请先在绘图页面填写当前提示词；本次未提交或扣费。';state.status='未提交';notify();return false;}}
       const reverseImage=state.provider==='api'&&imageReverseRequest(message);
+      // 本地大脑看不到图片：不让它假装没收到图，直接说明并建议切换在线模型。
+      if(state.provider==='local'&&imageReverseRequest(message)){
+        if(api()?.qwenBusinessImageAvailableSync?.()===true&&state.staged.length===1&&state.staged[0]?.kind==='image')return analyzeStagedImage('reverse');
+        const reply='本地模型看不到图片，没法反推。请在上方切换到在线模型（例如 DeepSeek V4.1 Flash），再发一次“反推一下图片”，在线模型会读取图片写出提示词。';
+        if(recordMessage)pushUser(message);state.messages.push({role:'assistant',content:reply});state.error='';state.status='本地模型不读取图片，未执行。';notify();return true;
+      }
       if(reverseImage)pendingPromptSource=null;
       let promptSelection=reverseImage?null:preparePromptSource(explicitDrawingGeneration?'优化当前提示词':message,{recordMessage});
       if(promptSelection?.stop)return false;
@@ -2099,7 +2105,7 @@
       if(!local&&(state.provider!=='api'||currentPricingPolicy()?.config?.xiaotao_online?.operation_video_rewrite_v3!==true||!policyAllowsOnline(state.modelId))) {
         state.error='当前所选大脑的视频文字草稿尚未开放，未提交或扣费。';state.status='未提交';notify();return false;
       }
-      if((state.staged||[]).length||(communityUploads()||[]).length) {state.error='视频草稿仅处理文字，请先移除小桃附件；参考槽仅记录角色，不读取素材。';notify();return false;}
+      // 小桃附件不参与视频草稿：草稿只读页面提示词和参考槽，附件保留给下一条消息使用。
       const capture=root.NovaFlowMediaAgent?.captureH3TextDraft,method=api()?.promptAssistantVideoDraft;
       const selected=businessModelSnapshot(),requestId=root.crypto?.randomUUID?.();
       if(typeof capture!=='function'||(!local&&typeof method!=='function')||(local&&typeof root.__NovaFlowSmartAI?.optimizeForAgent!=='function')||!requestId) {state.error='视频文字草稿接口不可用，未提交或扣费。';notify();return false;}
