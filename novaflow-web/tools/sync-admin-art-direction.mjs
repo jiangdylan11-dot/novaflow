@@ -5,7 +5,7 @@ import {readFile, writeFile} from 'node:fs/promises';
 const source = new URL('../../supabase/functions/novaflow-backend/art-direction.mjs', import.meta.url);
 const destination = new URL('../admin/admin-server/art-direction.generated.cjs', import.meta.url);
 const input = await readFile(source, 'utf8');
-const importLine = "import { DEFAULT_RUNNINGHUB_LLM_MODEL } from '../_art-shared/runninghub-llm.mjs';";
+const importLine = "import { DEFAULT_RUNNINGHUB_LLM_MODEL } from '../_art-shared/backend-legacy-v249-runninghub-llm.mjs';";
 const exportLine = 'export { SCHEMA, SYSTEM, build, validate, buildReview, validateReview };';
 const lines = input.split(/\r?\n/);
 if (lines.filter(line => line === importLine).length !== 1 || lines.filter(line => line === exportLine).length !== 1 ||
