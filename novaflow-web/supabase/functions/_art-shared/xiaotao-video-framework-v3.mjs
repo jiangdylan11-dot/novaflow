@@ -68,8 +68,8 @@ export function createServerOwnedH3Intent({workflow}={}) {
     ]:[])];
     const compiled={input:[{role:'system',content:[{type:'input_text',text:systemText}]},
       {role:'user',content:userContent}],imageCount:images?2:0,textOnly:!images,systemText,userText,
-      // 多参 writes six fields twice (English and Chinese); 1200 tokens cut it off and the draft failed its checks.
-      outputTokens:intent.h3Mode==='multi_reference'?3000:1200};
+      // A draft is written twice (English and Chinese); 1200 tokens cut wordier models off and it failed its checks.
+      outputTokens:3000};
     const intentHash=digest({schema:images?'nf.xiaotao.operation.video-h3-vision.v1':'nf.xiaotao.operation.video-h3-text.v1',intent});
     return {intent,compiled,intentHash,validation:{context:prepared.context,current}};
   }

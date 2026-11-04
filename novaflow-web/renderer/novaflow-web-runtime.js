@@ -662,7 +662,7 @@
       const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
       const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
       if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!validOperationId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
-        !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||!(op.outputTokens===1200||intent.h3Mode==='multi_reference'&&op.outputTokens===3000)||Date.now()>=policy.expiresAt)
+        !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||![1200,3000].includes(op.outputTokens)||Date.now()>=policy.expiresAt)
         return no('companion-pricing-changed','报价或视频内容已变化，未执行。');
       const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
       if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消报价或内容已变化，未执行。');
