@@ -34,7 +34,7 @@ async function fixture({refs=[],prompt='',foart=[],chat=[]}={}) {
     return {artContext:{surface:'drawing'},images:includeDrawingReferences?refs.map((ref,i)=>({source:i+1,role:ref.drawingRole,dataUrl:ref.dataUrl,name:ref.name})):[],drawingPreview};}};
   const c=root.NovaFlowXiaotaoArtAgent.createController({bridge,api});
   assert.equal(c.setModel('xai/grok-4.7'),true);await c.refreshPricingPolicy();
-  return {c,chats,starts,setPrompt:value=>{rtState.prompt=value;}};
+  return {c,chats,starts,tools:root.NovaFlowFoartTools,setPrompt:value=>{rtState.prompt=value;}};
 }
 const refs=()=>[{name:'a.png',dataUrl:png('a'),drawingRole:'subject'},{name:'b.png',dataUrl:png('b'),drawingRole:'style'}];
 
@@ -100,6 +100,28 @@ test('a reply that picks no source is read as a new request',async()=>{
   assert.match(f.c.state.status,/提示词来源/);
   await f.c.send('打开音频');
   assert.equal(f.starts.length,1);assert.equal(f.c.state.error,'');
+});
+test('a rewrite plus generate goes to the tools as one request',async()=>{
+  const f=await fixture({refs:refs(),prompt:'海边的女孩',foart:[done('好的')]});
+  await f.c.send('再换成红色连衣裙，直接生成');
+  assert.equal(f.starts.length,1);assert.equal(f.c.state.error,'');
+});
+test('a rejected plan is retried with the rules, then explained plainly',async()=>{
+  const rejected={ok:false,errorCode:'operation-planner-incomplete',error:'操作未完成，请查看实际扣分。'};
+  const f=await fixture({refs:refs(),foart:[rejected,done('好的')]});
+  await f.c.send('打开音频');
+  assert.equal(f.starts.length,2);assert.match(f.starts[1].message,/不符合工具规则/);assert.equal(f.c.state.error,'');
+  const g=await fixture({refs:refs(),foart:[rejected,rejected,rejected]});
+  await g.c.send('打开音频');
+  assert.equal(g.starts.length,3);assert.match(g.c.state.error,/换个说法/);
+});
+test('a mask tool hands the brush to the user instead of failing',async()=>{
+  const f=await fixture({refs:refs(),foart:[{ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:'act',reply:'开始',operations:[{action:'open',surface:'drawing'}]},foartOperationSession:{opaque:true}}}]});
+  let settled=false;
+  f.tools.settlePending=async()=>{if(settled||!f.starts.length)return null;settled=true;return {action:'art_action',phase:'returned',name:'cutout',message:'对象提取：在画板上绘制遮罩后再次点击按钮执行'};};
+  f.tools.execute=async()=>({action:'open',phase:'opened',surface:'drawing',message:'已打开绘图工具'});
+  await f.c.send('把图1的人物抠出来');
+  assert.match(f.c.state.messages.at(-1).content,/智能抠图.*涂出/);assert.equal(f.c.state.error,'');
 });
 test('a failed turn stays in this session context',async()=>{
   const f=await fixture({refs:refs(),foart:[{ok:false,error:'操作未完成'},done('好的')]});

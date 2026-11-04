@@ -7012,6 +7012,7 @@
   async function detectComfyBaseUrl() {
     const savedRuntime = String(localStorage.getItem(LAST_RUNTIME_KEY) || '').trim()
     const ports = Array.from(new Set([NOVAFLOW_RUNTIME_BASE_URL, savedRuntime].filter(Boolean)))
+    let reason = ''
     for (const url of ports) {
       try {
         const api = window.electronAPI
@@ -7022,9 +7023,10 @@
           localStorage.setItem(LAST_RUNTIME_KEY, url)
           return url
         }
+        reason = reason || String(check?.error || '')
       } catch {}
     }
-    throw new Error('Foart AI Runtime 未连接')
+    throw new Error(reason || 'Foart AI Runtime 未连接')
   }
 
   function extractFiles(history) {

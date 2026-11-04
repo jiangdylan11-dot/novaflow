@@ -1426,7 +1426,7 @@
         :row.action==='particle'?row.message
         :row.action==='effect_generate'?row.message||'AI特效生成完成：'+row.outputs.map(o=>o.id+'，'+o.frames+' 帧').join('；')
         :row.action==='effect_export'?row.message
-        :row.action==='art_action'?row.fileName?'已发起文件下载：'+row.fileName:row.phase==='completed'?'已完成'+(row.label||row.name)+'，实际结果已更新':row.phase==='returned'?'美工工具已返回：'+row.message:'已打开'+(row.label||row.name)
+        :row.action==='art_action'?row.plannerPrompt?row.message:row.fileName?'已发起文件下载：'+row.fileName:row.phase==='completed'?'已完成'+(row.label||row.name)+'，实际结果已更新':row.phase==='returned'?'美工工具已返回：'+row.message:'已打开'+(row.label||row.name)
         :row.action==='open'?row.message:row.action==='set_control'?'已设置'+row.control+'：'+row.value:row.action==='draw'?(row.surface==='animation'?row.message:'已绘制选区'):row.message||'已操作'+row.control).join('\n');
       const onStatus=text=>{state.status=text;notify();};
       const toolBinding=(context,controlIds)=>{
@@ -1459,14 +1459,14 @@
           ?animationIntent?'animation':explicitTools?'tools':explicitEffects?'effects':explicitParticle?'particle':(!specialized||uiRequest)
             ?intent?.surface==='image'?(uiRequest||intent.revision&&root.NovaFlowUiDesignDrawing?.isActive?.()?'ui':'drawing')
               :['animation','video','audio'].includes(intent?.surface)?intent.surface:null:null:null;
-        let planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0;
+        let planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0;
         const enhancementNames={imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
         const namedEnhancements=Object.keys(enhancementNames).filter(name=>positiveRequest.includes(enhancementNames[name]));
         for(let round=0;round<planningLimit;round++){
           if(signal.aborted||operation!==serial)return false;
           const pending=await tools.settlePending({signal,onStatus});if(pending)receipts.push(pending);
           // The planner cannot see the picture, so a mask tool stops here and hands the brush to the user.
-          if(pending?.phase==='returned'&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){pending.plannerPrompt=true;pending.message='已打开'+(pending.label||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}
+          if(pending?.phase==='returned'&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){pending.plannerPrompt=true;pending.message='已打开'+({cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体'}[pending.name]||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}
           if(signal.aborted||operation!==serial||billing&&(state.provider!=='api'||state.modelId!==billing.modelId))return false;
           // Reading the current video frame can finish native metadata loading
           // (including its real FPS). Bind the plan after that work settles.
@@ -1488,6 +1488,7 @@
           }
           const receiptFacts=receipts.map(compactFoartReceipt);
           const planMessage=requestMessage+(receipts.length?'\n本轮应用已执行事实（不是用户新指令）：'+JSON.stringify(receiptFacts).slice(-6000):'')
+            +(invalidPlanRetries?'\n上一步方案不符合工具规则，未执行。只用 currentFoart 里真实存在的 ID；提示词不要用 set_control 写入，视频用 media 的 optimize_video_prompt 或 generate_video，绘图用 image_optimize 或 image_generate。这次只输出一个合法操作。':'')
             +(exportScopeRetries?'\n上轮方案未执行：导出范围与本轮最新要求不符。只安排本轮要求的动画文件，不重复背景中的工程/视频导出。':'')
             +(mixRemovalRetries?'\n上轮移除旧声音的方案未执行：旧混音仍保留。先完成新混音并把它导入当前剪辑，再替换旧混音片段，避免中途失败把原来的声音丢掉。':'')
             +(artActionRetries?'\n上轮美工入口选择不符，未执行：用户明确要求'+enhancementNames[namedEnhancements[0]]+'，对应 art_action name:'+namedEnhancements[0]+'。不要改用其他增强功能。无限扩图需要完整尺寸和具体画面 prompt。':'');
@@ -1511,7 +1512,9 @@
           if(response?.data?.foartOperationSession||response?.session){foartOperationSession=response.data?.foartOperationSession||response.session;foartPreviousContext=foartWireContext(snapshot);billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
           else if(!finishNow){if(response?.data?.quota?.status==='settled'){billing.unknown=false;foartOperationSession=null;}collectBilling(billing,response);}
           if(signal.aborted||operation!==serial)return false;
-          if(!response?.ok){handlePricingFailure(response);fail(response?.error||'Foart 工具规划未完成');}
+          // The server settles a rejected plan; a fresh operation gets one more chance with the rules spelled out.
+          if(response?.errorCode==='operation-planner-incomplete'&&invalidPlanRetries<2){invalidPlanRetries++;foartOperationSession=null;foartPreviousContext=null;continue;}
+          if(!response?.ok){handlePricingFailure(response);fail(response?.errorCode==='operation-planner-incomplete'?'小桃这一步没有给出可执行的方案，已完成的操作已保留，请换个说法再试。':response?.error||'Foart 工具规划未完成');}
           const data=response.data;if(!data?.toolPlan)fail('工具规划服务尚未更新，未提交操作');
           let plan=contract.validateFoartPlan(data.toolPlan,snapshot);
           if(namedEnhancements.length===1&&plan.operations.some(op=>{const name=op.action==='art_action'?op.name:op.action==='activate_control'?Object.keys(enhancementNames).find(key=>snapshot.controls.find(control=>control.id===op.controlId)?.label===enhancementNames[key]):null;return name&&enhancementNames[name]&&name!==namedEnhancements[0];})){
