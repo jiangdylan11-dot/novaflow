@@ -2635,21 +2635,24 @@
   }
   const orderNote = (r) => (r && r.reordered ? '，求解顺序已自动排好' : '')
 
-  /** IK from the selection: 1 bone, or the bone + its parent ("双骨"). */
+  /** IK from the selection: 1 bone, or the bone + its parent ("双骨"). The target is a picked bone, or a new one at a clicked empty spot / the chain's tip (Spine). */
   function newIk(bones) {
+    const createAt = (wx, wy) => {
+      const m = setupMatrices()
+      const root = state.json.bones[0].name
+      const local = Ops.toLocal(m[root], wx, wy)
+      edit((r) => `已新建 IK ${r.constraint}，目标 ${r.target}${orderNote(r)}`,
+        (j) => withOrder(Ops.createIk(j, { bones, targetParent: root, targetAt: { x: local[0], y: local[1] } })),
+        (r) => { state.sel = { kind: 'ik', name: r.constraint } })
+    }
     startPick({
       want: 'bone',
-      text: `IK「${bones.join(' → ')}」：在画面或工程树里点目标骨骼`,
+      text: `IK「${bones.join(' → ')}」：点目标骨骼，或点空白处新建目标骨骼`,
+      empty: createAt,
       extra: { label: '在末端新建目标', run: () => {
         state.pick = null
-        const m = setupMatrices()
-        const end = m[bones[bones.length - 1]]
-        const tip = [end.worldX + end.length * end.a, end.worldY + end.length * end.c]
-        const root = state.json.bones[0].name
-        const local = Ops.toLocal(m[root], tip[0], tip[1])
-        edit((r) => `已新建 IK ${r.constraint}，目标 ${r.target}${orderNote(r)}`,
-          (j) => withOrder(Ops.createIk(j, { bones, targetParent: root, targetAt: { x: local[0], y: local[1] } })),
-          (r) => { state.sel = { kind: 'ik', name: r.constraint } })
+        const end = setupMatrices()[bones[bones.length - 1]]
+        createAt(end.worldX + end.length * end.a, end.worldY + end.length * end.c)
       } },
       done: (target) => edit((r) => `已新建 IK ${r.constraint}${orderNote(r)}`,
         (j) => withOrder(Ops.createIk(j, { bones, target })),
@@ -6412,7 +6415,11 @@
       const ih = !bh && !oh && (state.opt.imgSel || pickSlot) ? hitImage(sx, sy) : null
       if (state.pick) {
         if (bh && state.pick.want === 'bone') resolvePick('bone', bh)
-        else if (state.pick.want === 'slot') {
+        else if (state.pick.empty && !hitBone(sx, sy)) {
+          const { empty } = state.pick
+          endPick()
+          empty(...toWorld(sx, sy))
+        } else if (state.pick.want === 'slot') {
           // a path is picked by its curve (路径约束's target)
           const ph = hitPathCurve(sx, sy, true)
           if (ph) resolvePick('slot', ph.slot)
