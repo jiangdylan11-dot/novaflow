@@ -35,19 +35,19 @@ test('the request is split phrase by phrase into additions and whole-effect cont
 
 test('a reference read keeps its elements and gets the arrangement by rule, overruled by the request', () => {
   const read = { elements: 'made of glowing sunflowers with bright yellow petals and a deep red center.', colours: 'yellow, red' };
-  const plain = api.referenceMaterial(read, { shape: 'crescent slash' });
+  const plain = api.referenceMaterial([read], { shape: 'crescent slash' });
   assert.match(plain, /^made of glowing sunflowers with bright yellow petals/);
   assert.match(plain, /Main colours: yellow, red\./);
   assert.match(plain, /packed densely close along it/);
-  const wide = api.referenceMaterial(read, { shape: 'crescent slash', spread: 'wide' });
+  const wide = api.referenceMaterial([read], { shape: 'crescent slash', spread: 'wide' });
   assert.match(wide, /scattered widely around it/);
   assert.doesNotMatch(wide, /packed densely close/, 'the default gives way instead of arguing');
-  const blue = api.referenceMaterial(read, { shape: 'crescent slash', colour: api.splitSupplement('整体变成蓝色').colour });
+  const blue = api.referenceMaterial([read], { shape: 'crescent slash', colour: api.splitSupplement('整体变成蓝色').colour });
   assert.doesNotMatch(blue, /yellow petals|red center/);
   assert.match(blue, /blue petals and a blue center/);
   assert.match(blue, /All of it in blue, NOT yellow, red\./);
   // A node that predates the split sends its finished sentence; it goes in as it came.
-  assert.equal(api.referenceMaterial({ material: 'made of old words.' }, { spread: 'wide' }), 'made of old words.');
+  assert.equal(api.referenceMaterial([{ material: 'made of old words.' }], { spread: 'wide' }), 'made of old words.');
 });
 
 test('a 风格库 preset takes the same overrides', () => {
@@ -94,6 +94,6 @@ test('a read keeps only the colours its picture has', () => {
   const fixed = api.pictureRead(read, LEAF);
   assert.equal(fixed.colours, 'green');
   assert.match(fixed.material, /Main colours: green\. A bright main stroke/, 'an older node\'s finished sentence too');
-  assert.match(api.referenceMaterial(fixed, { shape: 'rectangular frame' }), /Main colours: green\./);
-  assert.doesNotMatch(api.referenceMaterial(fixed, { shape: 'rectangular frame' }), /yellow/);
+  assert.match(api.referenceMaterial([fixed], { shape: 'rectangular frame' }), /Main colours: green\./);
+  assert.doesNotMatch(api.referenceMaterial([fixed], { shape: 'rectangular frame' }), /yellow/);
 });

@@ -523,11 +523,11 @@
     function capture({includeResult = false} = {}) {
       const ctx = context(), s = ctx.state;
       if ((s.provider || 'local') !== 'local' || s.nsfw) fail('小桃AI当前支持本地绘图的主体与风格双图');
-      if (s.mode !== 'img2img') fail('请切换到图生图，并添加主体与风格两张参考图');
+      if (s.mode !== 'img2img') fail('请切换到图生图，并添加一张主体和至少一张风格参考图');
       const selectedEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.('local', s.mode, s)?.engine || s.localDrawEngine;
       if (!['qwen-2.1', 'qwen-2.1-turbo'].includes(selectedEngine)) fail('小桃AI当前支持 Qwen 2.1 绘图模型，请先切换模型');
       const filled = ctx.references.map((ref, i) => ref?.dataUrl ? {...ref, source:i + 1, referenceIdentity:referenceIdentity(ref)} : null).filter(Boolean);
-      if (filled.length !== 2) fail('请保留两张参考图：一张主体，一张画风');
+      if (filled.length < 2) fail('请保留一张主体和至少一张画风参考图');
       const observed = direction().input({...ctx, state:{...s, drawingAnalysisEngine:'local'}}).references;
       let images = filled.map((ref, i) => {
         const seen = observed.find(r => r.source === ref.source), explicit = ref.drawingRole;
@@ -539,7 +539,7 @@
         return {dataUrl:ref.dataUrl, referenceIdentity:ref.referenceIdentity, file:ref.file, mimeType:ref.mimeType, name:ref.name || `参考图${ref.source}`, role, source:ref.source};
       });
       if (fixedRoles && s.prompt === fixedRoles.prompt && images.every((img, i) => img.dataUrl === fixedRoles.original[i].dataUrl && img.source === fixedRoles.original[i].source)) images = images.map((img, i) => ({...img, role:fixedRoles.original[i].role}));
-      if (images.filter(i => i.role === 'subject').length !== 1 || images.filter(i => i.role === 'style').length !== 1) fail('请明确一张主体和一张画风参考');
+      if (images.filter(i => i.role === 'subject').length !== 1 || images.filter(i => i.role === 'style').length < 1) fail('请明确一张主体和至少一张画风参考');
       images.sort((a, b) => Number(b.role === 'subject') - Number(a.role === 'subject'));
       const sampling = root.NovaFlowArtGenerateModels?.localSamplingFor?.(s, s.mode, s.negativePrompt, 'qwen-2.1', 'drawing') || {};
       const artContext = copy(Object.fromEntries(SETTINGS.filter(k => s[k] !== undefined).map(k => [k, s[k]])));
