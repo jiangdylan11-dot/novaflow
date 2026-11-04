@@ -779,8 +779,14 @@
       /* The picker and its look come from xiaotao-art-agent.css; only its place in this panel is set here. */
       .aifx-material-engine #aifx-material-model.aifx-material-model { position: relative; }
       .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-brains { display: block; }
-      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-brains .nf-xiaotao-model-trigger { width: 100%; max-width: none; }
-      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-model-popup { left: 0; right: 0; top: calc(100% + 4px); width: auto; max-width: none; max-height: 320px; }
+      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-brains .nf-xiaotao-model-trigger { display: flex; align-items: center; width: 100%; max-width: none; height: 32px; min-height: 32px; box-sizing: border-box; padding: 0 26px 0 10px; border: 1px solid #343434; border-radius: 6px; background: #262626; color: #e9e9e9; }
+      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-brains .nf-xiaotao-model-trigger:hover:not(:disabled) { background: #2c2c2c; border-color: #3a3a3a; }
+      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-model-trigger .nf-xiaotao-model-name { color: #e9e9e9; font-size: 12px; font-weight: 400; line-height: 30px; }
+      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-model-trigger > .nf-xiaotao-model-note,
+      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-model-trigger .nf-xiaotao-model-sizer { display: none; }
+      .aifx-material-model-portal { position: fixed; inset: 0; z-index: 2147483640; pointer-events: none; }
+      .aifx-material-model-portal > * { pointer-events: auto; }
+      .aifx-material-model-portal .nf-xiaotao-model-popup { position: fixed; width: 300px; max-width: calc(100vw - 24px); z-index: 1; }
       .aifx-material-engine-note, .aifx-material-engine-settlement { color: rgba(232,237,242,.62); font-size: 11px; line-height: 17px; }
       .aifx-material-engine-settlement:empty { display: none; }
       .aifx-slider,
@@ -1376,7 +1382,6 @@
                 <div class="aifx-prompt-field">
                   <label for="novaflow-aifx-prompt-supplement">提示词补充</label>
                   <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。例：下缘不断滴落融水"></textarea>
-                  <div class="aifx-prompt-hint">选了风格＝加东西；取消风格＝这里就是材质，颜色也能写。<br>写「多出什么、变成什么」才生效（滴落融水 / 掉冰碴 / 碎片变金币 / 绕一圈星星）；只写「怎么动」（翻滚 / 吸回 / 拖影）不生效，运动跟着素材走。</div>
                 </div>
                 <button class="aifx-button" data-action="open-style-library" type="button" style="width:100%; margin-top:12px">风格库</button>
                 <div class="aifx-current-style" data-style-current></div>
@@ -2119,6 +2124,13 @@
   }
   // Built once 小桃 is on the page: it owns the picker, the model notes and the prices.
   let materialPicker = null
+  const placeMaterialMenu = () => {
+    const box = materialPicker.trigger.getBoundingClientRect(), menu = materialPicker.menu
+    const room = window.innerHeight - box.bottom - 12
+    menu.style.left = Math.max(12, box.left) + 'px'
+    menu.style.top = room >= 240 ? box.bottom + 4 + 'px' : ''
+    menu.style.bottom = room >= 240 ? '' : window.innerHeight - box.top + 4 + 'px'
+  }
   const ensureMaterialPicker = () => {
     if (materialPicker) return true
     const agent = xiaotaoAgent(), slot = state.refs?.materialModelSlot, host = state.refs?.materialModelHost
@@ -2136,10 +2148,15 @@
       current: () => materialModelId,
       choose: (id) => setMaterialModel(id),
       isShown: () => Boolean(host.isConnected),
-      beforeOpen: () => { xiaotaoController()?.prefetchPricingPolicy?.(); refreshMaterialPricing() },
+      beforeOpen: () => { xiaotaoController()?.prefetchPricingPolicy?.(); refreshMaterialPricing(); placeMaterialMenu() },
     })
     slot.append(materialPicker.trigger)
-    host.append(materialPicker.menu, materialPicker.backdrop)
+    // The panel clips and restyles what is inside it, so the menu opens outside, the same as 小桃's.
+    const portal = document.createElement('div')
+    portal.className = 'nf-xiaotao-model-host aifx-material-model-portal'
+    portal.setAttribute('data-novaflow-runtime-ignore', '1')
+    portal.append(materialPicker.backdrop, materialPicker.menu)
+    document.body.append(portal)
     materialPicker.sync()
     return true
   }
