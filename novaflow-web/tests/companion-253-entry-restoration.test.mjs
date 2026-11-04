@@ -25,7 +25,7 @@ function harness(initial={}){
     artBusinessDependencies:()=>({}),store:{},charge:()=>{},
     serverProvider:{refresh:async()=>{events.push('provider-config');return {}}},
     rpc:async name=>{events.push(name);return {protocol:'xiaotao-pricing-v2'};},
-    createCompanionPricingContext:async opts=>{events.push('pricing-context');return {pricing:async()=>opts};},
+    liveRates:{current:async()=>null},createCompanionPricingContext:async opts=>{events.push('pricing-context');return {pricing:async()=>opts};},
     createRecoveryOnly:()=>({artCancel:async()=>{events.push('recover-art');return {ok:true};},
       foartCancel:async()=>{events.push('recover-foart');return {ok:true};}}),
     createControlPlane:({companion})=>companion};

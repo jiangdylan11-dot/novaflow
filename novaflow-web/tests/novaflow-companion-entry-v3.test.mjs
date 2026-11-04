@@ -12,6 +12,8 @@ import {createXiaotaoV3ArtAdapter} from '../supabase/functions/_art-shared/xiaot
 import {createXiaotaoOperationV3Status} from '../supabase/functions/_art-shared/xiaotao-operation-v3-status.mjs';
 import {createOnlineAiCharge} from '../supabase/functions/_art-shared/online-ai-charge.mjs';
 import {createFeatureCreditPorts} from '../supabase/functions/_art-shared/feature-credits.mjs';
+import {createRunningHubLiveRates} from '../supabase/functions/_art-shared/runninghub-live-rates.mjs';
+import {xiaotaoModelRatePolicy} from '../supabase/functions/_art-shared/xiaotao-model-rates.mjs';
 
 const secret='synthetic-session-secret-0123456789';
 function auth(){const p=Buffer.from(JSON.stringify({sub:'u1',sid:'s1',exp:Math.floor(Date.now()/1000)+300})).toString('base64url');
@@ -26,7 +28,7 @@ async function entry({artOnly=false,v3WithoutRecovery=false}={}){
   const withArt=artOnly?file.replace('const operationV3ArtEnabled=false;','const operationV3ArtEnabled=true;'):file;
   const source=(v3WithoutRecovery?withArt.replace('const operationV3Enabled=false;','const operationV3Enabled=true;'):withArt)
     .replace(/^import .*;\s*$/gm,'').replace(/:(?:string|number|any)\b/g,'');
-  vm.runInNewContext(source,{Deno,createClient:()=>client,createControlPlane,createCompanionPricingContext,parseCompanionOnlineOverlay,mergeCapabilityOverrides,OPT_IN_KEYS,createRecoveryOnly,createCompanionOperationV3Assembly,createXiaotaoV3ArtAdapter,createXiaotaoOperationV3Status,createOnlineAiCharge,createFeatureCreditPorts,
+  vm.runInNewContext(source,{Deno,createClient:()=>client,createControlPlane,createCompanionPricingContext,createRunningHubLiveRates,xiaotaoModelRatePolicy,parseCompanionOnlineOverlay,mergeCapabilityOverrides,OPT_IN_KEYS,createRecoveryOnly,createCompanionOperationV3Assembly,createXiaotaoV3ArtAdapter,createXiaotaoOperationV3Status,createOnlineAiCharge,createFeatureCreditPorts,
     RELEASE_VERSION:'test',createRunningHubServerConfig:()=>({refresh:async()=>({model:'xai/grok-4.7',configured:false}),status:()=>({})}),
     artBusinessDependencies:()=>({enabled:false,accountingReady:false}),Buffer,Response,Request,URL,TextEncoder,console});
   assert.equal(typeof handler,'function');return {handler,calls};

@@ -5,6 +5,8 @@ import {createCompanionOperationV3Assembly} from '../_art-shared/companion-opera
 import {createXiaotaoV3ArtAdapter} from '../_art-shared/xiaotao-operation-v3-art-adapter.mjs';
 import {createXiaotaoOperationV3Status} from '../_art-shared/xiaotao-operation-v3-status.mjs';
 import {createOnlineAiCharge} from '../_art-shared/online-ai-charge.mjs';
+import {createRunningHubLiveRates} from '../_art-shared/runninghub-live-rates.mjs';
+import {xiaotaoModelRatePolicy} from '../_art-shared/xiaotao-model-rates.mjs';
 import {createFeatureCreditPorts} from '../_art-shared/feature-credits.mjs';
 import {RELEASE_VERSION} from '../_art-shared/release.mjs';
 import {createRunningHubServerConfig} from '../_art-shared/runninghub-server-config.mjs';
@@ -21,6 +23,7 @@ const charge=createOnlineAiCharge(createFeatureCreditPorts(rpc));
 const store={getUserById:async(id:string)=>unwrap(await client.from('users').select('id,status,role,expires_at').eq('id',id).maybeSingle()),getUserSession:async(id:string)=>unwrap(await client.from('user_sessions').select('id,user_id,revoked_at').eq('id',id).maybeSingle())};
 // Match the deployed 253 contract: snapshot trusted flags for each request.
 // Admitted work keeps its original snapshot, including its recovery route.
+const liveRates=createRunningHubLiveRates({base:xiaotaoModelRatePolicy(),log:(marker,value)=>console.info(marker,JSON.stringify(value))});
 const createRequestPlane=()=>{
 const envOnline=parseCompanionOnlineOverlay(Deno.env.get('NOVAFLOW_XIAOTAO_ONLINE'));
 let v3Capabilities=null;
@@ -50,7 +53,7 @@ const currentChat=async()=>{
  if(operationV3ArtEnabled && !operationV3Enabled)throw Object.assign(new Error('operation-art-requires-operation-billing'),{status:503,code:'operation-billing-unavailable'});
  const provider=await serverProvider.refresh();let dbSnapshot;
  try{dbSnapshot=await rpc('get_xiaotao_pricing_cap_v2',{});}catch{dbSnapshot=null;}
- return createCompanionPricingContext({provider,dbSnapshot,envOnline,legacyCharge:charge,rpc,operationV3,
+ return createCompanionPricingContext({liveRates:await liveRates.current(),provider,dbSnapshot,envOnline,legacyCharge:charge,rpc,operationV3,
   artBusiness:artBusinessDependencies(Buffer.from(env('NOVAFLOW_SESSION_SECRET'),'utf8'),
    {operationV3Enabled:operationV3ArtEnabled,createOperationV3Adapter:createXiaotaoV3ArtAdapter})});};
 const operationDisabled=()=>{throw Object.assign(new Error('operation-billing-disabled'),{statusCode:503,code:'operation-billing-disabled'});};
@@ -73,7 +76,7 @@ const json=(status:number,body:any)=>new Response(JSON.stringify(body),{status,h
 Deno.serve(async request=>{
  if(request.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
  const url=new URL(request.url),path=url.pathname.replace(/^\/(?:functions\/v1\/)?novaflow-companion/,'');
- if(request.method==='GET'&&path==='/health'){try{const provider=await serverProvider.refresh();return json(200,{ok:true,service:'novaflow-companion',releaseVersion:RELEASE_VERSION,visionConfigured:provider.configured,model:provider.model,providerConfig:serverProvider.status()});}catch{return json(503,{ok:false,error:'服务器 RunningHub 配置读取失败'});}}
+ if(request.method==='GET'&&path==='/health'){try{const provider=await serverProvider.refresh();return json(200,{ok:true,service:'novaflow-companion',liveRates:liveRates.status(),releaseVersion:RELEASE_VERSION,visionConfigured:provider.configured,model:provider.model,providerConfig:serverProvider.status()});}catch{return json(503,{ok:false,error:'服务器 RunningHub 配置读取失败'});}}
  let plane;
  try{plane=createRequestPlane();}catch{return json(503,{ok:false,code:'operation-billing-unavailable',error:'在线服务配置暂不可用'});}
  if(request.method==='GET'&&path==='/api/web/companion/pricing'){
