@@ -34,7 +34,7 @@ async function fixture({refs=[],prompt='',foart=[],chat=[]}={}) {
     return {artContext:{surface:'drawing'},images:includeDrawingReferences?refs.map((ref,i)=>({source:i+1,role:ref.drawingRole,dataUrl:ref.dataUrl,name:ref.name})):[],drawingPreview};}};
   const c=root.NovaFlowXiaotaoArtAgent.createController({bridge,api});
   assert.equal(c.setModel('xai/grok-4.7'),true);await c.refreshPricingPolicy();
-  return {c,chats,starts,tools:root.NovaFlowFoartTools,api:extra,setPrompt:value=>{rtState.prompt=value;}};
+  return {c,chats,starts,root,tools:root.NovaFlowFoartTools,api:extra,setPrompt:value=>{rtState.prompt=value;}};
 }
 const refs=()=>[{name:'a.png',dataUrl:png('a'),drawingRole:'subject'},{name:'b.png',dataUrl:png('b'),drawingRole:'style'}];
 
@@ -138,6 +138,27 @@ test('a bare 不满意 after a video asks what to change, and the answer revises
   assert.equal(f.starts.length,0);assert.match(f.c.state.messages.at(-1).content,/想改哪里/);
   await f.c.send('猫太小了');
   assert.equal(f.starts.length,1);assert.match(f.starts[0].message,/做一个橘猫视频[\s\S]*猫太小了/);
+});
+test('a mask tool is painted from a vision box and run again',async()=>{
+  const plan=reply=>({ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:'act',reply,operations:[{action:'art_action',name:'cutout'}]},foartOperationSession:{opaque:true}}});
+  const f=await fixture({refs:refs(),foart:[plan('开始')],chat:['{"box":[0.2,0.2,0.4,0.3]}']});
+  const ran=[];let settled=false;
+  f.tools.capture=()=>({schema:FOART_TOOL_SCHEMA,controls:[{id:'control-1',kind:'canvas',label:'当前工具选区画布'}],artEditor:{tools:['cutout']}});
+  f.root.NovaFlowSpineSplitBridge={getState:()=>({source:{dataUrl:png('a')}})};
+  f.tools.settlePending=async()=>{if(settled||!ran.length)return null;settled=true;return {action:'art_action',phase:'opened',name:'cutout',message:'在画板上绘制遮罩后再次点击按钮执行'};};
+  f.tools.execute=async op=>{ran.push(op.action);return op.action==='draw'?{action:'draw',phase:'applied'}:ran.filter(v=>v==='art_action').length>1?{action:'art_action',phase:'completed',name:'cutout',label:'智能抠图'}:{action:'art_action',phase:'started',name:'cutout'};};
+  f.api.foartOperationResume=async()=>plan('再次执行');
+  await f.c.send('把图1的人物抠出来');
+  assert.deepEqual(Array.from(ran.slice(0,3)),['art_action','draw','art_action']);assert.equal(f.c.state.error,'');
+});
+test('a finished generation closes the turn without another planner round',async()=>{
+  const plan={ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:'act',reply:'开始',operations:[{action:'media',operation:{action:'generate_video',target:'video',prompt:'猫'}}]},foartOperationSession:{opaque:true}}};
+  const f=await fixture({refs:refs(),foart:[plan]});let resumed=0;
+  f.tools.capture=()=>({schema:FOART_TOOL_SCHEMA,controls:[],media:{active:true,sub:'video'}});
+  f.tools.execute=async()=>({action:'media',phase:'completed',results:[{action:'generate_video',resources:[{name:'v.mp4'}]}]});
+  f.api.foartOperationResume=async()=>{resumed++;return done('好的');};
+  await f.c.send('做一个猫的视频');
+  assert.equal(resumed,0);assert.equal(f.c.state.error,'');assert.match(f.c.state.messages.at(-1).content,/v\.mp4/);
 });
 test('a failed turn stays in this session context',async()=>{
   const f=await fixture({refs:refs(),foart:[{ok:false,error:'操作未完成'},done('好的')]});

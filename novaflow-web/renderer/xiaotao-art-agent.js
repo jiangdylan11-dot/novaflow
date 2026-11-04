@@ -1657,6 +1657,8 @@
               receipt=await plannerDrawingPrompt(op,message);
             } else receipt=await tools.execute(op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
             receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op));
+            // A finished generation with nothing queued after it needs no paid planner round to say so.
+            if(op.action==='media'&&/^generate_/.test(op.operation?.action||'')&&receipt.phase==='completed'&&!/然后|接着|之后|导出|保存|裁|剪|配乐|配音|加音|合成/.test(positiveRequest))receipt.plannerPrompt=true;
             if(receipt.phase==='review'&&receipt.optimization?.reviewRequired===true){
               if(typeof receipt.prompt!=='string'||typeof receipt.modelPrompt!=='string'||typeof receipt.reviewId!=='string'||!selectionStillCurrent())fail('优化草稿或模型状态无效，未应用。');
               pendingFoartImageReview={id:receipt.reviewId,selection:initialSelection};foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;
