@@ -1621,7 +1621,7 @@
             const nativeVideoResult=receipts.some(r=>r.resources?.some(v=>/\.(mp4|webm)$/i.test(v.name||'')));
             const openedSurface=receipts.findLast(r=>r.action==='open')?.surface;
             const actualSurface=(receipts.some(r=>r.action==='animation')?'animation':receipts.some(r=>r.action==='particle'||r.particle)?'particle':receipts.some(r=>r.action==='tool')?'tools':receipts.some(r=>r.action==='effect_generate'||r.action==='effect_export')?'effects':lastMedia?(lastMedia.target||(/^generate_(music|sfx)$/.test(lastMedia.action)?'audio':lastMedia.action==='generate_video'?'video':null)):nativeVideoResult?'video':receipts.some(r=>['image_generate','image_optimize','art_action','ui_layout','use_result'].includes(r.action)||r.layers?.length)?'image':null)||({drawing:'image',ui:'image',video:'video',audio:'audio',tools:'tools',effects:'effects',particle:'particle',animation:'animation'}[openedSurface]||null);
-            const actualMode=actualSurface==='animation'?(receipts.findLast(r=>r.context?.animation)?.context.animation||'spine'):generatedMedia?.mode||(generatedMedia?.action==='generate_music'?'music':generatedMedia?.action==='generate_sfx'?'sfx':'')||(actualSurface==='image'?receipts.findLast(r=>r.action==='image_generate')?.mode:priorTask?.surface===actualSurface?priorTask?.mode:actualSurface==='audio'?'audio_edit':actualSurface==='video'?'video_edit':'')||'';
+            const actualMode=actualSurface==='animation'?(receipts.findLast(r=>r.context?.animation)?.context.animation||'spine'):generatedMedia?.mode||(generatedMedia?.action==='generate_music'?'music':generatedMedia?.action==='generate_sfx'?'sfx':'')||(actualSurface==='image'?receipts.findLast(r=>r.action==='image_generate')?.mode:priorTask?.surface===actualSurface?priorTask?.mode:actualSurface==='audio'?'audio_edit':(actualSurface||intent?.surface)==='video'?(['text_video','image_video','first_last','multi_reference'].includes(root.NovaFlowAiSequenceGeneration?.capture?.()?.genType)?root.NovaFlowAiSequenceGeneration.capture().genType:'video_edit'):'')||'';
             if(receipts.length)state.activeTask={...(intent?.revision?priorTask:{}),executor:'foart',surface:actualSurface||intent?.surface||priorTask?.surface||'image',mode:actualMode,baseRequest:intent?.revision?priorTask?.baseRequest||message:message,revisions:intent?.revision?[...(priorTask?.revisions||[]),message].slice(-8):[],status:done?'completed':'applied',outputs:receipts.flatMap(r=>r.outputs?.length?r.outputs:r.resources?.length?r.resources:r.result?.resources?.length?r.result.resources:r.id?[{id:r.id,name:r.name}]:r.results?.flatMap(v=>v.resources||[])||[])};
             pendingIntent=!done&&(plan.status==='clarify'||endsWithQuestion(plan.reply))?{...(intent&&intent.surface!=='chat'?intent:{surface:'foart',mode:''}),foart:true,message:requestMessage}:null;
             state.status=plan.status==='clarify'?'等待补充需求':done?'工具执行已完成':receipts.length?'已按实际回执更新':'已回复';state.operation=null;return true;
@@ -1631,6 +1631,7 @@
           const attemptKey=JSON.stringify(plan.operations)+'|'+toolBinding(snapshot,stableControls),attempts=(attemptedPlans.get(attemptKey)||0)+1;attemptedPlans.set(attemptKey,attempts);
           if(attempts>2)fail('当前操作没有改变工具状态，已停止重复执行；请求尚未完成');
           if((forbidsGeneration(message)||/只优化|只修改提示词/.test(message))&&plan.operations.some(op=>['image_generate','effect_generate'].includes(op.action)||op.action==='media'&&op.operation?.action?.startsWith('generate_')))fail('本次未授权生成，未提交任务');
+          const receiptsBefore=receipts.length;
           for(const op of plan.operations){
             if(signal.aborted)fail('Foart 操作已停止');
             // Playback clocks move during planning. Keep every editable value
@@ -1670,6 +1671,8 @@
             state.toolTrace.push({name:'foart_'+op.action,result:copy(receipt)});state.status=summarize([receipt]);notify();
             if(op.action==='art_action'||op.action==='ui_layout'||op.action==='assign_upload'||op.action==='frame_open'||op.action==='media'&&['import_resource','save_mix'].includes(op.operation.action))break;
           }
+          // Every skipped step still answers the planner, or its next round has nothing to read.
+          if(receipts.length===receiptsBefore)receipts.push({action:'skipped',phase:'applied',message:'这一步无需执行：视频模式已按上传素材选好。请继续下一步。'});
         }
         fail('本轮已到工具规划步数上限，已完成的操作已保留，请继续说明下一步');
       }catch(error){

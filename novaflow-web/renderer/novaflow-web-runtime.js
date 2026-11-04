@@ -1761,7 +1761,7 @@
         if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未上传图片。'),{code:'assistant-selection-changed'});
         if(accepted!==true)throw Object.assign(Error('已取消图片上传，未提交。'),{code:'assistant-business-upload-declined'});
       }
-      timer = setTimeout(() => controller.abort(), guardedImages?150000:60000);
+      timer = setTimeout(() => controller.abort(), guardedImages?150000:125000);
       const request = {
         requestId: id, mode: payload.mode, promptLanguage: payload.promptLanguage, message: payload.message,
         ...(payload.modelId != null ? {modelId: payload.modelId} : {}),
@@ -1911,7 +1911,7 @@
     const controller=new AbortController(),abort=()=>controller.abort();
     if(signal?.aborted)abort();else signal?.addEventListener?.('abort',abort,{once:true});
     foartSessionObservers.add(abort);
-    const timer=setTimeout(abort,65000),expiryTimer=Number.isFinite(guard.expiresAtMs)?setTimeout(abort,Math.min(2147483647,Math.max(1,guard.expiresAtMs-Date.now()))):null;
+    const timer=setTimeout(abort,125000),expiryTimer=Number.isFinite(guard.expiresAtMs)?setTimeout(abort,Math.min(2147483647,Math.max(1,guard.expiresAtMs-Date.now()))):null;
     companionCloudUsed.add(id);companionCloudRequests.set(id,controller);
     return {controller,close(){clearTimeout(timer);if(expiryTimer!==null)clearTimeout(expiryTimer);foartSessionObservers.delete(abort);signal?.removeEventListener?.('abort',abort);companionCloudRequests.delete(id);}};
   }
