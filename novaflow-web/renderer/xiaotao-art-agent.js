@@ -1471,6 +1471,7 @@
           return seen?.ok===true?String(seen.data?.reply||''):'';
         };
         // Mask tools need a painted region: find the target by eye, then paint its box.
+        let maskPainted=false;
         const paintTarget=async()=>{
           const dataUrl=root.NovaFlowSpineSplitBridge?.getState?.()?.source?.dataUrl,canvas=tools.capture().controls.find(control=>/选区画布/.test(control.label||'')&&!control.disabled);
           if(state.provider!=='api'||!dataUrl||!canvas||selectedPricingPayload().operationVisionBillingV3!==true)return false;
@@ -1499,7 +1500,7 @@
           const pending=await tools.settlePending({signal,onStatus});if(pending)receipts.push(pending);
           // The planner cannot see the picture, so a mask tool stops here and hands the brush to the user.
           if(['returned','opened'].includes(pending?.phase)&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){
-            if(await paintTarget())pending.message='已按看图结果涂好目标区域，不要再绘制。局部编辑先写好修改说明，然后再次执行同一个工具。';
+            if(!maskPainted&&await paintTarget()){maskPainted=true;finishedOps.clear();pending.message='已按看图结果涂好目标区域，不要再绘制。局部编辑先写好修改说明，然后再次执行同一个工具。';}
             else{pending.plannerPrompt=true;pending.message='已打开'+({cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体'}[pending.name]||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}}
           if(signal.aborted||operation!==serial||billing&&(state.provider!=='api'||state.modelId!==billing.modelId))return false;
           // Reading the current video frame can finish native metadata loading
