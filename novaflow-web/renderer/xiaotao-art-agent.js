@@ -2456,6 +2456,8 @@
               const observation=receipts.findLast(row=>row?.action==='animation'&&row.operation==='inspect_bones'&&row.phase==='observed');
               if(!observation?.inspection)fail('尚未读取完整骨骼轨道，未修改作品。');
               receipt=await prepareFoartRotation(op,observation.inspection,signal,operation,()=>selectionStillCurrent()&&typeof imageSessionGuard==='function'&&imageSessionGuard()===true);
+            } else if(operationFoartV3&&state.provider==='api'&&['image_optimize','image_generate'].includes(op.action)){
+              receipt=await plannerDrawingPrompt(op,message);
             } else receipt=await tools.execute(op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
             receipts.push(receipt);
             if(receipt.phase==='review'&&receipt.optimization?.reviewRequired===true){
@@ -2558,6 +2560,8 @@
         return prepareSelectedUiDraft(message,{recordMessage});
       }
       const communityChatOnly=state.modelId==='qwen3.5-9b-heretic';
+      if(pendingLocalPromptOffer&&!confirmed){const offer=pendingLocalPromptOffer;pendingLocalPromptOffer=null;
+        if(communityChatOnly&&/^(?:要|是|是的|好|好的|可以|行|嗯|写吧|来吧|直接写|生成吧?)[。.!！\s]*$/.test(message.trim()))return runLocalPromptOffer(offer,message,{recordMessage});}
       // An operation-billed message includes only explicitly selected uploads;
       // an old image is reused only when the user refers back to it.
       const operationUploadScope=state.provider==='api' && selectedPricingPayload().operationBillingV3===true;
@@ -2599,7 +2603,7 @@
       if(communityChatOnly && !promptDiscussion && !confirmed && (qwenExplicitSelectedRotation(message) || qwenExplicitSeekFrame(message)!==null || qwenAnimationReadIntent(message) ||
         /(?:骨骼|关节).{0,30}(?:旋转|角度)|(?:旋转|角度).{0,30}(?:骨骼|关节)/.test(message) && /(?:设|改|调整|转到|增加|减少|加|减)/.test(message) ||
         /(?:时间轴|播放头|帧).*(?:跳|移动|移到|定位|转到|切换到)|(?:跳|移动|移到|定位|转到|切换到).*(?:帧|时间轴|播放头)/.test(message))) {
-        state.error=LOCAL_CHAT_ONLY_NOTICE;state.status='未执行操作';notify();return false;
+        return offerLocalPrompt(message,{recordMessage});
       }
       // In an open animation editor, short follow-up edit requests may lack
       // an explicit bone or keyframe noun and be classified as chat/video.
@@ -2616,8 +2620,8 @@
       // The lightweight community route is text/image discussion only. Keep
       // explicit editor commands closed rather than silently treating them as
       // a completed tool action or falling back to another model.
-      if(communityChatOnly && !promptDiscussion && (qwenExplicitWriteIntent(message) || !discussionOnly(message) && /打开|进入|切换|关闭|生成|生图|出图|绘制|画一张|画个|制作|压缩|去黑|转换|裁切|分割|导入|导出|播放|暂停|删(?:除|掉|去|了)?|移除|创建|新建|选中|选择|移动|旋转|缩放|修改|调整|编辑|写入|应用|设置|填充|抠图|拆图|调用工具|执行|(?:再|更).{0,8}(?:一点|一些|点)|(?:快|慢|大|小|亮|暗|飘|动)(?:一点|一些|点)/i.test(message))) {
-        state.error=LOCAL_CHAT_ONLY_NOTICE;state.status='未执行操作';notify();return false;
+      if(communityChatOnly && !promptDiscussion && (qwenExplicitWriteIntent(message) || !discussionOnly(message) && /打开|进入|切换|关闭|换成|换掉|替换|变成|做成|迁移|放进|放到|加到|生成|生图|出图|绘制|画一张|画个|制作|压缩|去黑|转换|裁切|分割|导入|导出|播放|暂停|删(?:除|掉|去|了)?|移除|创建|新建|选中|选择|移动|旋转|缩放|修改|调整|编辑|写入|应用|设置|填充|抠图|拆图|调用工具|执行|(?:再|更).{0,8}(?:一点|一些|点)|(?:快|慢|大|小|亮|暗|飘|动)(?:一点|一些|点)/i.test(message))) {
+        return offerLocalPrompt(message,{recordMessage});
       }
       const continuation=pendingIntent && task && !task.discussion && (task.surface==='chat'||task.surface===pendingIntent.surface) && !/取消|重新|另外|新建/.test(message) ? pendingIntent : null;
       const requestMessage=continuation ? continuation.message+'\n用户补充：'+message : task?.revision
@@ -3148,6 +3152,53 @@
       }catch(error){state.error=String(error?.message||error);state.status='未应用或生成图片；如已提交，请核对账单。';return false;}
       finally{if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
     }
+    // The local brain only chats and writes prompts. An operation request gets
+    // the switch notice plus an offer to write the prompt into the drawing box.
+    let pendingLocalPromptOffer=null;
+    function offerLocalPrompt(message,{recordMessage=true}={}){
+      if(recordMessage)pushUser(message);
+      const drawing=activePromptSource()?.surface==='drawing'&&!/打开|进入|切换|关闭|跳到|帧|播放|暂停|导出|导入|保存/.test(message);
+      pendingLocalPromptOffer=drawing?{message}:null;
+      state.messages.push({role:'assistant',content:LOCAL_CHAT_ONLY_NOTICE+(drawing?'\n\n也可以由我按这句话直接写一版提示词填进绘图输入框，你自己点生成。要吗？回复“要”即可。':'')});
+      state.error='';state.status=drawing?'等待回复':'未执行操作';notify();return true;
+    }
+    async function runLocalPromptOffer(offer,message,{recordMessage=true}={}){
+      const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate,info=activePromptSource();
+      if(recordMessage)pushUser(message);
+      const say=text=>{state.messages.push({role:'assistant',content:text});state.error='';state.status='未执行操作';state.pending=false;notify();return false;};
+      if(!info||info.surface!=='drawing'||!tools?.execute||!rt?.state)return say('请先打开绘图页面，再让我写提示词。');
+      const images=state.staged.filter(item=>item.status==='ready'&&item.kind==='image');
+      if(images.length){
+        const control=(tools.capture().controls||[]).find(c=>c.kind==='file'&&!c.disabled&&/image/.test(c.accept||'')&&(c.multiple||images.length===1));
+        if(!control)return say('当前绘图页没有可放参考图的位置，请先切到图生图再试。');
+        tools.setUploads?.(images.map(item=>({kind:item.kind,name:item.name,file:item.file,mimeType:item.mimeType,dataUrl:item.previewUrl})));
+        const ids=images.map((_,i)=>'upload-'+i);
+        state.pending=true;state.status='正在放入参考图…';notify();
+        try{await tools.execute({action:'assign_upload',controlId:control.id,...(ids.length===1?{uploadId:ids[0]}:{uploadIds:ids})},{snapshot:tools.capture(),requirements:offer.message,provider:'local'});}
+        catch(error){return say('参考图没有放进去：'+String(error?.message||error));}
+        state.staged=state.staged.filter(item=>!images.includes(item));
+        for(let i=0;i<30&&Array.from(rt.references?.()||[]).filter(Boolean).length<images.length;i++)await new Promise(r=>root.setTimeout(r,100));
+        state.pending=false;notify();
+      }
+      let workspace;try{workspace=capturePromptWorkspace(activePromptSource());}catch(error){return say('当前绘图页面还没准备好：'+String(error?.message||error));}
+      return prepareQwenCurrentDrawingPrompt(offer.message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt:offer.message,requirements:'',...workspace}});
+    }
+    // Online planner: write the prompt through the billed online drawing
+    // optimizer; generation stays with the user.
+    async function plannerDrawingPrompt(op,message){
+      const info=activePromptSource(),rt=root.__NovaFlowArtGenerate;
+      if(!info||info.surface!=='drawing')throw Error('请先打开绘图页面，再优化提示词');
+      if(rt?.state?.mode==='img2img'){
+        const refs=Array.from(rt.references?.()||[]).filter(Boolean),style=/风格|画风|style/i.test(message);
+        refs.forEach((ref,i)=>{if(ref&&!ref.drawingRole)ref.drawingRole=i===0?'subject':style?'style':'reference';});
+      }
+      let workspace;try{workspace=capturePromptWorkspace(info);}catch(error){throw Error('当前绘图页面还没准备好：'+String(error?.message||error));}
+      const prompt=String(op.prompt||'').trim()||info.pagePrompt.trim()||message;
+      const ok=await prepareOnlineCurrentDrawingPrompt(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,requirements:message,...workspace}});
+      state.pending=true;
+      if(!ok)throw Error(state.error||'提示词优化未完成');
+      return {action:op.action,phase:'applied',prompt:String(rt?.state?.prompt||''),message:'提示词已优化并写入绘图输入框'+(op.action==='image_generate'?'；生成由用户自行点击，未自动提交':'')};
+    }
     async function prepareQwenCurrentDrawingPrompt(message,{recordMessage=true,source}={}) {
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate;
       if((communityUploads()||[]).length){state.error='此入口只优化当前绘图文字，不分析附件；请先移除附件。';notify();return false;}
@@ -3520,6 +3571,9 @@
     for (const b of [newConversation, stop]) b.type = 'button'; newConversation.title = '清空当前模型的聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空当前模型的聊天记录并开启新对话'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); footer.append(stagedRow,input,footerActions);
     providers.append(modelTrigger);
     panel.append(header, modelMenu, context, messages, confirmation, qwenSeekPanel, rotationPanel, audioActionPanel, audioRecoveryPanel, mediaPromptPanel, selectionConfirmation, proposal, tools, billingAlerts, status, error, footer); host.append(modelBackdrop, fab, panel); doc.body.append(host);
+    const mentionSurface=()=>root.NovaFlowUiDesignDrawing?.isActive?.()===true?'ui-design':(root.NovaFlowAudioStudio?.isOpen?.()===true&&root.NovaFlowAudioStudio?.sub?.()==='video'&&root.NovaFlowAiSequenceGeneration?.capture?.()?.mode)||'art-generate';
+    const mountMentions=()=>{try{root.NovaFlowResourceMentionTool?.mountTextarea?.({textarea:input,surface:mentionSurface()});}catch{}};
+    mountMentions();
     const drag = bindPanelDrag(panel, header, {onStart:()=>{if(modelMenu.hidden)return;const rect=panel.getBoundingClientRect();Object.assign(panel.style,{left:rect.left+'px',top:rect.top+'px'});modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');modelTrigger.removeAttribute('aria-activedescendant');}});
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onEnd:() => {if (open) anchorPanel();}});
     const bridge = createBridge(); let rendered = [], renderedProposal = null, contextStamp = '', previewImages = [], open = false, lastPricingKey=null,nodeRecheck=null;
@@ -3687,7 +3741,7 @@
       const robot = fab.getBoundingClientRect(), box = panel.getBoundingClientRect(), size = {width:box.width,height:box.height};
       drag.place(anchoredPanelPosition(robot, size, {width:root.innerWidth,height:root.innerHeight}), size);
     }
-    const setOpen = value => {open = value; panel.hidden = !value; fab.setAttribute('aria-expanded', String(value)); if (value) {anchorPanel(); tick();if(ONLINE_AUDIO_ACTION_RELEASE_ENABLED)void controller.refreshFoartAudioRecoveries();if(qwenRecheckEligible())void nodeRecheck.refreshNow();if(controller.state.provider==='api')void controller.refreshPricingPolicy();else controller.prefetchPricingPolicy();input.focus();} else {nodeRecheck.reset();modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');controller.clearSelectionTickets();controller.cancelQwenSeek();render(controller.state);}};
+    const setOpen = value => {open = value; panel.hidden = !value; fab.setAttribute('aria-expanded', String(value)); if (value) {mountMentions();anchorPanel(); tick();if(ONLINE_AUDIO_ACTION_RELEASE_ENABLED)void controller.refreshFoartAudioRecoveries();if(qwenRecheckEligible())void nodeRecheck.refreshNow();if(controller.state.provider==='api')void controller.refreshPricingPolicy();else controller.prefetchPricingPolicy();input.focus();} else {nodeRecheck.reset();modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');controller.clearSelectionTickets();controller.cancelQwenSeek();render(controller.state);}};
     function navigationSelection() {
       const selected = (kind) => Array.from(doc.querySelectorAll(`[data-novaflow-${kind}-entry="1"]`)).find(node => (node.getAttribute(`data-novaflow-${kind}-active`) === '1' || node.getAttribute('aria-pressed') === 'true' || node.getAttribute('aria-current') === 'page') && node.getClientRects().length);
       const primary = selected('primary'), secondary = selected('secondary');
