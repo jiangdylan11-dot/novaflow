@@ -500,6 +500,8 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       const capability=root.NovaFlowArtGenerateModels?.capabilityFor?.(rt.state.provider,op.generationMode,rt.state);
       if(!capability||(gptDrawing?capability.negativePrompt!==false:!['qwen-2.1','qwen-2.1-turbo'].includes(capability.engine)))
         fail('当前绘图引擎尚未接入所选小桃在线模型，未提交优化或生成。');
+      // Reading a reference's size takes a moment after it lands or the mode changes; wait for it rather than give up.
+      for(let i=0;i<50&&rt.state.referenceSizeFillPending&&!signal?.aborted;i++)await sleep(100);
       if(rt.state.referenceSizeFillPending)fail('参考图尺寸仍在读取，未提交优化。');
       const referenceSlots=Array.from(rt.references?.()||[]), lastReference=referenceSlots.findLastIndex(Boolean);
       if(scopedUploads&&lastReference>=0&&replacePageReferencesConfirmed!==true)fail('请先确认使用上传图替换页面参考；当前内容保留，未提交或扣费。');
@@ -508,11 +510,17 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       if(scopedText&&lastReference>=0)fail('参考图状态已变化，未提交或扣费。');
       if(lastReference>=3||referenceSlots.slice(0,lastReference+1).some(ref=>!ref))fail('参考图最多三张，且请先填满前面的参考图位置；未提交优化。');
       const sizes=[...new Set([...String(requirements||'').matchAll(/\b(\d{2,4})\s*[×xX*＊]\s*(\d{2,4})\b/g)].map(m=>m[1]+'x'+m[2]))];
+      const countMatch=/(?:生成|来|画|出图)[^数字\n]{0,16}?(\d{1,2}|一|两|二|三|四|五|六|七|八|九|十)\s*张/.exec(String(requirements||''));
+      const countWord=countMatch?.[1],requestedCount=countWord?({一:1,两:2,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,十:10}[countWord]??Number(countWord)):undefined;
+      // A size or count the user asked for goes into the native fields here, as a person would set them, instead of being sent back to the page.
+      const drawingField=name=>[...root.document.querySelectorAll('input[data-novaflow-art-generate-value-field="1"]')].find(el=>el.getAttribute('aria-label')===name&&visible(el));
+      const writeDrawingField=async(name,value)=>{const el=drawingField(name);if(!el||String(el.value)===String(value))return;setControl(el,String(value));await sleep(60);};
+      if(!gptDrawing&&sizes.length===1&&sizes[0]!==String(rt.state.width)+'x'+String(rt.state.height)){const [w,h]=sizes[0].split('x');await writeDrawingField('W',w);await writeDrawingField('H',h);}
+      const wantedCount=op.count??requestedCount;
+      if(Number.isInteger(wantedCount)&&wantedCount>=1&&wantedCount<=10&&wantedCount!==rt.state.count)await writeDrawingField('生成数量',wantedCount);
       const currentSize=gptDrawing?(rt.state.gptSize==='Custom'?String(rt.state.gptCustomWidth)+'x'+String(rt.state.gptCustomHeight):String(rt.state.gptSize||'')):String(rt.state.width)+'x'+String(rt.state.height);
       if(sizes.length>1||sizes.length===1&&sizes[0]!==currentSize)
         fail('请先在绘图界面设置所需尺寸，再提交优化。');
-      const countMatch=/(?:生成|来|画|出图)[^数字\n]{0,16}?(\d{1,2}|一|两|二|三|四|五|六|七|八|九|十)\s*张/.exec(String(requirements||''));
-      const countWord=countMatch?.[1],requestedCount=countWord?({一:1,两:2,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,十:10}[countWord]??Number(countWord)):undefined;
       if((op.count!==undefined&&op.count!==rt.state.count)||(requestedCount!==undefined&&requestedCount!==rt.state.count))fail('请先在绘图界面设置所需数量，再提交优化。');
       const count=rt.state.count??1;
       if(!Number.isInteger(count)||count<1||count>10)fail('绘图数量不在原有范围内。');

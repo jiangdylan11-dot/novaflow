@@ -1665,9 +1665,11 @@
             if(++mixRemovalRetries>2)fail('新混音尚未准备并导入，原有声音片段已保留，未执行提前移除');
             continue;
           }
-          const generated=receipts.some(r=>r.phase==='completed'&&(r.action==='image_generate'||(r.results||[]).some(v=>v.action?.startsWith('generate_')&&v.resources?.length)));
-          if(generated&&plan.status==='act'&&plan.operations.some(op=>op.action==='image_generate'||op.action==='media'&&op.operation.action.startsWith('generate_'))){
-            plan={...plan,operations:plan.operations.filter(op=>!(op.action==='image_generate'||op.action==='media'&&op.operation.action.startsWith('generate_')||op.action==='use_result'))};
+          // Only a repeat of a generation that already finished is dropped; a picture made first does not block the video asked for next.
+          const generatedKinds=new Set(receipts.filter(r=>r.phase==='completed').flatMap(r=>r.action==='image_generate'?['image_generate']:(r.results||[]).filter(v=>v.action?.startsWith('generate_')&&v.resources?.length).map(v=>v.action)));
+          const repeatsGeneration=op=>op.action==='image_generate'?generatedKinds.has('image_generate'):op.action==='media'&&op.operation.action.startsWith('generate_')&&generatedKinds.has(op.operation.action);
+          if(generatedKinds.size&&plan.status==='act'&&plan.operations.some(repeatsGeneration)){
+            plan={...plan,operations:plan.operations.filter(op=>!(repeatsGeneration(op)||op.action==='use_result'&&generatedKinds.has('image_generate')))};
             if(!plan.operations.length)plan={...plan,status:'done',reply:'本次生成已有实际结果。'};
           }
           // A model may repeat its previous export instead of closing the turn.
@@ -1744,10 +1746,23 @@
             if(/^(?:文生视频|图生视频|首尾帧视频|多参视频)$/.test(modeLabel||'')&&lastPreparedTask.startsWith('video:')&&!positiveRequest.includes(modeLabel.replace('视频','')))continue;
             contract.validateFoartPlan({...plan,operations:[op]},current);
             if(signal.aborted||operation!==serial)fail('Foart 操作已停止');
+            // "先画…再做成视频": the picture made earlier in this turn becomes the 图生视频 frame, the way an attached picture would.
+            if(op.action==='media'&&op.operation?.action==='generate_video'&&!/文生视频/.test(positiveRequest)){
+              const picture=receipts.findLast(r=>r.action==='image_generate'&&r.phase==='completed'&&r.outputs?.length),video=root.NovaFlowAiSequenceGeneration?.capture?.();
+              const made=picture&&Array.from(root.__NovaFlowArtGenerate?.state?.results||[]).find(item=>item?.id===picture.outputs[0].id);
+              if(made?.imageUrl&&!(video?.h3References||[]).length&&!(video?.references||[]).some(Boolean)){
+                const blob=await (await root.fetch(made.imageUrl)).blob(),name=String(picture.outputs[0].name||'成图.png').replace(/(\.(?:png|jpe?g|webp))?$/i,m=>m||'.png');
+                const file=new root.File([blob],name,{type:blob.type||'image/png'});
+                await host().place({destination:uploadApi().destinationById('image_video'),file,kind:'image',name});
+                receipts.push({action:'assign_upload',phase:'applied',name,message:'已把本轮生成的 '+name+' 放入图生视频参考'});
+              }
+            }
             root.console?.debug?.('[Foart tools] execute',op.action,op.name||op.operation?.action||op.operation||current.controls.find(control=>control.id===op.controlId)?.label||op.resourceId||'',op.value??'');
             let receipt;
             if(['image_optimize','image_generate'].includes(op.action)){
               receipt=await plannerDrawingPrompt(op,message);
+              // "先画…然后做成视频": a finished picture is one step of the request, so the planner gets the next round.
+              if(op.action==='image_generate'&&receipt?.phase==='completed'&&/然后|接着|之后|再把|再用|再做|做成|转成|导出|保存|配乐|配音|视频|动画/.test(positiveRequest))delete receipt.plannerPrompt;
             } else receipt=await tools.execute(state.provider==='api'&&op.action==='media'?await frameworkPrompt(op):op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
             receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op));
             // A finished generation with nothing queued after it needs no paid planner round to say so.
@@ -2414,6 +2429,11 @@
         return {action:op.action,phase:'applied',plannerPrompt:true,message:'UI 提示词草稿已准备好，请在面板确认。'};
       }
       if(!info||info.surface!=='drawing')throw Error('请先打开绘图页面，再优化提示词');
+      // "改上一张": the previous picture becomes the 图生图 reference before the brief is written, so the edit is made on it and not on a fresh picture.
+      if(op.useResult===true&&op.generationMode==='img2img')await root.NovaFlowFoartTools.execute({action:'use_result'},{});
+      // The planner picked 文生图 or 图生图 for this request; switch the page the way the mode buttons do, as long as its references fit that mode.
+      const pageRefCount=Array.from(rt?.references?.()||[]).filter(Boolean).length;
+      if(['txt2img','img2img'].includes(op.generationMode)&&rt?.state&&rt.state.mode!==op.generationMode&&typeof rt.setMode==='function'&&(op.generationMode==='img2img'?pageRefCount>0:pageRefCount===0))rt.setMode(op.generationMode);
       if(rt?.state?.mode==='img2img'){
         // Roles the router defaulted (every picture a subject) are retyped from the request: "图2的风格" marks picture 2 as style, one subject remains.
         const refs=Array.from(rt.references?.()||[]).filter(Boolean),styleAt=new Set([...message.matchAll(/图\s*([1-9])\s*(?:的)?(?:风格|画风)/g)].map(m=>Number(m[1])-1));
@@ -2429,10 +2449,13 @@
       if(!ok)throw Error(state.error||'提示词优化未完成');
       if(op.action!=='image_generate')return {action:op.action,phase:'applied',plannerPrompt:true,prompt:String(rt?.state?.prompt||''),message:'提示词已优化并写入绘图输入框。'};
       state.status='提示词已写入，正在生成…';notify();
+      const earlier=new Set(Array.from(rt.state.results||[],item=>item?.id));
       await rt.run();
       if(rt.state.error)throw Error('提示词已写入，但生成没有完成：'+rt.state.error);
-      const made=rt.selectedResult?.();
-      return {action:op.action,phase:'completed',plannerPrompt:true,prompt:String(rt.state.prompt||''),outputs:made?[{id:made.id,name:made.name||'成图'}]:[],message:'已写入提示词并完成生成，请在绘图页查看结果。'};
+      // Every picture of this run is reported, with the drawing model that made it, not only the selected one.
+      const fresh=Array.from(rt.state.results||[]).filter(item=>item&&!earlier.has(item.id)),made=rt.selectedResult?.();
+      const outputs=(fresh.length?fresh.reverse():made?[made]:[]).map((item,index)=>({id:item.id,name:item.name||item.fileName||'成图'+(index+1)}));
+      return {action:op.action,phase:'completed',plannerPrompt:true,provider:rt.state.provider,modelLabel:rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen',prompt:String(rt.state.prompt||''),outputs,message:'已写入提示词并完成生成，请在绘图页查看结果。'};
     }
     async function prepareQwenCurrentDrawingPrompt(message,{recordMessage=true,source}={}) {
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate;
