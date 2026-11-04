@@ -202,6 +202,9 @@
     return !!a && !!b && JSON.stringify(canonical(a.artContext)) === JSON.stringify(canonical(b.artContext))
       && a.images.length === b.images.length && a.images.every((img, i) => imageIdentity(img) === imageIdentity(b.images[i]) && img.source === b.images[i].source && img.role === b.images[i].role);
   }
+  // The tool planner only sees file names, so 反推 runs as image chat, where the model sees the picture.
+  function imageReverseRequest(message){const text=String(message||'').trim();return /反推/.test(text)&&!/(?:不要|不用|别|无需|不需要)反推|视频|音频|音乐|[?？吗]$/.test(text);}
+  function endsWithQuestion(reply){return /[?？]|请确认|确认后/.test(String(reply||'').trim().split('\n').at(-1).slice(-80));}
   function forbidsGeneration(message){return /(?:不要|不用|不需要|不必|无需|不能|别|先不|暂不)(?:再|实际|立即|直接|马上|自动|开始|继续|重新|帮我|给我|为我|\s)*(?:生成|生图|出图)|\b(?:do not|don't|never)\s+(?:generate|render)\b/i.test(message);}
   function discussionOnly(message){
     const clauses=String(message||'').split(/[，,。；;！？!?\n]+/);
@@ -999,6 +1002,8 @@
         :resolution.reason==='conversation-prompt-empty'?'本条消息没有完整提示词，请直接发送要优化的内容。':'页面和本条消息都没有完整提示词，请发送要优化的内容。';
       state.messages.push({role:'assistant',content:text});state.error='';state.status='等待选择提示词来源；未提交，不扣积分';notify();return false;
     }
+    // Xiaotao asked and the user replied: the reply continues the earlier request.
+    function answersQuestion(message){return !!pendingIntent&&(!pendingIntent.foart||state.provider==='api')&&!/取消|重新|另外|新建|优化|润色/.test(message);}
     function preparePromptSource(message,{recordMessage=true}={}) {
       const helper=root.NovaFlowXiaotaoPromptSource,info=activePromptSource();
       if(pendingPromptSource){
@@ -1016,7 +1021,7 @@
         source={...source,workspaceSnapshot:pending.workspaceSnapshot,workspaceGuard:pending.workspaceGuard,stagedItems:pending.stagedItems,attachmentStillCurrent:pending.attachmentStillCurrent};
         pendingPromptSource=null;if(recordMessage)pushUser(answer);return {info,source,message:pending.message,recordMessage:false};
       }
-      if(!info)return null;
+      if(!info||answersQuestion(message))return null;
       if(!helper?.classifyPromptAction||!helper?.resolvePromptSource){
         if(/优化|润色|改写|整理|完善/.test(message)){state.error='提示词来源组件尚未就绪，未提交或扣费。';notify();return {stop:true};}return null;
       }
@@ -1024,6 +1029,8 @@
       if(action==='compound'){state.error='请先单独优化提示词，再提出生成或其他操作；本次未提交或扣费。';state.status='未提交';notify();return {stop:true};}
       let workspace;try{workspace=capturePromptWorkspace(info);}catch{state.error='无法确认当前工作区，请稍后重试；未提交或扣费。';state.status='未提交';notify();return {stop:true};}
       const source=helper.resolvePromptSource({pagePrompt:info.pagePrompt,instruction:message});
+      // "换成…" with no prompt anywhere is an edit request, not a prompt to optimize.
+      if(source.reason==='both-prompts-empty'&&!/优化|润色|改写|整理|完善|增强/.test(message))return null;
       if(source.status!=='ready'){askPromptSource(message,info,source,recordMessage,workspace);return {stop:true};}
       return {info,source:{...source,...workspace},message,recordMessage};
     }
@@ -1095,7 +1102,7 @@
       releasePreviews(gone);
       state.staged = state.staged.filter(item => item.id !== id); notify(); return true;
     }
-    async function consumeStaged(message) {
+    async function consumeStaged(message,{place=true}={}) {
       if (retired) return false;
       if (state.staged.some(item => item.status === 'reading')) {state.error = '文件还在读取，请稍后再发送'; notify(); return false;}
       const ready = state.staged.filter(item => item.status === 'ready');
@@ -1107,7 +1114,7 @@
       const taskText=uploads.positiveTaskText?.(message)??message;
       const nativeArtRequest=/抠图|拆图|钢笔|放大|扩图|画布|去背|姿势参考|智能补图|局部编辑|蒙版|对象替换/.test(taskText)&&!/视频|音视|音频|音效|音乐/.test(taskText);
       const productionRequest=nativeArtRequest||/压缩|去黑|图集|查看器|特效|粒子|模板|(?:转换|转为|转成).{0,8}(?:MP4|GIF|WEBM|MOV|AVI|MKV|格式)/i.test(taskText)||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
-      const plan = productionRequest?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask);
+      const plan = productionRequest||!place?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask);
       const notes = []; let failed = plan.reject.length > 0;
       for (const item of plan.place) {
         if(retired)return false;
@@ -1555,7 +1562,7 @@
             const actualSurface=(receipts.some(r=>r.action==='animation')?'animation':receipts.some(r=>r.action==='particle'||r.particle)?'particle':receipts.some(r=>r.action==='tool')?'tools':receipts.some(r=>r.action==='effect_generate'||r.action==='effect_export')?'effects':lastMedia?(lastMedia.target||(/^generate_(music|sfx)$/.test(lastMedia.action)?'audio':lastMedia.action==='generate_video'?'video':null)):nativeVideoResult?'video':receipts.some(r=>['image_generate','image_optimize','art_action','ui_layout','use_result'].includes(r.action)||r.layers?.length)?'image':null)||({drawing:'image',ui:'image',video:'video',audio:'audio',tools:'tools',effects:'effects',particle:'particle',animation:'animation'}[openedSurface]||null);
             const actualMode=actualSurface==='animation'?(receipts.findLast(r=>r.context?.animation)?.context.animation||'spine'):generatedMedia?.mode||(generatedMedia?.action==='generate_music'?'music':generatedMedia?.action==='generate_sfx'?'sfx':'')||(actualSurface==='image'?receipts.findLast(r=>r.action==='image_generate')?.mode:priorTask?.surface===actualSurface?priorTask?.mode:actualSurface==='audio'?'audio_edit':actualSurface==='video'?'video_edit':'')||'';
             if(receipts.length)state.activeTask={...(intent?.revision?priorTask:{}),executor:'foart',surface:actualSurface||intent?.surface||priorTask?.surface||'image',mode:actualMode,baseRequest:intent?.revision?priorTask?.baseRequest||message:message,revisions:intent?.revision?[...(priorTask?.revisions||[]),message].slice(-8):[],status:done?'completed':'applied',outputs:receipts.flatMap(r=>r.outputs?.length?r.outputs:r.resources?.length?r.resources:r.result?.resources?.length?r.result.resources:r.id?[{id:r.id,name:r.name}]:r.results?.flatMap(v=>v.resources||[])||[])};
-            pendingIntent=!done&&(plan.status==='clarify'||/[?？]|请确认|确认后/.test(plan.reply))?{...(intent&&intent.surface!=='chat'?intent:{surface:'foart',mode:''}),foart:true,message:requestMessage}:null;
+            pendingIntent=!done&&(plan.status==='clarify'||endsWithQuestion(plan.reply))?{...(intent&&intent.surface!=='chat'?intent:{surface:'foart',mode:''}),foart:true,message:requestMessage}:null;
             state.status=plan.status==='clarify'?'等待补充需求':done?'工具执行已完成':receipts.length?'已按实际回执更新':'已回复';state.operation=null;return true;
           }
           if(discussionOnly(requestMessage))fail('本次仅讨论，未授权工具修改');
@@ -1613,7 +1620,7 @@
             const facts=rows.length?summarize(rows.slice(-8)):'已打开工具，但实际修改尚未完成。';
             const downloads=receipts.flatMap(row=>(row.outputs||[]).map(output=>output.downloadId).filter(Boolean));
             state.messages.push({role:'assistant',content:facts,...(downloads.length?{downloads}:{})});state.history=[...previousHistory,{role:'user',content:message},{role:'assistant',content:'实际执行事实：'+JSON.stringify(receipts.map(compactFoartReceipt)).slice(-8000)+'\n未完成：'+state.error}].slice(-12);
-          }
+          } else state.history=[...previousHistory,{role:'user',content:message},{role:'assistant',content:'未完成：'+state.error}].slice(-12);
         }return false;
       }finally{if(foartOperationSession&&typeof api()?.foartOperationCancel==='function'){
         try{const cancelled=await api().foartOperationCancel({session:foartOperationSession});if(cancelled?.billingConfirmed&&cancelled?.data?.quota?.status==='settled'){billing.unknown=false;collectBilling(billing,cancelled);}}
@@ -1640,7 +1647,9 @@
         /^(?:请|帮我)?\s*(?:先)?优化(?:一下)?(?:当前|页面(?:上|里)?的?)?提示词[，,\s]*(?:然后|并且?|再)(?:帮我|给我)?(?:生成|生图|出图)(?:一张)?(?:图片|图)?[。.!！\s]*$/i.test(message);
       if(explicitDrawingGeneration){const info=activePromptSource();if(!info||info.surface!=='drawing'||!info.pagePrompt.trim()){
         state.error='请先在绘图页面填写当前提示词；本次未提交或扣费。';state.status='未提交';notify();return false;}}
-      let promptSelection=preparePromptSource(explicitDrawingGeneration?'优化当前提示词':message,{recordMessage});
+      const reverseImage=state.provider==='api'&&imageReverseRequest(message);
+      if(reverseImage)pendingPromptSource=null;
+      let promptSelection=reverseImage?null:preparePromptSource(explicitDrawingGeneration?'优化当前提示词':message,{recordMessage});
       if(promptSelection?.stop)return false;
       if(explicitDrawingGeneration&&promptSelection)promptSelection={...promptSelection,message,generateAfterReview:true};
       if(state.provider==='api' && !currentPricingPolicy()) {
@@ -1688,9 +1697,9 @@
       const operationUploadScope=state.provider==='api' && selectedPricingPayload().operationBillingV3===true;
       const explicitPreviousImage=/(?:\u521a\u624d|\u521a\u521a|\u4e0a\u4f20|\u4e4b\u524d|\u4e0a\u4e00\u5f20|\u90a3\u5f20|\u8fd9\u5f20).{0,8}(?:\u56fe|\u56fe\u7247|\u7167\u7247)/.test(message);
       const freshInvocationUploads=state.staged.slice();
-      const invocationUploads=freshInvocationUploads.length ? freshInvocationUploads : operationUploadScope && !explicitPreviousImage ? [] : lastUploads;
+      const invocationUploads=freshInvocationUploads.length ? freshInvocationUploads : operationUploadScope && !explicitPreviousImage && !reverseImage ? [] : lastUploads;
       const promptConversation=!includeResult&&!invocationUploads.length&&root.NovaFlowXiaotaoPromptSource?.isPromptConversation?.(message)===true;
-      const capabilityOnly=!includeResult && !invocationUploads.length && (promptConversation||qwenCapabilityQuestion(message));
+      const capabilityOnly=!reverseImage && !includeResult && !invocationUploads.length && (promptConversation||qwenCapabilityQuestion(message));
       const capabilityHistory=capabilityOnly?copy(state.history):null;
       const promptDiscussion=communityChatOnly&&(qwenPromptDiscussion(message)||qwenNoToolExplanation(message));
       // A specifically requested text-only drawing draft has its own operation;
@@ -1715,12 +1724,12 @@
         /提示词|prompt/i.test(message)&&/优化|改写|整理|润色/.test(message)&&!/(?:不要|不用|无需|别|不必).{0,5}(?:优化|改写|整理|润色)/.test(message))
         return rewriteQwenAudioText(message,qwenAudioIntent,{recordMessage});
       recoverActiveTask();
-      let task=capabilityOnly?{surface:'chat',mode:'chat',discussion:true,named:[]}:uploadApi()?.inferTask?.(message,invocationUploads,state.activeTask);
+      let task=capabilityOnly||reverseImage?{surface:'chat',mode:'chat',discussion:true,named:[]}:uploadApi()?.inferTask?.(message,invocationUploads,state.activeTask);
       // The local model only chats and rewrites prompts; every software
       // operation belongs to an online model.
       if(communityChatOnly && !promptDiscussion && localOperationIntent(message))return offerLocalPrompt(message,{recordMessage});
-      const continuation=pendingIntent && (!pendingIntent.foart||state.provider==='api') && (pendingIntent.foart&&!task || task && !task.discussion && (task.surface==='chat'||task.surface===pendingIntent.surface)) && !/取消|重新|另外|新建/.test(message) ? pendingIntent : null;
-      const requestMessage=continuation?.foart ? continuation.message+'\n用户回答：'+message+'\n这是对上一条提问的回答，现在直接执行，不要再询问。' : continuation ? continuation.message+'\n用户补充：'+message : task?.revision
+      const continuation=answersQuestion(message) && !task?.discussion ? pendingIntent : null;
+      const requestMessage=reverseImage ? '用户要求：'+message+'\n请看图片，写出能重新生成这张图的完整中文提示词，写清主体、动作、服饰、场景、构图、光线和画风。只输出提示词，不解释、不提问。' : continuation?.foart ? continuation.message+'\n用户回答：'+message+'\n这是对上一条提问的回答，结合上文现在直接执行，不要再询问。' : continuation ? continuation.message+'\n用户补充：'+message : task?.revision
         ? '继续修改同一个'+({video:'视频',audio:'音频',image:'图片',animation:'骨骼动画'}[state.activeTask.surface] || '')+'任务。\n原始用户需求：'+state.activeTask.baseRequest
           +'\n此前修改要求：'+(state.activeTask.revisions || []).join('；')
           +'\n上次实际执行信息（仅为事实，可根据需求选择合适工具）：'+JSON.stringify({mode:state.activeTask.mode,seconds:state.activeTask.seconds,loop:state.activeTask.loop,status:state.activeTask.status,outputs:state.activeTask.outputs})
@@ -1734,7 +1743,7 @@
         if (stagedReady) return true;stagedReady=true;
         if(!state.staged.length && lastUploads.length && task && task.surface!=='chat' && !(task.revision&&state.activeTask?.executor==='foart'&&state.activeTask?.surface===task.surface) && lastPreparedTask!==task.surface+':'+task.mode)
           state.staged=lastUploads.map(item=>({...item,id:'up-'+(++stagedSeq),previewUrl:item.dataUrl||'',status:'ready'}));
-        return (await consumeStaged(requestMessage)) && !retired;
+        return (await consumeStaged(requestMessage,{place:!reverseImage})) && !retired;
       }
       const positiveEvaluation = /^(?:这次|这张(?:图)?|这个|效果|结果)?(?:的)?(?:效果|画面)?(?:做得|做的|画得|画的)?(?:挺好(?:的)?|很好|很满意|满意|很棒|不错)(?:了)?[，,\s]*$/;
       const purePositive = positiveEvaluation.test(message.replace(/[。！!]+$/,'')) || /^(?:这次|这张|这个)?(?:就用|采用|最终采用|确认采用)(?:这张|这个|本次)?[。！!]*$/.test(message);
@@ -1750,8 +1759,8 @@
       const operationTextOnly=state.provider==='api' && selectedPricingPayload().operationBillingV3===true;
       const operationVision=operationTextOnly && selectedPricingPayload().operationVisionBillingV3===true;
       const visionUploads=operationVision && invocationUploads.length>0 && invocationUploads.every(item=>item?.kind==='image');
-      const operationNeedsTools=includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
-        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|修改|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message);
+      const operationNeedsTools=!reverseImage&&(includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
+        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|修改|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
       const operationGeneral=state.provider==='api'&&!capabilityOnly&&!!operationNeedsTools;
       if (!(await ensureStaged())) return false;
       if(operationGeneral){if(!root.NovaFlowFoartTools){state.error='工具尚未就绪，本次未提交。';notify();return false;}
@@ -1760,6 +1769,7 @@
       const page=capabilityOnly?{artContext:{surface:'other'},images:[]}:await bridge.captureChat({includeDrawingReferences:!communityChatOnly}), artRequest=!capabilityOnly&&/提示词|提示框|绘图|生图|出图|重绘|画图|画一|画个|画张|生成|做图|操作软件|控制软件|调用软件|(?:制作|做|画|设计|修改|给我|来).{0,12}(?:图|海报|插画|画面)/.test(message);
       if(retired)return false;
       includeResult = chatRequestsCurrentResult(message, includeResult);
+      const reverseResult=reverseImage&&/成图|出图|结果/.test(message);if(reverseResult)includeResult=true;
       if(communityChatOnly && /参考图|参照图/.test(message) && !qwenCurrentResultIntent(message) && !explicitResultRequested)includeResult=false;
       if(communityChatOnly && qwenCurrentResultIntent(message))includeResult=true;
       const qwenWantsVisual=communityChatOnly && (includeResult || explicitNewQwenImage || qwenVisualIntent(message));
@@ -1774,7 +1784,7 @@
       const billing=state.provider==='api'?{id:root.crypto.randomUUID(),modelId:state.modelId,owner:billingOwner(),confirmed:0,confirmedCount:0,quoted:0,allQuoted:true,unknown:false,inFlight:false,decimal:onlineOperationDecimalConfirmed()}:null;activeChatBilling=billing;
       try {
         let snapshot, mode = 'chat';
-        if (!snapshot) snapshot = capabilityOnly?{artContext:{},images:[]}:await bridge.captureChat({includeResult,includeDrawingReferences:!communityChatOnly || qwenWantsDrawingReferences});
+        if (!snapshot) snapshot = capabilityOnly?{artContext:{},images:[]}:await bridge.captureChat({includeResult,drawingPreview:reverseImage,includeDrawingReferences:!communityChatOnly || qwenWantsDrawingReferences});
         if(retired || operation!==serial)return false;
         activeSnapshot = snapshot; activeMode = mode; state.mode = mode; state.pending = true;
         state.status = includeResult ? '正在查看实际成图…' : state.provider === 'api' ? '小桃正在连接在线智能…' : '正在连接 Foart…';
@@ -1793,11 +1803,17 @@
           const dataUrl = await resolveReferenceDataUrl(image);
           images.push({dataUrl, role:image.role, source:image.source, name:image.name, ...imageDimensions(image)});
         }
+        if(reverseImage){
+          const named=[...new Set([...message.matchAll(/图\s*([1-9])/g)].map(match=>Number(match[1])))].map(number=>images[number-1]);
+          const picked=reverseResult?images.filter(image=>image.role==='result'):named.length?named:images;
+          if(!picked.length||picked.includes(undefined))fail('没有找到要反推的图片，请先放入图片；未提交，不扣积分');
+          images.splice(0,images.length,...picked);
+        }
         const uploadOwner=operationVision&&images.length?api()?.captureFoartBillingOwner?.():null;
         const uploadModel=state.modelId;
         const uploadCurrent=()=>operation===serial&&!stopped&&state.provider==='api'&&state.modelId===uploadModel&&typeof uploadOwner?.current==='function'&&uploadOwner.current()===true;
         activeChatHasImages=mode==='chat' && images.length>0;
-        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage, history:capabilityOnly&&!promptConversation?[]:copy(state.history), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
+        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage, history:capabilityOnly&&!promptConversation?[]:copy(state.history), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.filter(file=>!reverseImage||images.some(image=>image.name===file.name)).map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新官网页面并检查 Foart状态');
         const deviceEpoch=localCapabilityEpoch;
         if(state.provider==='local' && state.modelId==='qwen3.5-9b-heretic')state.qwenExecutionDevice=null;
@@ -1827,7 +1843,7 @@
           state.toolTrace=copy(data.toolTrace || []);state.model=String(data.model || state.model);state.localSession=null;
           pendingIntent={...(task || {surface:'image',mode:'img2img'}),message:requestMessage};state.status='等待补充需求';return true;
         }
-        pendingIntent=null;
+        pendingIntent=state.provider==='api'&&!capabilityOnly&&!reverseImage&&endsWithQuestion(data.reply)?{surface:'foart',mode:'',foart:true,message:requestMessage}:null;
         if (state.provider === 'api') {
           if (prediction?.credits != null && data.quota) data.quota = {...data.quota,expected_credits:prediction.credits};
           if (data.billingSample) {
@@ -1847,7 +1863,7 @@
         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
         state.status='已回复';
         return true;
-      } catch (error) {if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}if (operation === serial && !stopped) {state.error = String(error?.message || error); state.status = billing?.unknown ? '请求未完成' : billing?.confirmedCount ? '回复未完成，已按实际用量结算' : '未提交生成';} return false;}
+      } catch (error) {if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}if (operation === serial && !stopped) {state.error = String(error?.message || error); if(!capabilityOnly)state.history=[...state.history,{role:'user',content:message},{role:'assistant',content:'未完成：'+state.error}].slice(-12); state.status = billing?.unknown ? '请求未完成' : billing?.confirmedCount ? '回复未完成，已按实际用量结算' : '未提交生成';} return false;}
       finally {if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}if(activeChatBilling===billing)activeChatBilling=null;if (operation === serial) {stopStatusPolling();promptAbort=null; state.pending = false; state.operation = null; activeRequest = ''; activeSnapshot = null; notify();}}
     }
     // A media review owns a prompt write only; it never starts generation.
