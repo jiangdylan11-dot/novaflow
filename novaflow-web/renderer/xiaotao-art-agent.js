@@ -1688,6 +1688,7 @@
             const actualSurface=(receipts.some(r=>r.action==='animation')?'animation':receipts.some(r=>r.action==='particle'||r.particle)?'particle':receipts.some(r=>r.action==='tool')?'tools':receipts.some(r=>r.action==='effect_generate'||r.action==='effect_export')?'effects':lastMedia?(lastMedia.target||(/^generate_(music|sfx)$/.test(lastMedia.action)?'audio':lastMedia.action==='generate_video'?'video':null)):nativeVideoResult?'video':receipts.some(r=>['image_generate','image_optimize','art_action','ui_layout','use_result'].includes(r.action)||r.layers?.length)?'image':null)||({drawing:'image',ui:'image',video:'video',audio:'audio',tools:'tools',effects:'effects',particle:'particle',animation:'animation'}[openedSurface]||null);
             const actualMode=actualSurface==='animation'?(receipts.findLast(r=>r.context?.animation)?.context.animation||'spine'):generatedMedia?.mode||(generatedMedia?.action==='generate_music'?'music':generatedMedia?.action==='generate_sfx'?'sfx':'')||(actualSurface==='image'?receipts.findLast(r=>r.action==='image_generate')?.mode:priorTask?.surface===actualSurface?priorTask?.mode:actualSurface==='audio'?'audio_edit':actualSurface==='video'?'video_edit':'')||'';
             if(receipts.length)state.activeTask={...(intent?.revision?priorTask:{}),executor:'foart',surface:actualSurface||intent?.surface||priorTask?.surface||'image',mode:actualMode,baseRequest:intent?.revision?priorTask?.baseRequest||message:message,revisions:intent?.revision?[...(priorTask?.revisions||[]),message].slice(-8):[],status:done?'completed':'applied',outputs:receipts.flatMap(r=>r.outputs?.length?r.outputs:r.resources?.length?r.resources:r.result?.resources?.length?r.result.resources:r.id?[{id:r.id,name:r.name}]:r.results?.flatMap(v=>v.resources||[])||[])};
+            pendingIntent=!done&&(plan.status==='clarify'||/[?？]|请确认|确认后/.test(plan.reply))?{...(intent&&intent.surface!=='chat'?intent:{surface:'foart',mode:''}),foart:true,message:requestMessage}:null;
             state.status=plan.status==='clarify'?'等待补充需求':done?'工具执行已完成':receipts.length?'已按实际回执更新':'已回复';state.operation=null;return true;
           }
           if(discussionOnly(requestMessage))fail('本次仅讨论，未授权工具修改');
@@ -1847,8 +1848,8 @@
       // The local model only chats and rewrites prompts; every software
       // operation belongs to an online model.
       if(communityChatOnly && !promptDiscussion && localOperationIntent(message))return offerLocalPrompt(message,{recordMessage});
-      const continuation=pendingIntent && task && !task.discussion && (task.surface==='chat'||task.surface===pendingIntent.surface) && !/取消|重新|另外|新建/.test(message) ? pendingIntent : null;
-      const requestMessage=continuation ? continuation.message+'\n用户补充：'+message : task?.revision
+      const continuation=pendingIntent && (!pendingIntent.foart||state.provider==='api') && (pendingIntent.foart&&!task || task && !task.discussion && (task.surface==='chat'||task.surface===pendingIntent.surface)) && !/取消|重新|另外|新建/.test(message) ? pendingIntent : null;
+      const requestMessage=continuation?.foart ? continuation.message+'\n用户回答：'+message+'\n这是对上一条提问的回答，现在直接执行，不要再询问。' : continuation ? continuation.message+'\n用户补充：'+message : task?.revision
         ? '继续修改同一个'+({video:'视频',audio:'音频',image:'图片',animation:'骨骼动画'}[state.activeTask.surface] || '')+'任务。\n原始用户需求：'+state.activeTask.baseRequest
           +'\n此前修改要求：'+(state.activeTask.revisions || []).join('；')
           +'\n上次实际执行信息（仅为事实，可根据需求选择合适工具）：'+JSON.stringify({mode:state.activeTask.mode,seconds:state.activeTask.seconds,loop:state.activeTask.loop,status:state.activeTask.status,outputs:state.activeTask.outputs})
