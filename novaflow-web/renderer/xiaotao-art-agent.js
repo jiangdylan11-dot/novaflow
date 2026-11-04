@@ -1716,7 +1716,7 @@
             } else receipt=await tools.execute(state.provider==='api'&&op.action==='media'?await frameworkPrompt(op):op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
             receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op));
             // A finished generation with nothing queued after it needs no paid planner round to say so.
-            if(op.action==='media'&&/^generate_/.test(op.operation?.action||'')&&receipt.phase==='completed'&&!/然后|接着|之后|导出|保存|裁|剪|配乐|配音|加音|合成/.test(positiveRequest))receipt.plannerPrompt=true;
+            if(op.action==='media'&&(/^generate_/.test(op.operation?.action||'')||op.operation?.action==='optimize_video_prompt'&&forbidsGeneration(message))&&receipt.phase==='completed'&&!/然后|接着|之后|导出|保存|裁|剪|配乐|配音|加音|合成/.test(positiveRequest))receipt.plannerPrompt=true;
             if(receipt.phase==='review'&&receipt.optimization?.reviewRequired===true){
               if(typeof receipt.prompt!=='string'||typeof receipt.modelPrompt!=='string'||typeof receipt.reviewId!=='string'||!selectionStillCurrent())fail('优化草稿或模型状态无效，未应用。');
               pendingFoartImageReview={id:receipt.reviewId,selection:initialSelection};foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;
@@ -1845,7 +1845,7 @@
       }
       const qwenAudioDiscussion=(communityChatOnly||state.provider==='api')&&(promptDiscussion||qwenPromptDiscussion(message.replace(/(?:不要|不用|无需|别|不)(?:再|直接|自动)?(?:生成|制作)(?:音频|音效|音乐)?/g,'')));
       const qwenAudioIntent=qwenAudioDiscussion ? uploadApi()?.inferTask?.(message,[],null) : null;
-      if(qwenAudioIntent && (qwenAudioIntent.surface==='audio'||qwenAudioIntent.discussion===true&&/音效|音乐|配乐|声音/.test(message)) &&
+      if(qwenAudioIntent && !state.staged.length && (qwenAudioIntent.surface==='audio'||qwenAudioIntent.discussion===true&&/音效|音乐|配乐|声音/.test(message)) &&
         /提示词|prompt/i.test(message)&&/优化|改写|整理|润色/.test(message)&&!/(?:不要|不用|无需|别|不必).{0,5}(?:优化|改写|整理|润色)/.test(message))
         return rewriteQwenAudioText(message,qwenAudioIntent,{recordMessage});
       recoverActiveTask();

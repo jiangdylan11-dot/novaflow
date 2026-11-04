@@ -173,7 +173,9 @@
     const feedback=/不符合|不满意|性格|凶悍|凶一点|需要|重新做|重做|换|改|调整|优化|提示词|表情|动作|呲牙|龇牙|刚才|这个|再来|继续|导出|还是|不对|效果|更.{0,8}(?:点|一些|一点)/.test(text);
     const explicitImage=artTool||/图生图|生图|出图|静态图|(?:画|生成|制作).{0,5}(?:一张|图片|张图)/.test(positive);
     const explicitVideo=!animationAuthoring&&/视频|动画|动效|动态/.test(positive)&&!(previousSurface==='animation'&&!/视频|首尾帧|多参|图生|文生/.test(positiveTaskText(text)));
-    const revision=!!previous && !discussion && !newTask && feedback && (!explicitImage || previousSurface==='image') && (!explicitVideo || previousSurface==='video') && (!(audio&&!explicitVideo)||previousSurface==='audio');
+    // "把音频1换成这个" inside a 多参 task swaps a slot; it is not a new audio job.
+    const swapsMaterial=previousSurface==='video'&&previous?.mode==='multi_reference'&&/(?:图|视频|音频)\s*[1-9].{0,6}(?:换|替换|改用)|(?:换|替换).{0,6}(?:图|视频|音频)\s*[1-9]/.test(positive);
+    const revision=!!previous && !discussion && !newTask && feedback && (swapsMaterial || (!explicitImage || previousSurface==='image') && (!explicitVideo || previousSurface==='video') && (!(audio&&!explicitVideo)||previousSurface==='audio'));
     if(revision)surface=previousSurface;
     const loop = surface === 'video' && (/循环|无缝|loop/i.test(positive) || revision && previous.loop===true);
     const named = discussion ? [] : namedDestinations(positive);
