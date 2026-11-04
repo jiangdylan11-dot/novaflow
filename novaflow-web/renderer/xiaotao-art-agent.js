@@ -2323,7 +2323,8 @@
           const exportFormats=[...new Set((exportBrief.match(/\b(?:PNG|PSD|JSON)\b/gi)||[]).map(value=>value.toLowerCase()))];
           const actualArtFiles=receipts.filter(r=>r.action==='art_action'&&r.name==='export'&&r.phase==='completed'&&r.fileName);
           const stopAfterArtExport=!!exportBrief&&actualArtFiles.length>0&&!snapshot.artEditor?.editingTool&&(!exportFormats.length||exportFormats.every(format=>actualArtFiles.some(file=>file.fileName.toLowerCase().endsWith('.'+format))))&&!/导出[^。；;\n]{0,60}(?:之后|以后|后再|然后|再(?:把|将|做|改|合并|处理|编辑|打开|切换))/.test(exportBrief);
-          const finishNow=!operationFoartV3&&(stopAfterOutput||stopAfterOpen||stopAfterArtExport);
+          // A prompt written through the online optimizer ends the run here; the pending operation settles in finally.
+          const finishNow=!operationFoartV3&&(stopAfterOutput||stopAfterOpen||stopAfterArtExport)||receipts.some(r=>r?.plannerPrompt===true);
           const terminalFacts=receipts.filter(r=>r.phase==='completed'||r.action==='image_optimize'&&r.phase==='applied');
           const inspected=receipts.some(row=>{const value=row?.inspection;return row?.action==='animation'&&row.operation==='inspect_bones'&&row.phase==='observed'&&value?.name===snapshot.animation?.animation&&value.complete===true&&value.truncated===false&&value.durationAvailable===true&&Number.isFinite(value.durationSeconds)&&Number.isFinite(value.fps)&&Array.isArray(value.bones)&&value.bones.length>0&&value.bones.every(bone=>bone.complete===true);});
           const animationStage=communityModel(state.modelId)&&(intent?.surface==='animation'||animationIntent)&&snapshot.animation?.active?(inspected?'plan':'inspect'):null;
@@ -3201,7 +3202,7 @@
       const ok=await prepareOnlineCurrentDrawingPrompt(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,requirements:message,...workspace}});
       state.pending=true;
       if(!ok)throw Error(state.error||'提示词优化未完成');
-      return {action:op.action,phase:'applied',prompt:String(rt?.state?.prompt||''),message:'提示词已优化并写入绘图输入框'+(op.action==='image_generate'?'；生成由用户自行点击，未自动提交':'')};
+      return {action:op.action,phase:'applied',plannerPrompt:true,prompt:String(rt?.state?.prompt||''),message:'提示词已优化并写入绘图输入框'+(op.action==='image_generate'?'；生成由用户自行点击，未自动提交':'')};
     }
     async function prepareQwenCurrentDrawingPrompt(message,{recordMessage=true,source}={}) {
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate;
