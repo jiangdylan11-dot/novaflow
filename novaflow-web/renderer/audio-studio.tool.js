@@ -1819,23 +1819,10 @@
     ui.statusErr.textContent = message;
     ui.statusErr.title = message;
   }
-  function fitToLength(buffer, seconds) {
-    const length = Math.round(seconds * buffer.sampleRate), cut = buffer.length > length, fade = cut ? Math.min(length, Math.round(buffer.sampleRate * 0.04)) : 0;
-    const out = audioContext().createBuffer(buffer.numberOfChannels, length, buffer.sampleRate);
-    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-      const data = out.getChannelData(channel);
-      data.set(buffer.getChannelData(channel).subarray(0, Math.min(length, buffer.length)));
-      for (let i = 0; i < fade; i++) data[length - 1 - i] *= i / fade;
-    }
-    return out;
-  }
   async function completed(pending, kind, label, parameters, file, blob, task, outputCurrent) {
     let name;
     if(!outputCurrent){state.counter[kind] += 1;name=(kind === 'music' ? 'Music_' : 'Sfx_') + String(state.counter[kind]).padStart(3,'0');}
-    let buffer = await decode(blob);
-    // An effect always comes out at the asked length: one that kept going is cut, a short hit gets silence after it.
-    const wanted = Number(parameters?.duration_seconds);
-    if (kind === 'sfx' && buffer && wanted > 0 && Math.abs(buffer.duration - wanted) > 0.02) { buffer = fitToLength(buffer, wanted); blob = window.NovaFlowAudioTimeline.encodeWav(buffer); }
+    const buffer = await decode(blob);
     if(outputCurrent){
       if(!outputCurrent())throw new Error('音频工作区已变化');
       state.counter[kind] += 1;name=(kind === 'music' ? 'Music_' : 'Sfx_') + String(state.counter[kind]).padStart(3,'0');
