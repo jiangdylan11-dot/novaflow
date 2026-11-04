@@ -1,6 +1,7 @@
 // Online text and vision go through one RunningHub LLM host and one API key.
 // GPT image stays a later phase and is not a text model here.
 import {hasXiaotaoModelRate} from './xiaotao-model-rates.mjs';
+import {xiaotaoOnlineModel} from './xiaotao-online-models.mjs';
 export const DEFAULT_RUNNINGHUB_LLM_BASE_URL = 'https://llm.runninghub.ai/v1';
 export const DEFAULT_RUNNINGHUB_LLM_MODEL = 'xai/grok-4.7';
 const LLM_HOSTS = new Set(['llm.runninghub.ai', 'llm.runninghub.cn']);
@@ -181,10 +182,11 @@ export function responsesToChatCompletions(body, model) {
   const maxTokens = Number(body?.max_output_tokens ?? body?.max_tokens);
   if (Number.isFinite(maxTokens) && maxTokens > 0) chat.max_tokens = Math.min(8192, Math.round(maxTokens));
   const effort = body?.reasoning?.effort ?? body?.reasoning_effort;
-  // Foart's ordinary chat and rewrite calls use low/default effort. DeepSeek
-  // includes thinking in max_tokens, so low can consume the entire answer
+  // Foart's ordinary chat and rewrite calls use low/default effort. Flash
+  // models include thinking in max_tokens, so low can consume the entire answer
   // budget without returning any usable text. Preserve explicit higher effort.
-  if (chat.model === 'deepseek/deepseek-v4.1-flash' && (effort == null || effort === 'low' || effort === 'none')) chat.thinking = {type:'disabled'};
+  const thinkingOff = xiaotaoOnlineModel(chat.model)?.thinkingOff;
+  if (thinkingOff && (effort == null || effort === 'low' || effort === 'none')) Object.assign(chat, structuredClone(thinkingOff));
   else if (['low','medium','high','xhigh'].includes(effort)) chat.reasoning_effort = effort;
   const format = responseFormat(body);
   if (format) chat.response_format = format;

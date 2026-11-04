@@ -117,13 +117,17 @@ test('missing, expired, disabled and unknown policies never send an explicit onl
     assert.equal(await e.controller.send('测试'),false);assert.equal(e.requests.length,0);
   }
   const e=setup();e.controller.setModel('deepseek/deepseek-v4.1-flash');await e.controller.refreshPricingPolicy();
-  assert.match(e.controller.state.status,/峰闲价格规则待确认.*未开通.*不扣积分/);
+  assert.match(e.controller.state.status,/尚未开通.*不扣积分/);
   assert.equal(await e.controller.send('测试'),false);assert.equal(e.requests.length,0);
 });
 
 test('disabled paid models explain their unavailable state without inventing a price or sending',async()=>{
-  const e=setup(()=>policy({models:[{id:'glm/glm-5.3-flash',available:false},{id:'openai/gpt-6.1-sol-saver',available:false}]}));
-  assert.equal(e.controller.setModel('glm/glm-5.3-flash'),false);
+  const e=setup(()=>policy({models:[{id:'qwen/qwen3.8-flash-next',available:false},{id:'glm/glm-5.3-flash',available:false},{id:'openai/gpt-6.1-sol-saver',available:false}]}));
+  for(const id of ['qwen/qwen3.8-flash-next','glm/glm-5.3-flash']){
+    e.controller.setModel(id);await e.controller.refreshPricingPolicy();
+    assert.match(e.controller.state.status,/线路或积分价格尚未开通验证/);
+    assert.equal(e.controller.onlinePriceDetails(),'');assert.equal(await e.controller.send('你好'),false);
+  }
   for(const id of ['openai/gpt-6.1-sol-saver']){
     e.controller.setModel(id);await e.controller.refreshPricingPolicy();
     assert.match(e.controller.state.status,/线路或积分价格尚未开通验证/);
@@ -152,7 +156,7 @@ test('legacy option stays hidden for all price states and never migrates an acti
 
 test('browser model rates use the normalized companion configuration and never use generic fallback',()=>{
   const e=setup(), p=policy(), prices=e.sandbox.NovaFlowFeatureCreditPrices;
-  for(const model of ['glm/glm-5.3-flash','openai/gpt-6.1-sol-saver']){
+  for(const model of ['qwen/qwen3.8-flash-next','glm/glm-5.3-flash','deepseek/deepseek-v4.1-flash','openai/gpt-6.1-sol-saver']){
     const input={text:'中文测试',history:'',system:'system',files:[],outputTokens:2048,model,config:p.config};
     assert.equal(prices.estimateXiaotaoOnline(input).credits,estimateXiaotaoOnlineCredits(input).credits);
     assert.equal(prices.estimateXiaotaoOnline({...input,config:{credits_per_usd:211,xiaotao_online:{}}}),null);

@@ -26,7 +26,8 @@ function parseAifxMaterialText(text) {
 
 // 云端 reads with DeepSeek; a run from the 小桃 panel names the model chosen there.
 const DEFAULT_AIFX_MATERIAL_MODEL = 'deepseek/deepseek-v4.1-flash';
-const AIFX_MATERIAL_MODELS = new Set([DEFAULT_AIFX_MATERIAL_MODEL, 'xai/grok-4.7', 'openai/gpt-6.1-sol-saver']);
+// Same ids as packages/shared/src/xiaotao-online-models.mjs (CommonJS cannot import it; a test keeps them equal).
+const AIFX_MATERIAL_MODELS = new Set([DEFAULT_AIFX_MATERIAL_MODEL, 'qwen/qwen3.8-flash-next', 'glm/glm-5.3-flash', 'xai/grok-4.7', 'openai/gpt-6.1-sol-saver']);
 
 function aifxMaterialModel(value) {
   const model = String(value || '').trim() || DEFAULT_AIFX_MATERIAL_MODEL;
@@ -80,4 +81,4 @@ function buildAifxMaterialReverseRequest(payload) {
   };
 }
 
-module.exports = { DEFAULT_AIFX_MATERIAL_MODEL, MATERIAL_FIELDS, parseAifxMaterialText, buildAifxMaterialReverseRequest };
+module.exports = { DEFAULT_AIFX_MATERIAL_MODEL, AIFX_MATERIAL_MODELS, MATERIAL_FIELDS, parseAifxMaterialText, buildAifxMaterialReverseRequest };

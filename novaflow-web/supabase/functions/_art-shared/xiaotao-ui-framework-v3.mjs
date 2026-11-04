@@ -6,12 +6,13 @@ import {createHash} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import {isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 import {assistant as trustedAssistant,pipeline as trustedPipeline,sourceHashes as trustedSourceHashes} from './xiaotao-ui-professional.generated.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 export const UI_DRAFT_OUTPUT_TOKENS=2048;
 const UI_OUTPUT_FRAME='Return exactly one JSON object with fields prompt, negativePrompt and uiPlan. Both prompt fields must be strings; preserve every __NOVAFLOW_UI_REFERENCE_...__ placeholder exactly once in its own corresponding field.\nuiPlan must contain version:1, layoutMode (preserve, partial or reflow), layoutReference (the 1-based layout anchor), visualMode (style-transfer, theme-redesign, partial or create), references (one {index,role} for each image), layoutChanges (string array) and preserve (string array). Use only the assigned reference roles. Do not perform or claim any UI action.';
 const UI_TEXT_OUTPUT_FRAME='Return exactly one JSON object with fields prompt, negativePrompt and uiPlan. Both prompt fields must be strings. No image was supplied: never claim to have seen one or invent image facts. uiPlan must contain version:1, layoutMode (preserve, partial or reflow), layoutReference:0, visualMode (style-transfer, theme-redesign, partial or create), references:[], layoutChanges (string array) and preserve (string array). Do not perform or claim any UI action.';
 
-const MODELS = new Set(['qwen3.5-9b-heretic','deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver']);
+const MODELS = new Set(['qwen3.5-9b-heretic',...XIAOTAO_ONLINE_MODEL_IDS]);
 const ROLES = new Set(['layout','style','content','asset','combined','color','material','character','subject','reference']);
 const FIELDS = new Set(['requestId','revision','prompt','requirements','negativePrompt','generationIntent','preserveLayout','size','structure','references']);
 const LIMIT = 20 * 1024 * 1024;

@@ -47,6 +47,7 @@ if(FULL_PLAN){
 }
 // Validate flags before any generated-source imports can run.
 await import('./sync-foart-tool-contract.mjs');
+await import('./sync-xiaotao-online-models.mjs');
 await import('./connect-xiaotao-production-bundle.mjs');
 const WEB_OUT = ISOLATED_PLAN ? join(ISOLATED_PLAN.stage, 'web-dist') : FULL_PLAN ? join(FULL_PLAN.stage,'web-dist') : join(ROOT, 'web-dist');
 const WORKER_OUT = ISOLATED_PLAN ? join(ISOLATED_PLAN.stage, 'worker-renderer') : FULL_PLAN ? join(FULL_PLAN.stage,'worker-renderer') : join(ROOT, 'worker-renderer');

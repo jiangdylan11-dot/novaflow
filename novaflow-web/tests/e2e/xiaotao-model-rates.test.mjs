@@ -10,7 +10,7 @@ const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-12, `${a} != ${b}`);
 test('GLM uses input, output and cache rates separately', () => {
   const row = estimateXiaotaoModelUsage('glm/glm-5.3-flash', {prompt_tokens:10000, completion_tokens:1000,
     total_tokens:11000, prompt_tokens_details:{cached_tokens:4000}});
-  near(row.usd, (6000*.12 + 4000*.024 + 1000*.4)/1e6);
+  near(row.usd, (6000*.15 + 4000*.024 + 1000*.5)/1e6);
   assert.equal(row.cacheKnown,true);
 });
 test('GPT input threshold is strictly greater than 272000, per request', () => {
@@ -64,7 +64,7 @@ test('direct settlement retains provider top-level cache and fails closed on con
 test('reservation and settlement use the same existing credit rule and cap', () => {
   const model='glm/glm-5.3-flash';
   const quote=estimateXiaotaoOnlineCredits({model,text:'x'.repeat(20000),system:'',outputTokens:1000});
-  near(quote.usd,(10000*.12+1000*.4)/1e6);
+  near(quote.usd,(10000*.15+1000*.5)/1e6);
   assert.equal(quote.credits,1);
   const decision=settleXiaotaoOnlineCredits({model,usage:{input_tokens:10000,output_tokens:1000,prompt_tokens_details:{cached_tokens:0}},reservedCredits:10});
   near(decision.usdCost,quote.usd);
@@ -218,10 +218,18 @@ test('an idempotent new-model reservation never calls the provider or settles ag
   await assert.rejects(service.reply({user:{id:'u'},payload:{...payload,pricingVersion:quote.pricingVersion,quoteFingerprint:quote.quoteFingerprint}}), error=>error.status===409);
   assert.equal(calls,0);assert.equal(settled,0);assert.equal(released,0);
 });
-test('legacy provider set to DeepSeek cannot silently use generic token pricing', async () => {
-  let charged=0,calls=0;
-  const provider={apiKey:'fixture',baseUrl:'https://llm.runninghub.ai/v1',model:'deepseek/deepseek-v4.1-flash'};
-  const service=createCompanionChat({provider,charge:async()=>charged++,fetchImpl:async()=>calls++});
-  await assert.rejects(service.reply({user:{id:'u'},payload:{requestId:'legacy-deepseek-fixture',mode:'chat',message:'hello',history:[]}}),/峰闲/);
-  assert.equal(charged,0);assert.equal(calls,0);
+test('legacy provider set to a flat-rate model cannot silently use generic token pricing', async () => {
+  for(const model of ['deepseek/deepseek-v4.1-flash','qwen/qwen3.8-flash-next','glm/glm-5.3-flash']){
+    let charged=0,calls=0;
+    const provider={apiKey:'fixture',baseUrl:'https://llm.runninghub.ai/v1',model};
+    const service=createCompanionChat({provider,charge:async()=>charged++,fetchImpl:async()=>calls++});
+    await assert.rejects(service.reply({user:{id:'u'},payload:{requestId:'legacy-flat-fixture',mode:'chat',message:'hello',history:[]}}),/只支持按操作计费/);
+    assert.equal(charged,0);assert.equal(calls,0);
+  }
+});
+test('Qwen uses its own input, output and cache rates', () => {
+  const row = estimateXiaotaoModelUsage('qwen/qwen3.8-flash-next', {prompt_tokens:10000, completion_tokens:1000,
+    total_tokens:11000, prompt_tokens_details:{cached_tokens:4000}});
+  near(row.usd, (6000*.118 + 4000*.015 + 1000*.398)/1e6);
+  assert.equal(row.rateSnapshot,'runninghub-2026-11-04');
 });

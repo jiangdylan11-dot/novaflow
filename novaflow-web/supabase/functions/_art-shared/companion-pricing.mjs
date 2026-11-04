@@ -1,11 +1,10 @@
 // GENERATED COPY - source: packages/shared/src/companion-pricing.mjs
 import {normalizeCreditConfig} from './feature-credits.mjs';
 import {RELEASE_VERSION} from './release.mjs';
+import {XIAOTAO_FLAT_RATE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
-const EXTRA_MODELS = Object.freeze(['glm/glm-5.3-flash','openai/gpt-6.1-sol-saver']);
 const GROK = 'xai/grok-4.7';
-const DEEPSEEK = 'deepseek/deepseek-v4.1-flash';
-const RETIRED_GLM = 'glm/glm-5.3-flash';
+const GPT = 'openai/gpt-6.1-sol-saver';
 export const COMPANION_OUTPUT_TOKENS = 2048;
 export function companionProviderRevision(provider) {
   const rev=provider?.configRevision;
@@ -86,9 +85,9 @@ export async function companionPricingPolicy(provider = {}, {revision=DEFAULT_PR
     ? provider.creditConfig.xiaotao_online.enabled_models : [];
   const models = [
     {id:GROK, available:configured && (defaultModel === GROK || (provider.operationTextChatV3 === true && configuredExtras.includes(GROK)))},
-    ...EXTRA_MODELS.map(id => ({id, available:configured && id !== RETIRED_GLM && configuredExtras.includes(id)})),
-    {id:DEEPSEEK, available:configured && provider.operationTextChatV3 === true && configuredExtras.includes(DEEPSEEK)},
-    {id:'legacy-online', available:configured && (defaultModel === GROK || (defaultModel !== RETIRED_GLM && EXTRA_MODELS.includes(defaultModel) && configuredExtras.includes(defaultModel)))}
+    {id:GPT, available:configured && configuredExtras.includes(GPT)},
+    ...XIAOTAO_FLAT_RATE_MODEL_IDS.map(id => ({id, available:configured && provider.operationTextChatV3 === true && configuredExtras.includes(id)})),
+    {id:'legacy-online', available:configured && (defaultModel === GROK || (defaultModel === GPT && configuredExtras.includes(GPT)))}
   ];
   // Bump schema whenever estimation or request canonicalization changes;
   // the release revision also changes on each deployment per project policy.
@@ -104,4 +103,4 @@ export async function companionQuoteFingerprint(payload, pricingVersion) {
   return digest({pricingVersion, payload:body});
 }
 
-export function isNewPricedModel(model) { return EXTRA_MODELS.includes(model); }
+export function isNewPricedModel(model) { return model === GPT; }

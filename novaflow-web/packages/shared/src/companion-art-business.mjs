@@ -7,6 +7,7 @@ import {companionPricingPolicy} from './companion-pricing.mjs';
 import {postRunningHubResponses} from './runninghub-llm.mjs';
 import {hasXiaotaoDecimalV1,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 import {QWEN21_NATIVE_REWRITE,QWEN21_NATIVE_CONTRACTS,buildQwen21NativeRewrite,compileQwen21NativeRewrite} from './qwen21-native-rewrite.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const VERSION='foart-art-phases-prototype-v1';
 const ENGLISH_SYSTEM='Translate the supplied validated image prompt into English for Qwen Image 2.1. Translate only; do not optimize again, summarize, add or remove facts. Preserve every object count, color, relative position, negative statement, material, lighting and camera constraint. Translate quoted descriptive field values too. Keep artwork lettering verbatim, including its original language, spelling and punctuation. Preserve reference placeholders and program identifiers exactly. Return all six sections in this order with these exact headings: [Style], [Subjects], [Environment], [Lighting], [Camera], [Requirements]. Return only the complete English prompt.';
@@ -416,10 +417,10 @@ export async function createCompanionArtBusiness({enabled=false,accountingReady=
   }
   if(!provider?.apiKey||provider.pricingSnapshotReady!==true||typeof charge!=='function'||typeof isCurrent!=='function')fail('accounting-unavailable');
   const snapshot=await companionPricingPolicy(provider);
-  const models=snapshot.models.filter(row=>row.available&&['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(row.id)).map(row=>row.id);
+  const models=snapshot.models.filter(row=>row.available&&XIAOTAO_ONLINE_MODEL_IDS.includes(row.id)).map(row=>row.id);
   if(!models.length)fail('model-unavailable');
   const phases=createTrustedArtPhases({secret,models,visionModels:models.filter(id=>operationV3?.enabled===true
-      ?snapshot.config?.xiaotao_online?.operation_art_v3===true&&snapshot.config?.xiaotao_online?.operation_vision_chat_v3===true&&hasXiaotaoDecimalV1(snapshot.config)&&['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(id)
+      ?snapshot.config?.xiaotao_online?.operation_art_v3===true&&snapshot.config?.xiaotao_online?.operation_vision_chat_v3===true&&hasXiaotaoDecimalV1(snapshot.config)&&XIAOTAO_ONLINE_MODEL_IDS.includes(id)
       :['xai/grok-4.7','openai/gpt-6.1-sol-saver'].includes(id)),compiler,policyFor,isCurrent,operationV3,pricingConfig:snapshot.config,
     quote:async({model,body,imageCount})=>{
       const text=body.input.filter(row=>row.role==='user').flatMap(row=>row.content||[]).map(part=>part.text||'').join('\n');

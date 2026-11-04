@@ -14,6 +14,7 @@ import {createXiaotaoOperationV3Tickets} from './xiaotao-operation-v3-ticket.mjs
 import {createXiaotaoOperationV3Ports} from './xiaotao-operation-v3-ports.mjs';
 import {createXiaotaoV3FoartJournal} from './xiaotao-operation-v3-foart-journal.mjs';
 import {canonicalizeXiaotaoV3FoartIntent,createXiaotaoV3FoartContinuation} from './xiaotao-operation-v3-foart-continuation.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const fail=(code,statusCode=400)=>{throw Object.assign(new Error(code),{code,statusCode});};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -21,7 +22,7 @@ const policyText=p=>JSON.stringify({schema:p.schema,revision:p.revision,provider
 function tokenTerms(token) {
   if(typeof token!=='string'||token.length>4096)fail('invalid-operation-ticket');
   try{const parts=token.split('.');if(parts.length!==2)throw Error();const value=JSON.parse(Buffer.from(parts[0],'base64url').toString('utf8'));
-    if(!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(value?.model)||!/^sha256:[a-f0-9]{64}$/.test(value.policyVersion||''))throw Error();
+    if(!XIAOTAO_ONLINE_MODEL_IDS.includes(value?.model)||!/^sha256:[a-f0-9]{64}$/.test(value.policyVersion||''))throw Error();
     return {model:value.model,policyVersion:value.policyVersion};}catch{fail('invalid-operation-ticket');}
 }
 function outputText(data) {

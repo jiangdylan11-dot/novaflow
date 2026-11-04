@@ -3,6 +3,7 @@ import {isArtPromptLanguage,artPromptLanguageSystem} from './art-prompt-language
 import {postRunningHubResponses} from './runninghub-llm.mjs';
 import {XIAOTAO_TEXT_SYSTEM,XIAOTAO_VISION_SYSTEM,estimateXiaotaoOnlineCredits,settleXiaotaoOnlineCredits,xiaotaoFileKind,tokenUsageRecord,xiaotaoOnlinePolicy,parseUsageUsd} from './feature-credits.mjs';
 import {FOART_TOOL_SYSTEM,validateFoartContext,readFoartPlan,foartPlanResponseFormat,foartUnsupportedMediaAnalysis} from './foart-tool-plan.mjs';
+import {isXiaotaoFlatRateModel} from './xiaotao-online-models.mjs';
 import {COMPANION_OUTPUT_TOKENS,companionPricingPolicy,companionQuoteFingerprint,isNewPricedModel} from './companion-pricing.mjs';
 export class CompanionError extends Error {constructor(status,message,code='companion-failed'){super(message);this.status=status;this.code=code;}}
 const need=(ok,message)=>{if(!ok)throw new CompanionError(400,message);};
@@ -69,24 +70,18 @@ export function companionInput(payload){
  return {input,imageCount:images.length,textOnly:!hasMedia,systemText};
 }
 function prepareCompanionRequest(provider,payload,{quoteOnly=false}={}){
-  // Retire new GLM calls even for older clients that omit modelId. Existing
-  // reservations and already-running requests continue through settlement.
-  if ((payload.modelId || provider.model) === 'glm/glm-5.3-flash')
-   throw new CompanionError(503,'GLM 已移除，本次未发起调用，也未扣积分；同一请求若此前已提交，请核对积分状态','companion-model-retired');
   const {input,imageCount,textOnly,systemText}=companionInput(payload);
   // Explicit selections must never silently use the server's different model.
   // Older clients omit modelId and continue to use the configured route.
-  const extraModels=['glm/glm-5.3-flash','openai/gpt-6.1-sol-saver'];
   const enabledModels=Array.isArray(provider.creditConfig?.xiaotao_online?.enabled_models)?provider.creditConfig.xiaotao_online.enabled_models:[];
-  // DeepSeek is available only for a trusted v3 quote; the legacy reply path remains blocked.
-  const deepseekV3Quote=quoteOnly && provider.operationTextChatV3===true && payload.modelId==='deepseek/deepseek-v4.1-flash' && enabledModels.includes(payload.modelId);
-  const grokV3Quote=quoteOnly && provider.operationTextChatV3===true && payload.modelId==='xai/grok-4.7' && enabledModels.includes(payload.modelId);
-  const explicitlyEnabled=(extraModels.includes(payload.modelId)&&enabledModels.includes(payload.modelId)) || deepseekV3Quote || grokV3Quote;
+  // Flat-rate models (DeepSeek, Qwen, GLM) and Grok are offered only for a trusted v3 quote.
+  const v3Quote=quoteOnly && provider.operationTextChatV3===true && (isXiaotaoFlatRateModel(payload.modelId) || payload.modelId==='xai/grok-4.7') && enabledModels.includes(payload.modelId);
+  const explicitlyEnabled=(isNewPricedModel(payload.modelId)&&enabledModels.includes(payload.modelId)) || v3Quote;
   if(payload.modelId != null && !explicitlyEnabled && (payload.modelId !== 'xai/grok-4.7' || provider.model !== payload.modelId))
    throw new CompanionError(503,'所选在线模型尚未开通或后台配置不匹配，本次未扣积分');
   const selectedModel=payload.modelId || provider.model;
-  if(selectedModel==='deepseek/deepseek-v4.1-flash' && !deepseekV3Quote)
-   throw new CompanionError(503,'DeepSeek 峰闲计费规则尚未确认，本次未扣积分');
+  if(isXiaotaoFlatRateModel(selectedModel) && !v3Quote)
+   throw new CompanionError(503,'所选在线模型只支持按操作计费，本次未扣积分');
   // Metadata binds native tools; it does not grant audio/video understanding.
   if((payload.mode!=='foart'&&(Array.isArray(payload.uploads)?payload.uploads:[]).some(file=>['video','audio'].includes(xiaotaoFileKind(file))))||payload.mode==='foart'&&foartUnsupportedMediaAnalysis(payload.message,(payload.uploads||[]).map(file=>({...file,kind:xiaotaoFileKind(file)}))))
    throw new CompanionError(400,'当前在线模型暂不支持分析音频或视频，本次未扣积分');
