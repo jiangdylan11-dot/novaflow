@@ -583,7 +583,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
         pendingImageReview={reviewId,rt,beforeBinding,preparedSnapshot,prompt,modelPrompt,negativePrompt,preparedAgent,op:copy(op),count,selectionStillCurrent,sessionStillCurrent};
         return {action:op.action,phase:'review',provider:rt.state.provider,prompt,modelPrompt,negativePrompt,optimization,reviewId};
       }
-      const optimized=await root.__NovaFlowSmartAI.optimizeForAgent({assistantSelectionScope:'xiaotao',surface:'art',prompt:op.prompt,
+      const optimized=await root.__NovaFlowSmartAI.optimizeForAgent({assistantSelectionScope:'xiaotao',surface:'art',prompt:op.prompt,plannerBrief:op.plannerBrief===true,
         negativePrompt:rt.state.negativePrompt||'',requirements,generationMode:op.generationMode,
         engine:gptDrawing?'gpt-image-2.5':rt.state.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1',supportsNegativePrompt:!gptDrawing,signal,onProgress:onStatus,...onlineBusiness,images,
         selectionStillCurrent,isImageInputCurrent:()=>imageBinding(rt)===beforeBinding&&(!scopedUploads||attachmentStillCurrent()),...(scopedText?{currentDrawingTextOnly:true}:{}),...(scopedVision?{currentDrawingVisionOnly:true}:{})});
@@ -828,6 +828,11 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       if(uploadIds.length>1&&!el.multiple)fail('该原生位置只接收一个文件');
       for(const id of uploadIds){const file=await materialFile(id),inspected=root.NovaFlowXiaotaoUpload?.inspectUpload?.(file);if(inspected?.ok===false)fail(inspected.message);file.__nfFoartMaterialId=id;
         const accept=String(el.accept||'').toLowerCase();if(accept&&accept!=='*/*'&&!accept.split(',').some(t=>{t=t.trim();return t===file.type.toLowerCase()||t.endsWith('/*')&&file.type.toLowerCase().startsWith(t.slice(0,-1))||t.startsWith('.')&&file.name.toLowerCase().endsWith(t);}))fail('素材类型不符合该模式的原有输入规则');files.push(file);}
+      // The upload router may already have placed this picture; the planner must not add it twice.
+      if(/^novaflow-art-generate-reference-input/.test(el.id||'')&&files.length===1){
+        const placed=Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).some(ref=>ref?.name===files[0].name&&(!ref.file?.size||ref.file.size===files[0].size));
+        if(placed)return {action:op.action,phase:'applied',control:label(el)||'参考图',uploadId:uploadIds[0],name:files[0].name,files:[{name:files[0].name,uploadId:uploadIds[0]}],message:files[0].name+' 已在参考图中'};
+      }
       const nativeKey=el.closest('#novaflow-png-remove-black-root')?'png_remove_black':el.closest('#novaflow-mp4-compress-root')?'mp4_compress':el.closest('#novaflow-video-format-convert-root')?'video_format_convert':el.closest('#novaflow-spine-atlas-webp-root')?'spine_atlas':null;
       const viewerImport=el.ownerDocument!==root.document&&typeof el.ownerDocument.defaultView?.NovaFlowSpineViewer?.importFiles==='function';
       if(nativeKey)await root.NovaFlowProductionTools[nativeKey].addFiles(files);

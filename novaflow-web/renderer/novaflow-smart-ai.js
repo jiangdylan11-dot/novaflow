@@ -5238,8 +5238,9 @@
         const restored=restoreSmartAiResourceMentions(String(response.negativePrompt||''),protectedNegative);
         if(!restored.ok)throw smartAiResourceMentionError(restored.error);negative=restored.text;
       }
-      const preserved=validateSmartAiArtPromptPreservation(source.replace(/<image(\d+)>/g,'@参考图$1'),display.text,requirements,{deterministicMerge:false});
-      if(!preserved.ok)throw smartAiPromptPreservationError(preserved);
+      // A brief the planner wrote is working text, not the user's prompt to keep word for word.
+      if(options.plannerBrief!==true){const preserved=validateSmartAiArtPromptPreservation(source.replace(/<image(\d+)>/g,'@参考图$1'),display.text,requirements,{deterministicMerge:false});
+      if(!preserved.ok)throw smartAiPromptPreservationError(preserved);}
       const proofExecutionPrompt=model.text.replace(/@参考图\s*(\d+)/g,(_,n)=>`<image${n}>`);
       let compilerBinding,compilerBindingInvalidReason;
       if(gpt && typeof response.compilerProof==='string' && response.compilerProof){

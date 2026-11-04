@@ -125,18 +125,6 @@
   }
   // One resolver for every path that serializes or sends a reference. The slot
   // may keep a blob: URL for display; File does not survive JSON.stringify.
-  // The image goes out twice (prepare + execute); a full-size PNG can use up the whole
-  // request window. The model reads a 1024 px JPEG just as well.
-  async function chatVisionDataUrl(dataUrl) {
-    const doc=root.document;if(!doc||typeof root.Image!=='function'||!/^data:image\//.test(dataUrl||''))return dataUrl;
-    try {
-      const image=new root.Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=dataUrl;});
-      const scale=Math.min(1,1024/Math.max(image.naturalWidth,image.naturalHeight)),canvas=doc.createElement('canvas');
-      canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
-      const context=canvas.getContext('2d');context.fillStyle='#808080';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);
-      const next=canvas.toDataURL('image/jpeg',.85);return next.length<dataUrl.length?next:dataUrl;
-    } catch {return dataUrl;}
-  }
   async function resolveReferenceDataUrl(ref) {
     const current = String(ref?.dataUrl || '');
     if (/^data:[^;,]+;base64,/i.test(current)) {
@@ -1048,7 +1036,8 @@
         if(/优化|润色|改写|整理|完善/.test(message)){state.error='提示词来源组件尚未就绪，未提交或扣费。';notify();return {stop:true};}return null;
       }
       const action=helper.classifyPromptAction(message);if(action==='none')return null;
-      if(action==='compound'){state.error='请先单独优化提示词，再提出生成或其他操作；本次未提交或扣费。';state.status='未提交';notify();return {stop:true};}
+      // "改成…再生成" is one request for the planner, never a reason to refuse.
+      if(action==='compound')return null;
       let workspace;try{workspace=capturePromptWorkspace(info);}catch{state.error='无法确认当前工作区，请稍后重试；未提交或扣费。';state.status='未提交';notify();return {stop:true};}
       const source=helper.resolvePromptSource({pagePrompt:info.pagePrompt,instruction:message});
       // "换成…" with no prompt anywhere is an edit request, not a prompt to optimize.
@@ -1832,7 +1821,6 @@
           if(!picked.length||picked.includes(undefined))fail('没有找到要反推的图片，请先放入图片；未提交，不扣积分');
           images.splice(0,images.length,...picked);
         }
-        if(operationVision)for(const image of images)image.dataUrl=await chatVisionDataUrl(image.dataUrl);
         const uploadOwner=operationVision&&images.length?api()?.captureFoartBillingOwner?.():null;
         const uploadModel=state.modelId;
         const uploadCurrent=()=>operation===serial&&!stopped&&state.provider==='api'&&state.modelId===uploadModel&&typeof uploadOwner?.current==='function'&&uploadOwner.current()===true;
@@ -2151,7 +2139,7 @@
       const current=()=>promptAbort===abort&&bindingCurrent()&&(!source?.attachmentStillCurrent||source.attachmentStillCurrent()===true);
       state.pending=true;state.error='';state.status='正在优化绘图提示词…';if(recordMessage)pushUser(message);notify();
       try {
-        const receipt=await tools.execute({action:'image_optimize',prompt:selectedPrompt,generationMode:visual?'img2img':'txt2img'},
+        const receipt=await tools.execute({action:'image_optimize',prompt:selectedPrompt,generationMode:visual?'img2img':'txt2img',plannerBrief:source?.plannerBrief===true},
           // The exact intent is an operation request, not a visual edit brief.
           {provider:selected.provider,modelId:selected.modelId,requirements:source?.requirements??'',signal:abort.signal,selectionStillCurrent:bindingCurrent,
             ...(visual?{currentDrawingVisionOnly:true,referenceSource,projectStillCurrent:source.workspaceGuard,referenceRoles,...(referenceSource==='uploads'?{uploadReferences:staged.map(({id,previewUrl,name,mimeType,size})=>({id,previewUrl,name,mimeType,size})),attachmentStillCurrent:source.attachmentStillCurrent,...(replacePageReferencesConfirmed?{replacePageReferencesConfirmed:true}:{})}:{})}:{currentDrawingTextOnly:true}),
@@ -2209,7 +2197,9 @@
     // Online planner: write the prompt through the billed online drawing
     // optimizer; generation stays with the user.
     async function plannerDrawingPrompt(op,message){
-      const info=activePromptSource(),rt=root.__NovaFlowArtGenerate;
+      const rt=root.__NovaFlowArtGenerate;let info=activePromptSource();
+      // A collapsed 生图 panel or another section is no reason to stop: the planner chose drawing.
+      if(!info){await root.NovaFlowFoartTools?.execute?.({action:'open',surface:'drawing'},{});info=activePromptSource();}
       if(info?.surface==='ui'){
         let uiWorkspace;try{uiWorkspace=capturePromptWorkspace(info);}catch(error){throw Error('当前 UI 页面还没准备好：'+String(error?.message||error));}
         const prompt=String(op.prompt||'').trim()||info.pagePrompt.trim()||message;
@@ -2228,7 +2218,7 @@
       }
       let workspace;try{workspace=capturePromptWorkspace(info);}catch(error){throw Error('当前绘图页面还没准备好：'+String(error?.message||error));}
       const prompt=String(op.prompt||'').trim()||info.pagePrompt.trim()||message;
-      const ok=await prepareOnlineCurrentDrawingPrompt(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,requirements:message,...workspace}});
+      const ok=await prepareOnlineCurrentDrawingPrompt(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,plannerBrief:!!String(op.prompt||'').trim(),requirements:message,...workspace}});
       state.pending=true;
       if(!ok)throw Error(state.error||'提示词优化未完成');
       if(op.action!=='image_generate')return {action:op.action,phase:'applied',plannerPrompt:true,prompt:String(rt?.state?.prompt||''),message:'提示词已优化并写入绘图输入框。'};
