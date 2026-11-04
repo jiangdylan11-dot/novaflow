@@ -3422,6 +3422,8 @@
     const target = event.target;
     if (!(target instanceof Element)) return false;
     if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return true;
+    // 小桃's chat floats above the page: scrolling it moves nothing the layout passes own.
+    if (target.closest("#nf-xiaotao-art-root")) return true;
     return target instanceof HTMLElement && target.isContentEditable === true;
   }
 
