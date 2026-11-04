@@ -50,10 +50,12 @@ function validateStyleImageSize(dataUrl) {
     pos+=12+n;if(ended)break;
   }
   if(!seenHeader||!seenData||!ended||!compressedBytes)fail();
+  // The edge runtime's zlib ignores info and returns the bytes themselves, with no engine to read.
   const expected=h*(1+w*channels),input=Buffer.concat(compressed,compressedBytes);let result;
   try{result=inflateSync(input,{maxOutputLength:expected+1,info:true});}catch{fail();}
-  if(!result?.buffer||result.buffer.length!==expected||result.engine?.bytesWritten!==input.length)fail();
-  for(let row=0;row<h;row++)if(result.buffer[row*(1+w*channels)]>4)fail();
+  const pixels=Buffer.isBuffer(result)?result:result?.buffer;
+  if(!pixels||pixels.length!==expected||(result.engine&&result.engine.bytesWritten!==input.length))fail();
+  for(let row=0;row<h;row++)if(pixels[row*(1+w*channels)]>4)fail();
 }
 export const STYLE_OUTPUT_TOKENS=Object.freeze({style:120,'aifx-material':300,'aifx-supplement':120});
 const codepoints=(value,max)=>Array.from(value).slice(0,max).join('');
