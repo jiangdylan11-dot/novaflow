@@ -71,11 +71,11 @@ export function createXiaotaoV3FoartPlanner({enabled=false,secret,loadProvider,r
     catch{fail('operation-status-unknown',503);}
     const data=posted?.data;if(!data||data.model!==trusted.model||!data.usage)fail('operation-status-unknown',503);
     const recorded=await ports.recordAssessedUsage({...stage,usageRecords:[data.usage]});if(recorded?.status!=='recorded')fail('operation-status-unknown',503);
-    let plan;try{const text=outputText(data);if(!text)throw Error();plan=readFoartPlan(text,request.foartContext);}catch{}
+    let plan,planIssue='';try{const text=outputText(data);if(!text)throw Error('方案没有完整返回');plan=readFoartPlan(text,request.foartContext);}catch(error){planIssue=String(error?.message||'').slice(0,200);}
     const current=await session(isCurrent,trusted);
     if(signal?.aborted||!current||!plan) {
       const receipt=await ports.finalize({actor:trusted,operationId:trusted.operationId,outcome:'cancel'});if(receipt?.status!=='settled')fail('operation-status-unknown',503);
-      if(!current)fail('selection-stale',401);return {ok:false,errorCode:'operation-planner-incomplete',receipt};
+      if(!current)fail('selection-stale',401);return {ok:false,errorCode:'operation-planner-incomplete',planIssue,receipt};
     }
     if(plan.status==='act') {
       // A tool can change what the next one may do, so run the first and replan.

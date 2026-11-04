@@ -1894,7 +1894,7 @@
     if(quota){
       notifyAccountBalance(undefined,'companion-operation');
       if(result?.ok!==true||(result.receipt||result).outcome!=='success'||(result.receipt||result).uncollected>0)
-        return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result?.errorCode||'operation-incomplete',error:(result.receipt||result).uncollected>0?incompleteSettlementMessage(result.receipt||result):'操作未完成，请查看实际扣分。'};
+        return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result?.errorCode||'operation-incomplete',planIssue:String(result?.planIssue||'').slice(0,200),error:(result.receipt||result).uncollected>0?incompleteSettlementMessage(result.receipt||result):'操作未完成，请查看实际扣分。'};
       return {ok:true,data:{toolPlan:result.toolPlan,quota}};
     }
     const plan=result?.toolPlan,action=foartOperationAction(plan);
