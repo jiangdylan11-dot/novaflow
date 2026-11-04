@@ -31,7 +31,7 @@
 /* iframe zoom may change vw/vh without a resize event. Preserve the preferred
    drag position but constrain it in CSS while the model menu is open. */
 #nf-xiaotao-art-root .nf-xiaotao-panel.nf-xiaotao-menu-open { left:clamp(0px,var(--nf-xiaotao-menu-left,0px),max(0px,calc(100vw - min(390px,calc(100vw - 24px)) - 2px))) !important; top:clamp(0px,var(--nf-xiaotao-menu-top,0px),max(0px,calc(100dvh - min(650px,calc(100vh - 110px)) - 2px))) !important; }
-#nf-xiaotao-art-root .nf-xiaotao-model-backdrop { position:fixed; inset:0; z-index:0; background:transparent; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-backdrop { position:fixed; inset:0; z-index:0; background:transparent; }
 .nf-xiaotao-header { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:13px 12px 10px; border-bottom:1px solid #3e3e3e; cursor:grab; touch-action:none; user-select:none; }
 .nf-xiaotao-header > div { flex:1; min-width:0; }
 .nf-xiaotao-header.nf-xiaotao-dragging { cursor:grabbing; }
@@ -84,33 +84,33 @@
 .nf-xiaotao-model-select { max-width:205px; min-width:0; padding:5px 24px 5px 8px; border:0; border-radius:8px; background:#1c1c1c; color:#d9eae4; font:inherit; font-size:11px; cursor:pointer; }
 .nf-xiaotao-model-select:focus-visible { outline:2px solid #9be4cd; outline-offset:2px; }
 .nf-xiaotao-model-select:disabled { opacity:.6; cursor:wait; }
-#nf-xiaotao-art-root .nf-xiaotao-header .nf-xiaotao-model-trigger { display:block; max-width:205px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:5px 8px; text-align:left; color:#d9eae4; }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger:focus-visible { outline:2px solid #9be4cd; outline-offset:2px; }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger:disabled { opacity:.6; cursor:wait; }
-#nf-xiaotao-art-root .nf-xiaotao-model-popup { position:absolute; z-index:10; box-sizing:border-box; max-width:calc(100% - 16px); max-height:calc(100% - 65px); overflow-y:auto; padding:5px; border:1px solid #555; border-radius:8px; background:#222; box-shadow:0 8px 24px #0009; }
-#nf-xiaotao-art-root .nf-xiaotao-model-group-label { padding:5px 8px 3px; color:#a8b9b2; font-size:11px; }
-#nf-xiaotao-art-root .nf-xiaotao-model-option { display:block; width:100%; padding:7px 8px; border:0; border-radius:5px; background:transparent; color:#e5e5e5; text-align:left; white-space:normal; font-size:11px; line-height:1.4; }
-#nf-xiaotao-art-root .nf-xiaotao-model-option:hover, #nf-xiaotao-art-root .nf-xiaotao-model-option.is-active { background:#363636; color:#fff; }
-#nf-xiaotao-art-root .nf-xiaotao-model-option[aria-selected="true"] { background:#285a49; color:#fff; }
-#nf-xiaotao-art-root .nf-xiaotao-model-option[aria-selected="true"]:hover, #nf-xiaotao-art-root .nf-xiaotao-model-option[aria-selected="true"].is-active { background:#2e6853; }
+:is(#nf-xiaotao-art-root .nf-xiaotao-header, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger { display:block; max-width:205px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:5px 8px; text-align:left; color:#d9eae4; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger:focus-visible { outline:2px solid #9be4cd; outline-offset:2px; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger:disabled { opacity:.6; cursor:wait; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-popup { position:absolute; z-index:10; box-sizing:border-box; max-width:calc(100% - 16px); max-height:calc(100% - 65px); overflow-y:auto; padding:5px; border:1px solid #555; border-radius:8px; background:#222; box-shadow:0 8px 24px #0009; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-group-label { padding:5px 8px 3px; color:#a8b9b2; font-size:11px; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option { display:block; width:100%; padding:7px 8px; border:0; border-radius:5px; background:transparent; color:#e5e5e5; text-align:left; white-space:normal; font-size:11px; line-height:1.4; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option:hover, :is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option.is-active { background:#363636; color:#fff; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option[aria-selected="true"] { background:#285a49; color:#fff; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option[aria-selected="true"]:hover, :is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option[aria-selected="true"].is-active { background:#2e6853; }
 .nf-xiaotao-header .nf-xiaotao-title { display:flex;align-items:center;gap:12px; }
 .nf-xiaotao-title > strong { flex-shrink:0; }
-#nf-xiaotao-art-root .nf-xiaotao-header .nf-xiaotao-brains button { padding:4px 7px;font-size:11px;white-space:nowrap; }
-#nf-xiaotao-art-root .nf-xiaotao-header .nf-xiaotao-brains .nf-xiaotao-model-trigger { position:relative; display:grid; grid-template-columns:auto; justify-items:start; row-gap:1px; max-width:250px; overflow:hidden; white-space:normal; padding:5px 25px 5px 8px; cursor:pointer; }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger .nf-xiaotao-model-sizer { grid-row:1 / 3; grid-column:1; display:block; height:0; overflow:hidden; visibility:hidden; pointer-events:none; }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger .nf-xiaotao-model-sizer > span { width:auto; overflow:visible; }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger > .nf-xiaotao-model-name { grid-row:1; grid-column:1; }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger > .nf-xiaotao-model-note { grid-row:2; grid-column:1; }
-#nf-xiaotao-art-root .nf-xiaotao-header .nf-xiaotao-brains .nf-xiaotao-model-trigger:hover:not(:disabled) { background:#3d4c46; border-color:#91c4b2; }
-#nf-xiaotao-art-root .nf-xiaotao-header .nf-xiaotao-brains .nf-xiaotao-model-trigger:disabled { cursor:wait; }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger::after { content:''; position:absolute; right:10px; top:calc(50% - 5px); width:7px; height:7px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(45deg); pointer-events:none; }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger[aria-expanded="true"]::after { top:calc(50% - 2px); transform:rotate(225deg); }
-#nf-xiaotao-art-root .nf-xiaotao-model-trigger .nf-xiaotao-model-name, #nf-xiaotao-art-root .nf-xiaotao-model-trigger .nf-xiaotao-model-note { width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
-#nf-xiaotao-art-root .nf-xiaotao-model-name, #nf-xiaotao-art-root .nf-xiaotao-model-note { display:block; max-width:100%; overflow-wrap:anywhere; }
-#nf-xiaotao-art-root .nf-xiaotao-model-name { color:#ffffff; font-size:12.5px; font-weight:600; line-height:1.35; }
-#nf-xiaotao-art-root .nf-xiaotao-model-note { color:#8f9a96; font-size:10px; font-weight:400; line-height:1.35; }
-#nf-xiaotao-art-root .nf-xiaotao-model-option:hover .nf-xiaotao-model-note, #nf-xiaotao-art-root .nf-xiaotao-model-option.is-active .nf-xiaotao-model-note { color:#a9b3af; }
-#nf-xiaotao-art-root .nf-xiaotao-model-option[aria-selected="true"] .nf-xiaotao-model-note { color:#c3ddd2; }
+:is(#nf-xiaotao-art-root .nf-xiaotao-header, .nf-xiaotao-model-host) .nf-xiaotao-brains button { padding:4px 7px;font-size:11px;white-space:nowrap; }
+:is(#nf-xiaotao-art-root .nf-xiaotao-header, .nf-xiaotao-model-host) .nf-xiaotao-brains .nf-xiaotao-model-trigger { position:relative; display:grid; grid-template-columns:auto; justify-items:start; row-gap:1px; max-width:250px; overflow:hidden; white-space:normal; padding:5px 25px 5px 8px; cursor:pointer; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger .nf-xiaotao-model-sizer { grid-row:1 / 3; grid-column:1; display:block; height:0; overflow:hidden; visibility:hidden; pointer-events:none; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger .nf-xiaotao-model-sizer > span { width:auto; overflow:visible; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger > .nf-xiaotao-model-name { grid-row:1; grid-column:1; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger > .nf-xiaotao-model-note { grid-row:2; grid-column:1; }
+:is(#nf-xiaotao-art-root .nf-xiaotao-header, .nf-xiaotao-model-host) .nf-xiaotao-brains .nf-xiaotao-model-trigger:hover:not(:disabled) { background:#3d4c46; border-color:#91c4b2; }
+:is(#nf-xiaotao-art-root .nf-xiaotao-header, .nf-xiaotao-model-host) .nf-xiaotao-brains .nf-xiaotao-model-trigger:disabled { cursor:wait; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger::after { content:''; position:absolute; right:10px; top:calc(50% - 5px); width:7px; height:7px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(45deg); pointer-events:none; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger[aria-expanded="true"]::after { top:calc(50% - 2px); transform:rotate(225deg); }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger .nf-xiaotao-model-name, :is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-trigger .nf-xiaotao-model-note { width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-name, :is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-note { display:block; max-width:100%; overflow-wrap:anywhere; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-name { color:#ffffff; font-size:12.5px; font-weight:600; line-height:1.35; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-note { color:#8f9a96; font-size:10px; font-weight:400; line-height:1.35; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option:hover .nf-xiaotao-model-note, :is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option.is-active .nf-xiaotao-model-note { color:#a9b3af; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-model-option[aria-selected="true"] .nf-xiaotao-model-note { color:#c3ddd2; }
 .nf-xiaotao-compose { position:relative; }
 .nf-xiaotao-staged { display:flex; flex-wrap:wrap; gap:10px; margin:0; padding:10px 10px 0; }
 .nf-xiaotao-staged-item { position:relative; width:72px; height:72px; }
@@ -127,8 +127,8 @@
 .nf-xiaotao-message-attachments { display:flex;flex-wrap:wrap;gap:6px;margin-top:8px; }
 .nf-xiaotao-message .nf-xiaotao-message-attachments img, .nf-xiaotao-message-file { width:72px;height:72px;object-fit:cover;margin:0;border-radius:12px; }
 @keyframes nf-xiaotao-spin { to { transform:rotate(360deg); } }
-#nf-xiaotao-art-root .nf-xiaotao-brains button { margin:0; border-color:transparent; background:transparent; color:#aaaaaa; }
-#nf-xiaotao-art-root .nf-xiaotao-brains button[aria-pressed="true"] { border-color:transparent; background:#1c4136; color:#9be4cd; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-brains button { margin:0; border-color:transparent; background:transparent; color:#aaaaaa; }
+:is(#nf-xiaotao-art-root, .nf-xiaotao-model-host) .nf-xiaotao-brains button[aria-pressed="true"] { border-color:transparent; background:#1c4136; color:#9be4cd; }
 #nf-xiaotao-art-root .nf-xiaotao-compose-actions button { font-size:11px; padding:5px 7px; flex:0 1 auto; min-width:0; }
 /* Send stays on the right. The estimate is a fixed slot immediately to its left,
    reserved in both modes so 约11分 and 约80分 cannot move the button. */

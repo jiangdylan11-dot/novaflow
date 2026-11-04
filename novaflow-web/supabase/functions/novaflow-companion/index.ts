@@ -9,6 +9,7 @@ import {createRunningHubLiveRates} from '../_art-shared/runninghub-live-rates.mj
 import {xiaotaoModelRatePolicy} from '../_art-shared/xiaotao-model-rates.mjs';
 import {createFeatureCreditPorts} from '../_art-shared/feature-credits.mjs';
 import {RELEASE_VERSION} from '../_art-shared/release.mjs';
+import {XIAOTAO_VISION_MODEL_IDS} from '../_art-shared/xiaotao-online-models.mjs';
 import {createRunningHubServerConfig} from '../_art-shared/runninghub-server-config.mjs';
 import {artBusinessDependencies} from './art-dependencies.mjs';
 import {mergeCapabilityOverrides,OPT_IN_KEYS} from './capability-overrides.mjs';
@@ -40,7 +41,7 @@ const operationDecimalCreditsEnabled=operationV3Enabled && env('NOVAFLOW_XIAOTAO
 const operationV3=createCompanionOperationV3Assembly({enabled:operationV3Enabled,decimalCreditsEnabled:operationDecimalCreditsEnabled,
  visionEnabled:v3Capabilities?.vision===true,audioRewriteEnabled:v3Capabilities?.audioRewrite===true,
  foartOpenEnabled:v3Capabilities?.foartOpen===true,foartGeneralEnabled:v3Capabilities?.foartGeneral===true&&v3Capabilities?.foartOpen===true,
- styleEnabled:false,styleVisionModels:[],videoRewriteEnabled:v3Capabilities?.videoRewrite===true,uiDraftEnabled:v3Capabilities?.uiDraft===true,
+ styleEnabled:v3Capabilities?.vision===true,styleVisionModels:v3Capabilities?.vision===true?[...XIAOTAO_VISION_MODEL_IDS]:[],videoRewriteEnabled:v3Capabilities?.videoRewrite===true,uiDraftEnabled:v3Capabilities?.uiDraft===true,
  secret:Buffer.from(env('NOVAFLOW_SESSION_SECRET'),'utf8')});
 const operationV3Status=createXiaotaoOperationV3Status({enabled:operationV3RecoveryEnabled,rpc});
 const operationV3ArtEnabled=v3Capabilities?.art===true;

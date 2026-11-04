@@ -927,6 +927,19 @@
       return prices?.predictXiaotaoOnline?.({...input,model,config:policy.config,samples}) || null;
     }
     function onlineQuote(message) {return predictOnline(onlineEstimateInput(message));}
+    // One fixed operation outside the chat (no history), e.g. the 特效 material read:
+    // the same prediction the chat box shows, for any online model the page allows.
+    function operationEstimate({modelId,promptChars=0,images=[],outputTokens}={}) {
+      const policy=currentPricingPolicy(),prices=root.NovaFlowFeatureCreditPrices;
+      if(!policy||!policyAllowsOnline(modelId))return null;
+      return prices?.predictXiaotaoOnline?.({model:modelId,config:policy.config,samples:[],text:'',system:' '.repeat(Math.max(0,promptChars)),
+        files:images.map(image=>({kind:'image',width:image.width,height:image.height})),outputTokens})||null;
+    }
+    // Image reading (style analysis) is switched on per model by the server.
+    function styleReadAvailable(modelId) {
+      const terms=currentPricingPolicy()?.config?.xiaotao_online;
+      return policyAllowsOnline(modelId)&&terms?.operation_style_v3===true&&terms?.operation_vision_chat_v3===true&&Array.isArray(terms.operation_style_vision_models)&&terms.operation_style_vision_models.includes(modelId);
+    }
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', activeChatHasImages = false, stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
     let mediaAbort = null, promptAbort = null, foartAbort = null, activeFoartBilling=null, activeChatBilling=null;
     const recapture = snapshot => snapshot.artContext.task === 'creation' ? bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')}) : bridge.capture({includeResult:snapshot.images.length===3});
@@ -2623,7 +2636,110 @@
       if(state.promptSourceCancelledNotice)state.status=[state.status,state.promptSourceCancelledNotice].filter(Boolean).join(' ');
       notify(); if(model.provider==='api')void refreshPricingPolicy(); return true;
     }
-    return Object.freeze({state, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
+    return Object.freeze({state, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, operationEstimate, styleReadAvailable, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
+  }
+  // The one model picker. The 小桃 panel and the 特效 material reader both build
+  // it here, so the list, its notes, its look and its keys cannot drift apart.
+  const MODEL_PICKER_GROUPS = Object.freeze([
+    Object.freeze({key:'local', label:'免费 · 本地', ids:Object.freeze(['qwen3.5-9b-heretic'])}),
+    Object.freeze({key:'online', label:'收费 · 在线', ids:XIAOTAO_ONLINE_MODEL_IDS})
+  ]);
+  function onlineGroupLabel(controller) {
+    return controller.onlineOperationDecimalConfirmed()?'收费 · 在线（按实际用量结算）':controller.onlineOperationMinimumConfirmed()?'收费 · 在线（成功操作最低 1 积分）':'收费 · 在线（计费规则待确认）';
+  }
+  // localChecks=false: the caller runs the local model its own way, so the 小桃
+  // node trial status does not apply. available overrides whether an online row
+  // can be used (a caller may need more than chat, e.g. image reading).
+  function modelOptionInfo(controller, id, {localNote='本地对话免费', localChecks=true, available:isAvailable}={}) {
+    const model=CHAT_MODELS[id], local=model.provider==='local';
+    const rate=local?'':controller.modelRateSummary(id,true), name=local?model.label.replace('（本地·免费）',''):model.label;
+    const available=local&&!localChecks?true:!local&&typeof isAvailable==='function'?isAvailable(id)===true:controller.modelAvailable(id);
+    const status=available?'':id==='qwen3.5-9b-heretic'?(controller.state.qwen35CpuTrialChecked===true?'无可用节点':'设备待检测'):!local&&!controller.pricingPolicyKey()?'价格待确认':'未开通';
+    const device=id==='qwen3.5-9b-heretic'&&localChecks&&!status?qwenExecutionDeviceLabel(controller.state.qwenExecutionDevice):'';
+    const note=[local?localNote:rate,device,status].filter(Boolean).join(' · ');
+    return {name,note,available,optionText:model.label+(rate?' · '+rate:'')+(status?' · '+status:''),
+      triggerName:id==='qwen3.5-9b-heretic'?'Qwen3.5 9B':name,triggerNote:local?['本地·免费',status].filter(Boolean).join(' · '):note};
+  }
+  // A DOM listbox stays in the caller's stacking context. Focus stays on the
+  // trigger while the active option moves, for screen readers.
+  function createModelPicker(doc, {label, menuLabel=label, listboxId, optionIdPrefix, describe, current, choose, emptyName='', emptyAria=label,
+    isShown=()=>true, beforeOpen=()=>{}, beforeClose=()=>{}, onClose=()=>{}}) {
+    const el=(tag,cls,text)=>{const n=doc.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
+    const put=(node,key,value)=>{if(node[key]!==value)node[key]=value;}, attr=(node,key,value)=>{if(node.getAttribute(key)!==value)node.setAttribute(key,value);};
+    const trigger=el('button','nf-xiaotao-model-trigger'),menu=el('div','nf-xiaotao-model-popup'),backdrop=el('div','nf-xiaotao-model-backdrop');
+    trigger.type='button';trigger.setAttribute('role','combobox');trigger.setAttribute('aria-label',label);
+    trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-controls',listboxId);trigger.setAttribute('aria-expanded','false');
+    // Keep these nodes stable across focus and asynchronous policy refreshes:
+    // replacing the pointer-down target before pointer-up can swallow a click.
+    const triggerName=el('span','nf-xiaotao-model-name'),triggerNote=el('span','nf-xiaotao-model-note'),triggerSizer=el('span','nf-xiaotao-model-sizer');
+    // Invisible copies of every option size the trigger to the longest one, so switching models never changes its width.
+    triggerSizer.setAttribute('aria-hidden','true');trigger.append(triggerName,triggerNote,triggerSizer);
+    menu.id=listboxId;menu.setAttribute('role','listbox');menu.setAttribute('aria-label',menuLabel);menu.hidden=true;backdrop.hidden=true;backdrop.setAttribute('aria-hidden','true');
+    const ids=[],buttons=new Map(),parts=new Map(),sizers=new Map(),groups=new Map();
+    for (const group of MODEL_PICKER_GROUPS) {
+      const node=el('div','nf-xiaotao-model-group');node.setAttribute('role','group');node.setAttribute('aria-label',group.label);
+      const title=el('div','nf-xiaotao-model-group-label',group.label);title.setAttribute('aria-hidden','true');node.append(title);groups.set(group.key,{node,title});
+      for (const id of group.ids) {
+        const item=el('button','nf-xiaotao-model-option'),name=el('span','nf-xiaotao-model-name',CHAT_MODELS[id].label),note=el('span','nf-xiaotao-model-note');item.append(name,note);
+        item.type='button';item.tabIndex=-1;item.id=optionIdPrefix+ids.length;item.setAttribute('role','option');item.setAttribute('data-model-id',id);item.setAttribute('aria-selected','false');
+        ids.push(id);buttons.set(id,item);parts.set(id,{name,note});node.append(item);
+        const sizeName=el('span','nf-xiaotao-model-name'),sizeNote=el('span','nf-xiaotao-model-note');triggerSizer.append(sizeName,sizeNote);sizers.set(id,{name:sizeName,note:sizeNote});
+      }
+      menu.append(node);
+    }
+    function sync() {
+      const selectedId=current();let selected=null;
+      for (const id of ids) {
+        const info=describe(id),p=parts.get(id),z=sizers.get(id),item=buttons.get(id);
+        put(p.name,'textContent',info.name);put(p.note,'textContent',info.note);put(z.name,'textContent',info.name);put(z.note,'textContent',info.note);
+        attr(item,'aria-label',`${info.name}${info.note?'，'+info.note:''}`);attr(item,'aria-selected',String(id===selectedId));
+        if(id===selectedId)selected=info;
+      }
+      const name=selected?selected.triggerName:emptyName,note=selected?selected.triggerNote:'';
+      put(triggerName,'textContent',name);put(triggerNote,'textContent',note);
+      attr(trigger,'aria-label',selected?`${label}，当前${name}${note?'，'+note:''}`:emptyAria);
+    }
+    function setGroupLabel(key,text) {const group=groups.get(key);if(!group)return;put(group.title,'textContent',text);attr(group.node,'aria-label',text);}
+    let index=0,suppressOutsideClick=false,suppressTimer=null;
+    const paintActive=()=>{ids.forEach((id,i)=>buttons.get(id).classList.toggle('is-active',i===index));const item=buttons.get(ids[index]);if(item){trigger.setAttribute('aria-activedescendant',item.id);item.scrollIntoView?.({block:'nearest'});}};
+    // quiet: the caller is already moving or hiding its own panel.
+    function close({focus=false,retainBackdrop=false,quiet=false}={}) {
+      if(!menu.hidden&&!quiet)beforeClose();
+      menu.hidden=true;backdrop.hidden=!retainBackdrop;onClose();trigger.setAttribute('aria-expanded','false');trigger.removeAttribute?.('aria-activedescendant');if(focus)trigger.focus();
+    }
+    function open() {
+      if(trigger.disabled)return;beforeOpen();sync();index=Math.max(0,ids.indexOf(current()));
+      backdrop.hidden=false;menu.hidden=false;trigger.setAttribute('aria-expanded','true');paintActive();
+    }
+    const pick=id=>{close();choose(id);};
+    trigger.onclick=()=>{if(menu.hidden)open();else close();};
+    trigger.onkeydown=event=>{
+      if(event.key==='Tab'){close();return;}
+      if(event.key==='Escape'){if(!menu.hidden){event.preventDefault();close({focus:true});}return;}
+      if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+        event.preventDefault();if(menu.hidden){open();return;}
+        index=event.key==='Home'?0:event.key==='End'?ids.length-1:(index+(event.key==='ArrowDown'?1:-1)+ids.length)%ids.length;paintActive();return;
+      }
+      if(event.key==='Enter'||event.key===' '){event.preventDefault();if(menu.hidden)open();else pick(ids[index]);}
+    };
+    for(const [id,item] of buttons){item.onpointerdown=event=>event.preventDefault();item.onclick=()=>pick(id);}
+    if(typeof doc.addEventListener==='function'){
+      const view=doc.defaultView||root;
+      doc.addEventListener('pointerdown',event=>{
+        // The editor reactivates its current tool with synthetic pointers on
+        // resize/zoom. Only a real outside pointer should dismiss this menu.
+        if(event.isTrusted===false)return;
+        if(suppressOutsideClick){suppressOutsideClick=false;backdrop.hidden=true;if(suppressTimer!==null)view.clearTimeout(suppressTimer);suppressTimer=null;}
+        if(menu.hidden||!isShown()||trigger.contains(event.target)||menu.contains(event.target))return;
+        close({retainBackdrop:true});suppressOutsideClick=true;event.preventDefault();event.stopImmediatePropagation();
+        if(suppressTimer!==null)view.clearTimeout(suppressTimer);
+        suppressTimer=view.setTimeout(()=>{suppressOutsideClick=false;backdrop.hidden=true;suppressTimer=null;},1000);
+      },true);
+      doc.addEventListener('pointerup',event=>{if(!suppressOutsideClick)return;backdrop.hidden=true;event.preventDefault();event.stopImmediatePropagation();},true);
+      doc.addEventListener('pointercancel',()=>{if(suppressOutsideClick)backdrop.hidden=true;},true);
+      doc.addEventListener('click',event=>{if(!suppressOutsideClick)return;suppressOutsideClick=false;backdrop.hidden=true;if(suppressTimer!==null)view.clearTimeout(suppressTimer);suppressTimer=null;event.preventDefault();event.stopImmediatePropagation();},true);
+    }
+    return Object.freeze({trigger,menu,backdrop,sync,setGroupLabel,open,close,isOpen:()=>!menu.hidden});
   }
   function mount() {
     if (!root.document?.body || root.document.getElementById('nf-xiaotao-art-root')) return;
@@ -2659,27 +2775,18 @@
     // listbox is rendered inside the panel, avoiding the embedded editor's
     // native-popup compositor ordering issue.
     modelSelect.hidden=true;modelSelect.tabIndex=-1;modelSelect.setAttribute('aria-hidden','true');
-    const modelTrigger=el('button','nf-xiaotao-model-trigger'),modelMenu=el('div','nf-xiaotao-model-popup'),modelBackdrop=el('div','nf-xiaotao-model-backdrop');
-    modelTrigger.type='button';modelTrigger.setAttribute('role','combobox');modelTrigger.setAttribute('aria-label','选择小桃AI模型');
-    modelTrigger.setAttribute('aria-haspopup','listbox');modelTrigger.setAttribute('aria-controls','nf-xiaotao-model-listbox');modelTrigger.setAttribute('aria-expanded','false');
-    // Keep these nodes stable across focus and asynchronous policy refreshes:
-    // replacing the pointer-down target before pointer-up can swallow a click.
-    const triggerName=el('span','nf-xiaotao-model-name'),triggerNote=el('span','nf-xiaotao-model-note'),triggerSizer=el('span','nf-xiaotao-model-sizer');
-    // Invisible copies of every option size the trigger to the longest one, so switching models never changes its width.
-    triggerSizer.setAttribute('aria-hidden','true');modelTrigger.append(triggerName,triggerNote,triggerSizer);const modelSizers=new Map();
-    modelMenu.id='nf-xiaotao-model-listbox';modelMenu.setAttribute('role','listbox');modelMenu.setAttribute('aria-label','小桃AI模型');modelMenu.hidden=true;modelBackdrop.hidden=true;modelBackdrop.setAttribute('aria-hidden','true');
-    const modelOptions=new Map(),modelButtons=new Map(),modelParts=new Map(),modelIds=[];let onlinePricingGroup=null;
-    for (const [label, ids] of [['免费 · 本地', ['qwen3.5-9b-heretic']], ['收费 · 在线', XIAOTAO_ONLINE_MODEL_IDS]]) {
-      const group=el('optgroup'); group.label=label;
-      const menuGroup=el('div','nf-xiaotao-model-group');menuGroup.setAttribute('role','group');menuGroup.setAttribute('aria-label',label);
-      const groupTitle=el('div','nf-xiaotao-model-group-label',label);groupTitle.setAttribute('aria-hidden','true');menuGroup.append(groupTitle);
-      if(ids===XIAOTAO_ONLINE_MODEL_IDS)onlinePricingGroup={group,menuGroup,groupTitle};
-      for (const id of ids) {const model=CHAT_MODELS[id], option=el('option','',model.label + (model.available ? '' : ' · 未开通')); option.value=id;modelOptions.set(id,option);group.append(option);
-        const item=el('button','nf-xiaotao-model-option'),name=el('span','nf-xiaotao-model-name',model.label),note=el('span','nf-xiaotao-model-note');item.append(name,note);item.type='button';item.tabIndex=-1;item.id='nf-xiaotao-model-option-'+modelIds.length;item.setAttribute('role','option');item.setAttribute('data-model-id',id);item.setAttribute('aria-selected','false');modelIds.push(id);modelButtons.set(id,item);modelParts.set(id,{name,note});menuGroup.append(item);
-        const sizeName=el('span','nf-xiaotao-model-name'),sizeNote=el('span','nf-xiaotao-model-note');triggerSizer.append(sizeName,sizeNote);modelSizers.set(id,{name:sizeName,note:sizeNote});}
-      modelSelect.append(group);
-      modelMenu.append(menuGroup);
+    const modelOptions=new Map();let onlinePricingGroup=null;
+    for (const group of MODEL_PICKER_GROUPS) {
+      const node=el('optgroup'); node.label=group.label; if(group.key==='online')onlinePricingGroup=node;
+      for (const id of group.ids) {const model=CHAT_MODELS[id], option=el('option','',model.label + (model.available ? '' : ' · 未开通')); option.value=id;modelOptions.set(id,option);node.append(option);}
+      modelSelect.append(node);
     }
+    const picker=createModelPicker(doc,{label:'选择小桃AI模型',menuLabel:'小桃AI模型',listboxId:'nf-xiaotao-model-listbox',optionIdPrefix:'nf-xiaotao-model-option-',
+      describe:id=>modelOptionInfo(controller,id),current:()=>controller.state.modelId,emptyName:'此前模型已移除 · 请选择',emptyAria:'选择小桃AI模型，此前模型已移除',
+      isShown:()=>open,choose:id=>chooseModel(id),
+      beforeOpen:()=>{refreshModelOptions();const rect=panel.getBoundingClientRect();panel.style.setProperty('--nf-xiaotao-menu-left',rect.left+'px');panel.style.setProperty('--nf-xiaotao-menu-top',rect.top+'px');panel.classList.add('nf-xiaotao-menu-open');modelViewportWidth=root.innerWidth;modelViewportHeight=root.innerHeight;positionModelMenu();},
+      beforeClose:()=>drag.reclamp(),onClose:()=>panel.classList.remove('nf-xiaotao-menu-open')});
+    const modelTrigger=picker.trigger,modelMenu=picker.menu,modelBackdrop=picker.backdrop;
     const retiredSelection=el('option','','此前模型已移除 · 请选择');
     retiredSelection.value='gemma-4-12b-it'; retiredSelection.disabled=true; retiredSelection.hidden=true;
     const upload=iconButton(el('button','nf-xiaotao-upload'),'upload','上传参考资源'),stagedRow=el('div','nf-xiaotao-staged');upload.type='button';stagedRow.hidden=true;
@@ -2738,7 +2845,7 @@
     const syncMentions=()=>{try{mentionHandle?.refresh?.();}catch{}};
     const focusInput=()=>{if(mentionHandle?.focus)mentionHandle.focus();else input.focus();};
     listen(inputField,'keydown',event=>{if(event.target!==input&&event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.defaultPrevented){event.preventDefault();footer.requestSubmit();}});
-    const drag = bindPanelDrag(panel, header, {onStart:()=>{if(modelMenu.hidden)return;const rect=panel.getBoundingClientRect();Object.assign(panel.style,{left:rect.left+'px',top:rect.top+'px'});modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');modelTrigger.removeAttribute('aria-activedescendant');}});
+    const drag = bindPanelDrag(panel, header, {onStart:()=>{if(!picker.isOpen())return;const rect=panel.getBoundingClientRect();Object.assign(panel.style,{left:rect.left+'px',top:rect.top+'px'});picker.close({quiet:true});}});
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onEnd:() => {if (open) anchorPanel();}});
     const bridge = createBridge(); let rendered = [], renderedCharges = '', renderedProposal = null, open = false, lastPricingKey=null,nodeRecheck=null;
     let controller, controllerEpoch=0, sessionRetired=false;
@@ -2800,20 +2907,9 @@
     if (typeof root.addEventListener === 'function') root.addEventListener('novaflow:runtime-features', () => render(controller.state));
     async function copyText(text, button, target) {return copyMessageText(text,button,doc,root,target);}
     function syncModelOptions() {
-      if(onlinePricingGroup){const label=controller.onlineOperationDecimalConfirmed()?'收费 · 在线（按实际用量结算）':controller.onlineOperationMinimumConfirmed()?'收费 · 在线（成功操作最低 1 积分）':'收费 · 在线（计费规则待确认）';if(onlinePricingGroup.group.label!==label)onlinePricingGroup.group.label=label;if(onlinePricingGroup.groupTitle.textContent!==label)onlinePricingGroup.groupTitle.textContent=label;if(onlinePricingGroup.menuGroup.getAttribute('aria-label')!==label)onlinePricingGroup.menuGroup.setAttribute('aria-label',label);}
-      let selected=null;
-      for(const [id,option] of modelOptions){
-        const model=CHAT_MODELS[id],rate=model.provider==='api'?controller.modelRateSummary(id,true):'',displayLabel=model.provider==='local'?model.label.replace('（本地·免费）',''):model.label;
-        const status=controller.modelAvailable(id)?'':id==='qwen3.5-9b-heretic'?(controller.state.qwen35CpuTrialChecked===true?'无可用节点':'设备待检测'):model.provider==='api' && !controller.pricingPolicyKey()?'价格待确认':'未开通';
-        const device=id==='qwen3.5-9b-heretic' && !status ? qwenExecutionDeviceLabel(controller.state.qwenExecutionDevice) : '';
-        const note=[model.provider==='local'?'本地对话免费':rate,device,status].filter(Boolean).join(' · ');
-        const optionText=model.label+(rate?' · '+rate:'')+(status?' · '+status:'');if(option.textContent!==optionText)option.textContent=optionText;
-        const item=modelButtons.get(id),parts=modelParts.get(id),ariaLabel=`${displayLabel}${note?'，'+note:''}`,ariaSelected=String(id===controller.state.modelId);if(parts.name.textContent!==displayLabel)parts.name.textContent=displayLabel;if(parts.note.textContent!==note)parts.note.textContent=note;const sizer=modelSizers.get(id);if(sizer.name.textContent!==displayLabel)sizer.name.textContent=displayLabel;if(sizer.note.textContent!==note)sizer.note.textContent=note;if(item.getAttribute('aria-label')!==ariaLabel)item.setAttribute('aria-label',ariaLabel);if(item.getAttribute('aria-selected')!==ariaSelected)item.setAttribute('aria-selected',ariaSelected);
-        if(id===controller.state.modelId)selected={label:id==='qwen3.5-9b-heretic'?'Qwen3.5 9B':displayLabel,note:model.provider==='local'?['本地·免费',status].filter(Boolean).join(' · '):note};
-      }
-      const label=selected?.label||retiredSelection.textContent,note=selected?.note||'';
-      if(triggerName.textContent!==label)triggerName.textContent=label;if(triggerNote.textContent!==note)triggerNote.textContent=note;
-      const ariaLabel=selected?`选择小桃AI模型，当前${label}${note?'，'+note:''}`:'选择小桃AI模型，此前模型已移除';if(modelTrigger.getAttribute('aria-label')!==ariaLabel)modelTrigger.setAttribute('aria-label',ariaLabel);
+      if(onlinePricingGroup){const label=onlineGroupLabel(controller);if(onlinePricingGroup.label!==label)onlinePricingGroup.label=label;picker.setGroupLabel('online',label);}
+      for(const [id,option] of modelOptions){const text=modelOptionInfo(controller,id).optionText;if(option.textContent!==text)option.textContent=text;}
+      picker.sync();
     }
     function render(state) {
       lastPricingKey=controller.pricingPolicyKey();
@@ -2854,7 +2950,7 @@
       const imageReview=state.proposal?.kind==='foart-online-review';generateButton.hidden=imageReview&&(state.proposal?.generateRequested!==true||state.applied);generateButton.textContent=imageReview?'确认并生成（另计费）':'应用并生成一张';cancelImageReviewButton.hidden=!imageReview||state.applied;undoImageReviewButton.hidden=!imageReview||!state.foartImageReviewCanUndo;cancelImageReviewButton.disabled=busy;undoImageReviewButton.disabled=busy;
       modelSelect.disabled = busy || state.staged.some(item=>item.status==='reading'); modelSelect.value = state.modelId; modelSelect.title = (state.provider==='api' && !retired ? (controller.modelAvailable(state.modelId) ? '在线收费 · 按实际用量结算' : controller.pricingPolicyKey() ? '在线收费 · 当前线路或积分价格不可用，不能发送' : '在线收费 · 价格状态暂不可用，不能发送') : (CHAT_MODELS[state.modelId]?.detail || ''))+(state.localModelStatus?.id===state.modelId ? (state.localModelStatus.modelLoaded ? ' · 节点报告已加载' : ' · 节点报告未加载') : '');
       modelTrigger.disabled=modelSelect.disabled;modelTrigger.title=modelSelect.title;
-      if(modelTrigger.disabled){if(!modelMenu.hidden)drag.reclamp();modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');}
+      if(modelTrigger.disabled)picker.close();
       paintEstimate();
       if(!open || state.modelId!=='qwen3.5-9b-heretic' || controller.modelAvailable('qwen3.5-9b-heretic'))nodeRecheck?.reset();else nodeRecheck?.update();
     }
@@ -2876,7 +2972,7 @@
       const robot = fab.getBoundingClientRect(), box = panel.getBoundingClientRect(), size = {width:box.width,height:box.height};
       drag.place(anchoredPanelPosition(robot, size, {width:root.innerWidth,height:root.innerHeight}), size);
     }
-    const setOpen = value => {open = value; panel.hidden = !value; fab.setAttribute('aria-expanded', String(value)); if (value) {mountMentions();anchorPanel(); tick();if(qwenRecheckEligible())void nodeRecheck.refreshNow();if(controller.state.provider==='api')void controller.refreshPricingPolicy();else controller.prefetchPricingPolicy();input.focus();} else {nodeRecheck.reset();modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');controller.clearSelectionTickets();controller.cancelQwenSeek();render(controller.state);}};
+    const setOpen = value => {open = value; panel.hidden = !value; fab.setAttribute('aria-expanded', String(value)); if (value) {mountMentions();anchorPanel(); tick();if(qwenRecheckEligible())void nodeRecheck.refreshNow();if(controller.state.provider==='api')void controller.refreshPricingPolicy();else controller.prefetchPricingPolicy();input.focus();} else {nodeRecheck.reset();picker.close({quiet:true});controller.clearSelectionTickets();controller.cancelQwenSeek();render(controller.state);}};
     function navigationSelection() {
       const selected = (kind) => Array.from(doc.querySelectorAll(`[data-novaflow-${kind}-entry="1"]`)).find(node => (node.getAttribute(`data-novaflow-${kind}-active`) === '1' || node.getAttribute('aria-pressed') === 'true' || node.getAttribute('aria-current') === 'page') && node.getClientRects().length);
       const primary = selected('primary'), secondary = selected('secondary');
@@ -2895,50 +2991,14 @@
     doc.addEventListener('click',event => {if (event.target?.closest?.('[data-novaflow-primary-entry="1"], [data-novaflow-secondary-entry="1"]')) root.setTimeout(closeOnNavigation,0);},true);
     fab.onclick = event => {if (robotDrag.consumeClick()) {event.preventDefault(); return;} setOpen(!open);}; close.onclick = () => setOpen(false); stop.onclick = () => void controller.stop(); applyButton.onclick = () => void controller.apply(); generateButton.onclick = event => void controller.apply({generate:true,event});cancelImageReviewButton.onclick=()=>controller.cancelFoartImageReview();undoImageReviewButton.onclick=()=>controller.undoFoartImageReview();
     newConversation.onclick = () => {if (controller.reset()) {input.value = ''; syncMentions(); focusInput();}};
-    // A DOM listbox stays in the same stacking context as the assistant. Keep
-    // focus on its trigger while moving the active option for screen readers.
-    let modelMenuIndex=0,suppressOutsideClick=false,suppressTimer=null;
     const refreshModelOptions=()=>{syncModelOptions();controller.prefetchPricingPolicy();};
-    const closeModelMenu=(focus=false,retainBackdrop=false)=>{if(!modelMenu.hidden)drag.reclamp();modelMenu.hidden=true;modelBackdrop.hidden=!retainBackdrop;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');modelTrigger.removeAttribute('aria-activedescendant');if(focus)modelTrigger.focus();};
-    const paintModelActive=()=>{modelIds.forEach((id,index)=>{const item=modelButtons.get(id);item.classList.toggle('is-active',index===modelMenuIndex);});const item=modelButtons.get(modelIds[modelMenuIndex]);if(item){modelTrigger.setAttribute('aria-activedescendant',item.id);item.scrollIntoView?.({block:'nearest'});}};
+    const closeModelMenu=(focus=false,retainBackdrop=false)=>picker.close({focus,retainBackdrop});
     const positionModelMenu=()=>{const box=panel.getBoundingClientRect(),anchor=modelTrigger.getBoundingClientRect(),width=Math.max(0,Math.min(340,box.width-16));Object.assign(modelMenu.style,{width:width+'px',left:'8px',top:Math.max(0,anchor.bottom-box.top+4)+'px'});};
     let modelViewportWidth=root.innerWidth,modelViewportHeight=root.innerHeight;
-    const refreshModelViewport=()=>{if(!open||modelMenu.hidden)return;const width=root.innerWidth,height=root.innerHeight;if(width===modelViewportWidth&&height===modelViewportHeight)return;modelViewportWidth=width;modelViewportHeight=height;drag.reclamp();positionModelMenu();};
+    const refreshModelViewport=()=>{if(!open||!picker.isOpen())return;const width=root.innerWidth,height=root.innerHeight;if(width===modelViewportWidth&&height===modelViewportHeight)return;modelViewportWidth=width;modelViewportHeight=height;drag.reclamp();positionModelMenu();};
     root.addEventListener?.('resize',refreshModelViewport);root.visualViewport?.addEventListener?.('resize',refreshModelViewport);
     if(typeof root.ResizeObserver==='function'&&doc.documentElement){const observer=new root.ResizeObserver(refreshModelViewport);observer.observe(doc.documentElement);}
-    const openModelMenu=()=>{
-      if(modelTrigger.disabled)return;refreshModelOptions();modelMenuIndex=Math.max(0,modelIds.indexOf(controller.state.modelId));
-      const rect=panel.getBoundingClientRect();panel.style.setProperty('--nf-xiaotao-menu-left',rect.left+'px');panel.style.setProperty('--nf-xiaotao-menu-top',rect.top+'px');panel.classList.add('nf-xiaotao-menu-open');
-      modelViewportWidth=root.innerWidth;modelViewportHeight=root.innerHeight;positionModelMenu();
-      modelBackdrop.hidden=false;modelMenu.hidden=false;modelTrigger.setAttribute('aria-expanded','true');paintModelActive();
-    };
     const chooseModel=id=>{closeModelMenu();modelSelect.value=id;if(controller.setModel(id)){if(controller.state.provider==='local')void controller.calibrateLocalStatus();input.focus();}else{modelSelect.value=controller.state.modelId;modelTrigger.focus();}};
-    modelTrigger.onclick=()=>{if(modelMenu.hidden)openModelMenu();else closeModelMenu();};
-    modelTrigger.onkeydown=event=>{
-      if(event.key==='Tab'){closeModelMenu();return;}
-      if(event.key==='Escape'){if(!modelMenu.hidden){event.preventDefault();closeModelMenu(true);}return;}
-      if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
-        event.preventDefault();if(modelMenu.hidden){openModelMenu();return;}
-        modelMenuIndex=event.key==='Home'?0:event.key==='End'?modelIds.length-1:(modelMenuIndex+(event.key==='ArrowDown'?1:-1)+modelIds.length)%modelIds.length;paintModelActive();return;
-      }
-      if(event.key==='Enter'||event.key===' '){event.preventDefault();if(modelMenu.hidden)openModelMenu();else chooseModel(modelIds[modelMenuIndex]);}
-    };
-    for(const [id,item] of modelButtons){item.onpointerdown=event=>event.preventDefault();item.onclick=()=>chooseModel(id);}
-    if(typeof doc.addEventListener==='function'){
-      doc.addEventListener('pointerdown',event=>{
-        // The editor reactivates its current tool with synthetic pointers on
-        // resize/zoom. Only a real outside pointer should dismiss this menu.
-        if(event.isTrusted===false)return;
-        if(suppressOutsideClick){suppressOutsideClick=false;modelBackdrop.hidden=true;if(suppressTimer!==null)root.clearTimeout(suppressTimer);suppressTimer=null;}
-        if(modelMenu.hidden||!open||modelTrigger.contains(event.target)||modelMenu.contains(event.target))return;
-        closeModelMenu(false,true);suppressOutsideClick=true;event.preventDefault();event.stopImmediatePropagation();
-        if(suppressTimer!==null)root.clearTimeout(suppressTimer);
-        suppressTimer=root.setTimeout(()=>{suppressOutsideClick=false;modelBackdrop.hidden=true;suppressTimer=null;},1000);
-      },true);
-      doc.addEventListener('pointerup',event=>{if(!suppressOutsideClick)return;modelBackdrop.hidden=true;event.preventDefault();event.stopImmediatePropagation();},true);
-      doc.addEventListener('pointercancel',()=>{if(suppressOutsideClick)modelBackdrop.hidden=true;},true);
-      doc.addEventListener('click',event=>{if(!suppressOutsideClick)return;suppressOutsideClick=false;modelBackdrop.hidden=true;if(suppressTimer!==null)root.clearTimeout(suppressTimer);suppressTimer=null;event.preventDefault();event.stopImmediatePropagation();},true);
-    }
     modelSelect.onchange=()=>chooseModel(modelSelect.value);
     footer.onsubmit = async event => {
       event.preventDefault();const text=input.value;if(!text.trim())return;
@@ -2958,6 +3018,6 @@
     render(controller.state); root.setInterval(tick, 500); tick();
     root.NovaFlowXiaotaoArtAgent.panel = Object.freeze({open:() => setOpen(true), close:() => setOpen(false), get controller(){return controller;}});
   }
-  root.NovaFlowXiaotaoArtAgent = {selectedModelPayload, communityAttachmentMetadata, compactFoartHistory, compactFoartReceipt, fingerprint, sameSnapshot, executionIntent, samplingRequest, samplingChoice, feedbackRequest, clampPanelPosition, anchoredPanelPosition, renderMessageMarkdown, conversationRows, renderConversationRow, createQwenNodeRecheck, qwenExecutionDeviceLabel, bindPanelDrag, createBridge, createController, mount};
+  root.NovaFlowXiaotaoArtAgent = {MODEL_PICKER_GROUPS, modelOptionInfo, onlineGroupLabel, createModelPicker, selectedModelPayload, communityAttachmentMetadata, compactFoartHistory, compactFoartReceipt, fingerprint, sameSnapshot, executionIntent, samplingRequest, samplingChoice, feedbackRequest, clampPanelPosition, anchoredPanelPosition, renderMessageMarkdown, conversationRows, renderConversationRow, createQwenNodeRecheck, qwenExecutionDeviceLabel, bindPanelDrag, createBridge, createController, mount};
   if (root.document?.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', mount, {once:true}); else if (root.document?.body) mount();
 })(typeof window !== 'undefined' ? window : globalThis);

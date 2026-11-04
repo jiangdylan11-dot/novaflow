@@ -759,11 +759,14 @@
       .aifx-row[hidden] { display: none; }
       .aifx-row > label { min-width: 74px; font-size: 12px; color: rgba(230, 230, 230, 0.72); }
       .aifx-material-engine { display: grid; gap: 8px; margin-top: 10px; }
+      .aifx-section-body .nf-upload-dropzone.aifx-reference-zone { min-height: 72px; padding: 10px 12px; }
+      .aifx-reference-zone .nf-upload-dropzone__icon { font-size: 18px; }
       .aifx-material-engine-label { font-size: 12px; color: rgba(230, 230, 230, 0.72); }
-      .aifx-material-engine-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-      .aifx-material-engine-option { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; background: rgba(255,255,255,.035); color: rgba(232,237,242,.88); font-size: 12px; cursor: pointer; }
-      .aifx-material-engine-option input { accent-color: #23c489; margin: 0; }
-      .aifx-material-engine-meta { display: block; margin-top: 2px; color: rgba(232,237,242,.46); font-size: 11px; }
+      /* The picker and its look come from xiaotao-art-agent.css; only its place in this panel is set here. */
+      .aifx-material-engine #aifx-material-model.aifx-material-model { position: relative; }
+      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-brains { display: block; }
+      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-brains .nf-xiaotao-model-trigger { width: 100%; max-width: none; }
+      .aifx-material-engine #aifx-material-model.aifx-material-model .nf-xiaotao-model-popup { left: 0; right: 0; top: calc(100% + 4px); width: auto; max-width: none; max-height: 320px; }
       .aifx-material-engine-note, .aifx-material-engine-settlement { color: rgba(232,237,242,.62); font-size: 11px; line-height: 17px; }
       .aifx-material-engine-settlement:empty { display: none; }
       .aifx-slider,
@@ -1343,45 +1346,36 @@
                 <i class="fas fa-chevron-right aifx-section-chevron" data-section-chevron aria-hidden="true"></i>
               </button>
               <div class="aifx-section-body nf-panel-body" data-section-body="mode" hidden>
-                <button class="aifx-button" data-action="open-style-library" type="button" style="width:100%">风格库</button>
-                <div class="aifx-current-style" data-style-current></div>
-                <div class="nf-upload-dropzone nf-upload-dropzone--medium" data-nf-upload-dropzone="1" data-action="pick-style" data-style-zone style="margin-top:10px">
-                  <div class="nf-upload-dropzone__preview" data-style-preview></div>
-                  <span class="nf-upload-dropzone__icon" data-style-empty>+</span>
-                  <div class="nf-upload-dropzone__title">参考图</div>
-                  <div class="nf-upload-dropzone__hint">可选。材质改从图里来，风格让位</div>
-                  <div class="nf-upload-dropzone__meta" data-style-meta></div>
-                </div>
-                <div class="aifx-material-engine" data-aifx-material-engine>
-                  <div class="aifx-material-engine-label">材质识别</div>
-                  <div class="aifx-material-engine-row">
-                    <label class="aifx-material-engine-option" title="本地 · 不扣积分">
-                      <input type="radio" name="aifx-material-engine" value="local" data-aifx-material-engine-value="local" checked>
-                      <span>本地</span>
-                    </label>
-                    <label class="aifx-material-engine-option" title="云端 · 深度识别">
-                      <input type="radio" name="aifx-material-engine" value="grok" data-aifx-material-engine-value="grok">
-                      <span>云端</span>
-                    </label>
-                  </div>
-                  <div class="aifx-material-engine-note" data-aifx-material-credit></div>
-                  <div class="aifx-material-engine-settlement" data-aifx-material-settlement></div>
-                </div>
-                <div class="aifx-row" data-style-clear-row hidden>
-                  <button class="aifx-button" data-action="clear-style" type="button" style="flex:1">移除参考图</button>
-                </div>
-                <div class="aifx-prompt-field">
-                  <label for="novaflow-aifx-prompt-supplement">提示词补充</label>
-                  <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。例：下缘不断滴落融水"></textarea>
-                  <div class="aifx-prompt-hint">选了风格＝加东西；取消风格＝这里就是材质，颜色也能写。<br>写「多出什么、变成什么」才生效（滴落融水 / 掉冰碴 / 碎片变金币 / 绕一圈星星）；只写「怎么动」（翻滚 / 吸回 / 拖影）不生效，运动跟着素材走。</div>
-                </div>
+                <button class="aifx-primary" data-action="generate" type="button" style="width:100%">生成特效</button>
                 <div class="aifx-row" style="margin-top:12px">
                   <label>数量</label>
                   <input class="aifx-slider" data-action="candidates" type="range" min="1" max="4" value="2">
                   <div class="aifx-value" data-candidates-value>2</div>
                 </div>
                 <div class="aifx-help" data-effect-type></div>
-                <button class="aifx-primary" data-action="generate" type="button" style="width:100%; margin-top:14px">生成特效</button>
+                <div class="aifx-material-engine" data-aifx-material-engine>
+                  <div class="aifx-material-engine-label">材质识别</div>
+                  <div id="aifx-material-model" class="aifx-material-model nf-xiaotao-model-host" data-aifx-material-model><div class="nf-xiaotao-brains" data-aifx-material-model-slot></div></div>
+                  <div class="aifx-material-engine-note" data-aifx-material-credit></div>
+                  <div class="aifx-material-engine-settlement" data-aifx-material-settlement></div>
+                </div>
+                <div class="aifx-prompt-field">
+                  <label for="novaflow-aifx-prompt-supplement">提示词补充</label>
+                  <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。例：下缘不断滴落融水"></textarea>
+                  <div class="aifx-prompt-hint">选了风格＝加东西；取消风格＝这里就是材质，颜色也能写。<br>写「多出什么、变成什么」才生效（滴落融水 / 掉冰碴 / 碎片变金币 / 绕一圈星星）；只写「怎么动」（翻滚 / 吸回 / 拖影）不生效，运动跟着素材走。</div>
+                </div>
+                <button class="aifx-button" data-action="open-style-library" type="button" style="width:100%; margin-top:12px">风格库</button>
+                <div class="aifx-current-style" data-style-current></div>
+                <div class="nf-upload-dropzone nf-upload-dropzone--small aifx-reference-zone" data-nf-upload-dropzone="1" data-action="pick-style" data-style-zone style="margin-top:10px">
+                  <div class="nf-upload-dropzone__preview" data-style-preview></div>
+                  <span class="nf-upload-dropzone__icon" data-style-empty>+</span>
+                  <div class="nf-upload-dropzone__title">参考图</div>
+                  <div class="nf-upload-dropzone__hint">可选。材质改从图里来，风格让位</div>
+                  <div class="nf-upload-dropzone__meta" data-style-meta></div>
+                </div>
+                <div class="aifx-row" data-style-clear-row hidden>
+                  <button class="aifx-button" data-action="clear-style" type="button" style="flex:1">移除参考图</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1799,11 +1793,11 @@
   }
 
   // The video model follows words and barely the picture. The reference is read as a
-  // material entry first. The user picks the channel: local Flash (0 credits) or
-  // cloud image reverse (image_reverse). A failure stays on the chosen channel.
-  // 提示词补充 translation stays local and does not follow this switch.
+  // material entry first, by the model picked in 材质识别: the same picker and the same
+  // model list as 小桃 (xiaotao-art-agent.js builds it). The local model reads for free;
+  // an online model reads through 小桃's online operation and is charged by real usage.
+  // A failure stays on the chosen model. 提示词补充 translation stays local.
   const REFERENCE_MATERIAL_TIMEOUT_MS = 180000
-  const MATERIAL_ENGINE_KEY = 'novaflow.aifx.material.engine.v1'
   const referenceMaterials = new WeakMap()
   const materialMeta = new WeakMap()
   const materialSources = new WeakMap()
@@ -1819,27 +1813,69 @@
   // While it waits, the page's queue notice says so (how many prompts the runtime still has) and
   // can stop it - the run too, when one is waiting on it.
   const ASSISTANT_WAIT_LABEL = { 'aifx-material': '识别参考图材质', 'aifx-supplement': '翻译提示词补充' }
-  const materialEngine = () => {
-    try { return localStorage.getItem(MATERIAL_ENGINE_KEY) === 'grok' ? 'grok' : 'local' } catch { return 'local' }
-  }
-  // 云端 reads with this model unless a run came from the 小桃 panel: that run reads in the cloud
-  // with the model chosen there, and the 本地/云端 choice here stays as it was for the next run.
-  const CLOUD_MATERIAL_MODEL = 'deepseek/deepseek-v4.1-flash'
+  // The choice lives on this page only and starts on the local model every time.
+  const LOCAL_MATERIAL_MODEL = 'qwen3.5-9b-heretic'
+  // The server's material read: system text + question length, and its answer budget.
+  // tests/e2e/aifx-material-engine.test.mjs keeps these equal to xiaotao-style-framework-v3.mjs.
+  const MATERIAL_PROMPT_CHARS = 1292
+  const MATERIAL_OUTPUT_TOKENS = 300
+  try { localStorage.removeItem('novaflow.aifx.material.engine.v1') } catch { /* storage unavailable */ }
+  let materialModelId = LOCAL_MATERIAL_MODEL
+  let materialModelEpoch = 0
+  const materialModelListeners = new Set()
+  // The page runtime checks an online read against this snapshot, as it does for 小桃's own choice.
+  const materialSelection = Object.freeze({
+    businessModelSnapshot: () => Object.freeze({ provider: materialModelId === LOCAL_MATERIAL_MODEL ? 'local' : 'api', modelId: materialModelId, epoch: materialModelEpoch }),
+    subscribeBusinessModel: (listener) => {
+      if (typeof listener !== 'function') throw new Error('invalid listener')
+      materialModelListeners.add(listener)
+      return () => materialModelListeners.delete(listener)
+    },
+  })
+  window.FoartAifxMaterialModel = materialSelection
+  const xiaotaoAgent = () => window.NovaFlowXiaotaoArtAgent || null
+  const xiaotaoController = () => xiaotaoAgent()?.panel?.controller || null
+  // A run from the 小桃 panel reads with the model chosen there; the choice here stays for the next run.
   let panelModel = ''
-  const activeEngine = () => panelModel ? 'grok' : materialEngine()
-  const materialSource = () => panelModel || (materialEngine() === 'grok' ? CLOUD_MATERIAL_MODEL : 'local')
-  const materialCreditText = () => {
-    if (materialEngine() !== 'grok') return ''
-    const api = window.NovaFlowFeatureCreditPrices
-    const quoted = api && typeof api.quoteFeature === 'function' ? api.quoteFeature({ feature: 'image_reverse', units: 1 }) : null
-    const credits = quoted && quoted.credits != null ? quoted.credits : 4
-    return '本次将扣 ' + credits + ' 积分'
+  const materialModel = () => materialModelId
+  const activeMaterialModel = () => panelModel || materialModelId
+  const isLocalMaterialModel = (id) => id === LOCAL_MATERIAL_MODEL
+  const materialSource = activeMaterialModel
+  const onlineFailureText = '在线材质识别失败，请稍后重试'
+  const localFailureText = '本地材质识别不可用，请打开本地算力节点后重试'
+  const failureText = (modelId) => isLocalMaterialModel(modelId) ? localFailureText : onlineFailureText
+  let materialQuote = null
+  let materialPricingPending = false
+  const refreshMaterialPricing = () => {
+    const controller = xiaotaoController()
+    if (!controller || materialPricingPending || typeof controller.refreshPricingPolicy !== 'function') return
+    materialPricingPending = true
+    Promise.resolve(controller.refreshPricingPolicy()).catch(() => null).finally(() => { materialPricingPending = false; refreshUi() })
   }
-  const readAifxSessionToken = () => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem('novaflow_web_session_v1') || 'null')
-      return String(parsed?.session?.token || parsed?.token || '').trim()
-    } catch { return '' }
+  const formatCredits = (value) => {
+    const number = Number(value)
+    return Number.isFinite(number) ? String(Number(number.toFixed(2))) : ''
+  }
+  // The same prediction 小桃 shows under its input, for this one image read.
+  const materialCreditText = () => {
+    if (isLocalMaterialModel(materialModelId)) return ''
+    const controller = xiaotaoController()
+    if (!controller) return '在线价格暂不可用'
+    if (materialQuote && materialQuote.modelId === materialModelId && state.reference?.materialState === 'reading') {
+      return '本次预估 ' + formatCredits(materialQuote.credits) + ' 积分，按实际用量结算'
+    }
+    if (!controller.pricingPolicyKey()) { refreshMaterialPricing(); return '正在获取在线价格…' }
+    if (!controller.styleReadAvailable(materialModelId)) return '该模型暂未开通图片材质识别，请换一个模型'
+    const image = state.reference?.image
+    const scale = image ? Math.min(1, 768 / Math.max(1, image.naturalWidth, image.naturalHeight)) : 1
+    const quote = controller.operationEstimate({
+      modelId: materialModelId,
+      promptChars: MATERIAL_PROMPT_CHARS,
+      outputTokens: MATERIAL_OUTPUT_TOKENS,
+      images: [image ? { width: Math.round(image.naturalWidth * scale), height: Math.round(image.naturalHeight * scale) } : {}],
+    })
+    if (!quote || quote.credits == null) return '在线价格暂不可用'
+    return '本次预估 ' + formatCredits(quote.credits) + ' 积分，按实际用量结算'
   }
   const dropMaterial = (blob) => { referenceMaterials.delete(blob); materialSources.delete(blob); materialMeta.delete(blob) }
   const clearMaterialCache = () => {
@@ -1847,12 +1883,12 @@
     materialBlobs.clear()
   }
   const nestedResult = (result) => result?.result && typeof result.result === 'object' ? result.result : {}
-  const cloudFailureMessage = (result) => {
+  const onlineFailureMessage = (result) => {
     const text = String(result?.error || nestedResult(result).error || '')
-    if (/登录|积分/.test(text)) return text
-    return '云端材质识别失败，请稍后重试'
+    if (/登录|积分|开通|结算|账单/.test(text)) return text
+    return onlineFailureText
   }
-  // Local only. Cloud material recognition must not enter this function.
+  // Local only. An online read must not enter this function.
   const askAssistant = async (payload, timeoutMs) => {
     const api = window.electronAPI
     if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return null
@@ -1879,38 +1915,57 @@
       window.NovaFlowQueueNotice?.done(key)
     }
   }
-  // Cloud only. A failure here does not call the local describer.
-  const askCloudMaterial = async (payload, timeoutMs) => {
+  // Online only, through 小桃's online operation: quoted before it runs, charged by
+  // real usage after. A failure here does not call the local describer.
+  const askOnlineMaterial = async (payload, timeoutMs, modelId, isCurrent) => {
     const api = window.electronAPI
-    if (!api || typeof api.smartAiImageReverse !== 'function') return { ok: false, error: '云端材质识别失败，请刷新网页后重试' }
-    const token = readAifxSessionToken()
-    if (!token) return { ok: false, error: '请先登录 Foart 账号' }
-    let timer = 0
-    const timeout = new Promise(resolve => { timer = setTimeout(() => resolve({ ok: false, error: '云端材质识别失败，请稍后重试' }), timeoutMs) })
+    if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return { ok: false, error: '在线材质识别不可用，请刷新网页后重试' }
+    const fromPanel = Boolean(panelModel)
+    const controller = xiaotaoController()
+    const owner = fromPanel ? controller : materialSelection
+    const selected = owner?.businessModelSnapshot?.()
+    if (!selected || selected.provider !== 'api' || selected.modelId !== modelId) return { ok: false, error: '模型选择已变化，请重新识别' }
+    const requestId = crypto.randomUUID()
+    const abort = new AbortController()
+    const timer = setTimeout(() => abort.abort(), timeoutMs)
+    // From the 小桃 panel the charge is shown in 小桃's chat; from here it is shown under the picker.
+    const ui = fromPanel && typeof controller?.onlineBusinessUi === 'function' ? controller.onlineBusinessUi(modelId) : {
+      confirmImageUpload: async () => isCurrent(),
+      onPricingQuote: (quote) => {
+        if (quote?.requestId !== requestId) return
+        materialQuote = { modelId, credits: quote.estimatedCredits }
+        refreshUi()
+      },
+      confirmPricingQuote: async () => isCurrent(),
+      onBillingNotice: (row) => row?.requestId === requestId && row.submitted === true,
+    }
     try {
-      const result = await Promise.race([
-        api.smartAiImageReverse({
-          token,
-          surface: 'aifx',
-          purpose: 'aifx-material',
-          ...(panelModel ? { model: panelModel } : {}),
-          supportsNegativePrompt: false,
-          images: [{ name: payload.name || 'reference.jpg', imageUrl: payload.dataUrl, dataUrl: payload.dataUrl, label: '参考图', role: 'reference' }],
-        }),
-        timeout,
-      ])
-      return result || { ok: false, error: '云端材质识别失败，请稍后重试' }
+      const result = await api.promptAssistantDescribeArtStyle({
+        requestId,
+        name: payload.name || 'reference.jpg',
+        purpose: 'aifx-material',
+        dataUrl: payload.dataUrl,
+        assistantSelectionScope: fromPanel ? 'xiaotao' : 'aifx-material',
+        assistantProvider: 'api',
+        assistantModelId: modelId,
+        assistantSelectionEpoch: selected.epoch,
+        signal: abort.signal,
+        isInputCurrent: () => isCurrent() === true,
+        ...ui,
+      })
+      return result || { ok: false, error: onlineFailureText }
     } catch {
-      return { ok: false, error: '云端材质识别失败，请稍后重试' }
+      return { ok: false, error: onlineFailureText }
     } finally {
       clearTimeout(timer)
+      if (materialQuote?.modelId === modelId) materialQuote = null
     }
   }
-  // No automatic channel switch: local never calls image-reverse, cloud never calls describe-art-style.
-  const askMaterial = (payload, timeoutMs, engine) => engine === 'grok'
-    ? askCloudMaterial(payload, timeoutMs)
-    : askAssistant(payload, timeoutMs)
-  const materialFromResult = (result, engine, image) => {
+  // No automatic switch: the local model never reads online, an online model never reads locally.
+  const askMaterial = (payload, timeoutMs, modelId, isCurrent) => isLocalMaterialModel(modelId)
+    ? askAssistant(payload, timeoutMs)
+    : askOnlineMaterial(payload, timeoutMs, modelId, isCurrent)
+  const materialFromResult = (result, modelId, image) => {
     const nested = nestedResult(result)
     const entry = result?.material || nested.material
     const material = String(entry && entry.material || '').trim()
@@ -1918,7 +1973,7 @@
       return {
         read: null,
         quota: null,
-        error: engine === 'grok' ? cloudFailureMessage(result) : '本地材质识别不可用，请打开本地算力节点后重试',
+        error: isLocalMaterialModel(modelId) ? localFailureText : onlineFailureMessage(result),
       }
     }
     const read = {
@@ -1939,7 +1994,6 @@
     const source = materialSource()
     if (referenceMaterials.has(blob) && materialSources.get(blob) !== source) dropMaterial(blob)
     if (!referenceMaterials.has(blob)) {
-      const engineAtStart = activeEngine()
       materialSources.set(blob, source)
       const job = (async () => {
         // On the black plate the effect will sit on, and no bigger than the model looks at.
@@ -1952,17 +2006,17 @@
         context.fillRect(0, 0, canvas.width, canvas.height)
         context.drawImage(image, 0, 0, canvas.width, canvas.height)
         const input = { name: 'reference.jpg', dataUrl: canvas.toDataURL('image/jpeg', 0.92), purpose: 'aifx-material' }
-        const result = await askMaterial(input, REFERENCE_MATERIAL_TIMEOUT_MS, engineAtStart)
-        const outcome = materialFromResult(result, engineAtStart, image)
-        if (materialSource() === source) materialMeta.set(blob, { engine: engineAtStart, quota: outcome.quota, error: outcome.error || '' })
+        const result = await askMaterial(input, REFERENCE_MATERIAL_TIMEOUT_MS, source, () => materialSource() === source)
+        const outcome = materialFromResult(result, source, image)
+        if (materialSource() === source) materialMeta.set(blob, { model: source, quota: outcome.quota, error: outcome.error || '' })
         return outcome
       })().catch((error) => {
         const outcome = {
           read: null,
           quota: null,
-          error: engineAtStart === 'grok' ? '云端材质识别失败，请稍后重试' : (String(error?.message || '') || '本地材质识别不可用，请打开本地算力节点后重试'),
+          error: isLocalMaterialModel(source) ? (String(error?.message || '') || localFailureText) : onlineFailureText,
         }
-        if (materialSource() === source) materialMeta.set(blob, { engine: engineAtStart, quota: null, error: outcome.error })
+        if (materialSource() === source) materialMeta.set(blob, { model: source, quota: null, error: outcome.error })
         return outcome
       })
       referenceMaterials.set(blob, job)
@@ -1978,17 +2032,21 @@
     const meta = materialMeta.get(entry.blob) || {}
     entry.material = read
     entry.materialQuota = read ? meta.quota || null : null
-    entry.materialError = read ? '' : (meta.error || (activeEngine() === 'grok' ? '云端材质识别失败，请稍后重试' : '本地材质识别不可用，请打开本地算力节点后重试'))
+    entry.materialError = read ? '' : (meta.error || failureText(activeMaterialModel()))
     entry.materialState = read ? 'ready' : 'failed'
   }
-  const setMaterialEngine = (value) => {
-    const next = value === 'grok' ? 'grok' : 'local'
-    const previous = materialEngine()
-    try { localStorage.setItem(MATERIAL_ENGINE_KEY, next) } catch { /* storage unavailable */ }
-    if (previous === next) {
+  const MATERIAL_MODEL_IDS = () => (xiaotaoAgent()?.MODEL_PICKER_GROUPS || []).flatMap((group) => group.ids)
+  const setMaterialModel = (value) => {
+    const next = String(value || '')
+    if (next === materialModelId || !(isLocalMaterialModel(next) || MATERIAL_MODEL_IDS().includes(next))) {
       refreshUi()
-      return
+      return next === materialModelId
     }
+    materialModelId = next
+    materialModelEpoch += 1
+    materialQuote = null
+    for (const listener of materialModelListeners) { try { listener() } catch { /* listener gone */ } }
+    if (!isLocalMaterialModel(next)) refreshMaterialPricing()
     clearMaterialCache()
     const reference = state.reference
     if (reference?.blob && reference.image) {
@@ -1998,13 +2056,40 @@
       reference.materialState = 'reading'
       refreshUi()
       readReferenceMaterial(reference.blob, reference.image).then((read) => {
-        if (state.reference !== reference || materialEngine() !== next) return
+        if (state.reference !== reference || materialModelId !== next) return
         applyMaterialOutcome(reference, read)
         if (state.reference === reference) refreshUi()
       })
-      return
+      return true
     }
     refreshUi()
+    return true
+  }
+  // Built once 小桃 is on the page: it owns the picker, the model notes and the prices.
+  let materialPicker = null
+  const ensureMaterialPicker = () => {
+    if (materialPicker) return true
+    const agent = xiaotaoAgent(), slot = state.refs?.materialModelSlot, host = state.refs?.materialModelHost
+    if (!slot || !host || typeof agent?.createModelPicker !== 'function' || !xiaotaoController()) return false
+    materialPicker = agent.createModelPicker(document, {
+      label: '选择材质识别模型',
+      menuLabel: '材质识别模型',
+      listboxId: 'aifx-material-model-listbox',
+      optionIdPrefix: 'aifx-material-model-option-',
+      describe: (id) => agent.modelOptionInfo(xiaotaoController(), id, {
+        localNote: '本地识别免费',
+        localChecks: false,
+        available: (modelId) => xiaotaoController().styleReadAvailable(modelId),
+      }),
+      current: () => materialModelId,
+      choose: (id) => setMaterialModel(id),
+      isShown: () => Boolean(host.isConnected),
+      beforeOpen: () => { xiaotaoController()?.prefetchPricingPolicy?.(); refreshMaterialPricing() },
+    })
+    slot.append(materialPicker.trigger)
+    host.append(materialPicker.menu, materialPicker.backdrop)
+    materialPicker.sync()
+    return true
   }
 
   // 提示词补充 typed in Chinese is followed far less than the same words in English, so the local AI
@@ -3291,12 +3376,9 @@
     refs.styleZone = root.querySelector('[data-style-zone]')
     refs.materialCredit = root.querySelector('[data-aifx-material-credit]')
     refs.materialSettlement = root.querySelector('[data-aifx-material-settlement]')
-    for (const input of root.querySelectorAll('[data-aifx-material-engine-value]')) {
-      input.addEventListener('change', () => {
-        if (!input.checked) return
-        setMaterialEngine(input.value)
-      })
-    }
+    refs.materialModelHost = root.querySelector('[data-aifx-material-model]')
+    refs.materialModelSlot = root.querySelector('[data-aifx-material-model-slot]')
+    ensureMaterialPicker()
     refs.stylePreview = root.querySelector('[data-style-preview]')
     refs.templateEmpty = root.querySelector('[data-template-empty]')
     refs.styleEmpty = root.querySelector('[data-style-empty]')
@@ -3483,14 +3565,11 @@
     const detailText = String(state.detail || '').trim()
     put(refs.previewStatusTitle, 'textContent', statusText)
     put(refs.previewStatusDetail, 'textContent', detailText)
-    const materialEngineNow = materialEngine()
-    for (const input of refs.root.querySelectorAll('[data-aifx-material-engine-value]')) {
-      put(input, 'checked', input.value === materialEngineNow)
-    }
+    if (ensureMaterialPicker()) materialPicker.sync()
     const materialCreditLine = materialCreditText()
     put(refs.materialCredit, 'textContent', materialCreditLine)
     put(refs.materialCredit, 'hidden', !materialCreditLine)
-    const settledQuota = state.reference?.materialState === 'ready' && materialEngineNow === 'grok' ? state.reference.materialQuota : null
+    const settledQuota = state.reference?.materialState === 'ready' && !isLocalMaterialModel(materialModelId) ? state.reference.materialQuota : null
     put(refs.materialSettlement, 'textContent', window.NovaFlowFeatureCreditPrices?.settlementText?.(settledQuota) || '')
     if (refs.previewStatus) {
       // Centred only while there is nothing on the canvas to cover.
@@ -4111,12 +4190,12 @@
     loadSourceFiles: (files) => adoptTemplateFiles(files),
     sequenceToBlackClip,
     loadStyleBlob: (blob, fileName) => adoptReference(blob, fileName),
-    materialEngine,
-    setMaterialEngine,
+    materialModel,
+    setMaterialModel,
     materialCreditText,
     recognizeMaterial: (blob, image) => readReferenceMaterial(blob, image).then((read) => ({
       read,
-      engine: materialMeta.get(blob)?.engine || materialEngine(),
+      model: materialMeta.get(blob)?.model || activeMaterialModel(),
       quota: materialMeta.get(blob)?.quota || null,
       error: materialMeta.get(blob)?.error || '',
     })),
