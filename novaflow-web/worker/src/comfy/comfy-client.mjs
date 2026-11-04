@@ -198,6 +198,7 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
         if (!data || !(data.max > 0) || (data.prompt_id && data.prompt_id !== promptId) || !sampling.includes(String(data.node))) return;
         steps.set(String(data.node), Math.min(1, Number(data.value) / data.max || 0));
       }) : () => {};
+      let absent = false;
       try {
         for (;;) {
           if (signal?.aborted) throw new Error('cancelled');
@@ -249,9 +250,12 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
               // whole ten seconds: the page counts down between reports, a new one every second is noise
               note = withQueueNote('waiting in queue', { ahead: queuedAhead + runningElapsed.length, eta: eta === null ? null : Math.ceil(eta / 10) * 10 });
             } else if (!entry) {
-              // Neither queued nor in history: ComfyUI dropped it.
-              throw new Error('ComfyUI lost the prompt before it produced a result');
+              // History is read before the queue, so a prompt finishing between
+              // the two reads shows in neither. Only a second miss means it is gone.
+              if (absent) throw new Error('ComfyUI lost the prompt before it produced a result');
+              absent = true;
             }
+            if (running || pendingIndex >= 0 || entry) absent = false;
             if (onProgress && (progress !== lastProgress || note !== lastNote)) {
               lastProgress = progress;
               lastNote = note;
