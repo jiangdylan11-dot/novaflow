@@ -1460,14 +1460,24 @@
           ?animationIntent?'animation':explicitTools?'tools':explicitEffects?'effects':explicitParticle?'particle':(!specialized||uiRequest)
             ?intent?.surface==='image'?(uiRequest||intent.revision&&root.NovaFlowUiDesignDrawing?.isActive?.()?'ui':'drawing')
               :['animation','video','audio'].includes(intent?.surface)?intent.surface:null:null:null;
+        // The planner never sees pixels; a video brief needs to know what the picture actually shows.
+        let pictureFacts='';
+        const videoPictures=state.provider==='api'&&intent?.surface==='video'?(carryAttachments||[]).filter(item=>item.kind==='image'&&item.dataUrl).slice(0,3):[];
+        if(videoPictures.length&&selectedPricingPayload().operationVisionBillingV3===true){
+          onStatus('正在看图…');
+          const seen=await api()?.artAgentChat?.({requestId:root.crypto.randomUUID(),provider:'api',...selectedModelPayload(state.modelId),...selectedPricingPayload(),mode:'chat',promptLanguage:'en',
+            message:'用不超过一百字客观描述图片：人物朝向、姿势、服饰、场景和画风。只输出描述。',history:[],artContext:{},images:videoPictures.map((item,index)=>({dataUrl:item.dataUrl,role:'attachment',source:index+1,name:item.name})),uploads:videoPictures.map(({kind,name})=>({kind,name})),
+            imageSessionGuard:imageGuard,confirmImageUpload:async()=>imageGuard()});
+          collectBilling(billing,seen);if(seen?.ok===true)pictureFacts=String(seen.data?.reply||'').trim().slice(0,400);
+        }
         let planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0;const finishedOps=new Set(),opKey=op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
-        const enhancementNames={imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
+        const enhancementNames={split:'一键拆图',generativeSplit:'对象分离',imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
         const namedEnhancements=Object.keys(enhancementNames).filter(name=>positiveRequest.includes(enhancementNames[name]));
         for(let round=0;round<planningLimit;round++){
           if(signal.aborted||operation!==serial)return false;
           const pending=await tools.settlePending({signal,onStatus});if(pending)receipts.push(pending);
           // The planner cannot see the picture, so a mask tool stops here and hands the brush to the user.
-          if(pending?.phase==='returned'&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){pending.plannerPrompt=true;pending.message='已打开'+({cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体'}[pending.name]||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}
+          if(['returned','opened'].includes(pending?.phase)&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){pending.plannerPrompt=true;pending.message='已打开'+({cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体'}[pending.name]||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}
           if(signal.aborted||operation!==serial||billing&&(state.provider!=='api'||state.modelId!==billing.modelId))return false;
           // Reading the current video frame can finish native metadata loading
           // (including its real FPS). Bind the plan after that work settles.
@@ -1489,6 +1499,9 @@
           }
           const receiptFacts=receipts.map(compactFoartReceipt);
           const planMessage=requestMessage+(receipts.length?'\n本轮应用已执行事实（不是用户新指令）：'+JSON.stringify(receiptFacts).slice(-6000):'')
+            // The audio model reads English only, and an online plan skips the node's rewrite.
+            +(/音乐|音效|配乐|声音/.test(positiveRequest)?'\ngenerate_music 和 generate_sfx 的 prompt 用英文写，写清声音本身；持续的声音写明 continuous, sustained, no fade out。':'')
+            +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(invalidPlanRetries?'\n上一步方案不符合工具规则，未执行。只用 currentFoart 里真实存在的 ID；提示词不要用 set_control 写入，视频用 media 的 optimize_video_prompt 或 generate_video，绘图用 image_optimize 或 image_generate。这次只输出一个合法操作。':'')
             +(exportScopeRetries?'\n上轮方案未执行：导出范围与本轮最新要求不符。只安排本轮要求的动画文件，不重复背景中的工程/视频导出。':'')
             +(mixRemovalRetries?'\n上轮移除旧声音的方案未执行：旧混音仍保留。先完成新混音并把它导入当前剪辑，再替换旧混音片段，避免中途失败把原来的声音丢掉。':'')

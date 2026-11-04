@@ -182,9 +182,9 @@ section('去除物体 samples a new seed unless the caller pins one');
   check('智能补图 keeps seed 746924259, 局部编辑 draws a new one (2.1 and the NSFW Rapid route)',
     /const INPAINT_COMPLETION_SEED = 746924259/.test(source)
       && /: route\.mode === 'completion' \? INPAINT_COMPLETION_SEED : Math\.floor\(Math\.random\(\) \* 1000000000\)/.test(source)
-      && /fixedSeed != null \? fixedSeed : route\.mode === 'completion' \? INPAINT_COMPLETION_SEED : Math\.floor\(Math\.random\(\) \* 1000000000\)/.test(source), null);
+      && /Math\.floor\(Number\(options\.seed\)\)\)\s*: route\.mode === 'completion' \? INPAINT_COMPLETION_SEED/.test(source), null);
   check('the 2.1 inpaint graph samples with the seed its caller drew (the debug record names the same one)',
-    /function buildQwen21InpaintWorkflow\([^)]*, seed\)/.test(source) && /options && options\.promptParts, seed\)/.test(source) && /steps: QWEN21_STEPS,\s*seed,\s*provider: route\.provider/.test(source), null);
+    /function buildQwen21InpaintWorkflow\([^)]*, seed\b/.test(source) && /options && options\.promptParts, seed\b/.test(source) && /steps: QWEN21_STEPS,\s*seed,\s*provider: route\.provider/.test(source), null);
 }
 
 section('the plate: 2.1 rounds the Qwen edit plate up to 32 so the encoder never resamples it');

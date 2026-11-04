@@ -815,7 +815,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       const referenceOnly=op.name==='objectTransfer'&&bridge.getState?.()?.source?.dataUrl&&/参考物|迁移到当前|放入当前/.test(latestRequirements);
       const sourceUpload=referenceOnly?null:op.uploadId||(!bridge.getState?.()?.source?.dataUrl&&imageUploads.length===1&&!['export','poseReference','merge'].includes(op.name)?imageUploads[0].id:null);
       if(sourceUpload){const file=await materialFile(sourceUpload);const dataUrl=await referenceDataUrl({file,mimeType:file.type});await bridge.importSourceDataUrl(file.name,dataUrl,{silent:true});}
-      const toolLabel=op.name==='export'?exportFormat.toUpperCase()+'导出':root.document.querySelector('[data-novaflow-spine-split-control-action="'+op.name+'"]')?.textContent?.trim()||op.name;
+      const toolLabel=op.name==='export'?exportFormat.toUpperCase()+'导出':root.document.querySelector('[data-novaflow-spine-split-control-action="'+op.name+'"]')?.textContent?.trim()||({imageUpscale:'高清放大',imageOutpaint:'无限扩图',imageAngleAdjust:'角度调整',objectTransfer:'万物迁移',poseReference:'姿势参考',canvasResize:'画布调整',split:'一键拆图',cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体',merge:'合并图层',mask:'蒙版'}[op.name]||'美工工具');
       const pending={id:root.crypto.randomUUID(),name:op.name,label:toolLabel,state:'running'};nativePending=pending;
       Promise.resolve().then(()=>bridge.agentAction(op.name,{format:exportFormat,...(op.name==='export'?{deliverFile:file=>downloadFiles([file],'Foart-美工导出')}:{}),...(op.name==='imageOutpaint'&&op.prompt?{outpaintPrompt:op.prompt}:{}),...(['canvasResize','imageOutpaint'].includes(op.name)&&op.width!==undefined?{canvasResize:{width:op.width,height:op.height,anchor:op.anchor||'center'}}:{})})).then(value=>{pending.state='completed';pending.value=value;},error=>{pending.state='failed';pending.error=String(error?.message||error);});
       await sleep(120);return {action:op.action,phase:'started',taskId:pending.id,name:op.name,label:toolLabel,message:'已启动'+toolLabel+'，等待参数或实际结果'};
@@ -996,7 +996,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
     while(nativePending.state==='running'){
       if(signal?.aborted)fail('美工工具等待已停止，请在当前工具中确认任务状态');
       if(catalog().some(c=>c.dialog&&!c.disabled))return null;
-      onStatus('正在等待'+nativePending.name+'原生工具处理…');await sleep(500);
+      onStatus('正在等待'+nativePending.label+'处理…');await sleep(500);
     }
     const finished=nativePending;nativePending=null;
     if(finished.state==='failed')fail(finished.error);

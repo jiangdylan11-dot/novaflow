@@ -155,7 +155,7 @@
     "9": {
       "class_type": "NovaFlowSaveAudioWav",
       "inputs": {
-        "filename_prefix": "audio/novaflow_sfx",
+        "filename_prefix": "audio/foart_sfx",
         "audio": [
           "7",
           0
