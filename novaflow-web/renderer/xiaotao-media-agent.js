@@ -256,8 +256,11 @@
     videoContext.durationSeconds=op.seconds ?? videoContext.durationSeconds;
     const stamp=await fingerprint(snapshot);
     const reuseHit=!scoped && reuseOptimizedPrompt && preparedVideo?.fingerprint===stamp;
-    const optimized=reuseHit ? preparedVideo.optimized
-      : await root.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',analysisProvider,assistantSelectionScope,selectionStillCurrent,videoContext,prompt:op.prompt || gen.capture().prompt,requirements,signal,onRequest:onOptimizationRequest,onProgress:onOptimizationStatus});
+    // An online brain has already written the prompt in its plan; only the
+    // local model goes through the optimizer.
+    const plannerPrompt=scoped&&analysisProvider==='api'&&typeof op.prompt==='string'&&op.prompt.trim()?{prompt:op.prompt,displayPrompt:op.prompt}:null;
+    const optimized=plannerPrompt || (reuseHit ? preparedVideo.optimized
+      : await root.__NovaFlowSmartAI.optimizeForAgent({surface:'animation',analysisProvider,assistantSelectionScope,selectionStillCurrent,videoContext,prompt:op.prompt || gen.capture().prompt,requirements,signal,onRequest:onOptimizationRequest,onProgress:onOptimizationStatus}));
     checkSelection();
     if(signal?.aborted)fail('本次视频生成已停止');
     if(await fingerprint(capture())!==await fingerprint(snapshot))fail('视频素材或参数在优化期间变化，未写入或生成');

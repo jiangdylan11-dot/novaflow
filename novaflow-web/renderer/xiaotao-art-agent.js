@@ -1708,6 +1708,10 @@
               fail('Foart 参数、素材或选区在规划期间变化，未应用旧方案');
             }
             if(op.controlId&&!current.controls.some(c=>c.id===op.controlId))break;
+            // The upload step already chose the video mode for these frames; a plan
+            // may only change it when the user named another mode.
+            const modeLabel=current.controls.find(c=>c.id===op.controlId)?.label;
+            if(/^(?:文生视频|图生视频|首尾帧视频|多参视频)$/.test(modeLabel||'')&&lastPreparedTask.startsWith('video:')&&!positiveRequest.includes(modeLabel))continue;
             contract.validateFoartPlan({...plan,operations:[op]},current);
             if(signal.aborted||operation!==serial)fail('Foart 操作已停止');
             root.console?.debug?.('[Foart tools] execute',op.action,op.name||op.operation?.action||op.operation||current.controls.find(control=>control.id===op.controlId)?.label||op.resourceId||'',op.value??'');
