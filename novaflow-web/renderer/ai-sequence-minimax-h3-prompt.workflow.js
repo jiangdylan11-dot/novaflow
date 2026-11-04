@@ -1214,7 +1214,8 @@
   // A draft from the shared framework already carries its official English; Generate sends that
   // instead of translating again, so the result never depends on a free prompt node.
   const draftModelText = new Map()
-  const draftKey = (mode, prompt) => normalizeMode(mode || 'multi_reference') + '\n' + stringValue(prompt).trim()
+  // The page shows @参考图1 and Generate passes <Picture 1>: the key ignores how a reference is written.
+  const draftKey = (mode, prompt) => normalizeMode(mode || 'multi_reference') + '\n' + stringValue(prompt).replace(/<(?:Picture|Video|Audio) \d+>|@[^\s，。；：、,.;:（）()<>]+/g, '').replace(/\s+/g, '')
   function rememberDraft({ mode, prompt, modelText } = {}) {
     if (!stringValue(prompt).trim() || !stringValue(modelText).trim()) return false
     draftModelText.set(draftKey(mode, prompt), stringValue(modelText))

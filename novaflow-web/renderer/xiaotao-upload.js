@@ -228,8 +228,8 @@
     }
     let drawingIndex=0;
     // A new 多参 task starts from its own pictures; a revision keeps them, or swaps the one it names.
-    const swapMatch=task.revision?/图\s*([1-9]).{0,6}(?:换|替换|改用)|(?:换|替换).{0,6}图\s*([1-9])/.exec(text):null,swapSlot=swapMatch?Number(swapMatch[1]||swapMatch[2]):0;
-    const firstMulti=place.find(item=>item.destination.id==='multi_reference'&&item.kind==='image');
+    const swapMatch=task.revision?/(?:图|视频|音频)\s*([1-9]).{0,6}(?:换|替换|改用)|(?:换|替换).{0,6}(?:图|视频|音频)\s*([1-9])/.exec(text):null,swapSlot=swapMatch?Number(swapMatch[1]||swapMatch[2]):0;
+    const firstMulti=place.find(item=>item.destination.id==='multi_reference');
     return {place:place.map(item=>({...item,targetSurface:task.surface,
       ...(item===firstMulti&&swapSlot?{swapSlot}:item===firstMulti&&!task.revision?{clearBoard:true}:{}),
       ...(item.destination.id==='img2img' && !named.length ? {replaceReferences:true,referenceIndex:drawingIndex++} : {})})), ask, reject};
@@ -417,8 +417,8 @@
           const media = scope.NovaFlowH3Media;
           const boardId=scope.NovaFlowAiSequenceGeneration?.capture?.().boardId;
           const readBoard=()=>typeof media?.snapshot==='function'?media.snapshot(boardId):typeof media?.store?.snapshot==='function'?media.store.snapshot(boardId):media?.store?.get?.(boardId);
-          if(item.clearBoard)for(const entry of (await readBoard()||[]).filter(entry=>entry.kind==='image'))await media?.store?.remove?.(entry.sourceId);
-          const swapped=item.swapSlot?(await readBoard()||[]).filter(entry=>entry.kind==='image')[item.swapSlot-1]:null;
+          if(item.clearBoard)for(const entry of await readBoard()||[])await media?.store?.remove?.(entry.sourceId);
+          const swapped=item.swapSlot?(await readBoard()||[]).filter(entry=>entry.kind===item.kind)[item.swapSlot-1]:null;
           const swapIndex=swapped?(media?.store?.export?.().items||[]).findIndex(entry=>entry.sourceId===swapped.sourceId):-1;
           if(swapped)await media?.store?.remove?.(swapped.sourceId);
           // Opening the board starts asynchronous IndexedDB restoration. Wait

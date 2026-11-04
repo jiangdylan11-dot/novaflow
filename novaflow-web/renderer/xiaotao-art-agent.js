@@ -1503,9 +1503,15 @@
               if(root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')await tools.execute({action:'open',surface:'video'},{signal});
               const includeReferenceImages=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='first_last'&&api()?.onlineVideoVisionAvailableSync?.()===true;
               // The framework binds pictures by @参考图N; a brief with model tokens fails its checks.
-              const tidy=brief.replace(/(?:@?参考图\s*(\d+))?[（(]?<Picture\s*(\d+)>[）)]?/g,(_,a,b)=>'@参考图'+(a||b)).replace(/(^|[^@])参考图\s*(\d+)/g,'$1@参考图$2');
+              const bindMaterials=source=>{
+                const text=source.replace(/(?:@?参考图\s*(\d+))?[（(]?<Picture\s*(\d+)>[）)]?/g,(_,a,b)=>'@参考图'+(a||b)).replace(/(^|[^@参考])图\s*(\d+)/g,'$1@参考图$2').replace(/(^|[^@])参考图\s*(\d+)/g,'$1@参考图$2').replace(/(^|[^@])(?:参考)?视频\s*(\d+)/g,'$1@视频参考$2').replace(/(^|[^@])(?:参考音频|音频|声音参考)\s*(\d+)/g,'$1@声音参考$2');
+                // Every attached 多参 material must be named, or H3 is handed a file the prompt never uses.
+                const missing=(root.NovaFlowFoartTools.capture().media?.generation?.h3References||[]).map(ref=>/^multi_ref_(image|video|audio)_(\d+)$/.exec(ref.key||'')).filter(Boolean)
+                  .map(match=>({image:'@参考图',video:'@视频参考',audio:'@声音参考'}[match[1]]+match[2])).filter(label=>!text.includes(label));
+                return (missing.length?text+'。同时使用 '+missing.join('、')+'。':text).slice(0,1500);
+              };
               let result=null,text='';
-              for(const sourcePrompt of [tidy,message.slice(0,1500)]){
+              for(const sourcePrompt of [bindMaterials(brief),bindMaterials(message)]){
                 // 多参 checks its result against the requirement text word by word; the brief already carries everything.
                 const multi=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='multi_reference';
                 const snapshot=await capture({requestId:root.crypto.randomUUID(),requirements:multi?'':(message+(pictureFacts?'\n'+pictureFacts:'')).slice(0,1000),sourcePrompt,includeReferenceImages});
