@@ -1,7 +1,7 @@
 {
   "name": "novaflow-web-workspace",
   "private": true,
-  "version": "2.0.306",
+  "version": "2.0.307",
   "type": "module",
   "description": "Foart website editor, compute-only assistant and administration.",
   "workspaces": [
