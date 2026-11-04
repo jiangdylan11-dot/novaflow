@@ -22,9 +22,7 @@ function fixture({decimal=true,artV3=true,textRelease=true,globalRelease=false,v
     XIAOTAO_ONLINE_ART_RELEASE_ENABLED:globalRelease,XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED:textRelease,XIAOTAO_ONLINE_VISION_ART_RELEASE_ENABLED:visionRelease,foartSessionObservers:new Set(),
     companionPricing:async()=>({ok:true,policy:{version:'sha256:'+'c'.repeat(64),expiresAt:Date.now()+60000,models:[{id:model,available:true}],config:{xiaotao_online:terms}}}),
     captureFoartBillingOwner:()=>({owner:'synthetic-account',current:()=>token==='session-a'}),
-    operationRecoveryId:id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id||''),
-    operationRecoveryRemember:(_owner,id,m,allowExisting)=>{events.push('save');if(recovery.has(id))return allowExisting===true&&recovery.get(id)===m;if(allowExisting)return false;recovery.set(id,m);return true;},
-    operationRecoveryForget:(_owner,id)=>{events.push('forget');return recovery.delete(id);},
+    validOperationId:id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id||''),
     currentSession:()=>({token}),captureFoartSessionGuard:()=>{const captured=token;return()=>token===captured;},
     companionCloudRequests:new Map(),companionCloudUsed:new Set(),stopCompanionCloud:()=>{},
     api:async(_base,_method,path,body,_timeout,signal)=>{
@@ -44,7 +42,7 @@ function fixture({decimal=true,artV3=true,textRelease=true,globalRelease=false,v
 test('scoped text uses decimal V3 quote, confirmation and one settled execution',async()=>{
   const h=fixture(),result=await h.invoke();
   assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.reviewRequired,true);assert.equal(result.quota.settled_credits,0.000001);
-  assert.deepEqual(h.events,['quote','show','confirm','save','execute','forget']);assert.equal(h.recovery.size,0);
+  assert.deepEqual(h.events,['quote','show','confirm','execute']);
 });
 
 test('unscoped, disabled, image mode and visual inputs fail before provider execution',async()=>{
@@ -67,7 +65,7 @@ test('old integer or disabled art policy cannot be used for scoped decimal opera
 test('declining quote or changing model or session at quote prevents execution',async()=>{
   for(const variant of ['decline','model','session']){
     const h=fixture();if(variant==='decline')h.decline();else h.setOnQuote(()=>variant==='model'?h.changeModel():h.changeSession());
-    const result=await h.invoke();assert.equal(result.ok,false,variant);assert.equal(h.events.filter(x=>x==='execute').length,0,variant);assert.equal(h.recovery.size,0,variant);
+    const result=await h.invoke();assert.equal(result.ok,false,variant);assert.equal(h.events.filter(x=>x==='execute').length,0,variant);
   }
 });
 
@@ -76,7 +74,7 @@ test('same request cannot be submitted twice and unknown result keeps recovery r
   const repeated=await h.invoke();assert.equal(repeated.ok,false);assert.equal(h.events.filter(x=>x==='execute').length,1);
   const unknown=fixture();unknown.setOnExecute(()=>{throw Error('synthetic transport loss');});
   const result=await unknown.invoke();assert.equal(result.ok,false);assert.equal(result.billingUnknown,true);
-  assert.equal(unknown.events.filter(x=>x==='execute').length,1);assert.equal(unknown.recovery.size,1);
+  assert.equal(unknown.events.filter(x=>x==='execute').length,1);
 });
 
 
@@ -89,5 +87,5 @@ test('scoped page vision requires both gates, explicit upload consent and decima
   const denied=fixture({visionRelease:true,visionPolicy:true});delete denied.payload.currentDrawingTextOnly;Object.assign(denied.payload,{currentDrawingVisionOnly:true,qwenPromptMode:'img2img',images:[image],confirmImageUpload:async()=>false});
   assert.equal((await denied.invoke()).ok,false);assert.equal(denied.events.includes('quote'),false);
   const ok=fixture({visionRelease:true,visionPolicy:true,model:'deepseek/deepseek-v4.1-flash'});delete ok.payload.currentDrawingTextOnly;Object.assign(ok.payload,{currentDrawingVisionOnly:true,qwenPromptMode:'img2img',images:[image],confirmImageUpload:async()=>{ok.events.push('upload-confirm');return true;}});
-  const result=await ok.invoke();assert.equal(result.ok,true,JSON.stringify(result));assert.deepEqual(ok.events,['upload-confirm','quote','show','confirm','save','execute','forget']);
+  const result=await ok.invoke();assert.equal(result.ok,true,JSON.stringify(result));assert.deepEqual(ok.events,['upload-confirm','quote','show','confirm','execute']);
 });

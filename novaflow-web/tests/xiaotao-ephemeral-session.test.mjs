@@ -45,30 +45,10 @@ function fixture({local=memoryStorage(),session=memoryStorage(),respond,captureC
     },
     ...extraApi
   });
-  const create=()=>root.NovaFlowXiaotaoArtAgent.createController({bridge,storage:root.NovaFlowXiaotaoArtAgent.createTabScopedStorage(local,session),api});
+  const create=()=>root.NovaFlowXiaotaoArtAgent.createController({bridge,api});
   return {root,local,session,payloads,owner,create,get stopCalls(){return stopCalls;},setSurface:value=>{surface=value;}};
 }
 async function localReady(controller) {await controller.calibrateLocalStatus();}
-
-test('old archives stay untouched but do not restore, and new chat text is not persisted',async()=>{
-  const oldText='old-private-chat-marker',newText='new-private-chat-marker';
-  const archiveKey=CHAT_KEY+':tab:11111111-1111-4111-8111-111111111111';
-  const archived=JSON.stringify({provider:'local',modelId:'qwen3.5-9b-heretic',modelSessions:{'qwen3.5-9b-heretic':{messages:[{role:'user',content:oldText}],history:[{role:'user',content:oldText}]}}});
-  const local=memoryStorage([[CHAT_KEY,archived],[archiveKey,archived],[CHAT_KEY+':latest-archive',archiveKey]]);
-  const session=memoryStorage([[CHAT_KEY+':tab-id','11111111-1111-4111-8111-111111111111']]);
-  const before=new Map(local.values),e=fixture({local,session}),first=e.create();
-  assert.deepEqual(plain(first.state.messages),[]);
-  assert.deepEqual(plain(first.state.history),[]);
-  assert.deepEqual(plain(first.legacyArchiveSources()),[]);
-  await localReady(first);assert.equal(await first.send(newText),true);
-  assert.equal(first.state.messages.some(row=>row.content===newText),true);
-  const reopened=e.create();
-  assert.deepEqual(plain(reopened.state.messages),[]);
-  assert.deepEqual(plain(reopened.state.history),[]);
-  assert.deepEqual(plain(reopened.state.staged),[]);
-  for(const [key,value] of before)assert.equal(local.getItem(key),value,'old record must not be deleted or rewritten');
-  assert.equal([...local.values.values(),...session.values.values()].some(value=>String(value).includes(newText)),false);
-});
 
 test('one live controller keeps conversational context across surface and model changes',async()=>{
   const e=fixture(),controller=e.create();await localReady(controller);
@@ -108,18 +88,6 @@ test('a late response in an old controller cannot become history for a newly ope
   assert.deepEqual(plain(reopened.state.messages),[]);
   const next=e.create();assert.deepEqual(plain(next.state.messages),[]);assert.deepEqual(plain(next.state.history),[]);
   assert.equal([...e.local.values.values(),...e.session.values.values()].some(value=>String(value).includes('late-private-reply')),false);
-});
-
-test('unresolved billing notices remain durable without restoring conversation text',()=>{
-  const e=fixture(),first=e.create();assert.equal(first.setModel('xai/grok-4.7'),true);
-  const selection=first.businessModelSnapshot(),guard=()=>true;
-  assert.equal(first.recordBusinessBillingNotice({submitted:true,modelId:'xai/grok-4.7',requestId:'operation-test-01',unknown:true},{selection,owner:e.owner,sessionGuard:guard}),true);
-  const scoped=e.root.NovaFlowXiaotaoArtAgent.createTabScopedStorage(e.local,e.session);
-  assert.equal(scoped.persistArtPending('test-user',{id:'art-test-0001',modelId:'xai/grok-4.7'}),true);
-  const reopened=e.create();
-  assert.deepEqual(plain(reopened.state.messages),[]);
-  assert.equal(reopened.visibleBillingNotices().some(row=>row.id==='operation-test-01'&&row.unknown===true),true);
-  assert.equal(reopened.artBillingNotices().some(row=>row.id==='art-test-0001'&&row.unknown===true),true);
 });
 
 test('retiring while an attachment is being read cannot stage it in a new session',async()=>{
@@ -248,4 +216,10 @@ test('retiring during an already-started tool does not cancel its operation sess
   assert.equal(signal?.aborted,false);
   assert.equal(resumes,0,'retired controller must not start a follow-up provider request');
   assert.deepEqual(plain(fresh.state.messages),[]);
+});
+test('a reopened controller starts empty and nothing is written to browser storage',async()=>{
+  const e=fixture();const first=e.create();await localReady(first);await first.send('hello');
+  assert.equal(first.state.messages.length>0,true);
+  assert.equal(Array.from({length:e.local.length},(_,i)=>e.local.key(i)).some(key=>key.includes('xiaotao')),false);
+  const reopened=e.create();assert.deepEqual([...reopened.state.messages],[]);assert.deepEqual([...reopened.state.billingNotices||[]],[]);
 });

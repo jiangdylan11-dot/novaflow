@@ -28,7 +28,7 @@ function fixture(override={}) {
  const scope={root,CONFIG:{companionUrl:'https://fixture.invalid'},AbortController,setTimeout,clearTimeout,Date,Number,Object,JSON,Error,Set,Map,WeakMap,
   foartSessionObservers:new Set(),companionCloudRequests:new Map(),companionCloudUsed:new Set(),api,
   companionPricing:async()=>({ok:true,policy:currentPolicy}),captureFoartSessionGuard:()=>guard,captureFoartBillingOwner:()=>({owner:'synthetic-user',current:guard}),
-  operationRecoveryId:id=>id==='cccccccc-cccc-4ccc-8ccc-cccccccccccc',operationRecoveryRemember:()=>true,operationRecoveryForget:()=>true,notifyAccountBalance:(...args)=>events.push(args)};
+  validOperationId:id=>id==='cccccccc-cccc-4ccc-8ccc-cccccccccccc',notifyAccountBalance:(...args)=>events.push(args)};
  createContext(scope);runInContext(creditHelpers+source.slice(begin,end)+'\nglobalThis.start=foartOperationStart;globalThis.resume=foartOperationResume;globalThis.cancel=foartOperationCancel;',scope);
  const startPayload=()=>({requestId:'request_123',modelId:model,pricingVersion:version,pricingExpiresAt:Date.now()+60000,message:'Open animation',history:[],promptLanguage:'zh-CN',foartContext:context()});
  return {scope,calls,events,startPayload,deny:()=>{valid=false},setPolicy:p=>{currentPolicy=p}};

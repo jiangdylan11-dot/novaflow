@@ -1,6 +1,5 @@
 (function (root) {
   'use strict';
-  const STORAGE_KEY = 'novaflow.xiaotao-art.chat.v1';
   // Retain retired identifiers only for history and billing notices.
   const CHAT_MODELS = Object.freeze({
     next: {label:'此前模型已移除', provider:'local', retired:true, available:false, detail:'此前选择的模型已移除，旧对话仅供查看；请主动选择其他模型，未提交、不扣积分'},
@@ -69,13 +68,9 @@
     return amount.toFixed(6).replace(/\.?0+$/,'');
   }
   const cleanBillingNotices = rows => (Array.isArray(rows)?rows:[]).filter(row=>row && typeof row.id==='string' && row.id.length<=100 && CHAT_MODELS[row.modelId]?.provider==='api' && typeof row.unknown==='boolean' && (row.confirmed===null || creditUnits(row.confirmed)!==null) && (row.unknown || row.confirmed!==null) && (row.owner===undefined || typeof row.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(row.owner))).slice(-20).map(({id,modelId,confirmed,unknown,owner})=>({id,modelId,confirmed,unknown,...(owner===undefined?{}:{owner})}));
-  function billingNoticeText(row) {return row.unknown?'本次扣费待核对':`本次扣费 ${displayCredits(row.confirmed)} 积分`;}
-  // Billing belongs to online models; the local free model never shows it.
-  function billingNoticeForView(provider,business,art) {
-    if(provider!=='api')return null;
-    const pending=[...business,...art].filter(row=>row?.unknown===true).at(-1);
-    return pending || business.at(-1)||art.at(-1)||null;
-  }
+  const billingNoticeText=row=>`本次扣费 ${displayCredits(row.confirmed)} 积分`;
+  // This session's confirmed charge, online models only. Nothing outlives the page.
+  const billingNoticeForView=(provider,rows)=>provider==='api'?rows.filter(row=>!row.unknown).at(-1)||null:null;
   function appendBillingNotice(rows,row) {return cleanBillingNotices([...rows.filter(item=>item.id!==row.id&&(item.unknown||item.owner!==row.owner)),row]);}
   const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
   const fail = message => { throw new Error(message); };
@@ -456,82 +451,6 @@
     for (const receipt of message.receipts || []) {const note = el('small', 'nf-xiaotao-receipt', receipt); note.setAttribute('role', 'note'); bubble.append(note);}
     return bubble;
   }
-  function createTabScopedStorage(localStorage, sessionStorage) {
-    const tabKey = STORAGE_KEY + ':billing-tab-id', prefix = STORAGE_KEY + ':billing-tab:',
-      legacyTabKey = STORAGE_KEY + ':tab-id', legacyPrefix = STORAGE_KEY + ':tab:', latestKey = STORAGE_KEY + ':latest-archive';
-    const read = (storage, key) => {try {return storage?.getItem(key) ?? null;} catch {return null;}};
-    const write = (storage, key, value) => {try {storage?.setItem(key, value);} catch {}};
-    let tabId = read(sessionStorage, tabKey);
-    if (!/^[\da-f-]{36}$/i.test(tabId || '')) {tabId = root.crypto.randomUUID(); write(sessionStorage, tabKey, tabId);}
-    const archiveKey = prefix + tabId;
-    // Keep per-request notices separate so concurrent tabs cannot overwrite one
-    // another. The owner is the non-secret account id from the current session.
-    const artPrefix=STORAGE_KEY+':art-billing-v1:';
-    const validOwner=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(id);
-    const validBillingId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(id);
-    const validBillingModel=id=>['xai/grok-4.7','openai/gpt-6.1-sol-saver'].includes(id);
-    const artKey=(owner,id,kind)=>artPrefix+owner+':'+kind+':'+id;
-    function listArtBilling(owner) {
-      try {
-        if(!validOwner(owner)||!localStorage||!Number.isSafeInteger(localStorage.length)||typeof localStorage.key!=='function')return null;
-        const prefix=artPrefix+owner+':',pending=new Map(),settled=new Map();
-        for(let i=0;i<localStorage.length;i++){
-          const key=localStorage.key(i);if(typeof key!=='string'||!key.startsWith(prefix))continue;
-          const suffix=key.slice(prefix.length),match=/^(pending|settled):([A-Za-z0-9_-]{8,100})$/.exec(suffix);if(!match)return null;
-          const row=JSON.parse(localStorage.getItem(key)),id=match[2];
-          if(!row||row.id!==id||!validBillingModel(row.modelId)||Object.keys(row).some(k=>!['id','modelId','confirmed','unknown','pricingSource','cacheKnown'].includes(k)))return null;
-          if(match[1]==='pending') {if(row.confirmed!==null||row.unknown!==true||row.pricingSource!==undefined||row.cacheKnown!==undefined)return null;pending.set(id,row);}
-          else {if(creditUnits(row.confirmed)===null||row.unknown!==false||row.pricingSource!=='token_rate_estimate'||typeof row.cacheKnown!=='boolean')return null;settled.set(id,row);}
-        }
-        for(const [id,row] of settled)if(!pending.has(id)||pending.get(id).modelId!==row.modelId)return null;
-        return [...pending].map(([id,row])=>settled.get(id)||row);
-      }catch{return null;}
-    }
-    function persistArtPending(owner,row) {
-      try {
-        const rows=listArtBilling(owner);if(!rows||rows.length>=20||!validBillingId(row?.id)||!validBillingModel(row?.modelId))return false;
-        const key=artKey(owner,row.id,'pending');if(localStorage.getItem(key)!==null||localStorage.getItem(artKey(owner,row.id,'settled'))!==null)return false;
-        const value=JSON.stringify({id:row.id,modelId:row.modelId,confirmed:null,unknown:true});localStorage.setItem(key,value);
-        const check=listArtBilling(owner);return localStorage.getItem(key)===value&&Array.isArray(check)&&check.some(x=>x.id===row.id&&x.modelId===row.modelId&&x.unknown===true);
-      }catch{return false;}
-    }
-    function persistArtSettlement(owner,row) {
-      try {
-        const pending=listArtBilling(owner)?.find(x=>x.id===row?.id);
-        if(!pending||pending.modelId!==row.modelId||creditUnits(row.confirmed)===null||row.pricingSource!=='token_rate_estimate'||typeof row.cacheKnown!=='boolean')return false;
-        const key=artKey(owner,row.id,'settled'),value=JSON.stringify({id:row.id,modelId:row.modelId,confirmed:row.confirmed,unknown:false,pricingSource:row.pricingSource,cacheKnown:row.cacheKnown}),old=localStorage.getItem(key);
-        if(old!==null&&old!==value)return false;if(old===null)localStorage.setItem(key,value);
-        const check=listArtBilling(owner);return localStorage.getItem(key)===value&&Array.isArray(check)&&check.some(x=>x.id===row.id&&x.confirmed===row.confirmed&&x.cacheKnown===row.cacheKnown&&!x.unknown);
-      }catch{return false;}
-    }
-    function dismissArtBilling(owner,id) {
-      try {if(!validBillingId(id)||!listArtBilling(owner))return false;localStorage.removeItem(artKey(owner,id,'settled'));localStorage.removeItem(artKey(owner,id,'pending'));return localStorage.getItem(artKey(owner,id,'settled'))===null&&localStorage.getItem(artKey(owner,id,'pending'))===null;}catch{return false;}
-    }
-    // Conversation text and attachments stay in the controller's memory.
-    // Legacy archives are left untouched; only their billing notices may be
-    // read so already-submitted requests remain visible for reconciliation.
-    const billingOnly = value => {
-      if (!value) return null;
-      try {return JSON.stringify({billingNotices:cleanBillingNotices(JSON.parse(value)?.billingNotices)});} catch {return null;}
-    };
-    return Object.freeze({
-      getItem(key) {
-        if (key !== STORAGE_KEY) return null;
-        const own = billingOnly(read(localStorage, archiveKey)); if (own !== null) return own;
-        const oldTabId=read(sessionStorage,legacyTabKey), latest=read(localStorage,latestKey);
-        const legacyOwn=/^[\da-f-]{36}$/i.test(oldTabId || '') ? read(localStorage,legacyPrefix+oldTabId) : null;
-        const recent=latest?.startsWith(legacyPrefix) ? read(localStorage,latest) : null;
-        for (const candidate of [legacyOwn,recent,read(localStorage,STORAGE_KEY)]) {
-          const safe=billingOnly(candidate);if(safe!==null)return safe;
-        }
-        return null;
-      },
-      // The durable record contains billing metadata only, never conversation text.
-      getDurableItem(key) {return key === STORAGE_KEY ? localStorage?.getItem(archiveKey) ?? null : null;},
-      setItem(key, value) {if (key === STORAGE_KEY) {const safe=billingOnly(value);if(safe!==null)write(localStorage, archiveKey, safe);}},
-      listArtBilling,persistArtPending,persistArtSettlement,dismissArtBilling
-    });
-  }
   function bindPanelDrag(panel, handle, {document = root.document, window = root, threshold = 0, ignoreInteractive = true, onStart = () => {}, onEnd = () => {}} = {}) {
     let position = null, drag = null, frame = null, suppressClick = false, lastSize = {width:390, height:600};
     const raf = window.requestAnimationFrame?.bind(window) || (fn => root.setTimeout(fn, 16));
@@ -859,12 +778,10 @@
     if(row.context?.selectedKeys)value.context={name:row.context.name,revision:row.context.revision,animation:row.context.animation,frame:row.context.frame,selectedBones:row.context.selectedBones,selectedKeys:row.context.selectedKeys};
     return value;
   }
-  function createController({bridge, api: getApi = () => root.electronAPI, storage = root.localStorage, onChange = () => {}, timers = root, uploadHost = null} = {}) {
+  function createController({bridge, api: getApi = () => root.electronAPI, onChange = () => {}, timers = root, uploadHost = null} = {}) {
     let retired = false;
     const api = () => retired ? null : getApi();
-    if (storage === root.localStorage) storage = createTabScopedStorage(root.localStorage, root.sessionStorage);
     const state = {provider:'local', modelId:'qwen3.5-9b-heretic', mode:'chat', activeTask:null,messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, staging:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'Qwen3.5 9B', toolTrace:[], localSession:null, localModelStatus:null, qwenExecutionDevice:null, qwen35CpuTrialChecked:false, pricingPolicy:null, pricingError:'',billingNotices:[]};
-    const operationRecoveryStates=new Map();
     let pendingFoartImageReview=null,foartImageReviewUndo=null;
     state.foartImageReviewCanUndo=false;
     const pricingKey = 'novaflow.xiaotao-pricing.v1';
@@ -1000,7 +917,6 @@
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
     const modelSessions = Object.create(null), transientSessions = Object.create(null);
     const cancelledPromptSourceModels = new Set();
-    let legacyArchive=null;
     state.learningTask = null; state.learningWarning = '';
     async function learningCommand(command) {
       if (typeof api()?.artLearning !== 'function') throw new Error('请更新 Foart后使用任务反馈');
@@ -1026,11 +942,6 @@
         return Boolean(receipt);
       } catch {return false;}
     }
-    // Billing reconciliation survives reload; conversations never do.
-    try {
-      const saved = JSON.parse(storage?.getItem(STORAGE_KEY) || 'null');
-      state.billingNotices=cleanBillingNotices(saved?.billingNotices);
-    } catch {}
     state.staged = []; state.pendingUploads = []; state.pendingUploadId = '';
     let stagedSeq = 0, carryAttachments = null, carryAsk = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
@@ -1240,11 +1151,8 @@
       if (retired) return;
       sessions[state.provider] = {messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId};
       modelSessions[state.modelId]={messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId,activeTask:state.activeTask,historyOriginUnknown:state.historyOriginUnknown===true};
-      try {storage?.setItem(STORAGE_KEY, JSON.stringify({billingNotices:cleanBillingNotices(state.billingNotices)}));} catch {}
       onChange(state);
     }
-    // A boolean here proves only that the notice was durably stored, never
-    // that an unknown or partially collected operation succeeded.
     function recordBusinessBillingNotice(notice,{selection,owner,sessionGuard}={}) {
       try {
         const id=notice?.requestId,modelId=notice?.modelId,quota=notice?.quota;
@@ -1266,12 +1174,7 @@
         if(old && (old.owner!==row.owner || old.modelId!==row.modelId ||
           old.confirmed!==null && old.confirmed!==row.confirmed || !old.unknown && row.unknown))return false;
         state.billingNotices=appendBillingNotice(state.billingNotices,row);notify();
-        if(!activeOwner())return false;
-        const raw=typeof storage?.getDurableItem==='function' ? storage.getDurableItem(STORAGE_KEY) :
-          storage===root.localStorage && typeof storage?.getItem==='function' ? storage.getItem(STORAGE_KEY) : null;
-        const saved=JSON.parse(raw||'null')?.billingNotices;
-        return activeOwner() && Array.isArray(saved) && saved.some(item=>item.id===id && item.owner===row.owner &&
-          item.modelId===modelId && item.confirmed===row.confirmed && item.unknown===row.unknown);
+        return activeOwner();
       } catch {return false;}
     }
     function visibleBillingNotices() {
@@ -1279,39 +1182,6 @@
       return state.billingNotices.filter(row=>row.owner===undefined || row.owner===currentOwner);
     }
     function dismissBillingNotice(id) {state.billingNotices=state.billingNotices.filter(item=>item.id!==id);notify();}
-    function artBillingNotices() {
-      const binding=api()?.captureFoartBillingOwner?.();
-      if(!binding || typeof binding.current!=='function' || binding.current()!==true)return [];
-      return storage?.listArtBilling?.(binding.owner) || [];
-    }
-    function operationRecoveryNotices() {
-      const client=api(),binding=client?.captureFoartBillingOwner?.();
-      if(!binding||typeof binding.current!=='function'||binding.current()!==true)return [];
-      if(typeof client?.listCompanionOperationRecovery!=='function')return [];
-      const rows=client.listCompanionOperationRecovery();if(!Array.isArray(rows))return null;
-      return rows.map(row=>({...row,recovery:operationRecoveryStates.get(binding.owner+':'+row.operationId)||null}));
-    }
-    async function checkOperationRecovery(operationId,dismiss=false) {
-      const client=api(),binding=client?.captureFoartBillingOwner?.();
-      if(!binding||typeof binding.current!=='function'||binding.current()!==true)return false;
-      const rows=client?.listCompanionOperationRecovery?.();if(!Array.isArray(rows)||!rows.some(row=>row.operationId===operationId))return false;
-      const fn=dismiss?client?.dismissCompanionOperationRecovery:client?.checkCompanionOperationRecovery;
-      if(typeof fn!=='function')return false;
-      let response;try{response=await fn(operationId);}catch{response={ok:false};}
-      if(!binding.current())return false;
-      const key=binding.owner+':'+operationId;
-      if(dismiss&&response?.ok===true){operationRecoveryStates.delete(key);notify();return true;}
-      operationRecoveryStates.set(key,response?.ok===true?response.operation:{status:'unavailable'});notify();return response?.ok===true;
-    }
-    function dismissArtBillingNotice(id) {
-      const binding=api()?.captureFoartBillingOwner?.();
-      if(!binding || typeof binding.current!=='function' || binding.current()!==true)return false;
-      const rows=storage?.listArtBilling?.(binding.owner),row=Array.isArray(rows)?rows.find(item=>item.id===id):null;
-      if(!row)return false;
-      if(row.unknown && (typeof root.confirm!=='function'||root.confirm('这笔账单仍待核对。确认已经核对并关闭提示？')!==true))return false;
-      if(binding.current()!==true||storage?.dismissArtBilling?.(binding.owner,id)!==true)return false;
-      notify();return true;
-    }
     function onlineBusinessUi(modelId,imageUploadGrant=null,selectionStillCurrent=()=>true) {
       const binding=api()?.captureFoartBillingOwner?.();
       const decimal=onlineOperationDecimalConfirmed();
@@ -1331,18 +1201,13 @@
           const settled=row.quota?.status==='settled'&&acceptedCredits(row.quota.settled_credits);
           if(operationBound&&settled){publishBilling({id:row.requestId,modelId,owner:binding.owner,confirmed:row.quota.settled_credits,confirmedCount:1,unknown:row.unknown===true||(row.quota.uncollected_credits||0)>0,inFlight:false});return true;}
           if(!current())return false;
-          const ok=settled?storage?.persistArtSettlement?.(binding.owner,{id:row.requestId,modelId,confirmed:row.quota.settled_credits,pricingSource:row.quota.pricing_source,cacheKnown:row.quota.cache_known})
-            :storage?.persistArtPending?.(binding.owner,{id:row.requestId,modelId});
-          if(ok!==true){state.error=settled?'账单回执未能安全保存，请核对实际扣分。':'无法安全保存待核对账单，未提交。';notify();return false;}
-          notify();return true;
+          if(settled)publishBilling({id:row.requestId,modelId,owner:binding.owner,confirmed:row.quota.settled_credits,confirmedCount:1,unknown:false,inFlight:false});
+          return true;
         }
       };
     }
     function publishBilling(billing) {
       if(!billing)return;
-      // Operation-level requests have a durable account-bound record in the
-      // runtime. Do not write their interim state into the unscoped tab archive.
-      if(billing.recoveryBound&&(billing.unknown||billing.inFlight||!billing.confirmedCount)){notify();return;}
       const row={id:billing.id,modelId:billing.modelId,confirmed:billing.confirmedCount?billing.confirmed:null,unknown:billing.unknown||billing.inFlight,...(billing.owner?{owner:billing.owner}:{})};
       state.billingNotices=appendBillingNotice(state.billingNotices,row);notify();
     }
@@ -1490,7 +1355,7 @@
       const mediaEditIntent=/剪辑|裁切|截取|分割|淡入|淡出|音量|变速|时间轴|帧编辑|倒放|静音|音轨|独奏|片段/.test(positiveRequest)&&!/(?:生成|制作|做)(?:一[段个]|[0-9.]+秒|新的?|这个)?(?:视频|动画)/.test(positiveRequest);
       tools.setUploads?.(lastUploads);
       stopped=false;activeMode='foart';foartAbort=new root.AbortController();const signal=foartAbort.signal,receipts=[],attemptedPlans=new Map();
-      const billing=state.provider==='api'?{id:root.crypto.randomUUID(),modelId:state.modelId,owner:billingOwner(),confirmed:0,confirmedCount:0,quoted:0,allQuoted:true,unknown:false,inFlight:false,recoveryBound:true,decimal:onlineOperationDecimalConfirmed()}:null;
+      const billing=state.provider==='api'?{id:root.crypto.randomUUID(),modelId:state.modelId,owner:billingOwner(),confirmed:0,confirmedCount:0,quoted:0,allQuoted:true,unknown:false,inFlight:false,decimal:onlineOperationDecimalConfirmed()}:null;
       const initialSelection=businessModelSnapshot(),imageSessionGuard=state.provider==='api'?api()?.captureFoartSessionGuard?.():null,imageGrants=[];
       const selectionStillCurrent=()=>{const current=businessModelSnapshot();return !signal.aborted&&operation===serial&&current.provider===initialSelection.provider&&current.modelId===initialSelection.modelId&&current.epoch===initialSelection.epoch;};
       const imageGuard=()=>{const current=businessModelSnapshot();return !signal.aborted&&operation===serial&&state.provider==='api'&&
@@ -1906,7 +1771,7 @@
       const qwenWantsDrawingReferences=qwenWantsVisual && (compareReferences || (!includeResult && !previousUploadIntent && (!explicitNewQwenImage || /(?:当前|绘图|画布|槽位).{0,8}参考/.test(message))));
       const qwenUsesUploads=qwenWantsVisual && (explicitNewQwenImage || previousUploadIntent || (!includeResult && !drawingReferenceIntent));
       const operation = ++serial; stopped = false; state.error = ''; state.operation = null; state.toolTrace = []; if(!communityChatOnly&&!capabilityOnly)bridge.clearPrepared(); state.proposal = null; state.proposalSnapshot = null; state.applied = false;
-      const billing=state.provider==='api'?{id:root.crypto.randomUUID(),modelId:state.modelId,owner:billingOwner(),confirmed:0,confirmedCount:0,quoted:0,allQuoted:true,unknown:false,inFlight:false,recoveryBound:operationTextOnly,decimal:onlineOperationDecimalConfirmed()}:null;activeChatBilling=billing;
+      const billing=state.provider==='api'?{id:root.crypto.randomUUID(),modelId:state.modelId,owner:billingOwner(),confirmed:0,confirmedCount:0,quoted:0,allQuoted:true,unknown:false,inFlight:false,decimal:onlineOperationDecimalConfirmed()}:null;activeChatBilling=billing;
       try {
         let snapshot, mode = 'chat';
         if (!snapshot) snapshot = capabilityOnly?{artContext:{},images:[]}:await bridge.captureChat({includeResult,includeDrawingReferences:!communityChatOnly || qwenWantsDrawingReferences});
@@ -1982,7 +1847,7 @@
         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
         state.status='已回复';
         return true;
-      } catch (error) {if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}if (operation === serial && !stopped) {state.error = String(error?.message || error); state.status = billing?.unknown ? '请求未完成，积分状态待核对' : billing?.confirmedCount ? '回复未完成，已按实际用量结算' : '未提交生成';} return false;}
+      } catch (error) {if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}if (operation === serial && !stopped) {state.error = String(error?.message || error); state.status = billing?.unknown ? '请求未完成' : billing?.confirmedCount ? '回复未完成，已按实际用量结算' : '未提交生成';} return false;}
       finally {if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}if(activeChatBilling===billing)activeChatBilling=null;if (operation === serial) {stopStatusPolling();promptAbort=null; state.pending = false; state.operation = null; activeRequest = ''; activeSnapshot = null; notify();}}
     }
     // A media review owns a prompt write only; it never starts generation.
@@ -2443,7 +2308,7 @@
       if (state.generating) {state.status = '正在停止生成…'; notify(); await bridge.cancelGeneration(); return;}
       if (!state.pending || stopped) return;
       stopped = true; stopStatusPolling(); const requestId = activeRequest; if(activeChatBilling?.inFlight)publishBilling(activeChatBilling);state.localSession = null; state.status = state.provider === 'api' ? '正在停止等待在线回复…' : '正在停止小桃…'; notify();
-      try {if (requestId) {const result = await api()?.artAgentStop?.({requestId,provider:state.provider}); if (!result?.ok) fail(result?.error || '停止尚未确认，请等待当前任务退出');} ++serial; state.pending = false; activeRequest = ''; activeSnapshot = null; state.status = state.provider === 'api' ? '已停止等待本次回复；结算状态待核对，请勿重复提交' : '已停止';}
+      try {if (requestId) {const result = await api()?.artAgentStop?.({requestId,provider:state.provider}); if (!result?.ok) fail(result?.error || '停止尚未确认，请等待当前任务退出');} ++serial; state.pending = false; activeRequest = ''; activeSnapshot = null; state.status = '已停止';}
       catch (error) {state.error = String(error?.message || error); state.status = '停止尚未确认';}
       notify();
     }
@@ -2536,24 +2401,12 @@
       if(state.promptSourceCancelledNotice)state.status=[state.status,state.promptSourceCancelledNotice].filter(Boolean).join(' ');
       notify(); if(model.provider==='api')void refreshPricingPolicy(); return true;
     }
-    function viewLegacyArchive(provider) {
-      const row=provider==='legacy-online' ? modelSessions['legacy-online'] : provider==='retired-local' ? modelSessions.next : provider==='retired-glm' ? modelSessions['glm/glm-5.3-flash'] : legacyArchive?.[provider];if(!['local','api','legacy-online','retired-local','retired-glm'].includes(provider) || !row || typeof row!=='object')return null;
-      const clean=(items,roles,limit)=>(Array.isArray(items)?items:[]).filter(item=>roles.includes(item?.role)&&typeof item.content==='string').slice(-limit).map(({role,content,receipt})=>({role,content,...(typeof receipt==='string'&&receipt?{receipt}: {})}));
-      return {messages:clean(row.messages,['user','assistant','status'],Number.MAX_SAFE_INTEGER),history:clean(row.history,['user','assistant'],Number.MAX_SAFE_INTEGER),readOnly:row.readOnly===true || ['local','api','legacy-online','retired-local','retired-glm'].includes(provider),...(row.activeTask ? {activeTask:copy(row.activeTask)} : {})};
-    }
-    function legacyArchiveSources() {return ['local','api','legacy-online','retired-local','retired-glm'].filter(provider=>{const row=viewLegacyArchive(provider);return row && (row.messages.length || row.history.length || row.activeTask);});}
-    function restoreLegacyArchive(provider) {
-      if(CHAT_MODELS[state.modelId]?.retired || viewLegacyArchive(provider)?.readOnly || state.pending || state.generating || state.applying || state.uploading || state.staging || state.staged.some(item=>item.status==='reading'))return false;
-      const row=viewLegacyArchive(provider);if(!row || !legacyArchiveSources().includes(provider))return false;
-      const alreadyShown=row.messages.every((item,i)=>state.messages[i]?.role===item.role && state.messages[i]?.content===item.content);
-      if(!alreadyShown)state.messages=[...row.messages,...state.messages].slice(-60);
-      state.history=[...row.history,...state.history].slice(-12);state.historyOriginUnknown=true;state.conversationId='';
-      state.status='已恢复旧文字；下次发送会把所保留的历史交给当前模型。旧任务和附件不会自动恢复。';state.error='';notify();return true;
-    }
-    return Object.freeze({state, retire, businessModelSnapshot, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,artBillingNotices,dismissArtBillingNotice,operationRecoveryNotices,checkOperationRecovery,onlineBusinessUi,legacyArchiveSources,viewLegacyArchive,restoreLegacyArchive});
+    return Object.freeze({state, retire, businessModelSnapshot, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
   }
   function mount() {
     if (!root.document?.body || root.document.getElementById('nf-xiaotao-art-root')) return;
+    // Xiaotao keeps no records: drop anything older builds left in this browser.
+    try {for(const key of Object.keys(root.localStorage))if(/^novaflow\.xiaotao-(?:art\.chat|operation-recovery)\.v1/.test(key))root.localStorage.removeItem(key);} catch {}
     const doc = root.document, host = doc.createElement('div'); host.id = 'nf-xiaotao-art-root'; host.setAttribute('data-novaflow-runtime-ignore', '1');
     const el = (tag, cls, text) => {const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n;};
     const fab = el('button', 'nf-xiaotao-launcher nf-xiaotao-robot'); fab.type = 'button'; fab.setAttribute('data-novaflow-keep-radius', '1'); fab.setAttribute('aria-expanded', 'false'); fab.setAttribute('aria-controls', 'nf-xiaotao-art-panel');
@@ -2563,8 +2416,6 @@
     const header = el('header', 'nf-xiaotao-header'), title = el('div','nf-xiaotao-title'), titleText = el('strong','','小桃AI'), close = el('button', 'nf-xiaotao-icon', '×'); close.type = 'button'; close.setAttribute('aria-label', '关闭对话');
     title.append(titleText); header.append(title, close);
     const context = el('div', 'nf-xiaotao-context'), contextLabel = el('span'), thumbs = el('div', 'nf-xiaotao-thumbs'); context.append(contextLabel, thumbs);
-    const legacyPanel=el('details','nf-xiaotao-legacy'),legacySummary=el('summary','','查看旧对话记录'),legacyHelp=el('p','','旧记录不会自动发送。查看后可选择将文字历史加入当前模型；下次发送最多携带最近 12 条历史。旧任务和附件不会自动恢复。'),legacySelect=el('select'),legacyText=el('pre'),legacyRestore=el('button','','将旧文字加入当前模型');
-    legacySelect.setAttribute('aria-label','选择旧对话来源');legacyRestore.type='button';legacyPanel.hidden=true;legacyPanel.append(legacySummary,legacyHelp,legacySelect,legacyText,legacyRestore);
     const messages = el('div', 'nf-xiaotao-messages'); messages.setAttribute('role', 'log'); messages.setAttribute('aria-label', '小桃全局对话');
     const intro = el('p', 'nf-xiaotao-intro', '上传素材并描述想要的结果，我会根据需求调用美工、音视、特效、动画或工具；拿不准你的意思时，会先向你问清楚。'); messages.append(intro);
     const proposal = el('details', 'nf-xiaotao-proposal'), summary = el('summary', '', '提示词与执行'), proposalText = el('pre'), copyPrompt=el('button','','复制完整提示词'); copyPrompt.type='button'; copyPrompt.onclick=()=>void copyText(controller.state.proposal?.prompt || '',copyPrompt); proposal.hidden = true; proposal.append(summary,copyPrompt,proposalText);
@@ -2669,7 +2520,7 @@
     let controller, controllerEpoch=0, sessionRetired=false;
     const makeController=()=>{
       const epoch=++controllerEpoch;
-      return createController({bridge,storage:createTabScopedStorage(root.localStorage,root.sessionStorage),onChange:state=>{if(epoch===controllerEpoch)render(state);}});
+      return createController({bridge,onChange:state=>{if(epoch===controllerEpoch)render(state);}});
     };
     controller=makeController();
     const authIdentity=()=>{
@@ -2718,10 +2569,6 @@
       }
       render(controller.state);
     });
-    for(const provider of controller.legacyArchiveSources()){const option=el('option','',provider==='local'?'旧本地对话（只读）':provider==='legacy-online'?'原在线智能对话（只读）':provider==='retired-local'?'已移除本地模型对话（只读）':provider==='retired-glm'?'GLM 对话（只读）':'旧在线对话');option.value=provider;legacySelect.append(option);}
-    function renderLegacyPreview(){const row=controller.viewLegacyArchive(legacySelect.value);legacyText.textContent=row ? [...row.messages.map(item=>`${item.role==='user'?'你':item.role==='assistant'?'小桃':'记录'}：${item.content}${item.receipt?'\n'+item.receipt:''}`),...(row.history.length?[row.readOnly?'\n旧历史（只读）：':'\n可恢复的历史：',...row.history.map(item=>`${item.role==='user'?'你':'小桃'}：${item.content}`)]:[]),...(row.activeTask?['\n旧任务记录（仅查看，不会自动恢复）：',JSON.stringify(row.activeTask,null,2)]:[])].join('\n') : '';}
-    legacySelect.onchange=()=>{renderLegacyPreview();const readonly=CHAT_MODELS[controller.state.modelId]?.retired===true||controller.viewLegacyArchive(legacySelect.value)?.readOnly===true;legacyRestore.disabled=readonly;legacyHelp.textContent=readonly?'这条旧记录仅供查看，不会自动发送；请使用当前模型开始新对话。':'旧记录不会自动发送。查看后可选择将文字历史加入当前模型；下次发送最多携带最近 12 条历史。旧任务和附件不会自动恢复。';};legacyPanel.ontoggle=()=>{if(legacyPanel.open)legacySelect.onchange();};
-    legacyRestore.onclick=()=>{if(typeof root.confirm!=='function'||!root.confirm('将旧文字历史加入当前模型？下次发送时，最多最近 12 条历史会传给该模型提供方。旧任务和附件不会自动恢复。'))return;if(controller.restoreLegacyArchive(legacySelect.value))legacyPanel.open=false;};
     if (typeof root.addEventListener === 'function') root.addEventListener('pagehide', () => {nodeRecheck.stop();retireSession();});
     if (typeof root.addEventListener === 'function') root.addEventListener('pageshow', () => {restoreSession();nodeRecheck.start();if(qwenRecheckEligible())void nodeRecheck.refreshNow();});
     if (typeof doc.addEventListener === 'function') doc.addEventListener('visibilitychange', () => {if(qwenRecheckEligible())void nodeRecheck.refreshNow();else nodeRecheck.update();});
@@ -2746,21 +2593,9 @@
     }
     function render(state) {
       lastPricingKey=controller.pricingPolicyKey();
-      const artNotices=controller.artBillingNotices(),operationNotices=state.pending||state.provider!=='api'?[]:controller.operationRecoveryNotices(),businessNotices=controller.visibleBillingNotices();
-      const latestNotice=billingNoticeForView(state.provider,businessNotices,artNotices);
-      billingAlerts.replaceChildren();billingAlerts.hidden=!latestNotice&&Array.isArray(operationNotices)&&!operationNotices.length;
+      const latestNotice=billingNoticeForView(state.provider,controller.visibleBillingNotices());
+      billingAlerts.replaceChildren();billingAlerts.hidden=!latestNotice;
       if(latestNotice)billingAlerts.append(el('p','nf-xiaotao-billing-note',billingNoticeText(latestNotice)));
-      if(operationNotices===null)billingAlerts.append(el('p','nf-xiaotao-error','无法读取待核对账单记录，在线操作暂不可提交。'));
-      for(const row of operationNotices||[]){
-        const status=row.recovery?.status,settled=status==='settled',detail=settled
-          ? `已确认扣 ${row.recovery.charged} 积分${row.recovery.uncollected?`，仍有 ${row.recovery.uncollected} 积分未结算`:''}。`
-          : status==='in-progress'?'操作仍在处理中，请勿重复提交。':status==='pending-settlement'?'用量已记录，结算状态待核对，请勿重复提交。'
-          : status==='unavailable'?'暂时无法查询账单状态，请稍后再试，勿重复提交。':'操作或账单状态待核对，请勿重复提交。';
-        const item=el('p','nf-xiaotao-error',`${CHAT_MODELS[row.modelId]?.label||'在线模型'}：${detail}`),check=el('button','','查询状态');
-        check.type='button';check.onclick=()=>void controller.checkOperationRecovery(row.operationId);item.append(check);
-        const dismiss=el('button','nf-xiaotao-notice-close','×');dismiss.type='button';dismiss.setAttribute('aria-label','关闭提醒');dismiss.onclick=()=>void controller.checkOperationRecovery(row.operationId,true);item.append(dismiss);
-        billingAlerts.append(item);
-      }
       if (CHAT_MODELS[state.modelId]?.retired) {retiredSelection.value=state.modelId;if (!retiredSelection.parentNode) modelSelect.prepend(retiredSelection);}
       else if (retiredSelection.parentNode) retiredSelection.remove();
       syncModelOptions();
@@ -2789,7 +2624,6 @@
       if(state.proposal!==renderedProposal) {renderedProposal=state.proposal; proposal.open=Boolean(state.proposal); copyPrompt.textContent='复制完整提示词';}
       proposalText.textContent = state.proposal?.prompt || ''; applyButton.disabled = retired || busy || state.applied; generateButton.disabled = retired || busy; newConversation.disabled = retired || busy; upload.disabled=retired || busy; send.disabled = retired || busy || (state.provider==='api' && !controller.modelAvailable(state.modelId)); stop.hidden = !state.pending && !state.generating; input.disabled = retired || busy;
       const imageReview=state.proposal?.kind==='foart-online-review';generateButton.hidden=imageReview&&(state.proposal?.generateRequested!==true||state.applied);generateButton.textContent=imageReview?'确认并生成（另计费）':'应用并生成一张';cancelImageReviewButton.hidden=!imageReview||state.applied;undoImageReviewButton.hidden=!imageReview||!state.foartImageReviewCanUndo;cancelImageReviewButton.disabled=busy;undoImageReviewButton.disabled=busy;
-      legacyPanel.hidden=controller.legacyArchiveSources().length===0;legacyRestore.disabled=retired || busy || controller.viewLegacyArchive(legacySelect.value)?.readOnly===true || state.staged.some(item=>item.status==='reading');
       modelSelect.disabled = busy || state.staged.some(item=>item.status==='reading'); modelSelect.value = state.modelId; modelSelect.title = (state.provider==='api' && !retired ? (controller.modelAvailable(state.modelId) ? '在线收费 · 按实际用量结算' : controller.pricingPolicyKey() ? '在线收费 · 当前线路或积分价格不可用，不能发送' : '在线收费 · 价格状态暂不可用，不能发送') : (CHAT_MODELS[state.modelId]?.detail || ''))+(state.localModelStatus?.id===state.modelId ? (state.localModelStatus.modelLoaded ? ' · 节点报告已加载' : ' · 节点报告未加载') : '');
       modelTrigger.disabled=modelSelect.disabled;modelTrigger.title=modelSelect.title;
       if(modelTrigger.disabled){if(!modelMenu.hidden)drag.reclamp();modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');}
@@ -2904,6 +2738,6 @@
     render(controller.state); root.setInterval(tick, 500); tick();
     root.NovaFlowXiaotaoArtAgent.panel = Object.freeze({open:() => setOpen(true), close:() => setOpen(false), get controller(){return controller;}});
   }
-  root.NovaFlowXiaotaoArtAgent = {selectedModelPayload, communityAttachmentMetadata, compactFoartHistory, compactFoartReceipt, fingerprint, sameSnapshot, executionIntent, samplingRequest, samplingChoice, feedbackRequest, clampPanelPosition, anchoredPanelPosition, renderMessageMarkdown, conversationRows, renderConversationRow, createTabScopedStorage, createQwenNodeRecheck, qwenExecutionDeviceLabel, bindPanelDrag, createBridge, createController, mount};
+  root.NovaFlowXiaotaoArtAgent = {selectedModelPayload, communityAttachmentMetadata, compactFoartHistory, compactFoartReceipt, fingerprint, sameSnapshot, executionIntent, samplingRequest, samplingChoice, feedbackRequest, clampPanelPosition, anchoredPanelPosition, renderMessageMarkdown, conversationRows, renderConversationRow, createQwenNodeRecheck, qwenExecutionDeviceLabel, bindPanelDrag, createBridge, createController, mount};
   if (root.document?.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', mount, {once:true}); else if (root.document?.body) mount();
 })(typeof window !== 'undefined' ? window : globalThis);

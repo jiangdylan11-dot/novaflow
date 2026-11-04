@@ -23,11 +23,10 @@ function fixture({refs=[],vision=false,uiDraft=true,allowed=true,upload=true,quo
   const guard=()=>true;guard.expiresAtMs=Date.now()+60000;
   const scope={root,structuredClone,Date,JSON,Object,String,Number,Array,Error,Promise,RegExp,BigInt,AbortController,setTimeout,clearTimeout,
     CONFIG:{companionUrl:'https://example.invalid',authUrl:'https://example.invalid'},
-    operationRecoveryId:value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value||''),
-    operationRecoveryModel:value=>value===model,companionCloudRequests:pending,companionCloudUsed:used,foartSessionObservers:observers,
+    validOperationId:value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value||''),
+    notifyAccountBalance:()=>events.push('balance'),
+    onlineOperationModel:value=>value===model,companionCloudRequests:pending,companionCloudUsed:used,foartSessionObservers:observers,
     captureFoartBillingOwner:()=>({current:()=>true}),captureFoartSessionGuard:()=>guard,companionPricing:async()=>({ok:true,policy}),
-    operationRecoveryRemember:(_owner,operation,modelId)=>{events.push('remember');if(recovery.has(operation))return false;recovery.set(operation,modelId);return true;},
-    operationRecoveryForget:(_owner,operation)=>{events.push('forget');recovery.delete(operation);},notifyAccountBalance:()=>events.push('balance'),
     api:async(_base,_method,path,body)=>{
       if(path.endsWith('/prepare')){events.push('prepare');assert.equal(body.intent.request.references.length,refs.length);return {ok:true,operation:{model,policyVersion,operationId,token:'synthetic-ticket',intentHash:'a'.repeat(64),estimatedCredits:0.002,outputTokens:2048}};}
       if(path.endsWith('/execute')){events.push('execute');assert.equal(body.intent.request.references.length,refs.length);return {ok:true,model,receipt:{status:'settled',outcome:'success',charged:0.000539,uncollected:0},uiDraft:{status:'preview-only',applyAvailable:false,prompt:'synthetic UI draft'}};}
@@ -42,14 +41,14 @@ function fixture({refs=[],vision=false,uiDraft=true,allowed=true,upload=true,quo
 
 test('text-only UI needs UI policy, not vision or image upload confirmation',async()=>{
   const f=fixture({vision:false}),result=await f.run();assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.quota.settled_credits,0.000539);
-  assert.deepEqual(f.events,['prepare','quote-shown','quote-confirm','remember','execute','balance','billing','forget']);
-  assert.equal((await f.run()).ok,false);assert.equal(f.events.filter(x=>x==='execute').length,1);assert.equal(f.recovery.size,0);
+  assert.deepEqual(f.events,['prepare','quote-shown','quote-confirm','execute','balance','billing']);
+  assert.equal((await f.run()).ok,false);assert.equal(f.events.filter(x=>x==='execute').length,1);
 });
 
 test('reference image requires model and both policies and explicit upload before prepare',async()=>{
   const refs=[{role:'subject',dataUrl:png}];
   const f=fixture({refs,vision:true}),result=await f.run();assert.equal(result.ok,true,JSON.stringify(result));
-  assert.deepEqual(f.events,['upload-confirm','prepare','quote-shown','quote-confirm','remember','execute','balance','billing','forget']);
+  assert.deepEqual(f.events,['upload-confirm','prepare','quote-shown','quote-confirm','execute','balance','billing']);
   for(const options of [{refs,vision:false},{refs,vision:true,uiDraft:false},{refs,vision:true,allowed:false}]){
     const denied=fixture(options);assert.equal((await denied.run()).ok,false);assert.equal(denied.events.includes('prepare'),false);assert.equal(denied.events.includes('execute'),false);
   }
@@ -64,5 +63,5 @@ test('declined upload, changed image or stale workspace make zero prepare and ex
 
 test('declined quote after confirmed image upload does not execute or create recovery hold',async()=>{
   const f=fixture({refs:[{role:'subject',dataUrl:png}],vision:true,quote:false});assert.equal((await f.run()).ok,false);
-  assert.deepEqual(f.events,['upload-confirm','prepare','quote-shown','quote-confirm']);assert.equal(f.recovery.size,0);
+  assert.deepEqual(f.events,['upload-confirm','prepare','quote-shown','quote-confirm']);
 });

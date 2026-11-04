@@ -237,68 +237,8 @@
       return typeof owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(owner) ? {owner,current} : null;
     }catch{return null;}
   }
-  // Only a non-secret operation identifier and label survive refresh. Tickets,
-  // prompts, pictures and project context stay in memory and are never stored.
-  const operationRecoveryPrefix='novaflow.xiaotao-operation-recovery.v1:';
-  const operationRecoveryId=id=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-  const operationRecoveryModel=id=>['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver'].includes(id);
-  function operationRecoveryList(binding) {
-    try {
-      const storage=root.localStorage;
-      if(!binding?.current?.()||!storage||!Number.isSafeInteger(storage.length)||typeof storage.key!=='function'||
-        typeof storage.getItem!=='function'||typeof storage.setItem!=='function'||typeof storage.removeItem!=='function')return null;
-      const prefix=operationRecoveryPrefix+binding.owner+':',rows=[];
-      for(let i=0;i<storage.length;i++){
-        const key=storage.key(i);if(typeof key!=='string'||!key.startsWith(prefix))continue;
-        const id=key.slice(prefix.length),row=JSON.parse(storage.getItem(key));
-        if(!operationRecoveryId(id)||!row||row.operationId!==id||!operationRecoveryModel(row.modelId)||
-          Object.keys(row).sort().join(',')!=='modelId,operationId')return null;
-        rows.push({operationId:id,modelId:row.modelId});
-      }
-      return binding.current()?rows:null;
-    }catch{return null;}
-  }
-  function operationRecoveryRemember(binding,operationId,modelId,allowExisting=false) {
-    try {
-      const rows=operationRecoveryList(binding);
-      if(!rows||!operationRecoveryId(operationId)||!operationRecoveryModel(modelId))return false;
-      const key=operationRecoveryPrefix+binding.owner+':'+operationId,value=JSON.stringify({operationId,modelId});
-      const existing=root.localStorage.getItem(key);
-      if(existing!==null)return allowExisting===true&&existing===value&&binding.current();
-      if(allowExisting===true)return false;
-      if(rows.length>=100)return false;
-      root.localStorage.setItem(key,value);
-      return binding.current()&&root.localStorage.getItem(key)===value;
-    }catch{return false;}
-  }
-  function operationRecoveryForget(binding,operationId) {
-    try {
-      if(!binding?.current?.()||!operationRecoveryId(operationId))return false;
-      const key=operationRecoveryPrefix+binding.owner+':'+operationId;
-      if(!operationRecoveryList(binding)?.some(row=>row.operationId===operationId))return false;
-      root.localStorage.removeItem(key);return binding.current()&&root.localStorage.getItem(key)===null;
-    }catch{return false;}
-  }
-  async function operationRecoveryStatus(operationId) {
-    const binding=captureFoartBillingOwner();
-    if(!binding||!operationRecoveryId(operationId)||!operationRecoveryList(binding)?.some(row=>row.operationId===operationId))
-      return {ok:false,error:'登录会话或待核记录不可用。'};
-    try {
-      const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
-      const response=await api(base,'POST','/api/web/companion/operation/status',{operationId},20000);
-      if(!binding.current())return {ok:false,error:'登录会话已变化，请重新查询。'};
-      const value=response?.operation,status=value?.status;
-      if(response?.ok!==true||value?.operationId!==operationId||!['pending-reconciliation','pending-settlement','in-progress','settled','unknown'].includes(status))throw Error();
-      // Use this operation's own immutable pricing snapshot, never today's
-      // global policy: legacy receipts carry none of the four markers.
-      if(status==='settled'){
-        const hasMarker=['credit_amount_policy','credit_precision','credit_rounding','minimum_positive_credits'].some(key=>Object.hasOwn(value,key));
-        if(hasMarker&&!decimalCreditPolicy(value))throw Error();
-        if(!['success','cancel'].includes(value.outcome)||!validCreditAmount(value.charged,hasMarker)||!validCreditAmount(value.uncollected,hasMarker))throw Error();
-      }
-      return {ok:true,operation:{operationId,status,...(status==='settled'?{outcome:value.outcome,charged:value.charged,uncollected:value.uncollected}:{})}};
-    }catch{return {ok:false,error:'账单状态暂时无法查询，请稍后再试；不要重复提交。'};}
-  }
+  const validOperationId=id=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const onlineOperationModel=id=>['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver'].includes(id);
 
   // The published site can run behind a Cloudflare Pages gate (deploy/_worker.js)
   // that serves the application code only to a logged-in browser. A <script src>
@@ -664,7 +604,7 @@
       foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);}
   }
   async function selectedOnlineVideoDraft(payload,selected,controller) {
-    let submitted=false,settled=false,recoveryId='';
+    let submitted=false,settled=false;
     const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!settled?{billingUnknown:true}:{}),...extra});
     const keys=['request','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isInputCurrent'];
     if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
@@ -672,7 +612,7 @@
       return no('video-draft-unavailable','视频草稿确认或状态检查不可用，未提交。');
     let intent;try{intent=structuredClone(payload.request);}catch{return no('invalid-request','视频草稿输入无效，未提交。');}
     const id=intent?.requestId,fields=['mode','requestId','h3Mode','durationSeconds','prompt','requirements','references','images'];
-    if(!intent||typeof intent!=='object'||Array.isArray(intent)||Object.keys(intent).some(k=>!fields.includes(k))||intent.mode!=='video-rewrite'||!operationRecoveryId(id)||
+    if(!intent||typeof intent!=='object'||Array.isArray(intent)||Object.keys(intent).some(k=>!fields.includes(k))||intent.mode!=='video-rewrite'||!validOperationId(id)||
       !['text_video','image_video','first_last','multi_reference'].includes(intent.h3Mode)||typeof intent.durationSeconds!=='number'||!Number.isFinite(intent.durationSeconds)||intent.durationSeconds<1||intent.durationSeconds>30||
       typeof intent.prompt!=='string'||!intent.prompt.trim()||intent.prompt.length>1500||(intent.requirements!==undefined&&(typeof intent.requirements!=='string'||intent.requirements.length>1000))||
       /data:(?:image|audio|video)\//i.test(intent.prompt+' '+(intent.requirements||''))||!Array.isArray(intent.references)||intent.references.length>15||
@@ -685,7 +625,7 @@
         !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image.dataUrl))||
       intent.images.reduce((total,image)=>total+image.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256))
       return no('video-vision-unavailable','首尾帧图片分析尚未开通或素材无效，未上传或扣费。');
-    if(!operationRecoveryModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+    if(!onlineOperationModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
       return no('assistant-business-unavailable','所选模型或请求不可用，未提交。');
     const imageStamp=hasImages?JSON.stringify(intent.images):'';
     const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
@@ -714,13 +654,12 @@
       timer=setTimeout(onChange,180000);
       const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
       const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
-      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
+      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!validOperationId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
         !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==1200||Date.now()>=policy.expiresAt)
         return no('companion-pricing-changed','报价或视频内容已变化，未执行。');
       const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
       if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消报价或内容已变化，未执行。');
-      if(!operationRecoveryRemember(owner,op.operationId,selected.modelId))return no('operation-recovery-unavailable','无法保存对账记录，未执行。');
-      recoveryId=op.operationId;if(!current())return no('assistant-selection-changed','请求状态已变化，未执行。');
+      if(!current())return no('assistant-selection-changed','请求状态已变化，未执行。');
       submitted=true;companionCloudUsed.add(id);
       const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
       if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
@@ -730,7 +669,6 @@
       if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
       let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
       if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
-      if(settled&&owner.current())operationRecoveryForget(owner,recoveryId);
       if(!current())return no('assistant-selection-changed','模型或视频内容已变化，草稿未显示。',{quota});
       const draft=result?.videoDraft;
       if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0||!draft||draft.textOnly!==!hasImages||draft.h3Mode!==intent.h3Mode||draft.durationSeconds!==intent.durationSeconds||
@@ -746,11 +684,11 @@
       }
       return {ok:true,draft:{displayPrompt:draft.displayPrompt,modelPrompt:draft.modelPrompt,h3Mode:draft.h3Mode,durationSeconds:draft.durationSeconds,textOnly:!hasImages,status:'preview-only',applyAvailable:false},modelIdentity:{id:selected.modelId},quota};
     }catch{return no('operation-unknown',submitted?'请求结果待核对，请勿重复提交。':'请求未执行，请稍后重试。');}
-    finally {if(!submitted&&recoveryId&&owner.current())operationRecoveryForget(owner,recoveryId);clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
+    finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
 
   async function selectedOnlineUiDraft(payload,selected,controller) {
-    let submitted=false,settled=false,recoveryId='';
+    let submitted=false,settled=false;
     const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!settled?{billingUnknown:true}:{}),...extra});
     const keys=['request','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isInputCurrent'];
     if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
@@ -758,10 +696,10 @@
       return no('ui-draft-unavailable','UI 草稿确认或状态检查不可用，未提交。');
     let request;try {request=structuredClone(payload.request);}catch{return no('invalid-request','UI 草稿输入无效，未提交。');}
     const id=request?.requestId,refs=request?.references;
-    if(!operationRecoveryId(id)||!Array.isArray(refs)||refs.length>3||!refs.every(x=>x&&typeof x.dataUrl==='string')||(refs.length&&typeof payload.confirmImageUpload!=='function')||
+    if(!validOperationId(id)||!Array.isArray(refs)||refs.length>3||!refs.every(x=>x&&typeof x.dataUrl==='string')||(refs.length&&typeof payload.confirmImageUpload!=='function')||
        refs.reduce((sum,x)=>sum+x.dataUrl.length,0)>Math.ceil(20*1024*1024/3)*4+256)
       return no('ui-reference-limit','UI 草稿最多 3 张参考图、合计 20 MiB，未提交。');
-    if(!operationRecoveryModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+    if(!onlineOperationModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
       return no('assistant-business-unavailable','所选模型或请求不可用，未提交。');
     const referencesStamp=JSON.stringify(refs);
     const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
@@ -783,13 +721,12 @@
       const intent={mode:'ui-draft',epoch:selected.epoch,request};
       const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
       const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
-      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
+      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!validOperationId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
         !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==2048||Date.now()>=policy.expiresAt)
         return no('companion-pricing-changed','报价或上下文已变化，未执行。');
       const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
       if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消报价或上下文已变化，未执行。');
-      if(!operationRecoveryRemember(owner,op.operationId,selected.modelId))return no('operation-recovery-unavailable','无法保存账单核对记录，未执行。');
-      recoveryId=op.operationId;if(!current())return no('assistant-selection-changed','上下文已变化，未执行。');
+      if(!current())return no('assistant-selection-changed','上下文已变化，未执行。');
       submitted=true;companionCloudUsed.add(id);
       const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
       if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
@@ -799,13 +736,12 @@
       if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
       let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
       if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单提示未更新，请核对账单。',{quota});
-      if(settled&&owner.current())operationRecoveryForget(owner,recoveryId);
       if(!current())return no('assistant-selection-changed','模型或 UI 已变化，草稿未显示。',{quota});
       if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0||result.uiDraft?.status!=='preview-only'||result.uiDraft?.applyAvailable!==false)
         return no('ui-draft-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'草稿未完成，请核对实际结算。',{quota});
       return {ok:true,draft:result.uiDraft,modelIdentity:{id:selected.modelId},quota};
     } catch {return no('operation-unknown',submitted?'请求结果待核对，请勿重复提交。':'请求未执行，请稍后再试。');}
-    finally {if(!submitted&&recoveryId&&owner.current())operationRecoveryForget(owner,recoveryId);clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
+    finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
 
   async function prepareOnlineStyleImage(dataUrl) {
@@ -826,14 +762,14 @@
     });
   }
   async function selectedOnlineStyleAnalysis(payload,selected,controller) {
-    let submitted=false,settled=false,recoveryId='';
+    let submitted=false,settled=false;
     const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!settled?{billingUnknown:true}:{}),...extra});
     const keys=['requestId','name','purpose','dataUrl','supplement','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isInputCurrent'];
     if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
        typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof payload.isInputCurrent!=='function'||typeof controller?.subscribeBusinessModel!=='function')
       return no('style-analysis-unavailable','风格分析确认或状态检查不可用，未提交。');
     const id=payload.requestId,kind=payload.purpose||'style',hasImage=kind!=='aifx-supplement',combined=kind==='aifx-material-supplement';
-    if(!operationRecoveryId(id)||!['style','aifx-material','aifx-supplement','aifx-material-supplement'].includes(kind)||!operationRecoveryModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+    if(!validOperationId(id)||!['style','aifx-material','aifx-supplement','aifx-material-supplement'].includes(kind)||!onlineOperationModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
       return no('invalid-request','风格分析请求或模型不可用，未提交。');
     if(hasImage&&(typeof payload.confirmImageUpload!=='function'||typeof payload.dataUrl!=='string'||payload.dataUrl.length>Math.ceil(20*1024*1024/3)*4+128||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(payload.dataUrl)||typeof payload.name!=='string'||payload.name.length>120||(!combined&&payload.supplement!==undefined)))
       return no('style-reference-invalid','请选择一张有效的 PNG、JPEG 或 WebP 参考图，未提交。');
@@ -862,13 +798,12 @@
       if(hasImage&&(await payload.confirmImageUpload({count:1,images:intent.images})!==true||!current()))return no('assistant-business-upload-declined','已取消参考图上传，未提交。');
       const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
       const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
-      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
+      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!validOperationId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
          !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==(combined?420:kind==='aifx-material'?300:120)||Date.now()>=policy.expiresAt)
         return no('companion-pricing-changed','报价或模型状态已变化，未执行。');
       const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
       if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消报价或状态已变化，未执行。');
-      if(!operationRecoveryRemember(owner,op.operationId,selected.modelId))return no('operation-recovery-unavailable','无法保存账单核对记录，未执行。');
-      recoveryId=op.operationId;if(!current())return no('assistant-selection-changed','上下文已变化，未执行。');
+      if(!current())return no('assistant-selection-changed','上下文已变化，未执行。');
       submitted=true;companionCloudUsed.add(id);
       const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
       if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
@@ -878,7 +813,6 @@
       if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
       let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
       if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
-      if(settled&&owner.current())operationRecoveryForget(owner,recoveryId);
       if(!current())return no('assistant-selection-changed','模型或素材已变化，结果未显示。',{quota});
       if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0)
         return no('style-analysis-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'分析未完成，请核对实际结算。',{quota});
@@ -889,14 +823,14 @@
       if(kind==='aifx-material'&&only(value,['material','rawMaterial'])&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,model:selected.modelId,quota};
       return no('style-analysis-incomplete','分析结果不符合所需格式，请核对实际结算。',{quota});
     }catch{return no('operation-unknown',submitted?'结果和账单待核对，请勿重复提交。':'请求未执行，请稍后重试。');}
-    finally {if(!submitted&&recoveryId&&owner.current())operationRecoveryForget(owner,recoveryId);clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
+    finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
   async function selectedOnlineAudioRewrite(payload,selected,controller) {
-    let submitted=false, finalReceipt=false, recoveryId='';
+    let submitted=false, finalReceipt=false;
     const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!finalReceipt?{billingUnknown:true}:{}),...extra});
     const allowed=['requestId','kind','input','seconds','bpm','requirements','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload'];
     const id=payload.requestId;
-    if(Object.keys(payload).some(k=>!allowed.includes(k))||!operationRecoveryId(id)||!['music','sfx'].includes(payload.kind)||
+    if(Object.keys(payload).some(k=>!allowed.includes(k))||!validOperationId(id)||!['music','sfx'].includes(payload.kind)||
       typeof payload.input!=='string'||!payload.input.trim()||payload.input.length>1500||/data:(?:image|audio|video)\//i.test(payload.input)||
       !Number.isSafeInteger(payload.seconds)||payload.seconds<(payload.kind==='music'?8:1)||payload.seconds>(payload.kind==='music'?300:30)||
       (payload.bpm!==undefined&&(payload.kind!=='music'||!Number.isSafeInteger(payload.bpm)||payload.bpm<40||payload.bpm>220))||
@@ -904,7 +838,7 @@
       payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
       typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof controller?.subscribeBusinessModel!=='function')
       return no('invalid-request','音频文字改写请求无效，未提交。');
-    if(!operationRecoveryModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+    if(!onlineOperationModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
       return no('assistant-business-unavailable','所选模型或请求不可用，未提交。');
     const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
     if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录会话不可用，未提交。');
@@ -928,13 +862,11 @@
       const intent={mode:'audio-rewrite',requestId:id,kind:payload.kind,input:payload.input,seconds:payload.seconds,...(payload.bpm!==undefined?{bpm:payload.bpm}:{}),...(payload.requirements!==undefined?{requirements:payload.requirements}:{})};
       const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
       const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
-      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
+      if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!validOperationId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
         !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==400||Date.now()>=policy.expiresAt)
         return no('companion-pricing-changed','报价已变化或不可用，未提交。');
       const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
       if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消或会话已变，未提交。');
-      if(!operationRecoveryRemember(owner,op.operationId,selected.modelId))return no('operation-recovery-unavailable','无法保存待核对账单，未提交。');
-      recoveryId=op.operationId;
       if(!current())return no('assistant-selection-changed','会话已变，未提交。');
       submitted=true;companionCloudUsed.add(id);
       const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},65000,abort.signal),receipt=result?.receipt;
@@ -946,13 +878,12 @@
       if(receipt.uncollected===0)finalReceipt=true;
       let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
       if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
-      if(finalReceipt&&owner.current())operationRecoveryForget(owner,recoveryId);
       if(!current())return no('assistant-selection-changed','模型或会话已变化，结果未应用。',{quota});
       if(result.ok!==true||receipt.outcome!=='success'||receipt.uncollected>0||result.model!==selected.modelId||typeof result.reply!=='string'||!result.reply.trim()||result.reply.length>4000)
         return no('operation-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):`本次改写未完成或身份待核对，实际扣 ${receipt.charged} 积分。`,{quota});
       return {ok:true,result:{prompt:result.reply,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota}};
     }catch(error){return no('operation-unknown',submitted?'结果待核对，请勿重复提交。':'请求未提交，请稍后再试。');}
-    finally {if(!submitted&&recoveryId&&owner.current())operationRecoveryForget(owner,recoveryId);clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
+    finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
 
   // Online art is intentionally closed until billing and real-page acceptance.
@@ -1019,7 +950,7 @@
     if(images.length&&(typeof payload.confirmImageUpload!=='function'||typeof payload.isImageInputCurrent!=='function'))return no('assistant-business-consent-unavailable','参考图片上传确认或当前选择校验不可用，未提交或扣费。');
     if(images.length&&selected.modelId==='deepseek/deepseek-v4.1-flash'&&payload.currentDrawingVisionOnly!==true)return no('model-vision-unavailable','当前模型尚未确认支持参考图片，请选择支持图片的模型；未上传或扣费。');
     Object.freeze(images);
-    const abort=new AbortController();let cancelled=false,submitted=false,lastQuota=null,stageToken='',pendingId='',recoveryOwner=null,recoveryId='',operationTerms=null;
+    const abort=new AbortController();let cancelled=false,submitted=false,lastQuota=null,stageToken='',pendingId='',accountOwner=null,recoveryId='',operationTerms=null;
     const current=()=>{const x=controller.businessModelSnapshot();return !cancelled&&!payload.signal?.aborted&&
       sessionGuard()===true&&currentSession()?.token===session&&root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&
       x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch&&
@@ -1070,7 +1001,7 @@
           (stage==='structure'&&images.length&&quote.imageCount!==images.length))
           return no('assistant-business-quote-unavailable','本阶段报价不可用，未提交。',{...(lastQuota?{quota:lastQuota}:{})});
         const hasScope=Object.hasOwn(quote,'billingScope'),hasRecoveryId=Object.hasOwn(quote,'recoveryOperationId');
-        if(hasScope!==hasRecoveryId||(operationArtV3?(!hasScope||quote.billingScope!=='operation-v3'||!operationRecoveryId(quote.recoveryOperationId)):(hasScope||hasRecoveryId))||
+        if(hasScope!==hasRecoveryId||(operationArtV3?(!hasScope||quote.billingScope!=='operation-v3'||!validOperationId(quote.recoveryOperationId)):(hasScope||hasRecoveryId))||
           (operationArtV3&&recoveryId&&recoveryId!==quote.recoveryOperationId))
           return no('assistant-business-quote-unavailable','操作计费信息不匹配，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
         payload.onPricingQuote({...quote,quoteToken:undefined,stage});
@@ -1079,11 +1010,10 @@
           return no('assistant-business-quote-declined','已取消当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
         if(!current())return no('assistant-selection-changed','模型或会话已变，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
         if(operationArtV3){
-          recoveryOwner=recoveryOwner||captureFoartBillingOwner();
-          if(!recoveryOwner?.current?.()||!operationRecoveryRemember(recoveryOwner,quote.recoveryOperationId,selected.modelId,stage==='english'&&recoveryId===quote.recoveryOperationId))
-            return no('billing-record-unavailable','无法保存待核对账单，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+          accountOwner=accountOwner||captureFoartBillingOwner();
+          if(!accountOwner?.current?.())return no('assistant-selection-changed','登录会话已变化，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
           recoveryId=quote.recoveryOperationId;
-        } else if(!notice(quote.requestId,null,true))return no('billing-record-unavailable','无法保存待核对账单，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+        } else if(!notice(quote.requestId,null,true))return no('billing-record-unavailable','当前阶段未提交，请重试。',{...(lastQuota?{quota:lastQuota}:{})});
         pendingId=quote.requestId;
         if(!current())return no('assistant-selection-changed','模型或会话已变，请核对账单记录。',{...(lastQuota?{quota:lastQuota}:{})});
         submitted=true;if(operationArtV3)v3Submitted=true;if(stage==='english')englishSubmitted=true;companionCloudUsed.add(requestId);
@@ -1096,7 +1026,7 @@
           ...(result.settlement.balanceShort?{balance_short:true}:{}),...(result.settlement.uncollectedCredits?{uncollected_credits:result.settlement.uncollectedCredits}:{})}:null;
         if(settled){
           lastQuota=quota;
-          if(operationArtV3&&!(result.settlement.uncollectedCredits>0)){v3FinalSettled=true;if(recoveryOwner?.current?.())operationRecoveryForget(recoveryOwner,recoveryId);}
+          if(operationArtV3&&!(result.settlement.uncollectedCredits>0))v3FinalSettled=true;
           if(!notice(quote.requestId,quota,false))
             return no('billing-record-unavailable','本阶段已结算，但账单记录未能更新，请核对实际扣费。',{quota,billingUnknown:true});
           pendingId='';
@@ -1144,9 +1074,9 @@
     } finally {
       // A known first stage can be closed without issuing another provider
       // request. Once English dispatch begins its result may be unknown, so
-      // leave its durable recovery record for reconciliation instead.
+      // leave it to finish on the server.
       if(stageToken && parentRequestId && !englishSubmitted && !v3FinalSettled &&
-        sessionGuard()===true && currentSession()?.token===session && recoveryOwner?.current?.()) {
+        sessionGuard()===true && currentSession()?.token===session && accountOwner?.current?.()) {
         try {
           const cancelled=await api(base,'POST','/api/web/companion/art/cancel',{stageToken,epoch:selected.epoch},10000);
           const settled=cancelled?.errorCode==='operation-cancelled' && cancelled.settlement?.requestId===parentRequestId &&
@@ -1155,7 +1085,7 @@
           if(settled){
             const quota={status:'settled',settled_credits:cancelled.settlement.settledCredits};
             if(lastFailure){lastFailure.quota=quota;lastFailure.billingUnknown=false;}
-            if(notice(parentRequestId,quota,false) && recoveryOwner.current())operationRecoveryForget(recoveryOwner,recoveryId);
+            notice(parentRequestId,quota,false);
           } else if(cancelled?.errorCode==='operation-cancelled'&&cancelled.settlement?.requestId===parentRequestId&&cancelled.settlement?.status==='settled'&&
             validCreditAmount(cancelled.settlement.settledCredits,decimalCreditPolicy(operationTerms))&&
             validCreditAmount(cancelled.settlement.uncollectedCredits,decimalCreditPolicy(operationTerms))&&cancelled.settlement.uncollectedCredits>0&&lastFailure){
@@ -1811,9 +1741,9 @@
     if (!currentSession()?.token) return { ok: false, error: '请先登录 Foart 后使用小桃AI云端AI' };
     if ((!/^sha256:[a-f0-9]{64}$/.test(payload.pricingVersion || '') || !Number.isFinite(payload.pricingExpiresAt) || Date.now() >= payload.pricingExpiresAt))
       return {ok:false,errorCode:'companion-pricing-changed',error:'在线积分价格已过期，请刷新价格后重新发送；本次未扣积分'};
-    const recoveryOwner=operationV3?captureFoartBillingOwner():null;
-    if(operationV3&&(!recoveryOwner||!recoveryOwner.current()))return {ok:false,providerSubmitted:false,errorCode:'operation-recovery-unavailable',error:'无法确认当前账户，操作未提交。'};
-    const controller = new AbortController();let providerSubmitted=false,recoveryId='';
+    const accountOwner=operationV3?captureFoartBillingOwner():null;
+    if(operationV3&&(!accountOwner||!accountOwner.current()))return {ok:false,providerSubmitted:false,errorCode:'assistant-selection-unavailable',error:'无法确认当前账户，操作未提交。'};
+    const controller = new AbortController();let providerSubmitted=false;
     const onFoartSessionChange=()=>controller.abort();
     if(guardedImages)foartSessionObservers.add(onFoartSessionChange);
     let timer;
@@ -1852,28 +1782,24 @@
       let result;
       if(operationV3){
         if(typeof root.crypto?.randomUUID!=='function')throw Object.assign(Error('操作级计费尚不可用，本次未提交。'),{code:'operation-billing-disabled'});
-        if(!recoveryOwner.current())throw Object.assign(Error('登录会话已变化，本次未提交。'),{code:'assistant-selection-changed'});
+        if(!accountOwner.current())throw Object.assign(Error('登录会话已变化，本次未提交。'),{code:'assistant-selection-changed'});
         const intent={mode:'chat',requestId:id,message:payload.message,history,...(payload.promptLanguage!==undefined?{promptLanguage:payload.promptLanguage}:{}),
           ...(guardedImages?{images:requestImages.map(({dataUrl,role,source})=>({dataUrl,...(role!==undefined?{role}:{}),...(source!==undefined?{source}:{})}))}:{})};
         const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:payload.expectedModelId,intent},65000,controller.signal);
         const op=prepared?.operation;
-        if(prepared?.ok!==true||op?.model!==payload.expectedModelId||op?.policyVersion!==payload.pricingVersion||!operationRecoveryId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096)
+        if(prepared?.ok!==true||op?.model!==payload.expectedModelId||op?.policyVersion!==payload.pricingVersion||!validOperationId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096)
           throw Object.assign(Error('操作级计费信息不匹配，本次未提交。'),{code:'companion-pricing-changed'});
         if(controller.signal.aborted||Date.now()>=payload.pricingExpiresAt)throw Object.assign(Error('在线积分价格已过期，本次未提交。'),{code:'companion-pricing-changed'});
-        if(!recoveryOwner.current()||!operationRecoveryRemember(recoveryOwner,op.operationId,payload.expectedModelId))
-          throw Object.assign(Error('无法保存账单状态，本次未提交。'),{code:'operation-recovery-unavailable'});
-        recoveryId=op.operationId;
-        if(!recoveryOwner.current()||controller.signal.aborted)throw Object.assign(Error('登录会话已变化，本次未提交。'),{code:'assistant-selection-changed'});
+        if(!accountOwner.current()||controller.signal.aborted)throw Object.assign(Error('登录会话已变化，本次未提交。'),{code:'assistant-selection-changed'});
         providerSubmitted=true;
         result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},65000,controller.signal);
-        if(!recoveryOwner.current())throw Object.assign(Error('登录会话已变化，请核对原账户账单。'),{code:'assistant-selection-changed'});
+        if(!accountOwner.current())throw Object.assign(Error('登录会话已变化，请核对原账户账单。'),{code:'assistant-selection-changed'});
         const receipt=result?.receipt;
         if(receipt?.status!=='settled'||!['success','cancel'].includes(receipt.outcome)||!validCreditAmount(receipt.charged,true)||
           !validCreditAmount(receipt.uncollected,true))
           throw Object.assign(Error('结算状态待核对，请勿重复提交。'),{code:'operation-status-unknown'});
         const quota={status:'settled',settled_credits:receipt.charged,billing_mode:'token',
           ...(pricingQuote?{quote_estimated_credits:pricingQuote.estimatedCredits}:{}),...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
-        if(receipt.uncollected===0&&recoveryOwner.current())operationRecoveryForget(recoveryOwner,op.operationId);
         // A v3 receipt does not contain a balance. Ask the account component
         // to refresh it rather than deriving one from the charge.
         notifyAccountBalance(undefined,'companion-operation');
@@ -1895,7 +1821,6 @@
         model: result.model || '云端API', toolTrace: [], capabilities: { textOnly: !hasMedia, vision: hasMedia, tools: payload.mode==='foart' },
         ...(result.billingSample ? {billingSample:result.billingSample} : {}), quota: pricingQuote ? {...result.quota,quote_estimated_credits:pricingQuote.estimatedCredits} : result.quota } };
     } catch (error) {
-      if(operationV3&&!providerSubmitted&&recoveryId&&recoveryOwner.current())operationRecoveryForget(recoveryOwner,recoveryId);
       if(operationV3&&providerSubmitted)return {ok:false,providerSubmitted:true,billingUnknown:true,errorCode:error.code||'operation-status-unknown',error:'模型请求已提交，积分状态待核对，请勿重复发送。'};
       return { ok: false, ...((guardedImages||operationV3)&&!providerSubmitted?{providerSubmitted:false}:{}), ...(error.code ? {errorCode:error.code} : {}), error: controller.signal.aborted ? ((!guardedImages&&!operationV3)||providerSubmitted?'本次在线回复等待已结束；用量以服务器实际结算为准':'本次请求已停止，尚未提交模型。') : String(error.message || error) };
     }
@@ -1962,7 +1887,6 @@
   function foartOperationResult(result,record,previousContext) {
     const quota=foartOperationQuota(result?.receipt||result,record.quote,record.creditTerms);
     if(quota){
-      if((result?.receipt||result).uncollected===0&&record.recoveryOwner?.current?.())operationRecoveryForget(record.recoveryOwner,record.recoveryId);
       notifyAccountBalance(undefined,'companion-operation');
       if(result?.ok!==true||(result.receipt||result).outcome!=='success'||(result.receipt||result).uncollected>0)
         return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result?.errorCode||'operation-incomplete',error:(result.receipt||result).uncollected>0?incompleteSettlementMessage(result.receipt||result):'操作未完成，请查看实际扣分。'};
@@ -1989,9 +1913,9 @@
   const FOART_OPERATION_MESSAGES={'foart-operation-unsupported':'小桃这次没有给出可执行的操作，请换个说法再试。','foart-media-consent-required':'本次请求夹带了图片数据，未提交。','operation-planner-incomplete':'小桃没有给出完整的操作方案，请再试一次。','phase-limit':'这次操作步骤太多，请拆开分几次说。','operation-model-unavailable':'所选模型暂不可用。','operation-pricing-unavailable':'价格已变化，请重新发送。'};
   const foartOperationMessage=error=>FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message]||String(error?.message||'操作未提交。');
   async function foartOperationStart(payload={}) {
-    const guard=captureFoartSessionGuard(),recoveryOwner=captureFoartBillingOwner();
-    if(typeof guard!=='function'||!guard()||!recoveryOwner?.current?.())return {ok:false,providerSubmitted:false,errorCode:'assistant-selection-unavailable',error:'登录会话不可用，操作未提交。'};
-    let request,record,providerSubmitted=false,session,recoveryId='';
+    const guard=captureFoartSessionGuard(),accountOwner=captureFoartBillingOwner();
+    if(typeof guard!=='function'||!guard()||!accountOwner?.current?.())return {ok:false,providerSubmitted:false,errorCode:'assistant-selection-unavailable',error:'登录会话不可用，操作未提交。'};
+    let request,record,providerSubmitted=false,session;
     try {
       if(!foartOperationModels.has(payload.modelId)||(payload.mode!==undefined&&payload.mode!=='foart')||(payload.provider!==undefined&&payload.provider!=='api')||
         (payload.expectedModelId!==undefined&&payload.expectedModelId!==payload.modelId)||
@@ -2019,12 +1943,10 @@
       if(typeof payload.onPricingQuote==='function')payload.onPricingQuote(pricingQuote);
       if(!guard()||request.controller.signal.aborted)throw Object.assign(Error('会话已变化，未提交操作。'),{code:'assistant-selection-changed'});
       const prepared=await api(base,'POST','/api/web/companion/operation/foart/prepare',{nonce:root.crypto.randomUUID(),model:payload.modelId,originalIntent,initialContext},65000,request.controller.signal);
-      if(prepared?.ok!==true||prepared.model!==payload.modelId||prepared.policyVersion!==payload.pricingVersion||!operationRecoveryId(prepared.operationId)||typeof prepared.token!=='string'||prepared.token.length>4096)
+      if(prepared?.ok!==true||prepared.model!==payload.modelId||prepared.policyVersion!==payload.pricingVersion||!validOperationId(prepared.operationId)||typeof prepared.token!=='string'||prepared.token.length>4096)
         throw Object.assign(Error('操作票据与报价不一致，未提交。'),{code:'companion-pricing-changed'});
-      if(!guard()||!recoveryOwner.current()||!operationRecoveryRemember(recoveryOwner,prepared.operationId,payload.modelId))
-        throw Object.assign(Error('无法保存账单状态，本次未提交。'),{code:'operation-recovery-unavailable'});
-      recoveryId=prepared.operationId;
-      record={base,guard,recoveryOwner,recoveryId,modelId:payload.modelId,originalIntent,initialContext,operationToken:prepared.token,quote:pricingQuote,
+      if(!guard()||!accountOwner.current())throw Object.assign(Error('登录会话已变化，未提交操作。'),{code:'assistant-selection-changed'});
+      record={base,guard,modelId:payload.modelId,originalIntent,initialContext,operationToken:prepared.token,quote:pricingQuote,
         creditTerms:policy.policy.config.xiaotao_online,
       };
       session=foartOperationHandle(record,'',initialContext,'unknown');
@@ -2034,7 +1956,6 @@
       if(!guard())throw Object.assign(Error('登录会话已变化，账单状态待核对。'),{code:'assistant-selection-changed'});
       return foartOperationResult(result,record,initialContext);
     } catch(error) {
-      if(!providerSubmitted&&recoveryId&&recoveryOwner.current())operationRecoveryForget(recoveryOwner,recoveryId);
       return {ok:false,providerSubmitted,billingUnknown:providerSubmitted,...(providerSubmitted&&session?{session}:{}),errorCode:error?.code||'operation-unavailable',error:providerSubmitted?(FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message]||'操作结果或账单状态待核对，请勿重复提交。'):foartOperationMessage(error)};
     } finally {request?.close();}
   }
@@ -2075,7 +1996,6 @@
       if(!record.guard())throw Error('会话已变化');
       const quota=foartOperationQuota(result,record.quote,record.creditTerms);
       if(!quota)throw Error('操作状态未知');
-      if(result.uncollected===0&&record.recoveryOwner?.current?.())operationRecoveryForget(record.recoveryOwner,record.recoveryId);
       record.state='closed';notifyAccountBalance(undefined,'companion-operation');
       if(result.uncollected>0)return {ok:false,billingConfirmed:true,data:{quota},errorCode:'operation-incomplete',error:incompleteSettlementMessage(result)};
       return {ok:true,billingConfirmed:true,data:{quota}};
@@ -3345,10 +3265,6 @@
       return id && mode==='shared' ? ()=>taskMode()===mode && computeNode?.id===id && computeNodeEpoch===epoch : null;
     },
     captureFoartBillingOwner,
-    listCompanionOperationRecovery(){const binding=captureFoartBillingOwner();return binding?operationRecoveryList(binding):[];},
-    checkCompanionOperationRecovery:operationRecoveryStatus,
-    // Closing removes this browser's reminder only; the server ledger decides the charge.
-    dismissCompanionOperationRecovery(operationId){const binding=captureFoartBillingOwner();return {ok:Boolean(binding)&&operationRecoveryForget(binding,operationId)};},
 
     async clientAuthBootstrap() {
       try {

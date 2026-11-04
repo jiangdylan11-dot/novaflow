@@ -18,9 +18,7 @@ function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,ser
   XIAOTAO_ONLINE_ART_RELEASE_ENABLED:artEnabled,foartSessionObservers:new Set(),
   companionPricing:async()=>({ok:true,policy:{version:'sha256:'+'c'.repeat(64),expiresAt:Date.now()+60000,...(decimal?{models:[{id:selection.modelId,available:true}]}:{}),config:{xiaotao_online:{...(operationV3?{operation_art_v3:true}:{}),...(decimal?{billing_scope:'operation',minimum_positive_credits:0,credit_amount_policy:'decimal-v1',credit_precision:6,credit_rounding:'ceil'}:{})}}}}),
   captureFoartBillingOwner:()=>({owner:'synthetic-account',current:()=>token==='session-a'}),
-  operationRecoveryId:id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id||''),
-  operationRecoveryRemember:(_owner,id,model,allowExisting)=>{events.push({kind:'recovery-save',id,allowExisting});if(storageFail)return false;if(recovery.has(id))return allowExisting===true&&recovery.get(id)===model;if(allowExisting===true)return false;recovery.set(id,model);return true;},
-  operationRecoveryForget:(_owner,id)=>{events.push({kind:'recovery-clear',id});return recovery.delete(id);},
+  validOperationId:id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id||''),
   currentSession:()=>({token}),captureFoartSessionGuard:()=>{const captured=token;return ()=>token===captured;},companionCloudRequests:new Map(),companionCloudUsed:new Set(),
   stopCompanionCloud:()=>{},api:async(_base,_method,path,body,_timeout,signal)=>{
    calls++;events.push({kind:path.endsWith('/quote')?'quote':'execute',body});
@@ -59,7 +57,7 @@ test('decimal art quote is confirmed and settled once with six-digit fractional 
  const h=harness({operationV3:true,gptResult:true,decimal:true});h.payload.targetEngine='gpt-image-2.5';h.payload.supportsNegativePrompt=false;
  delete h.payload.promptSchema;delete h.payload.agentModelLanguage;
  const result=await h.invoke();assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.quota.settled_credits,0.000001);
- assert.equal(h.events.filter(e=>e.kind==='confirm').length,1);assert.equal(h.events.filter(e=>e.kind==='execute').length,1);assert.equal(h.recovery.size,0);
+ assert.equal(h.events.filter(e=>e.kind==='confirm').length,1);assert.equal(h.events.filter(e=>e.kind==='execute').length,1);
 });
 test('decimal art rejects more than six places before confirmation or dispatch',async()=>{
  const h=harness({operationV3:true,gptResult:true,decimal:true,mutateQuote:q=>{q.estimatedCredits=0.0000001;}});h.payload.targetEngine='gpt-image-2.5';h.payload.supportsNegativePrompt=false;
@@ -70,13 +68,11 @@ test('decimal art rejects more than six places before confirmation or dispatch',
 test('decimal two-stage art retains one operation recovery and one final fractional receipt',async()=>{
  const h=harness({operationV3:true,serverSuccess:'valid',decimal:true});
  const result=await h.invoke();assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.quota.settled_credits,0.000001);
- const saved=h.events.filter(e=>e.kind==='recovery-save');assert.equal(saved.length,2);assert.equal(saved[0].id,saved[1].id);
- assert.equal(saved[0].allowExisting,false);assert.equal(saved[1].allowExisting,true);assert.equal(h.recovery.size,0);
  assert.equal(h.events.filter(e=>e.kind==='execute').length,2);
 });
 test('settlement states the token-rate basis and unknown cache; an unverified pricing source stays unknown',async()=>{
  const h=harness({gptResult:true,cacheKnown:false});h.payload.targetEngine='gpt-image-2.5';delete h.payload.promptSchema;delete h.payload.agentModelLanguage;
- const result=await h.invoke();assert.equal(result.ok,true);assert.equal(result.quota.pricing_source,'token_rate_estimate');assert.equal(result.quota.cache_known,false);
+ const result=await h.invoke();assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.quota.pricing_source,'token_rate_estimate');assert.equal(result.quota.cache_known,false);
  assert.match(result.quota.pricing_note,/缓存用量未知/);assert.match(result.quota.pricing_note,/非供应商实账/);
  assert.match(h.events.find(e=>e.kind==='settled').row.quota.pricing_note,/非供应商实账/);
  const unsafe=harness({gptResult:true,pricingSource:'rh_consume_money'});unsafe.payload.targetEngine='gpt-image-2.5';delete unsafe.payload.promptSchema;delete unsafe.payload.agentModelLanguage;
@@ -110,28 +106,16 @@ test('valid two-stage response remains marked for review and carries actual sett
 test('v3 two-stage art keeps one account-bound recovery ID until confirmed settlement',async()=>{
  const h=harness({operationV3:true,serverSuccess:'valid'}),result=await h.invoke();
  assert.equal(result.ok,true);assert.equal(result.quota.settled_credits,1);assert.equal(result.quota.cache_known,undefined);
- const saved=h.events.filter(e=>e.kind==='recovery-save');assert.equal(saved.length,2);assert.equal(saved[0].id,h.operationId);
- assert.equal(saved[0].allowExisting,false);assert.equal(saved[1].allowExisting,true);
- assert.equal(h.recovery.size,0);assert.equal(h.events.filter(e=>e.kind==='execute').length,2);
+ assert.equal(h.events.filter(e=>e.kind==='execute').length,2);
  assert.equal(h.events.some(e=>e.kind==='pending'||e.kind==='settled'),false);
 });
 test('v3 missing, partial or mismatched quote identity fails closed before dispatch',async()=>{
  for(const mutate of [q=>{delete q.billingScope;delete q.recoveryOperationId;},q=>{delete q.billingScope;},q=>{delete q.recoveryOperationId;},q=>{q.recoveryOperationId='not-a-uuid';},q=>{q.pricingVersion='sha256:'+'f'.repeat(64);}]){
   const h=harness({operationV3:true,mutateQuote:mutate}),result=await h.invoke();assert.equal(result.ok,false);assert.equal(result.errorCode,'assistant-business-quote-unavailable');
-  assert.equal(h.events.filter(e=>e.kind==='execute').length,0);assert.equal(h.recovery.size,0);
+  assert.equal(h.events.filter(e=>e.kind==='execute').length,0);
  }
  const changed=harness({operationV3:true,mutateQuote:(q,stage)=>{if(stage==='english')q.recoveryOperationId='dddddddd-dddd-4ddd-8ddd-dddddddddddd';}});
- const result=await changed.invoke();assert.equal(result.ok,false);assert.equal(result.billingUnknown,true);assert.equal(changed.events.filter(e=>e.kind==='execute').length,1);assert.equal(changed.recovery.has(changed.operationId),true);
-});
-test('v3 storage failure blocks first dispatch and lost second stage keeps recovery ID',async()=>{
- const blocked=harness({operationV3:true,storageFail:true}),first=await blocked.invoke();
- assert.equal(first.errorCode,'billing-record-unavailable');assert.equal(blocked.events.some(e=>e.kind==='execute'),false);
- const lost=harness({operationV3:true,unknownSecond:true}),second=await lost.invoke();
- assert.equal(second.billingUnknown,true);assert.equal(lost.recovery.has(lost.operationId),true);assert.equal(lost.events.filter(e=>e.kind==='execute').length,2);
- const declined=harness({operationV3:true,confirmSecond:false}),third=await declined.invoke();
- assert.equal(third.errorCode,'assistant-business-quote-declined');assert.equal(third.billingUnknown,true);assert.equal(declined.recovery.has(declined.operationId),true);
- let cleared;cleared=harness({operationV3:true,mutateQuote:(_q,stage)=>{if(stage==='english')cleared.recovery.clear();}});const fourth=await cleared.invoke();
- assert.equal(fourth.errorCode,'billing-record-unavailable');assert.equal(fourth.billingUnknown,true);assert.equal(cleared.events.filter(e=>e.kind==='execute').length,1);
+ const result=await changed.invoke();assert.equal(result.ok,false);assert.equal(result.billingUnknown,true);assert.equal(changed.events.filter(e=>e.kind==='execute').length,1);
 });
 test('v2 rejects unexpected v3 fields instead of routing them as legacy',async()=>{
  const h=harness({mutateQuote:q=>{q.billingScope='operation-v3';q.recoveryOperationId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';}});

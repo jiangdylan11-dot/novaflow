@@ -23,11 +23,10 @@ function fixture({release=true,vision=true,video=true,upload=true,quote=true,mut
   const guard=()=>true;guard.expiresAtMs=Date.now()+60000;
   const scope={root,structuredClone,Date,JSON,Object,String,Number,Array,Error,Promise,RegExp,BigInt,AbortController,setTimeout,clearTimeout,
     XIAOTAO_H3_VISION_RELEASE_ENABLED:release,CONFIG:{companionUrl:'https://example.invalid',authUrl:'https://example.invalid'},
-    operationRecoveryId:value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value||''),
-    operationRecoveryModel:value=>value===model,companionCloudRequests:pending,companionCloudUsed:used,foartSessionObservers:observers,
+    validOperationId:value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value||''),
+    notifyAccountBalance:()=>events.push('balance'),
+    onlineOperationModel:value=>value===model,companionCloudRequests:pending,companionCloudUsed:used,foartSessionObservers:observers,
     captureFoartBillingOwner:()=>({current:()=>true}),captureFoartSessionGuard:()=>guard,companionPricing:async()=>({ok:true,policy}),
-    operationRecoveryRemember:(_owner,operation,modelId)=>{events.push('remember');if(recovery.has(operation))return false;recovery.set(operation,modelId);return true;},
-    operationRecoveryForget:(_owner,operation)=>{events.push('forget');recovery.delete(operation);},notifyAccountBalance:()=>events.push('balance'),
     api:async(_base,_method,path,body)=>{
       if(path.endsWith('/prepare')){events.push('prepare');assert.equal(body.intent.images.length,2);return {ok:true,operation:{model,policyVersion,operationId,token:'synthetic-ticket',intentHash:'a'.repeat(64),estimatedCredits:0.002,outputTokens:1200}};}
       if(path.endsWith('/execute')){events.push('execute');assert.equal(body.intent.images.length,2);return {ok:true,model,receipt:{status:'settled',outcome:'success',charged:0.000539,uncollected:0},videoDraft:{textOnly:false,h3Mode:'first_last',durationSeconds:2,displayPrompt:'synthetic video draft',modelPrompt:'synthetic model draft'}};}
@@ -43,8 +42,8 @@ function fixture({release=true,vision=true,video=true,upload=true,quote=true,mut
 
 test('two frames require explicit consent before prepare and settle one decimal operation',async()=>{
   const f=fixture(),result=await f.run();assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.quota.settled_credits,0.000539);
-  assert.deepEqual(f.events,['upload-confirm','prepare','quote-shown','quote-confirm','remember','execute','balance','billing','forget']);
-  assert.equal((await f.run()).ok,false);assert.equal(f.events.filter(x=>x==='execute').length,1);assert.equal(f.recovery.size,0);
+  assert.deepEqual(f.events,['upload-confirm','prepare','quote-shown','quote-confirm','execute','balance','billing']);
+  assert.equal((await f.run()).ok,false);assert.equal(f.events.filter(x=>x==='execute').length,1);
 });
 
 test('disabled gates, declined upload and mutation during consent make zero prepare requests',async()=>{
@@ -54,5 +53,5 @@ test('disabled gates, declined upload and mutation during consent make zero prep
 });
 
 test('declining quote after image upload does not execute or create a billing recovery hold',async()=>{
-  const f=fixture({quote:false}),result=await f.run();assert.equal(result.ok,false);assert.deepEqual(f.events,['upload-confirm','prepare','quote-shown','quote-confirm']);assert.equal(f.recovery.size,0);
+  const f=fixture({quote:false}),result=await f.run();assert.equal(result.ok,false);assert.deepEqual(f.events,['upload-confirm','prepare','quote-shown','quote-confirm']);
 });
