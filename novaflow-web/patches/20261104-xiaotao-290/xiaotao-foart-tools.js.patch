@@ -1,0 +1,20 @@
+--- a/novaflow-web/renderer/xiaotao-foart-tools.js
++++ b/novaflow-web/renderer/xiaotao-foart-tools.js
+@@ -1137,7 +1137,7 @@
+       let binding='';
+       review.uploadTransaction.apply({prompt:review.prompt,negativePrompt:review.negativePrompt,createPrepared({references}){
+         binding=imageBinding(rt);
+-        return {...(attachGenerationProof?review.generationBinding:{}),state:copy({...artSettings(rt.state),running:false,count:review.count}),promptSnapshot:{prompt:review.modelPrompt,negativePrompt:review.negativePrompt},references:references.filter(Boolean),direct:true,agentRun:true,
++        return {...(attachGenerationProof?review.generationBinding:{}),state:copy({...artSettings(rt.state),running:false,count:review.count}),promptSnapshot:{prompt:review.modelPrompt,negativePrompt:review.negativePrompt},references:references.filter(Boolean),direct:true,agentRun:true,promptOnlyOptimization:!attachGenerationProof,
+           referenceRolePlan:{roles:review.referenceRoles.slice(),conditioning:[],allowMultipleSubjects:true},plan:{schema:'nf.foart.native-image.v1'},originalPrompt:review.op.prompt,
+           assertCurrent:()=>{if(!review.selectionStillCurrent()||!review.sessionStillCurrent()||imageBinding(rt)!==binding)fail('绘图内容或模型选择已变化，草稿失效。');},recordReview:()=>{}};
+       }});
+@@ -1151,7 +1151,7 @@
+       rt.state.prompt=review.prompt;rt.state.negativePrompt=review.negativePrompt;
+       const binding=imageBinding(rt),refs=review.op.generationMode==='txt2img'?[]:(rt.references?.()||[]).filter(Boolean);writtenBinding=binding;
+       const prepared={...(review.preparedAgent||{}),...(attachGenerationProof?review.generationBinding:{}),state:copy({...artSettings(rt.state),...(review.preparedAgent?.state||{}),running:false,count:review.count}),
+-        promptSnapshot:{prompt:review.modelPrompt,negativePrompt:review.negativePrompt},references:review.preparedAgent?.references||refs,direct:review.preparedAgent?false:true,agentRun:true,
++        promptSnapshot:{prompt:review.modelPrompt,negativePrompt:review.negativePrompt},references:review.preparedAgent?.references||refs,direct:review.preparedAgent?false:true,agentRun:true,promptOnlyOptimization:!attachGenerationProof,
+         ...(review.referenceRoles&&review.op.generationMode==='img2img'?{referenceRolePlan:{roles:review.referenceRoles.slice(),conditioning:[],allowMultipleSubjects:true}}:{}),
+         plan:review.preparedAgent?.plan||{schema:'nf.foart.native-image.v1'},originalPrompt:review.op.prompt,
+         assertCurrent:()=>{if(!review.selectionStillCurrent()||!review.sessionStillCurrent()||imageBinding(rt)!==binding)fail('绘图内容或模型选择已变化，审核稿失效。');},recordReview:()=>{}};

@@ -1,0 +1,101 @@
+--- a/novaflow-web/renderer/xiaotao-art-agent.js
++++ b/novaflow-web/renderer/xiaotao-art-agent.js
+@@ -2790,22 +2790,33 @@
+     // A node can finish its model probe after the page's initial feature
+     // snapshot. Refresh immediately before a local business operation and
+     // reject the result if the selected model, account or node changed.
+-    async function refreshQwenBusinessBeforeUse() {
++    async function refreshQwenBusinessBeforeUse({requiresImage=false,isInputCurrent=()=>true,signal=null}={}) {
+       const service=api(),selected=businessModelSnapshot(),operation=serial;
+       const getGuard=service?.captureFoartSessionGuard;
+       const guard=typeof getGuard==='function' ? getGuard.call(service) : null;
+       if(typeof getGuard==='function' && (typeof guard!=='function'||guard()!==true))return false;
+-      const runtime=root.NovaFlowWebRuntime,nodeId=runtime?.computeNode?.id || '';
+-      const current=()=>!retired && serial===operation && state.provider===selected.provider && state.modelId===selected.modelId &&
+-        businessModelEpoch===selected.epoch && (!guard||guard()===true) && (runtime?.computeNode?.id || '')===nodeId;
++      const runtime=root.NovaFlowWebRuntime,nodeId=runtime?.computeNode?.id || '',getNodeGuard=requiresImage?service?.captureFoartNodeGuard:null;
++      const nodeGuard=typeof getNodeGuard==='function'?getNodeGuard.call(service):null;
++      if(typeof getNodeGuard==='function' && (typeof nodeGuard!=='function'||nodeGuard()!==true))return false;
++      const current=()=>!retired && serial===operation && !signal?.aborted && state.provider===selected.provider && state.modelId===selected.modelId &&
++        businessModelEpoch===selected.epoch && (!guard||guard()===true) && (!nodeGuard||nodeGuard()===true) && (runtime?.computeNode?.id || '')===nodeId && isInputCurrent()===true;
++      const wait=ms=>new Promise((resolve,reject)=>{let timer;const done=()=>{signal?.removeEventListener('abort',cancel);resolve();},cancel=()=>{root.clearTimeout(timer);signal?.removeEventListener('abort',cancel);reject(Error('cancelled'));};if(signal?.aborted)return cancel();timer=root.setTimeout(done,ms);signal?.addEventListener('abort',cancel,{once:true});});
++      const boundedRefresh=()=>new Promise((resolve,reject)=>{let finished=false,timer;const finish=(error)=>{if(finished)return;finished=true;root.clearTimeout(timer);signal?.removeEventListener('abort',cancel);error?reject(error):resolve();},cancel=()=>finish(Error('cancelled'));if(signal?.aborted)return cancel();timer=root.setTimeout(()=>finish(Error('capability timeout')),1500);signal?.addEventListener('abort',cancel,{once:true});Promise.resolve().then(()=>service.runtimeFeatures()).then(()=>finish(),finish);});
+       state.pending=true;state.status='正在确认本地节点…';notify();
+-      let refreshed=false;
+       try {
+-        if(typeof service?.runtimeFeatures==='function')await service.runtimeFeatures();
+-        refreshed=true;
+-      } catch {/* A failed capability check must not authorize an operation. */}
++        const attempts=requiresImage?3:1;
++        for(let i=0;i<attempts;i++){
++          if(!current())return false;
++          let refreshed=false;
++          try {if(typeof service?.runtimeFeatures==='function'){if(requiresImage)await boundedRefresh();else await service.runtimeFeatures();}refreshed=true;}catch{}
++          if(!current())return false;
++          if(refreshed&&service?.qwenBusinessAvailableSync?.()===true&&(!requiresImage||service?.qwen21LocalImageEditAvailableSync?.()===true))return true;
++          if(!requiresImage||typeof service?.runtimeFeatures!=='function'||i+1>=attempts)return false;
++          await wait(i===0?300:600);
++        }
++      } catch {/* cancellation or stale context: no model request */}
+       finally {if(serial===operation){state.pending=false;notify();}}
+-      try {return refreshed && current() && service?.qwenBusinessAvailableSync?.()===true;} catch {return false;}
++      return false;
+     }
+     // The selected Qwen optimizer supports text or an explicit subject/style
+     // pair; confirmation and undo reuse the existing image review path.
+@@ -3025,14 +3036,18 @@
+     }
+     async function prepareQwenCurrentDrawingPrompt(message,{recordMessage=true,source}={}) {
+       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate;
+-      if(!(await refreshQwenBusinessBeforeUse())){state.error='当前 Qwen 提示词节点尚未就绪，未提交。';notify();return false;}
+       if((communityUploads()||[]).length){state.error='此入口只优化当前绘图文字，不分析附件；请先移除附件。';notify();return false;}
+       const selectedPrompt=source?.prompt??rt?.state?.prompt;
+       if(!tools?.execute||!rt?.state||typeof selectedPrompt!=='string'||!selectedPrompt.trim()) {state.error='请先提供要优化的提示词。';notify();return false;}
+       const selected=businessModelSnapshot(),abort=new AbortController();promptAbort=abort;
++      const mode=rt.state.mode==='img2img'?'img2img':'txt2img',context=mode==='img2img'?rt.captureContext?.():null;
++      const refs=mode==='img2img'?Array.from(rt.references?.()||[]).filter(Boolean):[];
++      if(mode==='img2img'&&(refs.length<1||refs.length>3||!Number.isSafeInteger(context?.routeRevision)||!Number.isSafeInteger(context?.referenceRevision))){if(promptAbort===abort)promptAbort=null;state.error='请在当前绘图页选择 1–3 张参考图后重试。';notify();return false;}
++      const pagePrompt=rt.state.prompt;
+       const selectionCurrent=()=>!abort.signal.aborted&&state.provider===selected.provider&&state.modelId===selected.modelId&&businessModelEpoch===selected.epoch&&(!source?.workspaceGuard||source.workspaceGuard()===true);
++      const preflightCurrent=()=>selectionCurrent()&&root.__NovaFlowArtGenerate===rt&&rt.state.mode===mode&&rt.state.prompt===pagePrompt&&(mode!=='img2img'||(rt.captureContext?.()?.routeRevision===context.routeRevision&&rt.captureContext?.()?.referenceRevision===context.referenceRevision));
++      if(!(await refreshQwenBusinessBeforeUse({requiresImage:mode==='img2img',isInputCurrent:preflightCurrent,signal:abort.signal}))){if(promptAbort===abort)promptAbort=null;state.error=abort.signal.aborted?'已取消本次提示词优化。':preflightCurrent()?'当前 Qwen 节点的参考图优化暂未就绪，请稍后重试。':'模型、账号、节点或绘图内容已变化，未提交。';notify();return false;}
+       const current=()=>promptAbort===abort&&selectionCurrent();
+-      const mode=rt.state.mode==='img2img'?'img2img':'txt2img';
+       state.pending=true;state.error='';state.status=mode==='img2img'?'正在用本地 Qwen 根据参考图优化提示词。':'正在用本地 Qwen 优化当前绘图文字。';if(recordMessage)pushUser(message);notify();
+       try {
+         const receipt=await tools.execute({action:'image_optimize',prompt:selectedPrompt,generationMode:mode},
+@@ -3312,7 +3327,7 @@
+     const billingAlerts=el('div','nf-xiaotao-billing-alerts');billingAlerts.setAttribute('role','status');billingAlerts.setAttribute('aria-live','polite');billingAlerts.setAttribute('aria-label','小桃模型积分提示');Object.assign(billingAlerts.style,{flex:'0 0 auto'});
+     const status = el('div', 'nf-xiaotao-status'); status.setAttribute('role', 'status'); const error = el('p', 'nf-xiaotao-error'); error.setAttribute('role', 'alert');
+     const footer = el('form', 'nf-xiaotao-compose'), input = el('textarea'); input.rows = 3; input.placeholder = '有什么需要我帮助的？'; input.setAttribute('aria-label', '给智能助手的消息');
+-    const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), modelSelect = el('select', 'nf-xiaotao-model-select'), newConversation = el('button', '', '新对话'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送'), imageReverse = el('button', '', '反推图片'), imageStyle = el('button', '', '分析画风');
++    const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), modelSelect = el('select', 'nf-xiaotao-model-select'), newConversation = el('button', '', '新对话'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送');
+     modelSelect.setAttribute('aria-label','选择小桃AI模型');
+     // The native select stays as an internal compatibility mirror.  The visible
+     // listbox is rendered inside the panel, avoiding the embedded editor's
+@@ -3381,7 +3396,7 @@
+     listen(footer,'dragover',event=>{if(event?.dataTransfer)event.preventDefault?.();});
+     listen(footer,'drop',event=>{event?.preventDefault?.();takeFiles(Array.from(event?.dataTransfer?.files||[]));});
+     listen(input,'paste',event=>{const files=Array.from(event?.clipboardData?.files||[]);if(files.length){event.preventDefault?.();takeFiles(files);}});
+-    for (const b of [newConversation, stop]) b.type = 'button'; newConversation.title = '清空当前模型的聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空当前模型的聊天记录并开启新对话'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);imageReverse.type=imageStyle.type='button';imageReverse.hidden=imageStyle.hidden=true;imageReverse.title=imageStyle.title='分析唯一上传图片；本地模型免费';footerActions.append(upload,imageReverse,imageStyle,newConversation, stop, estimateLabel, send); footer.append(stagedRow,input,footerActions);
++    for (const b of [newConversation, stop]) b.type = 'button'; newConversation.title = '清空当前模型的聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空当前模型的聊天记录并开启新对话'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); footer.append(stagedRow,input,footerActions);
+     providers.append(modelTrigger);
+     panel.append(header, modelMenu, context, messages, confirmation, qwenSeekPanel, rotationPanel, mediaPromptPanel, selectionConfirmation, proposal, tools, billingAlerts, status, error, footer); host.append(modelBackdrop, fab, panel); doc.body.append(host);
+     const drag = bindPanelDrag(panel, header, {onStart:()=>{if(modelMenu.hidden)return;const rect=panel.getBoundingClientRect();Object.assign(panel.style,{left:rect.left+'px',top:rect.top+'px'});modelMenu.hidden=true;modelBackdrop.hidden=true;panel.classList.remove('nf-xiaotao-menu-open');modelTrigger.setAttribute('aria-expanded','false');modelTrigger.removeAttribute('aria-activedescendant');}});
+@@ -3439,7 +3454,6 @@
+       }
+       render(controller.state);
+     });
+-    imageReverse.onclick=()=>void controller.analyzeStagedImage('reverse');imageStyle.onclick=()=>void controller.analyzeStagedImage('style');
+     for(const provider of controller.legacyArchiveSources()){const option=el('option','',provider==='local'?'旧本地对话（只读）':provider==='legacy-online'?'原在线智能对话（只读）':provider==='retired-local'?'已移除本地模型对话（只读）':provider==='retired-glm'?'GLM 对话（只读）':'旧在线对话');option.value=provider;legacySelect.append(option);}
+     function renderLegacyPreview(){const row=controller.viewLegacyArchive(legacySelect.value);legacyText.textContent=row ? [...row.messages.map(item=>`${item.role==='user'?'你':item.role==='assistant'?'小桃':'记录'}：${item.content}${item.receipt?'\n'+item.receipt:''}`),...(row.history.length?[row.readOnly?'\n旧历史（只读）：':'\n可恢复的历史：',...row.history.map(item=>`${item.role==='user'?'你':'小桃'}：${item.content}`)]:[]),...(row.activeTask?['\n旧任务记录（仅查看，不会自动恢复）：',JSON.stringify(row.activeTask,null,2)]:[])].join('\n') : '';}
+     legacySelect.onchange=()=>{renderLegacyPreview();const readonly=CHAT_MODELS[controller.state.modelId]?.retired===true||controller.viewLegacyArchive(legacySelect.value)?.readOnly===true;legacyRestore.disabled=readonly;legacyHelp.textContent=readonly?'这条旧记录仅供查看，不会自动发送；请使用当前模型开始新对话。':'旧记录不会自动发送。查看后可选择将文字历史加入当前模型；下次发送最多携带最近 12 条历史。旧任务和附件不会自动恢复。';};legacyPanel.ontoggle=()=>{if(legacyPanel.open)legacySelect.onchange();};
+@@ -3467,8 +3481,6 @@
+       const ariaLabel=selected?`选择小桃AI模型，当前${label}${note?'，'+note:''}`:'选择小桃AI模型，此前模型已移除';if(modelTrigger.getAttribute('aria-label')!==ariaLabel)modelTrigger.setAttribute('aria-label',ariaLabel);
+     }
+     function render(state) {
+-      const businessVisible=root.electronAPI?.qwenBusinessAvailableSync?.()===true && state.provider==='local' && state.modelId==='qwen3.5-9b-heretic';
+-      imageReverse.hidden=imageStyle.hidden=!businessVisible;
+       lastPricingKey=controller.pricingPolicyKey();
+       const artNotices=controller.artBillingNotices(),operationNotices=state.pending?[]:controller.operationRecoveryNotices(),businessNotices=controller.visibleBillingNotices();
+       const latestNotice=billingNoticeForView(state.provider,businessNotices,artNotices);

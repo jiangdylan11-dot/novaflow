@@ -1,0 +1,33 @@
+--- a/novaflow-web/renderer/novaflow-brand-runtime.js
++++ b/novaflow-web/renderer/novaflow-brand-runtime.js
+@@ -86648,14 +86648,18 @@
+     pendingArtAgentRevision += 1n;
+     if (!options.uiPrepared && !options.drawingPrepared && pendingArtAgentPreparation) {
+       const agentPrepared = pendingArtAgentPreparation;
+-      if(window.NovaFlowWebRuntime && agentPrepared?.agentRun===true && agentPrepared.state?.provider==='local' && agentPrepared.references?.length &&
++      if(window.NovaFlowWebRuntime && agentPrepared?.agentRun===true && agentPrepared.promptOnlyOptimization!==true && agentPrepared.state?.provider==='local' && agentPrepared.references?.length &&
+          (!options.artConfirmationTicket || !artConfirmations.has(options.artConfirmationTicket))){
+         setArtGenerateStatus('请在绘图界面确认后点击生成。',true);return;
+       }
+       pendingArtAgentPreparation = null;
++      let preparedCurrent = true;
+       try { agentPrepared.assertCurrent(); }
+-      catch (error) { setArtGenerateStatus(String(error?.message || '小桃建议已失效，请重新分析'), true); return; }
+-      return runArtGenerate({ drawingPrepared: agentPrepared, ownerGuard, artConfirmationTicket:options.artConfirmationTicket });
++      catch (error) {
++        if (agentPrepared.promptOnlyOptimization === true) preparedCurrent = false;
++        else { setArtGenerateStatus(String(error?.message || '小桃建议已失效，请重新分析'), true); return; }
++      }
++      if (preparedCurrent) return runArtGenerate({ drawingPrepared: agentPrepared, ownerGuard, artConfirmationTicket:options.artConfirmationTicket });
+     }
+     const ui = window.NovaFlowUiDesignDrawing;
+     const getCurrentContext = () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(),
+@@ -86741,7 +86745,7 @@
+     const assistantRolePlan = runMode === "img2img"
+       ? prepared?.referenceRolePlan || (!prepared ? window.__NovaFlowSmartAI?.getArtGenerationReferencePlan?.(allRefs) : null)
+       : null;
+-    const scopedArtCandidate = Boolean(window.NovaFlowWebRuntime && prepared?.agentRun === true && runProvider === 'local' && runMode === 'img2img');
++    const scopedArtCandidate = Boolean(window.NovaFlowWebRuntime && prepared?.agentRun === true && prepared.promptOnlyOptimization !== true && runProvider === 'local' && runMode === 'img2img');
+     const resolvedReferences = resolveArtGenerateReferenceInputs(allRefs, assistantRolePlan);
+     const refs = scopedArtCandidate ? resolvedReferences.refs.map((ref) => Object.freeze({ ...ref })) : resolvedReferences.refs;
+     const rolePlan = scopedArtCandidate && resolvedReferences.rolePlan
