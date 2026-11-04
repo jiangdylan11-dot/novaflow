@@ -8,7 +8,7 @@ import {createOnlineAiCharge} from '../_art-shared/online-ai-charge.mjs';
 import {createFeatureCreditPorts} from '../_art-shared/feature-credits.mjs';
 import {RELEASE_VERSION} from '../_art-shared/release.mjs';
 import {createRunningHubServerConfig} from '../_art-shared/runninghub-server-config.mjs';
-import {artBusinessDependencies,legacyH3ReverseDependencies} from './art-dependencies.mjs';
+import {artBusinessDependencies} from './art-dependencies.mjs';
 import {mergeCapabilityOverrides,OPT_IN_KEYS} from './capability-overrides.mjs';
 import {createRecoveryOnly} from './recovery-only.mjs';
 import {Buffer} from 'node:buffer';
@@ -27,20 +27,18 @@ let v3Capabilities=null;
 try{v3Capabilities=mergeCapabilityOverrides(Deno.env.get('NOVAFLOW_XIAOTAO_V3_CAPABILITIES'),{
  [OPT_IN_KEYS.audioRewrite]:Deno.env.get(OPT_IN_KEYS.audioRewrite),
  [OPT_IN_KEYS.videoRewrite]:Deno.env.get(OPT_IN_KEYS.videoRewrite),
- [OPT_IN_KEYS.uiDraft]:Deno.env.get(OPT_IN_KEYS.uiDraft)});}catch{}
+ [OPT_IN_KEYS.uiDraft]:Deno.env.get(OPT_IN_KEYS.uiDraft),
+ [OPT_IN_KEYS.foartGeneral]:Deno.env.get(OPT_IN_KEYS.foartGeneral)});}catch{}
 const operationV3Enabled=v3Capabilities?.operation===true;
 const operationV3RecoveryEnabled=v3Capabilities?.recovery===true;
 // Server-only decimal opt-in is separately guarded by the checked DB RPC and
 // immutable pricing config. The existing production V3 flags remain unchanged.
 const operationDecimalCreditsEnabled=operationV3Enabled && env('NOVAFLOW_XIAOTAO_DECIMAL_V1')==='true';
-// Music drafts require the same V3 and decimal gate; no client can enable it.
-const operationFoartAudioMusicEnabled=operationDecimalCreditsEnabled && v3Capabilities?.foartAudioMusic===true;
-const legacyH3ReverseEnabled=false;
 const operationV3=createCompanionOperationV3Assembly({enabled:operationV3Enabled,decimalCreditsEnabled:operationDecimalCreditsEnabled,
  visionEnabled:v3Capabilities?.vision===true,audioRewriteEnabled:v3Capabilities?.audioRewrite===true,
- foartOpenEnabled:v3Capabilities?.foartOpen===true,foartRotationEnabled:v3Capabilities?.foartRotation===true,foartGeneralEnabled:v3Capabilities?.foartGeneral===true,foartIdleDraftEnabled:v3Capabilities?.foartIdleDraft===true,foartAudioMusicEnabled:operationFoartAudioMusicEnabled,
- styleEnabled:false,styleVisionModels:[],videoRewriteEnabled:v3Capabilities?.videoRewrite===true,uiDraftEnabled:v3Capabilities?.uiDraft===true,legacyH3ReverseEnabled,
- legacyH3Adapter:legacyH3ReverseEnabled?legacyH3ReverseDependencies():undefined,secret:Buffer.from(env('NOVAFLOW_SESSION_SECRET'),'utf8')});
+ foartOpenEnabled:v3Capabilities?.foartOpen===true,foartGeneralEnabled:v3Capabilities?.foartGeneral===true&&v3Capabilities?.foartOpen===true,
+ styleEnabled:false,styleVisionModels:[],videoRewriteEnabled:v3Capabilities?.videoRewrite===true,uiDraftEnabled:v3Capabilities?.uiDraft===true,
+ secret:Buffer.from(env('NOVAFLOW_SESSION_SECRET'),'utf8')});
 const operationV3Status=createXiaotaoOperationV3Status({enabled:operationV3RecoveryEnabled,rpc});
 const operationV3ArtEnabled=v3Capabilities?.art===true;
 // Each operation uses one refreshed provider/config snapshot. Versioned

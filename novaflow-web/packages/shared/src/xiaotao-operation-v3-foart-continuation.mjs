@@ -8,8 +8,6 @@ import {COMPANION_OUTPUT_TOKENS} from './companion-pricing.mjs';
 import {estimateXiaotaoOnlineCredits,normalizeCreditConfig} from './feature-credits.mjs';
 import {xiaotaoCreditAmountPolicy,isXiaotaoCreditAmount,equalXiaotaoCreditAmounts} from './xiaotao-decimal-usage.mjs';
 import {validateFoartContext} from './foart-tool-plan.mjs';
-import {inspectRotationReceipt,appliedRotationReceipt} from './xiaotao-operation-v3-foart-rotation.mjs';
-import {isIdleDraftRequest} from './xiaotao-operation-v3-idle-draft.mjs';
 
 const DOMAIN='nf.xiaotao.foart-continuation.v1';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -31,23 +29,18 @@ function validatedInitialContext(value) {
 }
 const boundIntentHash=(intent,initialContext)=>hash({schema:'nf.xiaotao.operation.foart-intent.v2',intent,initialContext});
 function canonicalIntent(raw,context) {
-  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['message','history','promptLanguage','idleDraftRequested','musicDraftRequested'].includes(k)))fail('invalid-foart-intent');
-  if(raw.idleDraftRequested!==undefined && (raw.idleDraftRequested!==true||!isIdleDraftRequest(raw.message)))fail('invalid-foart-intent');
-  if(raw.musicDraftRequested!==undefined&&typeof raw.musicDraftRequested!=='boolean')fail('invalid-foart-intent');
-  if(raw.musicDraftRequested===true&&(raw.idleDraftRequested===true||context?.media?.active!==true||context.media.sub!=='audio'))fail('invalid-foart-intent');
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['message','history','promptLanguage'].includes(k)))fail('invalid-foart-intent');
   if(raw.history!==undefined&&(!Array.isArray(raw.history)||raw.history.some(row=>!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(k=>!['role','content'].includes(k)))))fail('invalid-foart-intent');
   const intent={message:raw.message,...(raw.history!==undefined?{history:raw.history.map(({role,content})=>({role,content}))}:{}),
-    ...(raw.promptLanguage!==undefined?{promptLanguage:raw.promptLanguage}:{}),...(raw.idleDraftRequested===true?{idleDraftRequested:true}:{}),...(raw.musicDraftRequested===true?{musicDraftRequested:true}:{})};
-  const {musicDraftRequested,...modelIntent}=intent;
-  companionInput({mode:'foart',requestId:'foart_initial_1',...modelIntent,foartContext:context,images:[]});
+    ...(raw.promptLanguage!==undefined?{promptLanguage:raw.promptLanguage}:{})};
+  companionInput({mode:'foart',requestId:'foart_initial_1',...intent,foartContext:context,images:[]});
   return intent;
 }
 // Shared by the server-only initial planner and the continuation signer so
 // the operation identity is bound to exactly the same intent and snapshot.
 export function canonicalizeXiaotaoV3FoartIntent(originalIntent,initialContext) {
   const initial=validatedInitialContext(initialContext),intent=canonicalIntent(originalIntent,initial);
-  const {musicDraftRequested,...modelIntent}=intent;
-  const request={mode:'foart',requestId:'foart_initial_1',...modelIntent,foartContext:initial,images:[]};
+  const request={mode:'foart',requestId:'foart_initial_1',...intent,foartContext:initial,images:[]};
   return {intent,initial,request,compiled:companionInput(request),intentHash:boundIntentHash(intent,initial)};
 }
 function actorIdentity(value) {
@@ -91,7 +84,7 @@ function checkedPricingSnapshot(value,policyVersion,model) {
 // read the operation's already frozen snapshot, not use a client value.
 // claimNext must atomically claim operation+sequence+requestHash AND reserve
 // the server-estimated credits; a process-local map does not suffice.
-export function createXiaotaoV3FoartContinuation({enabled=false,secret,loadRecordedPhase,loadPolicySnapshot,claimNext,foartRotationEnabled=false,foartGeneralEnabled=false,now=()=>Date.now()}={}) {
+export function createXiaotaoV3FoartContinuation({enabled=false,secret,loadRecordedPhase,loadPolicySnapshot,claimNext,foartGeneralEnabled=false,now=()=>Date.now()}={}) {
   if(enabled===true&&(!Buffer.isBuffer(secret)||secret.length<32||typeof loadRecordedPhase!=='function'||typeof loadPolicySnapshot!=='function'||typeof claimNext!=='function'||typeof now!=='function'))fail('invalid-server-config',503);
   const key=enabled===true?Buffer.from(secret):null;
   const ready=()=>{if(enabled!==true)fail('operation-billing-disabled',503);};
@@ -110,7 +103,7 @@ export function createXiaotaoV3FoartContinuation({enabled=false,secret,loadRecor
     return openPlan(phase,identity,sequence,intentHash,previousContext);
   }
   return Object.freeze({
-    async issue({actor,operationId,model,policyVersion,originalIntent,initialContext,previousContext,sequence,general=false,isCurrent}) {
+    async issue({actor,operationId,model,policyVersion,originalIntent,initialContext,previousContext,sequence,isCurrent}) {
       ready();const id=operationIdentity({actor,operationId,model,policyVersion});
       if(!Number.isSafeInteger(sequence)||sequence<1||sequence>=14)fail('phase-limit',409);
       await current(isCurrent,id);
@@ -119,11 +112,11 @@ export function createXiaotaoV3FoartContinuation({enabled=false,secret,loadRecor
       const prior=await previous(id,sequence,intentHash,previousContext);
       const time=now();if(!Number.isSafeInteger(time)||time<0||!Number.isSafeInteger(time+300000))fail('invalid-server-clock',503);
       await current(isCurrent,id);
-      return {continuationToken:sign({v:DOMAIN,...id,intentHash,previousSequence:sequence,planHash:prior.planHash,contextHash:prior.contextHash,surface:prior.surface,actionKind:prior.actionKind,targetHash:prior.targetHash,general:general===true,expiresAt:time+300000})};
+      return {continuationToken:sign({v:DOMAIN,...id,intentHash,previousSequence:sequence,planHash:prior.planHash,contextHash:prior.contextHash,surface:prior.surface,actionKind:prior.actionKind,targetHash:prior.targetHash,expiresAt:time+300000})};
     },
-    async continue({actor,operationId,model,policyVersion,originalIntent,initialContext,previousContext,previousPlan,continuationToken,receipt,context,isCurrent}) {
+    async continue({actor,operationId,model,policyVersion,originalIntent,initialContext,previousContext,continuationToken,receipt,context,isCurrent}) {
       ready();const id=operationIdentity({actor,operationId,model,policyVersion}),p=verify(continuationToken);
-      const fields=['v','userId','sessionId','operationId','model','policyVersion','intentHash','previousSequence','planHash','contextHash','surface','actionKind','targetHash','general','expiresAt'];
+      const fields=['v','userId','sessionId','operationId','model','policyVersion','intentHash','previousSequence','planHash','contextHash','surface','actionKind','targetHash','expiresAt'];
       const time=now();
       if(!p||typeof p!=='object'||Array.isArray(p)||Object.keys(p).length!==fields.length||fields.some(k=>!(k in p))||p.v!==DOMAIN||
         fields.slice(1,6).some(k=>p[k]!==id[k])||!HEX.test(p.intentHash||'')||!HEX.test(p.planHash||'')||!HEX.test(p.contextHash||'')||
@@ -134,31 +127,12 @@ export function createXiaotaoV3FoartContinuation({enabled=false,secret,loadRecor
       if(boundIntentHash(intent,initial)!==p.intentHash)fail('invalid-continuation');
       const prior=await previous(id,p.previousSequence,p.intentHash,previousContext);
       if(prior.planHash!==p.planHash||prior.contextHash!==p.contextHash||prior.surface!==p.surface||prior.actionKind!==p.actionKind||prior.targetHash!==p.targetHash)fail('invalid-continuation');
-      let safeReceipt,evidence;
-      if(p.general===true) {
-        // Browser data for the next planner turn, never proof of execution.
-        if(foartGeneralEnabled!==true||prior.actionKind!=='open'||!receipt||typeof receipt!=='object'||Array.isArray(receipt))fail('invalid-tool-receipt');
-        rejectEmbeddedMedia(receipt);
-        const receiptText=JSON.stringify(receipt);
-        if(Buffer.byteLength(receiptText,'utf8')>8000)fail('invalid-tool-receipt');
-        safeReceipt=JSON.parse(receiptText);
-      } else if(prior.actionKind==='open') {
-        if(!receipt||typeof receipt!=='object'||Array.isArray(receipt)||Object.keys(receipt).some(k=>!['action','phase','surface','message','reused'].includes(k))||
-          receipt.action!=='open'||receipt.phase!=='opened'||receipt.surface!==p.surface||
-          (receipt.message!==undefined&&(typeof receipt.message!=='string'||receipt.message.length>500))||
-          (receipt.reused!==undefined&&typeof receipt.reused!=='boolean'))fail('invalid-tool-receipt');
-        safeReceipt={action:'open',phase:'opened',surface:p.surface};
-      } else {
-        if(foartRotationEnabled!==true||!previousPlan||hash(previousPlan)!==p.planHash)fail('invalid-tool-receipt');
-        if(prior.actionKind==='inspect_bones') {
-          const checked=inspectRotationReceipt(receipt,previousPlan,previousContext);
-          evidence=checked.evidence;safeReceipt=checked.safeReceipt;
-          if(hash({name:evidence.name,boneName:evidence.boneName})!==p.targetHash)fail('invalid-tool-receipt');
-        } else {
-          safeReceipt=appliedRotationReceipt(receipt,previousPlan);
-          if(hash({name:safeReceipt.name,boneName:safeReceipt.boneName,frame:safeReceipt.frame,rotation:safeReceipt.rotation})!==p.targetHash)fail('invalid-tool-receipt');
-        }
-      }
+      // Browser data for the next planner turn, never proof of execution.
+      if(foartGeneralEnabled!==true||!receipt||typeof receipt!=='object'||Array.isArray(receipt))fail('invalid-tool-receipt');
+      rejectEmbeddedMedia(receipt);
+      const receiptText=JSON.stringify(receipt);
+      if(Buffer.byteLength(receiptText,'utf8')>8000)fail('invalid-tool-receipt');
+      const safeReceipt=JSON.parse(receiptText);
       validateFoartContext(context);
       rejectEmbeddedMedia(context);
       const contextText=JSON.stringify(context);
@@ -172,8 +146,7 @@ export function createXiaotaoV3FoartContinuation({enabled=false,secret,loadRecor
       const compiled=companionInput(request);
       let storedPolicy;try{storedPolicy=await loadPolicySnapshot({...id,intentHash:p.intentHash});}catch{fail('operation-status-unknown',503);}
       const pricing=checkedPricingSnapshot(storedPolicy,id.policyVersion,id.model);
-      if(prior.actionKind!=='open'&&pricing.config?.xiaotao_online?.operation_foart_rotation_v3!==true)fail('operation-billing-disabled',503);
-      if(p.general===true&&pricing.config?.xiaotao_online?.operation_foart_general_v3!==true)fail('operation-billing-disabled',503);
+      if(pricing.config?.xiaotao_online?.operation_foart_general_v3!==true)fail('operation-billing-disabled',503);
       const estimate=estimateXiaotaoOnlineCredits({text:message+'\n'+JSON.stringify(nextContext),
         history:(intent.history||[]).map(row=>row.content).join('\n'),system:compiled.systemText,files:[],
         outputTokens:COMPANION_OUTPUT_TOKENS,config:pricing.config,model:id.model,promptLanguage:intent.promptLanguage,
@@ -182,12 +155,12 @@ export function createXiaotaoV3FoartContinuation({enabled=false,secret,loadRecor
       await current(isCurrent,id);
       const phaseId='foart_'+nextSequence;
       let claim;try{claim=await claimNext({...id,sequence:nextSequence,phaseId,phaseKind:'planner',feature:'online_chat_turn',
-        requestHash,previousPlanHash:p.planHash,previousContextHash:p.contextHash,previousActionKind:p.actionKind,previousTargetHash:p.targetHash,strictContext:foartRotationEnabled===true&&pricing.config?.xiaotao_online?.operation_foart_rotation_v3===true,intentHash:p.intentHash,estimatedCredits:estimate.credits,
+        requestHash,previousPlanHash:p.planHash,previousContextHash:p.contextHash,previousActionKind:p.actionKind,previousTargetHash:p.targetHash,strictContext:false,intentHash:p.intentHash,estimatedCredits:estimate.credits,
         expectedConfig:pricing.expectedConfig,policySnapshotText:pricing.policySnapshotText,phaseCap:pricing.phaseCap,roundMode:pricing.roundMode});}catch{fail('operation-status-unknown',503);}
       if(!claim||claim.status!=='reserved'||claim.first!==true||claim.phaseId!==phaseId||
         !equalXiaotaoCreditAmounts(claim.estimatedCredits,estimate.credits,pricing.config,{max:pricing.phaseCap}))fail('operation-status-unknown',503);
       await current(isCurrent,id);
-      return {sequence:nextSequence,phaseId,requestHash,request,model:id.model,policyVersion:id.policyVersion,estimatedCredits:estimate.credits,unverifiedToolReceipt:true,evidence,previousActionKind:prior.actionKind};
+      return {sequence:nextSequence,phaseId,requestHash,request,model:id.model,policyVersion:id.policyVersion,estimatedCredits:estimate.credits,unverifiedToolReceipt:true};
     }
   });
 }

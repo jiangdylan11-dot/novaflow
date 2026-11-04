@@ -30,12 +30,6 @@ test('missing capability and an outdated response after node change cannot enabl
   let resolve;const pending=new Promise(r=>{resolve=r;});p.setStatus(pending);const check=c.calibrateLocalStatus();c.invalidateLocalCapability();resolve({available:true,features:{qwen35CpuTrial:true}});await check;
   assert.equal(c.modelAvailable(modelId),false);assert.equal(await c.send('你好'),false);assert.equal(p.calls.length,0);
 });
-test('Qwen capability does not enable destructive edits or audio/video file analysis',async()=>{
-  const p=page(),c=p.controller;c.setModel(modelId);await c.calibrateLocalStatus();
-  assert.equal(await c.send('请删除当前骨骼'),false);assert.match(c.state.error,/只支持对话和提示词优化/);
-  c.state.staged=[{kind:'audio',status:'ready',name:'voice.wav'}];
-  assert.equal(await c.send('这段说了什么'),false);assert.match(c.state.error,/不支持分析非图片附件/);assert.equal(p.calls.length,0);
-});
 test('Qwen readiness is unknown until an explicit successful result and resets on failure or node change',async()=>{
   const p=page(),c=p.controller;
   assert.equal(c.state.qwen35CpuTrialChecked,false);

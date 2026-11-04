@@ -67,19 +67,12 @@ export async function companionPricingPolicy(provider = {}, {revision=DEFAULT_PR
     config.xiaotao_online.operation_audio_rewrite_v3=true;
   if(provider.operationTextChatV3===true && provider.operationVisionChatV3===true)
     config.xiaotao_online.operation_vision_chat_v3=true;
-  if(provider.operationTextChatV3===true && provider.operationVisionChatV3===true && provider.operationLegacyH3ReverseV3===true)
-    config.xiaotao_online.operation_legacy_h3_reverse_v3=true;
   if(provider.operationTextChatV3===true && provider.operationUiDraftV3===true)
     config.xiaotao_online.operation_ui_draft_v3=true;
   if(provider.operationTextChatV3===true && provider.operationFoartOpenV3===true)
     config.xiaotao_online.operation_foart_open_v3=true;
-  if(provider.operationTextChatV3===true && provider.operationFoartOpenV3===true && provider.operationFoartRotationV3===true)
-    config.xiaotao_online.operation_foart_rotation_v3=true;
   if(provider.operationTextChatV3===true && provider.operationFoartOpenV3===true && provider.operationFoartGeneralV3===true)
     config.xiaotao_online.operation_foart_general_v3=true;
-  if(decimalReady && provider.operationFoartOpenV3===true && provider.operationFoartIdleDraftV3===true)
-    config.xiaotao_online.operation_foart_idle_draft_v3=true;
-  if(provider.operationTextChatV3===true && decimalReady && provider.operationFoartAudioMusicV3===true)config.xiaotao_online.operation_foart_audio_music_v3=true;
   if(provider.operationArtV3===true)config.xiaotao_online.operation_art_v3=true;
   // Until a DB-backed pricing snapshot is atomically bound to reserve and
   // settlement, a versioned quote must not be represented as chargeable.

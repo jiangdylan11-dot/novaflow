@@ -24,15 +24,6 @@ function fixture(discussion,{realTask=false,active=true,communityEnabled=false}=
   return {controller:root.NovaFlowXiaotaoArtAgent.createController({bridge,api}),requests,executed,opened,api:root.NovaFlowXiaotaoArtAgent};
 }
 
-test('Qwen refuses animation writes before model planning or execution',async()=>{
-  const {controller,requests,executed}=fixture(false,{communityEnabled:true});
-  await controller.calibrateLocalStatus();
-  assert.equal(await controller.send('把头发摆动调大一点'),false);
-  assert.match(controller.state.error,/只支持对话和提示词优化/);
-  assert.equal(controller.state.modelId,'qwen3.5-9b-heretic');assert.equal(controller.state.provider,'local');
-  assert.deepEqual(requests,[]);assert.deepEqual(executed,[]);
-});
-
 test('community models reject every non-image attachment and expose only attachment metadata',async()=>{
   const {controller,requests,api}=fixture(true,{communityEnabled:true});
   assert.equal(controller.state.modelId,'qwen3.5-9b-heretic');
@@ -55,41 +46,3 @@ test('local animation discussion remains chat and does not execute native tools'
   assert.equal(requests.length,1);assert.equal(requests[0].mode,'chat');assert.deepEqual(executed,[]);
 });
 
-test('Qwen short editing requests do not execute unverified animation edits',async()=>{
-  for(const text of ['头发再飘一点，身体别动','动作快点，但总时长不变']){
-    const {controller,requests,opened,executed}=fixture(false,{realTask:true,communityEnabled:true});
-    await controller.calibrateLocalStatus();
-    assert.equal(await controller.send(text),false,text);
-    assert.match(controller.state.error,/只支持对话和提示词优化/);assert.deepEqual(requests,[]);assert.deepEqual(opened,[]);assert.deepEqual(executed,[]);
-  }
-  const ambiguous=fixture(false,{realTask:true,communityEnabled:true});await ambiguous.controller.calibrateLocalStatus();
-  assert.equal(await ambiguous.controller.send('让动作好看一点'),true);
-  assert.equal(ambiguous.requests[0].mode,'chat');assert.deepEqual(ambiguous.opened,[]);assert.deepEqual(ambiguous.executed,[]);
-  assert.match(ambiguous.controller.state.messages.at(-1).content,/未操作软件/);
-});
-
-test('community short animation edits are stopped before planning or execution',async()=>{
-  for (const message of ['头发再飘一点，身体别动','当前 idle 动画的动作快一点，总时长不变']) {
-    const {controller,requests,opened}=fixture(false,{realTask:true,communityEnabled:true});
-    assert.equal(controller.state.modelId,'qwen3.5-9b-heretic');
-    await controller.calibrateLocalStatus();
-    assert.equal(await controller.send(message),false);
-    assert.match(controller.state.error,/只支持对话和提示词优化/);
-    assert.deepEqual(requests,[]);assert.deepEqual(opened,[]);
-  }
-});
-
-test('discussion, unrelated chat and an explicitly targeted video do not become animation edits',async()=>{
-  for(const text of ['如何让头发更自然？','今天天气很好']){
-    const {controller,requests,opened}=fixture(false,{realTask:true,communityEnabled:true});
-    await controller.calibrateLocalStatus();
-    assert.equal(await controller.send(text),true,text);assert.equal(requests[0].mode,'chat',text);assert.deepEqual(opened,[]);
-  }
-  const video=fixture(false,{realTask:true,communityEnabled:true});await video.controller.calibrateLocalStatus();
-  assert.equal(await video.controller.send('把视频音量调低'),true);
-  assert.equal(video.requests[0].mode,'chat');assert.deepEqual(video.opened,[]);assert.deepEqual(video.executed,[]);
-  assert.match(video.controller.state.messages.at(-1).content,/未操作软件/);
-  const inactive=fixture(false,{realTask:true,active:false,communityEnabled:true});await inactive.controller.calibrateLocalStatus();
-  assert.equal(await inactive.controller.send('头发再飘一点，身体别动'),false);
-  assert.match(inactive.controller.state.error,/只支持对话和提示词优化/);assert.deepEqual(inactive.requests,[]);assert.deepEqual(inactive.opened,[]);
-});

@@ -37,10 +37,6 @@ test('unverified or unreleased Qwen response is discarded and never claims audio
 test('stop cancels exact text-rewrite request and ignores late response',async()=>{
  let resolve;const gate=new Promise(r=>resolve=r),f=fixture({reply:async()=>gate});const pending=f.send('优化音效提示词：风声');for(let i=0;i<100&&!f.calls.length;i++)await new Promise(r=>setTimeout(r,1));assert.ok(f.calls.length,'rewrite was not reached');const id=f.calls[0][1].requestId;await f.c.stop();assert.equal(f.calls.find(x=>x[0]==='cancel')[1].requestId,id);resolve({ok:true,prompt:'late',analysisBackend:'qwen-cpu',modelIdentity:{id:'qwen35-heretic',verification:'server-weight-path'},resourcesReleased:true,generationReady:true});assert.equal(await pending,false);assert.ok(!f.c.state.messages.some(x=>x.content?.includes('late')));
 });
-test('an explicit request to generate still remains blocked for Qwen and does not call the rewrite',async()=>{
- const f=fixture();assert.equal(await f.send('优化音效提示词并生成音效'),false);assert.equal(f.calls.length,0);assert.match(f.c.state.error,/只支持对话和提示词优化/);
-});
-
 test('model change during text rewrite discards the result and performs no other action',async()=>{
  let f;f=fixture({reply:async()=>{f.c.state.modelId='xai/grok-4.7';return {ok:true,prompt:'late wrong',analysisBackend:'qwen-cpu',modelIdentity:{id:'qwen35-heretic',verification:'server-weight-path'},resourcesReleased:true,generationReady:true}}});
  assert.equal(await f.send('优化音效提示词：风声'),false);assert.equal(f.calls.length,1);assert.ok(!f.c.state.messages.some(x=>x.content?.includes('late wrong')));

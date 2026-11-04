@@ -8,7 +8,7 @@ const schema='nf.foart.tool-plan.v1',secret=Buffer.alloc(32,7),context=()=>({sch
 const intent=()=>({message:'Open the animation workspace, then report the state.',history:[],promptLanguage:'zh-CN'});
 const planOpen=()=>({schema,status:'act',reply:'Opening animation.',operations:[{action:'open',surface:'animation'}]});
 const planDone=()=>({schema,status:'done',reply:'The animation workspace is open.',operations:[]});
-const provider=()=>({apiKey:'fixture',model,configRevision:'1',pricingSnapshotReady:true,creditConfig:{},operationTextChatV3:true,operationFoartOpenV3:true});
+const provider=()=>({apiKey:'fixture',model,configRevision:'1',pricingSnapshotReady:true,creditConfig:{},operationTextChatV3:true,operationFoartOpenV3:true,operationFoartGeneralV3:true});
 function ledger(){
   const operations=new Map(),calls=[];
   const rpc=async(name,args)=>{
@@ -58,7 +58,7 @@ async function fixture(plans=[planOpen(),planDone()],initialContext=context(),op
   const db=ledger();let providerCalls=0;
   const selectedModel=options.model||model;
   const configured=options.provider||provider();
-  const service=create({enabled:true,foartGeneralEnabled:options.general===true,foartIdleDraftEnabled:options.idleDraft===true,secret,loadProvider:async()=>configured,rpc:db.rpc,infer:async request=>{
+  const service=create({enabled:true,foartGeneralEnabled:options.general!==false,secret,loadProvider:async()=>configured,rpc:db.rpc,infer:async request=>{
     assert.equal(request.maxRetries,0);assert.equal(request.model,selectedModel);options.onInfer?.(request);const next=plans[providerCalls++];if(next instanceof Error)throw next;return result(next,selectedModel);}});
   const shared={actor,originalIntent:options.intent||intent(),initialContext,isCurrent:async()=>true};
   const prepared=await service.prepare({...shared,nonce,model:selectedModel});
@@ -82,37 +82,6 @@ test('first planner stage reserves using its frozen decimal policy, while legacy
   assert.equal((await legacy.service.start({...legacy.shared,operationToken:legacy.prepared.token})).ok,true);
   const legacyHold=legacy.db.calls.find(row=>row.name==='reserve_xiaotao_operation_stage_v3').args.p_estimated_credits;
   assert.ok(Number.isSafeInteger(legacyHold) && legacyHold>=1);
-});
-test('an enabled bounded idle draft settles one decimal operation without executing or journaling a tool',async()=>{
-  const deepseek='deepseek/deepseek-v4.1-flash';
-  const config={credits_per_usd:1,xiaotao_online:{markup:1.5,enabled_models:[deepseek],credit_amount_policy:'decimal-v1',credit_precision:6,credit_rounding:'ceil',minimum_positive_credits:0}};
-  const decimalProvider={...provider(),model:deepseek,operationTextChatV3:true,operationFoartOpenV3:true,operationFoartIdleDraftV3:true,operationDecimalCreditsV1:true,operationDecimalLedgerReady:true,creditConfig:config};
-  const ctx={...context(),animation:{active:true,loaded:true,mode:'animate',playing:false,animation:'walk',animations:['walk'],revision:'fixture',fps:30,selectedBones:['head'],bones:[{name:'head'}]}};
-  const draft={action:'animation',operation:'create_idle',name:'idle',durationSeconds:2,keys:[0,30,60].map((frame,i)=>({boneName:'head',frame,values:{rotation:i===1?5:0}}))};
-  const f=await fixture([draft],ctx,{model:deepseek,provider:decimalProvider,idleDraft:true,intent:{message:'2秒待机动画，深度思考的感觉',history:[],promptLanguage:'zh-CN',idleDraftRequested:true},onInfer:request=>{
-    assert.equal(request.body.text.format.name,'foart_idle_animation_preview');
-    assert.match(request.body.input[0].content[0].text,/never a tool call/i);
-    assert.doesNotMatch(JSON.stringify(request.body.input),/idleDraftRequested/);
-  }});
-  const response=await f.service.start({...f.shared,operationToken:f.prepared.token});
-  assert.equal(response.ok,true);assert.deepEqual(response.idleDraft,draft);
-  assert.equal(response.receipt.status,'settled');assert.equal(response.receipt.outcome,'success');
-  assert.ok(response.receipt.charged>0 && response.receipt.charged<1);
-  assert.equal(f.providerCalls,1);
-  assert.equal(f.db.calls.filter(row=>row.name==='finalize_xiaotao_operation_v3').length,1);
-  assert.ok(!f.db.calls.some(row=>row.name==='record_xiaotao_foart_plan_v3'||row.name==='record_xiaotao_animation_plan_v3'));
-  await assert.rejects(f.service.start({...f.shared,operationToken:f.prepared.token}));assert.equal(f.providerCalls,1);
-});
-test('idle draft is closed before dispatch without its trusted capability or a valid selected bone',async()=>{
-  const deepseek='deepseek/deepseek-v4.1-flash';
-  const config={credits_per_usd:1,xiaotao_online:{markup:1.5,enabled_models:[deepseek],credit_amount_policy:'decimal-v1',credit_precision:6,credit_rounding:'ceil',minimum_positive_credits:0}};
-  const configured={...provider(),model:deepseek,operationTextChatV3:true,operationFoartOpenV3:true,operationFoartIdleDraftV3:true,operationDecimalCreditsV1:true,operationDecimalLedgerReady:true,creditConfig:config};
-  const ctx={...context(),animation:{active:true,loaded:true,mode:'animate',playing:false,animation:'walk',animations:['walk'],revision:'fixture',fps:30,selectedBones:['head'],bones:[{name:'head'}]}};
-  const options={model:deepseek,provider:configured,intent:{message:'2秒待机动画',history:[],promptLanguage:'zh-CN',idleDraftRequested:true}};
-  await assert.rejects(fixture([],ctx,options),e=>e.code==='foart-operation-unsupported');
-  await assert.rejects(fixture([],{...ctx,animation:{...ctx.animation,selectedBones:[]}},{...options,idleDraft:true}),e=>e.code==='idle-draft-unsupported');
-  await assert.rejects(fixture([],ctx,{...options,idleDraft:true,provider:{...configured,operationFoartIdleDraftV3:false}}),e=>e.code==='foart-operation-unsupported');
-  await assert.rejects(fixture([],ctx,{...options,idleDraft:true,intent:{message:'2秒待机动画',history:[],promptLanguage:'zh-CN'}}),e=>e.code==='foart-operation-unsupported');
 });
 test('one open plus one completed plan is one operation, with no project prose in journal',async()=>{
   const f=await fixture(),first=await f.service.start({...f.shared,operationToken:f.prepared.token});
@@ -140,13 +109,6 @@ test('explicit cancellation after the first known stage settles without another 
   const receipt=await f.service.cancel({...f.shared,operationToken:f.prepared.token});assert.equal(receipt.outcome,'cancel');assert.equal(receipt.charged,1);assert.equal(f.providerCalls,1);
   const again=await f.service.cancel({...f.shared,operationToken:f.prepared.token});assert.equal(again.idempotent,true);assert.equal(again.charged,1);assert.equal(f.providerCalls,1);
 });
-test('unsupported but valid editor write settles known usage and is never returned as an action',async()=>{
-  const initial={...context(),controls:[{id:'fixture-input',kind:'input'}]};
-  const write={schema,status:'act',reply:'Change a field.',operations:[{action:'set_control',controlId:'fixture-input',value:'changed'}]};
-  const f=await fixture([write],initial),result=await f.service.start({...f.shared,operationToken:f.prepared.token});
-  assert.equal(result.ok,false);assert.equal(result.errorCode,'foart-operation-unsupported');assert.equal(result.receipt.outcome,'cancel');assert.equal(result.receipt.charged,1);
-  assert.equal(result.toolPlan,undefined);assert.equal(f.providerCalls,1);
-});
 test('unknown provider outcome holds reservation and cannot be dispatched again',async()=>{
   const f=await fixture([new Error('synthetic timeout')]);
   await assert.rejects(f.service.start({...f.shared,operationToken:f.prepared.token}),e=>e.code==='operation-status-unknown');
@@ -169,7 +131,7 @@ test('general operation runs any validated tool one step at a time and settles o
 test('general operation stays closed unless both the server switch and the policy opt in',async()=>{
   const initial={...context(),controls:[{id:'fixture-input',kind:'input'}]};
   const write={schema,status:'act',reply:'Change a field.',operations:[{action:'set_control',controlId:'fixture-input',value:'changed'}]};
-  for(const options of [{general:true},{provider:{...provider(),operationTextChatV3:true,operationFoartOpenV3:true,operationFoartGeneralV3:true}}]){
+  for(const options of [{general:false},{provider:{...provider(),operationFoartGeneralV3:false}}]){
     const f=await fixture([write],initial,options),result=await f.service.start({...f.shared,operationToken:f.prepared.token});
     assert.equal(result.ok,false);assert.equal(result.errorCode,'foart-operation-unsupported');assert.equal(result.toolPlan,undefined);
   }

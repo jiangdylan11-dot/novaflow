@@ -4,7 +4,6 @@
 import {createHash} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import {readFoartPlan,validateFoartContext} from './foart-tool-plan.mjs';
-import {inspectRotationPlan} from './xiaotao-operation-v3-foart-rotation.mjs';
 import {xiaotaoCreditAmountPolicy,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 
 const fail=(code,statusCode=400)=>{throw Object.assign(new Error(code),{code,statusCode});};
@@ -39,7 +38,7 @@ export function createXiaotaoV3FoartJournal({enabled=false,rpc}={}) {
   return Object.freeze({
     // Invoke only with the validated, actual provider output *after* usage was
     // recorded. The database independently requires that recorded stage.
-    async recordPlan({actor,sequence:seq,phaseId,requestHash,plan,context,rotationEnabled=false,generalEnabled=false,evidence}) {
+    async recordPlan({actor,sequence:seq,phaseId,requestHash,plan,context}) {
       ready();const id=identity(actor);sequence(seq);
       if(!phase(phaseId)||!hex(requestHash))fail('invalid-foart-stage');
       const contextText=canonicalContext(context);
@@ -49,14 +48,10 @@ export function createXiaotaoV3FoartJournal({enabled=false,rpc}={}) {
         fail('foart-continuation-unsupported',409);
       const parsed=readFoartPlan(JSON.stringify(plan),context);
       if(parsed.status!=='act'||parsed.operations.length!==1)fail('foart-continuation-unsupported',409);
-      const animation=parsed.operations[0].action==='animation';
-      const rotation=animation&&rotationEnabled===true?inspectRotationPlan(parsed,context,seq,evidence):null;
-      if(!rotation&&!generalEnabled&&parsed.operations[0].action!=='open')fail('foart-continuation-unsupported',409);
       const planText=JSON.stringify(parsed);if(Buffer.byteLength(planText,'utf8')>60000)fail('invalid-foart-plan');
       const planHash=hash(planText),contextHash=hash(contextText);
       const common={...id,p_sequence:seq,p_phase_id:phaseId,p_request_hash:requestHash,p_plan_hash:planHash,p_context_hash:contextHash};
-      const result=rotation?await call('record_xiaotao_animation_plan_v3',{...common,p_action_kind:rotation.actionKind,p_target_hash:rotation.targetHash})
-        :await call('record_xiaotao_foart_plan_v3',{...common,p_surface:parsed.operations[0].surface||foartPlanSurface(parsed.operations[0])});
+      const result=await call('record_xiaotao_foart_plan_v3',{...common,p_surface:parsed.operations[0].surface||foartPlanSurface(parsed.operations[0])});
       if(result?.status!=='recorded'||result.planHash!==planHash||typeof result.idempotent!=='boolean')fail('operation-status-unknown',503);
       return {status:'recorded',planHash,contextHash,idempotent:result.idempotent};
     },

@@ -118,22 +118,18 @@ export async function createCompanionPricingContext({provider,dbSnapshot,envOnli
   // when its handler factory explicitly confirms that both endpoints enforce
   // image binding. It is part of the hashed pricing policy, not a client flag.
   const buildVisionHandlers=buildOperationHandlers && operationV3.visionEnabled===true;
-  const buildLegacyH3Handlers=buildVisionHandlers && operationV3.legacyH3ReverseEnabled===true;
   const buildStyleHandlers=buildOperationHandlers && operationV3.styleEnabled===true;
   const buildVideoHandlers=buildOperationHandlers && operationV3.videoRewriteEnabled===true;
   const buildAudioHandlers=buildOperationHandlers && operationV3.audioRewriteEnabled===true;
   const buildUiDraftHandlers=buildOperationHandlers && operationV3.uiDraftEnabled===true;
   const buildFoartOpenHandlers=buildOperationHandlers && operationV3.foartOpenEnabled===true;
-  const buildFoartMusicHandlers=buildOperationHandlers && buildDecimalHandlers && decimalLedgerReady && operationV3.foartAudioMusicEnabled===true;
-  const buildFoartHandlers=buildFoartOpenHandlers || buildFoartMusicHandlers;
-  const buildRotationHandlers=buildFoartOpenHandlers && operationV3.foartRotationEnabled===true;
+  const buildFoartHandlers=buildFoartOpenHandlers;
   const buildGeneralHandlers=buildFoartOpenHandlers && operationV3.foartGeneralEnabled===true;
-  const buildIdleDraftHandlers=buildFoartOpenHandlers && buildDecimalHandlers && decimalLedgerReady && operationV3.foartIdleDraftEnabled===true;
   const buildArtOperationHandlers=artBusiness?.enabled===true && artBusiness?.accountingReady===true && typeof artBusiness?.operationV3ForRequest==='function';
   const snapshotProvider={...provider,creditConfig,pricingSnapshotReady:true,operationTextChatV3:buildOperationHandlers,
     operationDecimalCreditsV1:buildDecimalHandlers,operationDecimalLedgerReady:decimalLedgerReady,
-    operationVisionChatV3:buildVisionHandlers,operationLegacyH3ReverseV3:buildLegacyH3Handlers,operationStyleV3:buildStyleHandlers,operationStyleVisionModels:buildStyleHandlers&&buildVisionHandlers?operationV3.styleVisionModels:[],operationVideoRewriteV3:buildVideoHandlers,operationAudioRewriteV3:buildAudioHandlers,operationUiDraftV3:buildUiDraftHandlers,operationFoartOpenV3:buildFoartOpenHandlers,operationFoartGeneralV3:buildGeneralHandlers,operationFoartRotationV3:buildRotationHandlers,operationFoartAudioMusicV3:buildFoartMusicHandlers,
-    operationArtV3:buildArtOperationHandlers,operationFoartIdleDraftV3:buildIdleDraftHandlers};
+    operationVisionChatV3:buildVisionHandlers,operationStyleV3:buildStyleHandlers,operationStyleVisionModels:buildStyleHandlers&&buildVisionHandlers?operationV3.styleVisionModels:[],operationVideoRewriteV3:buildVideoHandlers,operationAudioRewriteV3:buildAudioHandlers,operationUiDraftV3:buildUiDraftHandlers,operationFoartOpenV3:buildFoartOpenHandlers,operationFoartGeneralV3:buildGeneralHandlers,
+    operationArtV3:buildArtOperationHandlers};
   // An opt-in factory receives precisely the effective snapshot advertised to
   // the webpage and the raw DB comparison config. Neither comes from a request.
   const builtOperationHandlers=buildOperationHandlers
@@ -153,22 +149,13 @@ export async function createCompanionPricingContext({provider,dbSnapshot,envOnli
     throw Object.assign(new Error('operation-ui-draft-unavailable'),{code:'operation-ui-draft-unavailable',statusCode:503});
   if(buildVisionHandlers && builtOperationHandlers?.operationVisionSupported!==true)
     throw Object.assign(new Error('operation-vision-unavailable'),{code:'operation-vision-unavailable',statusCode:503});
-  if(buildLegacyH3Handlers && builtOperationHandlers?.operationLegacyH3ReverseSupported!==true)
-    throw Object.assign(new Error('operation-legacy-h3-unavailable'),{code:'operation-legacy-h3-unavailable',statusCode:503});
   if(buildFoartHandlers && ['prepare','start','resume','cancel'].some(name=>typeof builtOperationHandlers?.foart?.[name]!=='function'))
     throw Object.assign(new Error('operation-foart-unavailable'),{code:'operation-foart-unavailable',statusCode:503});
-  if(buildFoartMusicHandlers && builtOperationHandlers?.operationFoartAudioMusicSupported!==true)
-    throw Object.assign(new Error('operation-foart-audio-music-unavailable'),{code:'operation-foart-audio-music-unavailable',statusCode:503});
-  if(buildRotationHandlers && builtOperationHandlers?.operationFoartRotationSupported!==true)
-    throw Object.assign(new Error('operation-foart-rotation-unavailable'),{code:'operation-foart-rotation-unavailable',statusCode:503});
-  if(buildIdleDraftHandlers && builtOperationHandlers?.operationFoartIdleDraftSupported!==true)
-    throw Object.assign(new Error('operation-foart-idle-draft-unavailable'),{code:'operation-foart-idle-draft-unavailable',statusCode:503});
   const policy=await companionPricingPolicy(snapshotProvider);
   const v2Ports=createXiaotaoV2CreditPorts(rpc,{expectedConfig:raw,expectedCap:cap,policyVersion:policy.version});
   const versionedCharge=createOnlineAiCharge({...v2Ports,strictSettlement:true});
   const guardedArtCharge=createOnlineAiCharge({...v2Ports,strictSettlement:true,guardedDispatch:true});
   const versioned=createCompanionChat({provider:snapshotProvider,charge:versionedCharge,fetchImpl});
-  const legacy=createCompanionChat({provider:{...provider,creditConfig:{xiaotao_online:overlay},pricingSnapshotReady:false},charge:legacyCharge,fetchImpl});
   // Bind each art request to the verifier supplied by the control plane for
   // that request. Never retain one caller's session closure in a shared context.
   const artForRequest=async request=>{
@@ -198,7 +185,6 @@ export async function createCompanionPricingContext({provider,dbSnapshot,envOnli
     artCancel:async request=>(await artForRequest(request)).cancel(request),
     // Cutover rejects new old-route work before any quote, reservation or
     // provider call. Requests already inside their old closure may settle.
-    reply:request=>operationRequired ? legacyUnavailable() : request?.payload?.pricingVersion != null || request?.payload?.quoteFingerprint != null
-      ? versioned.reply(request) : legacy.reply(request)
+    reply:request=>operationRequired ? legacyUnavailable() : versioned.reply(request)
   };
 }

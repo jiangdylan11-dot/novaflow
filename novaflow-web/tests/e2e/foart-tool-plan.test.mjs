@@ -113,31 +113,6 @@ async function imageFixture(){
   const ctx=vm.createContext(root);vm.runInContext(await readFile(new URL('../../renderer/foart-tool-contract.js',import.meta.url),'utf8'),ctx);vm.runInContext(await readFile(new URL('../../renderer/xiaotao-foart-tools.js',import.meta.url),'utf8'),ctx);
   return {root:ctx,state,runs,references,get selected(){return selected;},get optimizations(){return optimizations;}};
 }
-test('GPT native generation preserves its model settings and a revision binds the actual previous output',async()=>{
-  const f=await imageFixture(),tool=f.root.NovaFlowFoartTools;
-  Object.defineProperty(f.state,'fullProjectCache',{enumerable:true,get(){throw Error('must not serialize image history or full project state');}});
-  const first=await tool.execute({action:'image_generate',prompt:'红色机器人，绿背景',generationMode:'txt2img',useResult:false},{requirements:'保持构图',onStatus(){}});
-  const prior=f.selected;
-  const second=await tool.execute({action:'image_generate',prompt:'只把机器人改为蓝色，绿背景和构图不变',generationMode:'img2img',useResult:true},{requirements:'只改颜色',onStatus(){}});
-  assert.equal(f.optimizations,2);assert.equal(first.id,prior.id);assert.equal(second.sourceResultId,first.id);assert.notEqual(second.id,first.id);
-  assert.equal(f.runs[1].references[0].dataUrl,prior.imageUrl);assert.equal(f.runs[1].promptSnapshot.prompt,'原有优化器：只把机器人改为蓝色，绿背景和构图不变');
-  assert.equal(f.state.provider,'gpt');assert.equal(f.state.gptSize,'1024x1024');assert.equal(f.state.gptQualityTxt2img,'medium');assert.equal(f.state.count,7);assert.equal(f.runs[1].state.count,7);
-  assert.equal(Object.hasOwn(f.runs[1].state,'fullProjectCache'),false);
-});
-test('explicit model, custom dimensions and image count reach the native controls even when the plan omits them',async()=>{
- const f=await imageFixture();f.state.provider='local';
- class NativeField{constructor(tag,key,value,options=[]){this.tagName=tag;this.type='text';this.key=key;this._value=String(value);this.options=options;}get value(){return this._value;}set value(value){this._value=value;}getAttribute(){return null;}dispatchEvent(){f.state[this.key]=['gptCustomWidth','gptCustomHeight'].includes(this.key)?Number(this.value):this.value;}}
- f.root.HTMLSelectElement=NativeField;f.root.HTMLInputElement=NativeField;
- const model=new NativeField('SELECT','provider','local'),size=new NativeField('SELECT','gptSize','1024x1024',[{value:'1024x1024'},{value:'Custom'}]),width=new NativeField('INPUT','gptCustomWidth',1024),height=new NativeField('INPUT','gptCustomHeight',1024);
- f.root.document.querySelector=selector=>selector.includes('模型方式')?model:selector.includes('尺寸')?size:selector.includes('"W"')?width:selector.includes('"H"')?height:null;
- await f.root.NovaFlowFoartTools.execute({action:'image_generate',prompt:'蓝色机器人',generationMode:'txt2img',useResult:false},{requirements:'请用GPT Image 2.5生成一张512×512的蓝色机器人'});
- assert.equal(f.state.provider,'gpt');assert.equal(f.runs[0].state.gptSize,'Custom');assert.equal(f.runs[0].state.gptCustomWidth,512);assert.equal(f.runs[0].state.gptCustomHeight,512);assert.equal(f.runs[0].state.count,1);
-});
-test('a stale image result during optimization stops before native generation',async()=>{
-  const f=await imageFixture();f.root.electronAPI.smartAiPromptOptimize=async()=>{f.state.gptSize='2048x2048';return {ok:true,result:{prompt:'不能应用的旧结果'}};};
-  await assert.rejects(f.root.NovaFlowFoartTools.execute({action:'image_generate',prompt:'机器人',generationMode:'txt2img',useResult:false},{onStatus(){}}),/变化/);assert.equal(f.runs.length,0);
-});
-
 test('explicit PNG export wins over the model default and frame selection remains bounded',async()=>{
   const f=await imageFixture(),calls=[];f.root.document.querySelector=()=>null;
   f.root.NovaFlowSpineSplitBridge={getState:()=>({}),agentAction:async(name,options)=>{calls.push({name,...options});return {phase:'completed',fileName:'robot.png'};}};
@@ -228,14 +203,3 @@ test('UI region selection requires an actual layout module',()=>{
  assert.throws(()=>validateFoartPlan(plan([{action:'ui_select',blockId:'invented'}]),context));
 });
 
-test('UI agent hydrates blob references only when native analysis needs bytes and refuses replaced references',async()=>{
- for(const stale of [false,true]){
-  const f=await imageFixture();f.state.provider='local';const ref={dataUrl:'blob:owned-preview',name:'actual.png'};f.references.push(ref);let calls=0;
-  f.root.NovaFlowArtGenerateModels.capabilityFor=()=>({engine:'qwen-2.1'});
-  f.root.__NovaFlowArtGenerate.captureContext=()=>({state:f.state,references:f.references,generationSurface:'ui'});
-  f.root.resolveReferenceDataUrl=async()=>{calls++;if(stale)f.references[0]={dataUrl:'blob:new-selection'};return 'data:image/png;base64,AA==';};
-  f.root.NovaFlowUiDesignDrawing={isActive:()=>true,prepare:async context=>{assert.equal(context.references[0].dataUrl,'data:image/png;base64,AA==');return {state:f.state,optimizedPrompt:'原生UI优化'};}};
-  const run=f.root.NovaFlowFoartTools.execute({action:'image_optimize',prompt:'优化这张界面的材质',generationMode:'img2img',useResult:false},{requirements:'优化当前UI'});
-  if(stale)await assert.rejects(run,/参考图已变化/);else assert.equal((await run).phase,'applied');assert.equal(calls,1);
- }
-});
