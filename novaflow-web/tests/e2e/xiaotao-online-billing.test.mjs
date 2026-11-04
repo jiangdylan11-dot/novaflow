@@ -380,7 +380,7 @@ await test('calibration excludes missing usage, zero cost, caps and ledger short
 await test('a text-only online turn keeps the Foart-only role, distinct input capabilities and token billing', async () => {
   const text = companionInput({ requestId: 'text-only-1234', mode: 'chat', promptLanguage: 'en', message: '你好', history: [] });
   assert.equal(text.textOnly, true);
-  assert.match(text.input[0].content[0].text, /Foart 的专用制作与工具控制助手/);
+  assert.match(text.input[0].content[0].text, /Foart 的制作与工具控制助手/);
   assert.match(text.input[0].content[0].text, /没有附带图片像素或应用执行工具/);
   const vision = companionInput({ requestId: 'vision-only-12', mode: 'chat', message: '看图', history: [], images: [{ role: 'attachment', dataUrl: PNG }] });
   assert.equal(vision.textOnly, false);
@@ -395,7 +395,7 @@ await test('a text-only online turn keeps the Foart-only role, distinct input ca
     }),
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body);
-      assert.match(body.messages[0].content, /Foart 的专用制作与工具控制助手/);
+      assert.match(body.messages[0].content, /Foart 的制作与工具控制助手/);
       assert.match(body.messages[0].content, /没有附带图片像素或应用执行工具/);
       return Response.json({
         id: 'cmpl-text', model: 'chat-fixture',

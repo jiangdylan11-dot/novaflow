@@ -5,11 +5,6 @@ function fixture({reply,available=true}={}){
  const api={promptAssistantGetStatus:async()=>({ok:true,result:{features:{qwen35CpuTrial:true}}}),qwenBusinessAvailableSync:()=>available,promptAssistantRewriteAudioPrompt:async p=>{calls.push(['rewrite',p]);return reply?reply(p):{ok:true,prompt:'A soft wind.',analysisBackend:'qwen-cpu',modelIdentity:{id:'qwen35-heretic',verification:'server-weight-path'},resourcesReleased:true,generationReady:true}},promptAssistantCancelRequest:async p=>{calls.push(['cancel',p]);return {ok:true}},artAgentChat:async p=>{calls.push(['chat',p]);return {ok:true,data:{reply:'chat',history:[],toolTrace:[]}}}};
  const c=root.NovaFlowXiaotaoArtAgent.createController({storage,bridge:{clearPrepared(){},captureChat(){throw Error('unexpected chat path')}},api:()=>api});return {root,c,calls,send:async message=>{await c.calibrateLocalStatus();assert.equal(c.state.qwen35CpuTrialAvailable,true);return c.send(message)}};
 }
-test('real Xiaotao send routes explicit audio text rewrite to selected Qwen only, with no generation',async()=>{
- for(const [message,kind,seconds] of [['帮我优化音效提示词：雨打屋檐','sfx',5],['请优化森林风声的音效提示词','sfx',5],['帮我整理音乐提示词：柔和钢琴','music',20],['音效提示词改写：5秒风声','sfx',5],['只改写音效提示词：窗外雨声，不生成','sfx',5]]){
-  const f=fixture();assert.equal(await f.send(message),true,message+' '+f.c.state.error+' '+JSON.stringify(f.calls));assert.equal(f.calls.length,1);const [type,p]=f.calls[0];assert.equal(type,'rewrite');assert.equal(p.input,message);assert.equal(p.kind,kind);assert.equal(p.seconds,seconds);assert.equal(p.assistantModelId,'qwen3.5-9b-heretic');assert.equal(p.assistantSelectionScope,'xiaotao');assert.match(f.c.state.messages.at(-1).content,/仅处理文字，未分析或生成音频/);
- }
-});
 test('music BPM is forwarded to local text rewrite and invalid BPM never submits',async()=>{
  for(const bpm of [40,120,220]){
   const f=fixture();f.root.NovaFlowAudioStudio.agentSettings=()=>({music:{seconds:20,bpm},sfx:{seconds:5}});

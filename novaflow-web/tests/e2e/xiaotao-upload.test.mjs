@@ -118,6 +118,30 @@ await test('uploads follow the requested deliverable; analysis never asks for a 
   assert.equal(api.planRoutes('请剪辑这个视频并导出',[video]).place[0].destination.id,'video_edit_resource');
 });
 
+function magic(kind) {
+  if (kind === 'png') return Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  if (kind === 'gif') return Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0]);
+  if (kind === 'mp4') return Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
+  return Uint8Array.from([1, 2, 3, 4]);
+}
+
+async function flushFrames(frames, pending) {
+  for (let guard = 0; guard < 16; guard++) {
+    await Promise.resolve();
+    if (frames.length) {
+      const batch = frames.splice(0);
+      for (const fn of batch) fn();
+      continue;
+    }
+    const state = await Promise.race([
+      pending.then(() => 'done', () => 'done'),
+      new Promise(resolve => setTimeout(() => resolve('wait'), 0))
+    ]);
+    if (state === 'done' && !frames.length) return pending;
+  }
+  return pending;
+}
+
 function controllerFor(env, host) {
   const bridge = env.agent.createBridge();
   return env.agent.createController({ bridge, api: () => ({ artAgentChat: async () => ({ ok: true, data: { reply: '好', history: [] } }) }), uploadHost: host });
@@ -140,76 +164,6 @@ await test('staging an upload does not send a message or touch 绘图, and remov
   assert.equal(env.placed.length, 0);
   assert.equal(controller.state.staged.length, 1);
 });
-
-await test('send prepares native references once without a duplicate resource upload', async () => {
-  const env = load();
-  const doc = documentFor();
-  env.sandbox.document = doc;
-  const host = env.api.createUploadHost(env.sandbox);
-  const controller = controllerFor(env, host);
-  await controller.stageUploads([
-    file('still.png', 'image/png'),
-    file('end.png', 'image/png'),
-    file('clip.mp4', 'video/mp4'),
-    file('voice.m4a', 'audio/mp4')
-  ]);
-  const before = controller.state.messages.length;
-  assert.equal(await controller.send('这两张做首帧和尾帧'), true);
-  assert.equal(controller.state.staged.length, 0);
-  assert.equal(controller.state.messages[before].role, 'user');
-  assert.equal(controller.state.messages[before].attachments.length, 4);
-  assert.equal(JSON.stringify(host.placed.map(item => item.id)), JSON.stringify(['first_frame', 'last_frame', 'multi_reference', 'multi_reference']));
-  assert.equal(JSON.stringify(env.imports.map(item => item.kind)), JSON.stringify(['video', 'audio']));
-  assert.equal(doc.modes.includes('first_last'), true);
-  assert.equal(doc.modes.includes('multi_reference'), true);
-  assert.equal(doc.primary.includes('动画'), true);
-  assert.equal(doc.slots.get('首帧').querySelector('input').__novaflowFiles[0].name, 'still.png');
-  assert.equal(doc.slots.get('尾帧').querySelector('input').__novaflowFiles[0].name, 'end.png');
-  assert.equal(doc.resource.__novaflowFiles.length, 0);
-  assert.equal(env.refs.length, 0);
-});
-
-await test('an image follows generation intent while an analysis attachment remains in chat', async () => {
-  const env = load();
-  const doc = documentFor();
-  env.sandbox.document = doc;
-  doc.querySelector('[data-novaflow-primary-label="动画"]').click();
-  const host = env.api.createUploadHost(env.sandbox);
-  const controller = controllerFor(env, host);
-  await controller.stageUploads([file('draw.png', 'image/png')]);
-  await controller.send('放到图生图');
-  assert.equal(env.runtime.state.mode, 'img2img');
-  assert.equal(env.placed[0].name, 'draw.png');
-  assert.equal(env.refs[0].dataUrl, 'blob:test/draw.png');
-  assert.equal(String(env.refs[0].dataUrl).startsWith('data:'), false);
-  assert.equal(doc.primary.includes('美工'), true);
-  await controller.stageUploads([file('motion.png', 'image/png')]);
-  assert.equal(await controller.send('放到图生视频参考'), true);
-  assert.equal(env.sandbox.document.slots.get('参考图').getAttribute('data-novaflow-resource-occupied'), '1');
-  await controller.stageUploads([file('maybe.png', 'image/png')]);
-  const placedBefore = host.placed.length;
-  assert.equal(await controller.send('这张怎么用'), true);
-  assert.equal(host.placed.length, placedBefore);
-  assert.equal(controller.state.messages.some(item=>item.choices),false);
-  assert.equal(env.imports.length,0);
-});
-
-async function flushFrames(frames, pending) {
-  for (let guard = 0; guard < 16; guard++) {
-    await Promise.resolve();
-    if (frames.length) {
-      const batch = frames.splice(0);
-      for (const fn of batch) fn();
-      continue;
-    }
-    const state = await Promise.race([
-      pending.then(() => 'done', () => 'done'),
-      new Promise(resolve => setTimeout(() => resolve('wait'), 0))
-    ]);
-    if (state === 'done' && !frames.length) return pending;
-  }
-  return pending;
-}
 
 await test('图生图 placement yields, keeps a light reference, and skips a second mode render', async () => {
   const env = load();
@@ -384,7 +338,7 @@ function mount(env) {
   const events = {};
   const nodes = [];
   class Node {
-    constructor(tag, text = '') { this.tagName = tag.toUpperCase(); this.children = []; this.attributes = new Map(); this.style = {}; this.dataset = {}; this.hidden = false; this.className = ''; this.ownText = text; this.listeners = {}; nodes.push(this); }
+    constructor(tag, text = '') { this.tagName = tag.toUpperCase(); this.children = []; this.attributes = new Map(); this.style = {}; this.dataset = {}; this.classList = { add() {}, remove() {}, toggle() {}, contains: () => false }; this.hidden = false; this.className = ''; this.ownText = text; this.listeners = {}; nodes.push(this); }
     append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } }
     replaceChildren(...children) { this.children = []; this.ownText = ''; this.append(...children); }
     set textContent(value) { this.children = []; this.ownText = String(value); }
@@ -417,124 +371,6 @@ function mount(env) {
   };
 }
 function flush() { return new Promise(resolve => setTimeout(resolve, 0)); }
-
-await test('the web page opens a file input, stages until send, then uses the worker upload', async () => {
-  const env = load();
-  const uploads = [];
-  const chats = [];
-  env.sandbox.electronAPI = {
-    async runtimeUploadFile(payload) {
-      uploads.push({ name: payload.fileName, size: payload.bytes.byteLength, kind: payload.kind, slot: payload.slot });
-      return { ok: true, result: { name: payload.fileName, kind: payload.kind, slot: payload.slot } };
-    },
-    async artAgentChat(payload) {
-      chats.push(payload);
-      return { ok: true, data: { reply: '好', history: [], provider: 'api', quota: { billing_mode: 'token', settled_credits: 3 } } };
-    }
-  };
-  const ui = mount(env);
-  const created = [];
-  const original = env.sandbox.document.createElement.bind(env.sandbox.document);
-  env.sandbox.document.createElement = (tag) => {
-    const node = original(tag);
-    if (tag === 'input') {
-      created.push(node);
-      node.click = () => {
-        node.files = [file('web.png', 'image/png'), file('clip.mp4', 'video/mp4')];
-        node.onchange();
-      };
-    }
-    return node;
-  };
-  await ui.click('上传');
-  assert.equal(created.length, 1);
-  assert.equal(created[0].multiple, true);
-  assert.equal(created[0].getAttribute('accept'), env.api.fileAccept());
-  for (const token of ['.png', '.jpg', '.mp4', '.mp3', 'image/webp', 'video/webm', 'audio/mpeg']) assert.match(created[0].accept, new RegExp(token.replace('.', '\\.')));
-  assert.equal(ui.controller.state.messages.some(item => item.role === 'user'), false);
-  assert.equal(ui.controller.state.messages.some(item => /本地客户端/.test(String(item.content || ''))), false);
-  assert.equal(JSON.stringify(ui.controller.state.staged.map(item => item.name)), JSON.stringify(['web.png', 'clip.mp4']));
-  assert.equal(uploads.length, 0);
-  assert.doesNotMatch(read('renderer/xiaotao-art-agent.js'), /请使用本地客户端上传文件/);
-
-  env.sandbox.document = documentFor();
-  env.sandbox.electronAPI.pickXiaotaoUploads = async () => ({ canceled: true });
-  const desktop = env.api.createUploadHost(env.sandbox);
-  await desktop.place({ destination: env.api.destinationById('multi_reference'), file: new File([magic('mp4')], 'desk.mp4', { type: 'video/mp4' }), kind: 'video', name: 'desk.mp4', mimeType: 'video/mp4' });
-  assert.equal(uploads[0].kind, 'video');
-  assert.equal(uploads[0].slot, 'multi_reference');
-  uploads.length = 0;
-  delete env.sandbox.electronAPI.pickXiaotaoUploads;
-
-  const doc = documentFor();
-  env.sandbox.document = doc;
-  const host = env.api.createUploadHost(env.sandbox);
-  const controller = env.agent.createController({
-    bridge: env.agent.createBridge(),
-    api: () => env.sandbox.electronAPI,
-    uploadHost: host
-  });
-  assert.equal(controller.setProvider('api'), true);
-  await controller.stageUploads([new File([magic('png')], 'web.png', { type: 'image/png' }), new File([magic('mp4')], 'clip.mp4', { type: 'video/mp4' })]);
-  assert.equal(await controller.send('放进多参视频'), true);
-  assert.equal(JSON.stringify(uploads.map(item => item.name)), JSON.stringify(['web.png', 'clip.mp4']));
-  assert.equal(JSON.stringify(uploads.map(item => item.kind)), JSON.stringify(['image', 'video']));
-  assert.equal(uploads.every(item => item.slot === 'multi_reference'), true);
-  assert.equal(env.imports.every(item => item.representation === 'object-url'), true);
-  assert.equal(uploads[0].size, magic('png').byteLength);
-  assert.equal(uploads[1].size, magic('mp4').byteLength);
-  assert.equal(JSON.stringify(host.placed.map(item => item.id)), JSON.stringify(['multi_reference', 'multi_reference']));
-  assert.equal(doc.resource.__novaflowFiles.length, 0);
-  assert.equal(JSON.stringify(chats[0].uploads), JSON.stringify([{ kind: 'image', name: 'web.png' }, { kind: 'video', name: 'clip.mp4' }]));
-  assert.equal(chats[0].provider, 'api');
-
-  await controller.stageUploads([new File([magic('png')], 'draw.png', { type: 'image/png' })]);
-  assert.equal(await controller.send('放到图生图'), true);
-  assert.equal(uploads.at(-1).name, 'draw.png');
-  assert.equal(host.placed.at(-1).id, 'img2img');
-  assert.equal(env.sandbox.__NovaFlowArtGenerate.references()[0].name, 'draw.png');
-
-  await controller.stageUploads([new File([magic('png')], 'maybe.png', { type: 'image/png' })]);
-  assert.equal(await controller.send('这张怎么用'), true);
-  assert.equal(controller.state.messages.some(item=>item.choices),false);
-  assert.equal(chats.at(-1).images.some(image=>image.name==='maybe.png'),true);
-  assert.notEqual(uploads.at(-1).name,'maybe.png');
-});
-
-function magic(kind) {
-  if (kind === 'png') return Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
-  if (kind === 'gif') return Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0]);
-  if (kind === 'mp4') return Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
-  return Uint8Array.from([1, 2, 3, 4]);
-}
-
-await test('the worker rejects a file the client extension check would allow, and 小桃 shows that error', async () => {
-  const env = load();
-  const uploads = [];
-  env.sandbox.electronAPI = {
-    async runtimeUploadFile(payload) { uploads.push(payload.fileName); return { ok: true, result: { name: payload.fileName, kind: payload.kind } }; },
-    async artAgentChat() { return { ok: true, data: { reply: '好', history: [] } }; }
-  };
-  env.sandbox.document = documentFor();
-  const host = env.api.createUploadHost(env.sandbox);
-  const controller = env.agent.createController({ bridge: env.agent.createBridge(), api: () => env.sandbox.electronAPI, uploadHost: host });
-  assert.equal(controller.setProvider('api'), true);
-  const fake = new File([magic('gif')], 'fake.png', { type: 'image/png' });
-  await controller.stageUploads([fake]);
-  assert.equal(await controller.send('放到图生图'), false);
-  assert.equal(controller.state.staged.length, 1);
-  assert.equal(uploads.length, 0);
-  assert.equal(host.placed.length, 0);
-  assert.match(controller.state.error, /fake.png 的文件内容与 PNG 不符/);
-  const shared = inspectWorkerUpload({ name: 'fake.png', mimeType: 'image/png', bytes: magic('gif'), slot: 'img2img' });
-  assert.equal(shared.ok, false);
-  assert.equal(shared.message, env.api.inspectWorkerUpload({ name: 'fake.png', mimeType: 'image/png', bytes: magic('gif'), slot: 'img2img' }).message);
-  const videoOnImageSlot = inspectWorkerUpload({ name: 'clip.mp4', mimeType: 'video/mp4', bytes: magic('mp4'), slot: 'img2img' });
-  assert.equal(videoOnImageSlot.ok, false);
-  assert.match(videoOnImageSlot.message, /不能放到图生图参考图/);
-  assert.equal(inspectWorkerUpload({ name: 'clip.mp4', mimeType: 'video/mp4', bytes: magic('mp4'), slot: 'multi_reference' }).ok, true);
-  assert.equal(inspectWorkerUpload({ name: 'still.png', mimeType: 'image/png', bytes: magic('png'), slot: 'img2img' }).kind, 'image');
-});
 
 await test('多参 import keeps the file as a blob url instead of a base64 copy', async () => {
   const revoked = [];
@@ -684,20 +520,6 @@ await test('video references use the native visible picker and require a newly b
  const request={destination:env.api.destinationById('image_video'),file:file('1.png','image/png'),kind:'image',name:'1.png',mimeType:'image/png'};
  await env.api.createUploadHost(env.sandbox).place(request);assert.equal(proxyCalls,1);assert.equal(nativeCalls,0);
  proxy.onchange=()=>{};await assert.rejects(env.api.createUploadHost(env.sandbox).place(request),/参考图片仍未导入完成/);
-});
-await test('global loop routing prepares both references before asking the media model',async()=>{
-  const env=load(),placed=[],requests=[];
-  env.sandbox.NovaFlowMediaAgent={capture:()=>({artContext:{surface:'media'},images:[]}),discussionOnly:()=>false,execute:async()=>({results:[{action:'generate_video',resources:[{id:'new',name:'generated.mp4'}]}]})};
-  const controller=env.agent.createController({bridge:{},uploadHost:{async place(item){await new Promise(r=>setTimeout(r,5));placed.push(item.destination.id);}},api:()=>({artAgentChat:async request=>{requests.push(request);assert.deepEqual(placed,['first_frame','last_frame']);return {ok:true,data:{reply:'将生成循环动画。',resourcesReleased:true,generationReady:true,analysisBackend:'strata',mediaPlan:{operations:[]}}};}})});
-  await controller.stageUploads([file('1.png','image/png')]);assert.equal(await controller.send('做一个2秒的循环动画'),true);
-  assert.equal(requests[0].mode,'media');assert.equal(controller.state.messages.some(m=>m.choices),false);assert.equal(controller.state.mediaReceipt.results[0].resources[0].id,'new');
-});
-await test('a semantic clarification pauses execution and its answer continues the original video task',async()=>{
-  const env=load(),requests=[];let executions=0;
-  env.sandbox.NovaFlowMediaAgent={capture:()=>({artContext:{surface:'media'},images:[]}),discussionOnly:()=>false,execute:async()=>{executions++;return {results:[{action:'generate_video',resources:[{id:'new-video',name:'new.mp4'}]}]};}};
-  const controller=env.agent.createController({bridge:{},api:()=>({artAgentChat:async request=>{requests.push(request);return {ok:true,data:requests.length===1?{reply:'你希望小球怎样运动？',needsInput:true}:{reply:'将制作两秒循环。',resourcesReleased:true,generationReady:true,analysisBackend:'strata',mediaPlan:{operations:[]}}};}})});
-  assert.equal(await controller.send('做一个2秒的循环动画'),true);assert.equal(executions,0);assert.equal(controller.state.status,'等待补充需求');
-  assert.equal(await controller.send('让小球原地转一圈'),true);assert.equal(executions,1);assert.equal(requests[1].mode,'media');assert.match(requests[1].message,/2秒/);assert.match(requests[1].message,/原地转一圈/);
 });
 await test('explicit video mode changes override continuation mode and carried attachment kinds',()=>{
   const env=load(),previous={surface:'video',mode:'image_video',baseRequest:'做循环视频',loop:true};

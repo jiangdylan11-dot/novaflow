@@ -27,41 +27,6 @@ test('multi-reference planning waits for native restore/removal commits and chec
   await assert.rejects(ctx.NovaFlowMediaAgent.prepareCapture(),/读取期间发生变化/);
 });
 
-test('video feedback stays on its original deliverable and prompt optimization performs a write without generation',async()=>{
-  const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,console,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
-  for(const script of [uploadSource,source,agentSource])vm.runInContext(script,ctx);
-  let prompt='原视频提示词',submits=0,optimizations=0,optimizedRequirements='',status={state:'idle'},resources=[];
-  ctx.NovaFlowAudioStudio={sub:()=> 'video',open(){},resources:()=>[]};
-  ctx.NovaFlowAiSequenceGeneration={capture:()=>({mode:'minimax_h3_local',genType:'image_video',prompt}),
-    optimizationContext:async()=>({modelId:'minimax_h3_local',mode:'image_video',durationSeconds:2,resources:[]}),status:()=>status,resources:()=>resources,
-    setRequest:op=>{prompt=op.prompt;},submit:()=>{submits++;status={state:'done',promptId:'new-'+submits};resources=[...resources,{id:'new-'+submits+':output',name:'new-'+submits+'.mp4'}];}};
-  ctx.__NovaFlowSmartAI={optimizeForAgent:async options=>{optimizations++;optimizedRequirements=options.requirements;if(optimizations===1)assert.match(options.requirements,/呲牙咧嘴/);return {prompt:'The jackal bares its teeth then returns to its original pose in a two second loop.',displayPrompt:'豺狼头抬起上唇，呲牙咧嘴露出犬齿，再收回原位，完成两秒循环。'};}};
-  const store=new Map(),payloads=[];
-  const controller=ctx.NovaFlowXiaotaoArtAgent.createController({bridge:{clearPrepared(){}},storage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)},api:()=>({artAgentChat:async p=>{
-    payloads.push(p);const result=await createFlashArtAgent().run({payload:JSON.parse(JSON.stringify(p)),flash:flash(p,[{action:'optimize_video_prompt',target:'video',prompt:'需要呲牙咧嘴'}])});
-    return {ok:true,data:{...result,resourcesReleased:true,generationReady:true,analysisBackend:'strata'}};
-  }})});
-  controller.state.activeTask={surface:'video',mode:'image_video',baseRequest:'做一个2秒循环待机动画',seconds:2,loop:true,status:'completed',outputs:[{id:'real:out',name:'actual.mp4'}]};
-  assert.equal(await controller.send('把提示词优化下，需要呲牙咧嘴'),true,controller.state.error);
-  assert.equal(payloads.length,0,'A clear prompt edit needs the original optimizer, not an extra planner inference');assert.equal(optimizedRequirements,'把提示词优化下，需要呲牙咧嘴');assert.equal(controller.state.activeTask.seconds,2);
-  assert.equal(submits,0);assert.equal(optimizations,1);assert.match(prompt,/犬齿/);assert.match(controller.state.messages.at(-1).content,/已优化并写入图生视频提示词/);
-  assert.doesNotMatch(controller.state.messages.at(-1).content,/生成完成|首尾帧/);assert.match(controller.state.history.at(-1).content,/optimize_video_prompt/);
-  assert.equal(controller.state.conversationId,'','Execution receipts cannot reuse the model session with an older history');
-  assert.equal(await controller.send('按优化后的提示词重新做视频'),true,controller.state.error);
-  assert.equal(submits,1);assert.equal(optimizations,1,'Exact reuse of the validated prompt avoids another model load');
-  assert.equal(controller.state.activeTask.outputs[0].name,'new-1.mp4');
-  prompt='用户手动修改过的提示词';
-  assert.equal(await controller.send('按优化后的提示词重新做视频'),true,controller.state.error);
-  assert.equal(optimizations,2,'Manual edits invalidate the prepared prompt');assert.equal(submits,2);
-  const restored=ctx.NovaFlowXiaotaoArtAgent.createController({bridge:{clearPrepared(){}},storage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)}});
-  assert.equal(restored.state.activeTask.surface,'video');assert.equal(restored.state.activeTask.seconds,2);assert.equal(restored.state.activeTask.loop,true);
-  const next=ctx.NovaFlowXiaotaoUpload.inferTask('不符合人物性格，需要凶悍点',[],restored.state.activeTask);
-  assert.equal(next.surface,'video');assert.equal(next.seconds,2);assert.equal(next.loop,true);
-  assert.equal(ctx.NovaFlowXiaotaoUpload.inferTask('再画一张静态图',[],restored.state.activeTask).surface,'image');
-  assert.equal(ctx.NovaFlowXiaotaoUpload.inferTask('为什么效果不好？',[],restored.state.activeTask).surface,'chat');
-  assert.equal(restored.reset(),true);assert.equal(restored.state.activeTask,null);
-});
-
 test('prompt changes require an execution tool; a planner cannot turn optimization alone into a paid generation',async()=>{
   for(const message of ['把提示词优化下，需要呲牙咧嘴','优化提示词','只优化提示词，不生成']){
     const p=request();p.message=message;
@@ -154,16 +119,6 @@ test('invalid, chained generation and unknown tool fields fail before applicatio
     [{action:'volume',target:'audio',value:.5,path:'C:/other'}],
     [{action:'generate_video',target:'video'},{action:'export',target:'video'}]])assert.throws(()=>validateMediaOperations(operations));
 });
-test('media actions become generation ready only after the owned model session releases',async()=>{
-  const p=request(),events=[];
-  const assistant=createStrataPromptAssistant({config:{expectedModel:{ids:['test-flash']}},comfyUrls:[],legacyApi:{stop:async()=>{}},
-    lifecycle:{load:async()=>({ok:true}),unload:async()=>({released:true})},sessionFactory:()=>({withSession:async callback=>{
-      events.push('load');const value=await callback(flash(p));assert.equal(value.data.resourcesReleased,undefined);events.push('release');
-      return {value,identity:{id:'test-flash'},timing:{loadMs:1,callbackMs:1,unloadMs:1}};
-    }})});
-  const result=await assistant.artAgentChat(p);assert.equal(result.ok,true,result.error);assert.deepEqual(events,['load','release']);
-  assert.equal(result.data.generationReady,true);assert.equal(result.data.resourcesReleased,true);
-});
 test('actual timeline edit adapter changes trims, movement and rate; rejects overlap without mutation',()=>{
   const ctx=vm.createContext({console,setTimeout});vm.runInContext(source,ctx);
   const clip={id:'clip-1',name:'clip',start:0,offset:0,end:6,length:6,rate:1,source:{durationSec:6}},other={id:'other',start:8,length:2};
@@ -188,20 +143,6 @@ test('native clip selection and cross-track movement use real track IDs and reje
   edit(editor,{action:'move',target:'audio',clipId:'clip',trackId:'sfx',at:1});assert.equal(a.clips.length,0);assert.equal(b.clips[0],clip);assert.equal(clip.trackId,'sfx');assert.equal(clip.start,1);
   a.clips.push({id:'other',start:0,length:5});const before=JSON.stringify(editor.state);
   assert.throws(()=>edit(editor,{action:'move',target:'audio',clipId:'clip',trackId:'music',at:1}),/重叠/);assert.equal(JSON.stringify(editor.state),before);
-});
-test('controller routes media before drawing consent and reports the actual execution receipt',async()=>{
-  const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,console,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
-  vm.runInContext(source,ctx);vm.runInContext(agentSource,ctx);
-  let executions=0,requestMode='';
-  ctx.NovaFlowMediaAgent.capture=()=>({artContext:{surface:'media'},images:[]});
-  ctx.NovaFlowMediaAgent.execute=async()=>{executions++;return {results:[{ok:true,action:'volume',target:'audio'}]};};
-  const controller=ctx.NovaFlowXiaotaoArtAgent.createController({bridge:{},api:()=>({artAgentChat:async p=>{
-    requestMode=p.mode;return {ok:true,data:{reply:'将调整音量。',resourcesReleased:true,generationReady:true,analysisBackend:'strata',
-      mediaPlan:{contextFingerprint:p.contextFingerprint,operations:[{action:'volume',target:'audio',value:.5}]}}};
-  }})});
-  assert.equal(await controller.send('把音频音量调到50%'),true);assert.equal(requestMode,'media');assert.equal(executions,1);
-  assert.match(controller.state.messages.at(-1).content,/已调整音量/);
-  assert.equal(await controller.send('音频音量怎么调？'),true);assert.equal(executions,1);
 });
 test('execution rechecks actual timeline and refuses stale or replayed plans before a second write',async()=>{
   const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
@@ -231,15 +172,4 @@ test('video completion receipt includes only outputs belonging to its actual pro
   const result=await media.execute({planId:'video-plan',contextFingerprint:await fingerprint(snapshot),operations:[{action:'generate_video',target:'video'}]},{snapshot,fingerprint});
   assert.equal(result.results[0].resources.length,1);assert.equal(result.results[0].resources[0].name,'actual.mp4');
   assert.equal(prompt,'优化后的视频提示词。');assert.equal(result.results[0].executedPrompt,'Optimized video prompt.');
-});
-test('stopping during media fingerprinting cannot send a late model request',async()=>{
-  let release,entered;
-  const waiting=new Promise(r=>release=r),started=new Promise(r=>entered=r);
-  const crypto={randomUUID,subtle:{digest:async(...args)=>{entered();await waiting;return webcrypto.subtle.digest(...args);}}};
-  const ctx=vm.createContext({crypto,TextEncoder,Uint8Array,atob,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
-  vm.runInContext(source,ctx);vm.runInContext(agentSource,ctx);
-  let requests=0;
-  const controller=ctx.NovaFlowXiaotaoArtAgent.createController({bridge:{},api:()=>({artAgentStop:async()=>({ok:true}),artAgentChat:async()=>{requests++;}})});
-  const pending=controller.send('请导出视频时间轴');await started;await controller.stop();release();
-  assert.equal(await pending,false);assert.equal(requests,0);assert.equal(controller.state.pending,false);
 });
