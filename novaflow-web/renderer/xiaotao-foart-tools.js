@@ -839,7 +839,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       if(nativeKey)await root.NovaFlowProductionTools[nativeKey].addFiles(files);
       else if(viewerImport)await el.ownerDocument.defaultView.NovaFlowSpineViewer.importFiles(files);
       else if(el.matches('[data-template-input]'))await root.NovaFlowAifxMvp.loadSourceFiles(files);
-      else if(el.matches('[data-style-input]'))await root.NovaFlowAifxMvp.loadStyleBlob(files[0],files[0].name);
+      else if(el.matches('[data-style-input]'))await root.NovaFlowAifxMvp.loadStyleFiles(files);
       else{const transfer=new root.DataTransfer();files.forEach(file=>transfer.items.add(file));el.files=transfer.files;el.dispatchEvent(new root.Event('change',{bubbles:true}));}
       if(compressionInput){
         let ready=false;

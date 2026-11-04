@@ -49,6 +49,8 @@
   const PREVIEW_FPS = 16
   const RESTYLE = () => window.NovaFlowAifxRestyleWorkflow || null
   const CLIENT = () => window.NovaFlowAifxRestyleClient || null
+  // As many look references as the workflow takes (aifx-restyle.workflow.js MAX_REFERENCE_IMAGES).
+  const MAX_REFERENCES = 4
 
   const UI_TRACE_FILE = 'particle-editor-desktop/dist/win-unpacked/resources/app/renderer/aifx-repaint-runtime.js'
   const UI_TRACE_SEEN = new Set()
@@ -85,9 +87,10 @@
     // workflow refers to, and the decoded frames the preview scrubs through.
     source: null,
     sourceFrames: [],
-    // The look reference. H3 reads material, colour and surface off it, which
-    // is why the slot is wired rather than decorative.
-    reference: null,
+    // The look references, in the order they came in (up to MAX_REFERENCES). H3 reads material,
+    // colour and surface off them, which is why the slot is wired rather than decorative; several
+    // are blended into one material.
+    references: [],
     // Nothing is picked until the artist picks it: the card under 风格库 says
     // so, and 生成 waits for a style or a reference image.
     attribute: '',
@@ -761,6 +764,17 @@
       .aifx-material-engine { display: grid; gap: 8px; margin-top: 10px; }
       .aifx-section-body .nf-upload-dropzone.aifx-reference-zone { min-height: 72px; padding: 10px 12px; }
       .aifx-reference-zone .nf-upload-dropzone__icon { font-size: 18px; }
+      #${APP_ID} .aifx-reference-thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+      #${APP_ID} .aifx-reference-thumb { position: relative; width: 56px; height: 56px; flex: none; }
+      #${APP_ID} .nf-upload-dropzone__preview .aifx-reference-thumb img { width: 56px; height: 56px; max-height: 56px; object-fit: cover; border-radius: 6px; }
+      #${APP_ID} .aifx-reference-remove {
+        position: absolute; top: 2px; right: 2px; z-index: 2;
+        width: 18px !important; height: 18px !important; min-width: 18px !important; min-height: 18px !important;
+        max-width: 18px !important; max-height: 18px !important; padding: 0 !important; border: 0; border-radius: 4px !important;
+        display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1;
+        background: rgba(0, 0, 0, 0.62); color: #ffffff; cursor: pointer;
+      }
+      #${APP_ID} .aifx-reference-remove:hover { color: #ff6b6b; }
       .aifx-material-engine-label { font-size: 12px; color: rgba(230, 230, 230, 0.72); }
       /* The picker and its look come from xiaotao-art-agent.css; only its place in this panel is set here. */
       .aifx-material-engine #aifx-material-model.aifx-material-model { position: relative; }
@@ -1370,11 +1384,11 @@
                   <div class="nf-upload-dropzone__preview" data-style-preview></div>
                   <span class="nf-upload-dropzone__icon" data-style-empty>+</span>
                   <div class="nf-upload-dropzone__title">参考图</div>
-                  <div class="nf-upload-dropzone__hint">可选。材质改从图里来，风格让位</div>
+                  <div class="nf-upload-dropzone__hint">可选，最多 4 张。材质改从图里来，多张混成一种，风格让位</div>
                   <div class="nf-upload-dropzone__meta" data-style-meta></div>
                 </div>
                 <div class="aifx-row" data-style-clear-row hidden>
-                  <button class="aifx-button" data-action="clear-style" type="button" style="flex:1">移除参考图</button>
+                  <button class="aifx-button" data-action="clear-style" type="button" style="flex:1">移除全部参考图</button>
                 </div>
               </div>
             </div>
@@ -1432,7 +1446,7 @@
           </div>
         </div>
         <input class="aifx-hidden" data-template-input type="file" multiple accept="video/mp4,video/webm,image/gif,image/apng,image/png">
-        <input class="aifx-hidden" data-style-input type="file" accept="image/*">
+        <input class="aifx-hidden" data-style-input type="file" multiple accept="image/*">
       `
       document.body.appendChild(root)
       wireUi(root)
@@ -1692,6 +1706,45 @@
     if (entry) host.appendChild(build(entry))
   }
 
+  // The reference box shows every picture in it, each with its own ×. Rebuilt only when the set
+  // of pictures changes.
+  const syncReferenceThumbs = () => {
+    const zone = state.refs.styleZone
+    const host = state.refs.stylePreview
+    if (!zone || !host) return
+    const filled = state.references.length ? '1' : '0'
+    if (zone.getAttribute('data-filled') !== filled) zone.setAttribute('data-filled', filled)
+    const key = state.references.map((entry) => entry.objectUrl).join('|')
+    if (host.getAttribute('data-preview-src') === key) return
+    host.setAttribute('data-preview-src', key)
+    host.innerHTML = ''
+    if (!state.references.length) return
+    const row = document.createElement('div')
+    row.className = 'aifx-reference-thumbs'
+    state.references.forEach((entry, index) => {
+      const thumb = document.createElement('div')
+      thumb.className = 'aifx-reference-thumb'
+      const image = document.createElement('img')
+      image.alt = entry.fileName
+      image.src = entry.objectUrl
+      thumb.appendChild(image)
+      const remove = document.createElement('button')
+      remove.type = 'button'
+      remove.className = 'aifx-reference-remove'
+      remove.textContent = '×'
+      remove.title = '移除参考图 ' + (index + 1)
+      remove.setAttribute('aria-label', '移除参考图 ' + (index + 1))
+      remove.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        removeReference(entry)
+      })
+      thumb.appendChild(remove)
+      row.appendChild(thumb)
+    })
+    host.appendChild(row)
+  }
+
   const revokeSource = (entry) => {
     if (entry && entry.objectUrl) {
       try { URL.revokeObjectURL(entry.objectUrl) } catch (_) {}
@@ -1844,7 +1897,8 @@
   const onlineFailureText = '在线材质识别失败，请稍后重试'
   const localFailureText = '本地材质识别不可用，请打开本地算力节点后重试'
   const failureText = (modelId) => isLocalMaterialModel(modelId) ? localFailureText : onlineFailureText
-  let materialQuote = null
+  // The live estimate of each online read under way, by request; several pictures read at once.
+  const materialQuotes = new Map()
   let materialPricingPending = false
   const refreshMaterialPricing = () => {
     const controller = xiaotaoController()
@@ -1861,21 +1915,27 @@
     if (isLocalMaterialModel(materialModelId)) return ''
     const controller = xiaotaoController()
     if (!controller) return '在线价格暂不可用'
-    if (materialQuote && materialQuote.modelId === materialModelId && state.reference?.materialState === 'reading') {
-      return '本次预估 ' + formatCredits(materialQuote.credits) + ' 积分，按实际用量结算'
+    const live = [...materialQuotes.values()].filter((quote) => quote.modelId === materialModelId)
+    if (live.length && state.references.some((entry) => entry.materialState === 'reading')) {
+      return '本次预估 ' + formatCredits(live.reduce((sum, quote) => sum + Number(quote.credits || 0), 0)) + ' 积分，按实际用量结算'
     }
     if (!controller.pricingPolicyKey()) { refreshMaterialPricing(); return '正在获取在线价格…' }
     if (!controller.styleReadAvailable(materialModelId)) return '该模型暂未开通图片材质识别，请换一个模型'
-    const image = state.reference?.image
-    const scale = image ? Math.min(1, 768 / Math.max(1, image.naturalWidth, image.naturalHeight)) : 1
-    const quote = controller.operationEstimate({
-      modelId: materialModelId,
-      promptChars: MATERIAL_PROMPT_CHARS,
-      outputTokens: MATERIAL_OUTPUT_TOKENS,
-      images: [image ? { width: Math.round(image.naturalWidth * scale), height: Math.round(image.naturalHeight * scale) } : {}],
-    })
-    if (!quote || quote.credits == null) return '在线价格暂不可用'
-    return '本次预估 ' + formatCredits(quote.credits) + ' 积分，按实际用量结算'
+    // Each picture is its own read, so the estimate is one read per picture.
+    const images = state.references.length ? state.references.map((entry) => entry.image) : [null]
+    let credits = 0
+    for (const image of images) {
+      const scale = image ? Math.min(1, 768 / Math.max(1, image.naturalWidth, image.naturalHeight)) : 1
+      const quote = controller.operationEstimate({
+        modelId: materialModelId,
+        promptChars: MATERIAL_PROMPT_CHARS,
+        outputTokens: MATERIAL_OUTPUT_TOKENS,
+        images: [image ? { width: Math.round(image.naturalWidth * scale), height: Math.round(image.naturalHeight * scale) } : {}],
+      })
+      if (!quote || quote.credits == null) return '在线价格暂不可用'
+      credits += Number(quote.credits)
+    }
+    return '本次预估 ' + formatCredits(credits) + ' 积分，按实际用量结算'
   }
   const dropMaterial = (blob) => { referenceMaterials.delete(blob); materialSources.delete(blob); materialMeta.delete(blob) }
   const clearMaterialCache = () => {
@@ -1933,7 +1993,7 @@
       confirmImageUpload: async () => isCurrent(),
       onPricingQuote: (quote) => {
         if (quote?.requestId !== requestId) return
-        materialQuote = { modelId, credits: quote.estimatedCredits }
+        materialQuotes.set(requestId, { modelId, credits: quote.estimatedCredits })
         refreshUi()
       },
       confirmPricingQuote: async () => isCurrent(),
@@ -1958,7 +2018,7 @@
       return { ok: false, error: onlineFailureText }
     } finally {
       clearTimeout(timer)
-      if (materialQuote?.modelId === modelId) materialQuote = null
+      materialQuotes.delete(requestId)
     }
   }
   // No automatic switch: the local model never reads online, an online model never reads locally.
@@ -2044,23 +2104,15 @@
     }
     materialModelId = next
     materialModelEpoch += 1
-    materialQuote = null
+    materialQuotes.clear()
     for (const listener of materialModelListeners) { try { listener() } catch { /* listener gone */ } }
     if (!isLocalMaterialModel(next)) refreshMaterialPricing()
     clearMaterialCache()
-    const reference = state.reference
-    if (reference?.blob && reference.image) {
-      reference.material = null
-      reference.materialQuota = null
-      reference.materialError = ''
-      reference.materialState = 'reading'
-      refreshUi()
-      readReferenceMaterial(reference.blob, reference.image).then((read) => {
-        if (state.reference !== reference || materialModelId !== next) return
-        applyMaterialOutcome(reference, read)
-        if (state.reference === reference) refreshUi()
-      })
-      return true
+    for (const entry of state.references) {
+      entry.material = null
+      entry.materialQuota = null
+      entry.materialError = ''
+      readEntryMaterial(entry, () => materialModelId === next)
     }
     refreshUi()
     return true
@@ -2114,22 +2166,41 @@
     return supplementTranslations.get(supplement)
   }
 
+  // Reads one reference's material and puts the outcome on it, while it is still loaded.
+  const readEntryMaterial = (entry, stillWanted = () => true) => {
+    entry.materialState = 'reading'
+    const read = readReferenceMaterial(entry.blob, entry.image)
+    read.then((material) => {
+      if (!state.references.includes(entry) || !stillWanted()) return
+      applyMaterialOutcome(entry, material)
+      refreshUi()
+    })
+    return read
+  }
+
+  // Each picture added joins the others; the same picture twice is kept once.
   const adoptReference = (blob, fileName) => new Promise((resolve, reject) => {
+    if (state.references.some((entry) => entry.blob === blob)) { resolve(); return }
+    if (state.references.length >= MAX_REFERENCES) {
+      reject(new Error('AI 特效：参考图最多 ' + MAX_REFERENCES + ' 张，先移除一张再加'))
+      return
+    }
     const objectUrl = URL.createObjectURL(blob)
     const image = new Image()
     image.onload = () => {
-      if (state.reference) revokeSource(state.reference)
+      if (state.references.length >= MAX_REFERENCES) {
+        URL.revokeObjectURL(objectUrl)
+        reject(new Error('AI 特效：参考图最多 ' + MAX_REFERENCES + ' 张，先移除一张再加'))
+        return
+      }
       const entry = {
         blob, fileName: String(fileName || 'reference.png'), objectUrl, image, uploadedName: '',
         accent: referenceColour(image).accent,
         material: null,
         materialState: 'reading',
       }
-      state.reference = entry
-      readReferenceMaterial(blob, image).then((material) => {
-        applyMaterialOutcome(entry, material)
-        if (state.reference === entry) refreshUi()
-      })
+      state.references.push(entry)
+      readEntryMaterial(entry)
       refreshUi()
       drawPreview()
       resolve()
@@ -2141,22 +2212,39 @@
     image.src = objectUrl
   })
 
-  // A reference image now decides the material, so it needs its own way out:
-  // until this existed the only way to drop one was 清空, which took the
-  // template with it.
-  const clearReference = () => {
-    revokeSource(state.reference)
-    state.reference = null
+  const adoptReferences = async (files) => {
+    const images = Array.from(files || []).filter((file) => /image\//.test(file.type) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name || ''))
+    if (!images.length) throw new Error('AI 特效：请选择图片')
+    const room = MAX_REFERENCES - state.references.length
+    if (room <= 0) throw new Error('AI 特效：参考图最多 ' + MAX_REFERENCES + ' 张，先移除一张再加')
+    for (const file of images.slice(0, room)) await adoptReference(file, file.name)
+    if (images.length > room) throw new Error('AI 特效：参考图最多 ' + MAX_REFERENCES + ' 张，多出的 ' + (images.length - room) + ' 张没有加入')
+  }
+
+  // A reference image now decides the material, so each one needs its own way out (the × on its
+  // thumbnail), and 移除全部参考图 drops them all without taking the template with them.
+  const removeReference = (entry) => {
+    const index = state.references.indexOf(entry)
+    if (index < 0) return
+    revokeSource(entry)
+    state.references.splice(index, 1)
+    setStatusFromState()
+    refreshUi()
+  }
+
+  const clearReferences = () => {
+    state.references.forEach(revokeSource)
+    state.references = []
     setStatusFromState()
     refreshUi()
   }
 
   const clearTemplate = () => {
     revokeSource(state.source)
-    revokeSource(state.reference)
+    state.references.forEach(revokeSource)
     state.source = null
     state.sourceFrames = []
-    state.reference = null
+    state.references = []
     state.shapeArchetype = ''
     state.shapeAuto = ''
     state.lifecycle = ''
@@ -2187,7 +2275,7 @@
     // greyed-out preset still choose the denoise would be a hidden setting -
     // 雷电 and 冰霜 would give different results from the same picture. The
     // reference tests were all run at the plain default.
-    const attribute = state.reference ? '' : state.attribute
+    const attribute = state.references.length ? '' : state.attribute
     return restyle.defaultStrengthFor(attribute, state.lifecycle,
       Boolean(String(state.supplement || '').trim()))
   }
@@ -2212,7 +2300,7 @@
     // Clearing the style and writing 提示词补充 instead is the prompt-only
     // case: the words become the material description. What is not allowed is
     // having neither.
-    if (!state.reference && !restyle.getPreset(state.attribute) && !String(state.supplement || '').trim()) {
+    if (!state.references.length && !restyle.getPreset(state.attribute) && !String(state.supplement || '').trim()) {
       throw new Error('AI 特效：选个风格，或放参考图，或在提示词补充里写材质')
     }
     state.isGenerating = true
@@ -2245,26 +2333,23 @@
     try {
       panelModel = String(model || '')
       // Before the runtime: the read runs on the AI 助手's own model and hands the GPU back after.
-      let referenceMaterial = null
-      if (state.reference) {
-        const reference = state.reference
-        setStatus('识别参考图材质', reference.fileName)
+      // The references this run uses, fixed now: adding or removing one mid-run waits for the next.
+      const references = state.references.slice()
+      let referenceReads = null
+      if (references.length) {
+        setStatus('识别参考图材质', references.map((entry) => entry.fileName).join('、'))
         // A read that failed when the picture came in is asked again here; the card follows.
-        if (reference.materialState === 'failed') { reference.materialState = 'reading'; refreshUi() }
-        const read = readReferenceMaterial(reference.blob, reference.image)
-        read.then((material) => {
-          if (state.reference !== reference) return
-          applyMaterialOutcome(reference, material)
-          refreshUi()
-        })
-        referenceMaterial = await stoppable(read)
+        const reads = await stoppable(Promise.all(references.map((entry) => readEntryMaterial(entry))))
+        refreshUi()
+        referenceReads = reads.every(Boolean) ? reads : null
       }
-      // A reference read out as words goes through the style path, so its picture is not sent at all.
-      const referencePicture = Boolean(state.reference) && !referenceMaterial
+      // Read out as words, the references go through the style path and their pictures are not sent
+      // at all. That needs every one read: one unread picture sends them all as pictures instead.
+      const referencePicture = references.length > 0 && !referenceReads
       // 提示词补充 wins where it conflicts: its spread and colour asks replace the defaults (see
       // splitSupplement), and only what is left is translated and said. With no style and no
       // picture the words are the material itself and go through whole.
-      const promptOnly = !state.reference && !restyle.getPreset(state.attribute)
+      const promptOnly = !references.length && !restyle.getPreset(state.attribute)
       const controls = promptOnly ? null : restyle.splitSupplement(state.supplement)
       const toSay = controls ? controls.additions : String(state.supplement || '').trim()
       let supplementEnglish = toSay
@@ -2277,10 +2362,18 @@
       const recolour = controls && controls.colour
       const overrides = { shape: currentShape(), spread: controls ? controls.spread : '', colour: recolour }
       const preset = restyle.getPreset(state.attribute)
-      const attribute = referenceMaterial
-        ? { id: 'reference', ...referenceMaterial, material: restyle.referenceMaterial(referenceMaterial, overrides), accent: (recolour && recolour.tint) || state.reference.accent }
+      // The first picture's colour paints the init (see referenceColour), unless the words recolour it.
+      const accent = references.length ? (recolour && recolour.tint) || references[0].accent : undefined
+      const attribute = referenceReads
+        ? {
+            id: 'reference',
+            name: referenceReads.map((read) => read.name).filter(Boolean).join(' AND ') || 'REFERENCE',
+            breakup: referenceReads.map((read) => read.breakup).filter(Boolean).join(' '),
+            material: restyle.referenceMaterial(referenceReads, overrides),
+            accent,
+          }
         : preset && (overrides.spread || recolour) ? restyle.presetWithOverrides(preset, overrides) : state.attribute
-      const tint = state.reference ? ((recolour && recolour.tint) || state.reference.accent) : undefined
+      const tint = accent
       setStatus('准备运行时', '正在准备生成环境。')
       await stoppable(client.ensureRuntime({ reason: 'aifx-restyle' }))
 
@@ -2291,11 +2384,13 @@
         setStatus('上传素材', state.source.fileName)
         state.source.uploadedName = await stoppable(client.uploadFile(state.source.blob, state.source.fileName))
         if (referencePicture) {
-          setStatus('上传参考图', state.reference.fileName)
-          state.reference.uploadedName = await stoppable(client.uploadFile(state.reference.blob, state.reference.fileName))
+          for (const entry of references) {
+            setStatus('上传参考图', entry.fileName)
+            entry.uploadedName = await stoppable(client.uploadFile(entry.blob, entry.fileName))
+          }
         }
       }
-      if (web || !state.source.uploadedName || (referencePicture && !state.reference.uploadedName)) await uploadInputs()
+      if (web || !state.source.uploadedName || (referencePicture && references.some((entry) => !entry.uploadedName))) await uploadInputs()
 
       const label = restyle.getPreset(state.attribute)?.label || ''
       const total = Math.max(1, Math.min(4, Math.round(state.candidateCount) || 1))
@@ -2314,8 +2409,7 @@
           : (state.lockedSeed + index) >>> 0
         const workflow = restyle.buildWorkflow({
           sourceVideo: state.source.uploadedName,
-          referenceImage: referencePicture ? state.reference.uploadedName : '',
-          // The picture's own colour paints the init (see referenceColour), unless the words recolour it.
+          referenceImages: referencePicture ? references.map((entry) => entry.uploadedName) : [],
           tint,
           attribute,
           supplement: state.supplement,
@@ -2407,14 +2501,14 @@
     refreshUi()
   }
 
-  // What the panel was set to when a candidate was made. The reference image
-  // travels as its blob: adopting another one revokes the old object URL, so
-  // the entry itself cannot be kept.
+  // What the panel was set to when a candidate was made. The reference images
+  // travel as their blobs: removing one revokes its object URL, so the entries
+  // themselves cannot be kept.
   const snapshotRecipe = () => ({
     attribute: state.attribute,
     supplement: state.supplement,
     strength: state.strength,
-    reference: state.reference ? { blob: state.reference.blob, fileName: state.reference.fileName } : null,
+    references: state.references.map((entry) => ({ blob: entry.blob, fileName: entry.fileName })),
     shapeArchetype: state.shapeArchetype,
     shapeAuto: state.shapeAuto,
     lifecycle: state.lifecycle,
@@ -2430,10 +2524,11 @@
     state.shapeAuto = recipe.shapeAuto
     state.lifecycle = recipe.lifecycle
     state.lifecycleAuto = recipe.lifecycleAuto
-    if (!recipe.reference) {
-      if (state.reference) clearReference()
-    } else if (!state.reference || state.reference.blob !== recipe.reference.blob) {
-      await adoptReference(recipe.reference.blob, recipe.reference.fileName)
+    const wanted = recipe.references || []
+    const same = wanted.length === state.references.length && wanted.every((item, index) => item.blob === state.references[index].blob)
+    if (!same) {
+      clearReferences()
+      for (const item of wanted) await adoptReference(item.blob, item.fileName)
     }
   }
 
@@ -2448,8 +2543,9 @@
     const template = saved ? saved.label
       : String(state.source && state.source.fileName || 'template').replace(/\.[^.]+$/, '')
     const recipe = candidate.recipe || {}
-    const preset = restyle && !recipe.reference ? restyle.getPreset(recipe.attribute) : null
-    const material = recipe.reference ? '参考图'
+    const referenceCount = (recipe.references || []).length
+    const preset = restyle && !referenceCount ? restyle.getPreset(recipe.attribute) : null
+    const material = referenceCount ? '参考图' + (referenceCount > 1 ? referenceCount + '张' : '')
       : preset ? preset.label
         : String(recipe.supplement || '').trim().slice(0, 20) || '自定义'
     const clean = (value) => String(value || '').replace(/[\\/<>:"|?*\u0000-\u001f\s·]+/g, '_').replace(/^_+|_+$/g, '')
@@ -3153,12 +3249,12 @@
     const restyle = RESTYLE()
     if (!host) return
     const preset = restyle ? restyle.getPreset(state.attribute) : null
-    const key = (preset ? preset.id : '') + '|' + (state.reference ? 'ref:' + state.reference.materialState : '')
+    const key = (preset ? preset.id : '') + '|' + state.references.map((entry) => 'ref:' + entry.materialState).join(',')
     if (host.getAttribute('data-rendered') === key) return
     host.setAttribute('data-rendered', key)
     host.innerHTML = ''
     const card = document.createElement('div')
-    card.className = 'aifx-current-card' + (state.reference ? ' is-quiet' : '')
+    card.className = 'aifx-current-card' + (state.references.length ? ' is-quiet' : '')
     if (preset) {
       const video = document.createElement('video')
       video.muted = true
@@ -3170,7 +3266,7 @@
       const text = document.createElement('div')
       text.className = 'aifx-current-name'
       text.textContent = preset.label
-      if (state.reference) {
+      if (state.references.length) {
         const note = document.createElement('div')
         note.className = 'aifx-current-note'
         note.textContent = '已让位给参考图'
@@ -3191,10 +3287,12 @@
     } else {
       const empty = document.createElement('div')
       empty.className = 'aifx-current-empty'
-      empty.textContent = !state.reference ? '未选风格'
-        : state.reference.materialState === 'reading' ? '正在识别参考图材质…'
-          : state.reference.materialState === 'failed' ? (state.reference.materialError || '材质未识别，按参考图直接生成')
-            : '材质来自参考图'
+      const entries = state.references
+      const failed = entries.find((entry) => entry.materialState === 'failed')
+      empty.textContent = !entries.length ? '未选风格'
+        : entries.some((entry) => entry.materialState === 'reading') ? '正在识别参考图材质…'
+          : failed ? (failed.materialError || '材质未识别，按参考图直接生成')
+            : entries.length > 1 ? '材质来自 ' + entries.length + ' 张参考图，混成一种' : '材质来自参考图'
       card.appendChild(empty)
     }
     host.appendChild(card)
@@ -3414,9 +3512,9 @@
       if (files.length) await adoptTemplateFiles(files)
     }))
     refs.styleInput?.addEventListener('change', guard(async () => {
-      const file = firstFileOf(refs.styleInput.files, IMAGE_TYPES)
-      if (file) await adoptReference(file, file.name)
+      const files = Array.from(refs.styleInput.files || [])
       refs.styleInput.value = ''
+      if (files.length) await adoptReferences(files)
     }))
 
     refs.openTemplate.addEventListener('click', guard(() => { openLibrary('template') }))
@@ -3486,7 +3584,7 @@
       if (!state.isGenerating) clearTemplate()
     })
     root.querySelector('[data-action="clear-style"]')
-      .addEventListener('click', guard(() => { clearReference() }))
+      .addEventListener('click', guard(() => { clearReferences() }))
     root.querySelector('[data-action="generate"]')
       .addEventListener('click', guard(() => runGenerate()))
     refs.playButton?.addEventListener('click', guard(() => togglePlayback()))
@@ -3506,9 +3604,8 @@
           await adoptTemplateFiles(event.dataTransfer?.files)
           return
         }
-        const file = firstFileOf(event.dataTransfer?.files, IMAGE_TYPES)
-        if (!file) throw new Error('AI 特效：请拖入一张图片')
-        await adoptReference(file, file.name)
+        if (!firstFileOf(event.dataTransfer?.files, IMAGE_TYPES)) throw new Error('AI 特效：请拖入图片')
+        await adoptReferences(event.dataTransfer?.files)
       }))
     }
 
@@ -3569,7 +3666,11 @@
     const materialCreditLine = materialCreditText()
     put(refs.materialCredit, 'textContent', materialCreditLine)
     put(refs.materialCredit, 'hidden', !materialCreditLine)
-    const settledQuota = state.reference?.materialState === 'ready' && !isLocalMaterialModel(materialModelId) ? state.reference.materialQuota : null
+    // What the reads actually charged, added up over the pictures.
+    const settled = isLocalMaterialModel(materialModelId) ? []
+      : state.references.filter((entry) => entry.materialState === 'ready' && entry.materialQuota).map((entry) => entry.materialQuota)
+    const charged = settled.reduce((sum, quota) => sum + Number(quota.charged_credits != null ? quota.charged_credits : quota.settled_credits || 0), 0)
+    const settledQuota = settled.length ? { charged_credits: formatCredits(charged), balance_after: settled[settled.length - 1].balance_after } : null
     put(refs.materialSettlement, 'textContent', window.NovaFlowFeatureCreditPrices?.settlementText?.(settledQuota) || '')
     if (refs.previewStatus) {
       // Centred only while there is nothing on the canvas to cover.
@@ -3610,7 +3711,7 @@
       put(refs.playButton, 'disabled', total < 2)
     }
     if (refs.generate) {
-      const chosen = Boolean(state.reference) || Boolean(restyle && restyle.getPreset(state.attribute))
+      const chosen = state.references.length > 0 || Boolean(restyle && restyle.getPreset(state.attribute))
         || Boolean(String(state.supplement || '').trim())
       put(refs.generate, 'disabled', state.isGenerating || !state.source || !restyle || !chosen)
       put(refs.generate, 'textContent', state.isGenerating ? '生成中…' : '生成特效')
@@ -3656,21 +3757,19 @@
     if (refs.templateClearX && refs.templatePreview && refs.templateClearX.parentElement !== refs.templatePreview) {
       refs.templatePreview.appendChild(refs.templateClearX)
     }
-    syncDropzonePreview(refs.styleZone, refs.stylePreview, state.reference, (entry) => {
-      const image = document.createElement('img')
-      image.alt = ''
-      image.src = entry.objectUrl
-      return image
-    })
-    put(refs.styleMeta, 'textContent', state.reference ? state.reference.fileName : '')
-    put(refs.styleEmpty, 'textContent', state.reference ? '✓' : '+')
+    syncReferenceThumbs()
+    const count = state.references.length
+    put(refs.styleMeta, 'textContent', !count ? ''
+      : count === 1 ? state.references[0].fileName + '（可再加，最多 ' + MAX_REFERENCES + ' 张）'
+        : count + ' 张参考图' + (count < MAX_REFERENCES ? '（可再加，最多 ' + MAX_REFERENCES + ' 张）' : '（已满）'))
+    put(refs.styleEmpty, 'textContent', count ? '✓' : '+')
     // A reference image supplies the material outright - naming one as well
     // just overrides the picture - so the style buttons go quiet while one is
     // loaded rather than pretending to still apply.
     renderCurrentStyle()
-    put(refs.openStyle, 'disabled', state.isGenerating || Boolean(state.reference))
+    put(refs.openStyle, 'disabled', state.isGenerating || state.references.length > 0)
     put(refs.openTemplate, 'disabled', state.isGenerating)
-    put(refs.styleClearRow, 'hidden', !state.reference)
+    put(refs.styleClearRow, 'hidden', !state.references.length)
     if (refs.supplement) {
       if (refs.supplement.value !== state.supplement) refs.supplement.value = state.supplement
       put(refs.supplement, 'disabled', state.isGenerating)
@@ -3700,7 +3799,7 @@
       // this line only carries what it cannot: that the picked style has not
       // been render-checked.
       const preset = restyle.getPreset(state.attribute)
-      put(refs.effectType, 'textContent', !state.reference && preset && !preset.verified
+      put(refs.effectType, 'textContent', !state.references.length && preset && !preset.verified
         ? preset.label + ' 尚未逐条验证，可多出几个候选'
         : '')
     }
@@ -4190,6 +4289,8 @@
     loadSourceFiles: (files) => adoptTemplateFiles(files),
     sequenceToBlackClip,
     loadStyleBlob: (blob, fileName) => adoptReference(blob, fileName),
+    loadStyleFiles: (files) => adoptReferences(files),
+    removeReference: (index) => { const entry = state.references[index]; if (entry) removeReference(entry) },
     materialModel,
     setMaterialModel,
     materialCreditText,
@@ -4201,7 +4302,7 @@
     })),
     translateSupplement,
     clearTemplate,
-    clearReference,
+    clearReferences,
     openLibrary,
     closeLibrary,
     saveCurrentAsTemplate,

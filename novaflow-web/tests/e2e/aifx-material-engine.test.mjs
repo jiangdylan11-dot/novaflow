@@ -240,7 +240,7 @@ test('a run from the 小桃 panel reads online with its model under 小桃\'s ch
   Object.assign(p.context, { addEventListener() {}, removeEventListener() {} });
   p.context.NovaFlowAifxRestyleClient = { ensureRuntime: async () => { throw new Error('stop here'); } };
   const blob = {};
-  Object.assign(p.context.__aifxState, { source: {}, reference: { blob, image, fileName: 'reference.jpg' } });
+  Object.assign(p.context.__aifxState, { source: {}, references: [{ blob, image, fileName: 'reference.jpg' }] });
   await assert.rejects(p.api.runProductionPipeline({ model: 'xai/grok-4.7' }), /stop here/);
   assert.equal(p.calls.online.length, 1);
   assert.equal(p.calls.online[0].assistantSelectionScope, 'xiaotao');
@@ -308,4 +308,49 @@ test('style-transfer files stay untouched and the material prompt has no secret'
   assert.doesNotMatch(names, /art-skills\//);
   assert.doesNotMatch(materialSource, /sk-[A-Za-z0-9]{8,}|api[_-]?key\s*[:=]\s*['"][^'"]+['"]/i);
   assert.doesNotMatch(materialSource, /require\(|from ['"]/);
+});
+
+// 风格参考 takes several pictures (Dylan, Nov 4): each is read, the reads blend into one material;
+// one picture that cannot be read sends them all to H3 as pictures instead.
+async function runTwoReferences(localReply) {
+  const p = page({ withState: true });
+  if (localReply) p.context.localReply = localReply;
+  const captured = {};
+  p.context.NovaFlowAifxRestyleWorkflow = {
+    getPreset: () => null,
+    splitSupplement: () => ({ additions: '', spread: '', colour: null }),
+    referenceMaterial: (reads) => { captured.reads = reads; return 'blended'; },
+    defaultStrengthFor: () => 20,
+    buildWorkflow: (options) => { captured.options = options; throw new Error('stop here'); },
+  };
+  Object.assign(p.context, { addEventListener() {}, removeEventListener() {} });
+  p.context.NovaFlowAifxRestyleClient = { ensureRuntime: async () => true, uploadFile: async (blob, name) => 'up-' + name };
+  Object.assign(p.context.__aifxState, {
+    source: { blob: {}, fileName: 'clip.mp4', width: 512, height: 512, duration: 1 },
+    references: [{ blob: {}, image, fileName: 'a.png', accent: '#ff0000' }, { blob: {}, image, fileName: 'b.png', accent: '#00ff00' }],
+  });
+  await assert.rejects(p.api.runProductionPipeline(), /stop here/);
+  return { p, captured };
+}
+
+test('two references are both read and blended into one material, no picture sent', async () => {
+  const { p, captured } = await runTwoReferences();
+  assert.equal(p.calls.local.length, 2);
+  assert.equal(captured.reads.length, 2);
+  assert.deepEqual([...captured.options.referenceImages], []);
+  assert.equal(captured.options.attribute.material, 'blended');
+  assert.equal(captured.options.tint, '#ff0000');
+});
+
+test('when one reference cannot be read, every reference goes to H3 as a picture, in order', async () => {
+  let n = 0;
+  const { captured } = await runTwoReferences(() => (n++ === 0 ? { ok: true, material: { ...LOCAL_MATERIAL } } : { ok: false }));
+  assert.equal(captured.reads, undefined);
+  assert.deepEqual([...captured.options.referenceImages], ['up-a.png', 'up-b.png']);
+});
+
+test('the reference box takes several files and each picture has its own remove', () => {
+  assert.match(runtimeSource, /data-style-input type="file" multiple accept="image\/\*"/);
+  assert.match(runtimeSource, /aifx-reference-remove/);
+  assert.doesNotMatch(runtimeSource, /state\.reference\b/);
 });
