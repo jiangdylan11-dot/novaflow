@@ -462,7 +462,7 @@
     if (pfx && pfx.ui) pfx.ui.close()
     pfx = null
     boneClipboard = null; extStep = null; meCache = null; weCache = null; weSetupInv = null; keyBtnsOn = null
-    pagePixels.clear(); frameThumbs.clear()
+    pagePixels = new WeakMap(); frameThumbs.clear()
     rt.cam = { x: 0, y: 0, zoom: 1 }
     const search = $('#search')
     if (search) search.value = ''
@@ -1061,7 +1061,7 @@
     let createdEmpty = false
     let directory = null
     if (!handle) {
-      try { handle = await window.showSaveFilePicker({ suggestedName: opts && opts.name ? name + '.nfproj' : (projectFile && projectFile.name) || name + '.nfproj', types: NFPROJ_TYPES, ...(state.imageFolder && state.imageFolder.handle ? { startIn: state.imageFolder.handle } : {}) }) } catch { return null }
+      try { handle = await window.showSaveFilePicker({ suggestedName: opts && opts.name ? name + '.nfproj' : (projectFile && projectFile.name) || name + '.nfproj', types: NFPROJ_TYPES, ...(state.imageFolder && state.imageFolder.handle ? { startIn: state.imageFolder.handle } : {}) }) } catch (error) { if(error?.name==='AbortError')return null;throw error }
       const created = await handle.getFile().catch(() => null)
       createdEmpty = !created || created.size === 0
     }
@@ -2293,6 +2293,81 @@
   function selectedBones() {
     if (state.multi.length) return state.multi.slice()
     return state.sel && state.sel.kind === 'bone' ? [state.sel.name] : []
+  }
+
+  // Community selection requires a current screenshot and a real user click.
+  let communityBoneSelection = null, communityBoneImage = null
+  function agentPreviewImage() {
+    if (!rt.skeleton) return null
+    draw()
+    const gl = $('#gl'), overlay = $('#overlay'), canvas = document.createElement('canvas')
+    const scale = Math.min(1, 1280 / gl.width)
+    canvas.width = Math.max(1, Math.round(gl.width * scale)); canvas.height = Math.max(1, Math.round(gl.height * scale))
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#202020'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(gl, 0, 0, canvas.width, canvas.height); ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/png')
+  }
+  function communitySelectionReady() {
+    return !!state.json && communityPreviewStable() && !state.pick && !state.chainPick && !state.chainRoots && !state.meshEdit && !state.meshDrag && !state.clipEdit && !state.clipDrag && !state.pathEdit && !state.pathDrag && !state.weightEdit && !state.weightStroke && !state.dopeExtra && !state.attachmentAnchor && !state.skinAnchor && !['sequence','sweep','loop'].includes(state.leftOpen)
+      && Array.isArray(state.json.bones) && Array.isArray(state.multi) && (state.sel ? state.sel.kind === 'bone' && state.multi.length === 1 && state.multi[0] === state.sel.name && state.json.bones.filter(b=>b.name===state.sel.name).length===1 : state.multi.length === 0) && !(state.multiSlots || []).length && !(state.multiCons || []).length && !(state.multiAtts || []).length && !(state.multiSkins || []).length
+  }
+  function communitySelectionBinding() {
+    return JSON.stringify({sel:state.sel,multi:state.multi,multiSlots:state.multiSlots,multiCons:state.multiCons,multiAtts:state.multiAtts,multiSkins:state.multiSkins,animation:state.anim,mode:state.mode,fileName:state.fileName,frame:state.frame,skin:state.skin,axes:state.axes,offset:state.offset,hiddenBones:[...(state.hiddenBones || [])],hiddenSlots:[...(state.hiddenSlots || [])],camera:rt.cam,width:rt.w,height:rt.h,dpr:rt.dpr})
+  }
+  function applyCommunityBoneSelection(sel) {
+    const keys=['sel','multi','multiSlots','multiCons','multiAtts','multiSkins','attachmentAnchor','skinAnchor','chainPick','chainRoots','dopeExtra','selIdx']
+    const prior=Object.fromEntries(keys.map(key=>[key,state[key]])),history=state.selHistory?.slice()
+    try { select(sel,false,{noReveal:true}) }
+    catch (error) { Object.assign(state,prior); if(history)state.selHistory=history; throw error }
+  }
+  function requireCommunitySelectionClick(event,action) {
+    const owner=event?.view,button=event?.currentTarget
+    const attribute=action==='confirm'?'data-novaflow-community-selection-confirm':'data-novaflow-community-selection-undo'
+    let nativeTrusted=false
+    try {const getter=Object.getOwnPropertyDescriptor(new owner.MouseEvent('click'),'isTrusted')?.get;nativeTrusted=typeof getter==='function'&&getter.call(event)===true} catch {}
+    if (!owner || (owner!==window && owner!==window.parent) || typeof owner.MouseEvent!=='function' || !(event instanceof owner.MouseEvent) || event.type!=='click' || !nativeTrusted || button?.getAttribute?.(attribute)!=='1' || owner.navigator?.userActivation?.isActive!==true || window.navigator?.userActivation?.isActive!==true) throw new Error('请在确认界面亲自点击，未改变选区')
+  }
+  function captureCommunityBoneSelectionImage() {
+    communityBoneImage=null
+    if (!communitySelectionReady()) throw new Error('当前动画状态无法安全识图')
+    const dataUrl=agentPreviewImage(),token=globalThis.crypto?.randomUUID?.(),source=JSON.stringify(state.json)
+    if (!token || !dataUrl?.startsWith('data:image/png;base64,') || dataUrl.length>8*1024*1024 || source.length>8*1024*1024) throw new Error('无法捕获当前动画画面')
+    communityBoneImage={token,dataUrl,source,project:state.json,binding:communitySelectionBinding(),expires:Date.now()+120000}
+    return {token,dataUrl}
+  }
+  function previewCommunityBoneSelection(boneName, imageToken) {
+    communityBoneSelection = null
+    const image=communityBoneImage
+    communityBoneImage=null
+    if (!image || imageToken!==image.token || Date.now()>=image.expires || !communitySelectionReady() || state.json!==image.project || JSON.stringify(state.json)!==image.source || communitySelectionBinding()!==image.binding || agentPreviewImage()!==image.dataUrl || typeof boneName !== 'string' || !boneName || boneName.length > 100 || state.json.bones.filter(b=>b.name===boneName).length !== 1) throw new Error('当前画面或状态已变化，未改变选区')
+    const token=globalThis.crypto?.randomUUID?.()
+    if (!token) throw new Error('无法安全核对选择，未改变选区')
+    communityBoneSelection={phase:'preview',token,project:state.json,source:image.source,binding:image.binding,image:image.dataUrl,previous:state.sel?{...state.sel}:null,boneName,expires:Date.now()+120000}
+    return {token,boneName,previous:selectedBones(),message:'仅预览选择目标；尚未改变选区。'}
+  }
+  function confirmCommunityBoneSelection(token,event) {
+    requireCommunitySelectionClick(event,'confirm')
+    const pending=communityBoneSelection
+    communityBoneSelection=null
+    if (!pending || pending.phase!=='preview' || token!==pending.token || Date.now()>=pending.expires || !communitySelectionReady() || state.json!==pending.project || JSON.stringify(state.json)!==pending.source || communitySelectionBinding()!==pending.binding || agentPreviewImage()!==pending.image || state.json.bones.filter(b=>b.name===pending.boneName).length!==1) throw new Error('选择预览已失效，未改变选区')
+    const undoToken=globalThis.crypto?.randomUUID?.()
+    if (!undoToken) throw new Error('无法建立撤销记录，未改变选区')
+    applyCommunityBoneSelection({kind:'bone',name:pending.boneName})
+    communityBoneSelection={...pending,phase:'undo',token:undoToken,binding:communitySelectionBinding(),expires:Date.now()+300000}
+    return {boneName:pending.boneName,previous:pending.previous?.name || null,undoToken,message:'已改变选区，未修改工程数据。'}
+  }
+  function undoCommunityBoneSelection(token,event) {
+    requireCommunitySelectionClick(event,'undo')
+    const pending=communityBoneSelection
+    communityBoneSelection=null
+    if (!pending || pending.phase!=='undo' || token!==pending.token || Date.now()>=pending.expires || !communitySelectionReady() || state.json!==pending.project || JSON.stringify(state.json)!==pending.source || communitySelectionBinding()!==pending.binding || pending.previous && state.json.bones.filter(b=>b.name===pending.previous.name).length!==1) throw new Error('选择已变化，不能撤销旧选择')
+    applyCommunityBoneSelection(pending.previous)
+    return {boneName:pending.previous?.name || null,message:'已恢复之前的选区。'}
+  }
+  function cancelCommunityBoneSelection(token) {
+    if (!communityBoneSelection || communityBoneSelection.phase!=='preview' || token!==communityBoneSelection.token) return false
+    communityBoneSelection=null
+    return true
   }
 
   let boneClipboard = null
@@ -3647,12 +3722,79 @@
     return [...names]
   }
 
+  // One parsed atlas and a bounded, export-local cache of decoded page pixels.
+  // Unlike the editor's hit-test cache this does not allocate a tint canvas,
+  // and is dropped when this project export finishes or fails.
+  function createExportImageCache(source, signal) {
+    const atlas = source === state ? null : Attach.parseAtlas(source.atlasText)
+    const pages = new Map(), maxBytes = 128 * 1024 * 1024
+    let bytes = 0, lastYield = performance.now()
+    const checkpoint = async () => {
+      if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError')
+      if (performance.now() - lastYield >= 12) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        lastYield = performance.now()
+        if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError')
+      }
+    }
+    const lookup = ({ region }) => {
+      const img = region?.texture?.getImage?.()
+      if (!img || !img.width) return null
+      if (pages.has(img)) { const hit = pages.get(img); pages.delete(img); pages.set(img, hit); return hit }
+      const c = document.createElement('canvas')
+      try {
+        const w = img.width, hh = img.height
+        c.width = w; c.height = hh
+        const g = c.getContext('2d', { willReadFrequently: true })
+        if (!g) return null
+        g.drawImage(img, 0, 0)
+        let data
+        try { data = g.getImageData(0, 0, w, hh).data } catch { return null }
+        const pg = { data, w, h: hh }, cost = data.byteLength
+        while (pages.size && bytes + cost > maxBytes) { const key = pages.keys().next().value; bytes -= pages.get(key).data.byteLength; pages.delete(key) }
+        if (cost <= maxBytes) { pages.set(img, pg); bytes += cost }
+        return pg
+      } finally { c.width = c.height = 1 }
+    }
+    return { atlas, lookup, checkpoint, dispose() { pages.clear(); bytes = 0 } }
+  }
+  async function exportRegionPixels(region, W, H, cache) {
+    const w = Math.max(1, Math.round(W)), hh = Math.max(1, Math.round(H))
+    const ow = region.originalWidth || w, oh = region.originalHeight || hh
+    const pg = w === ow && hh === oh ? cache.lookup({ region }) : null
+    if (!pg || !pg.data) return regionPixelsCanvas(region, W, H)
+    const src = pg.data, pw = pg.w, ph = pg.h, out = new Uint8ClampedArray(w * hh * 4)
+    const left = region.offsetX || 0, top = oh - (region.offsetY || 0) - region.height
+    const rw = region.width, rh = region.height, rx = region.x, ry = region.y
+    if (!region.rotate) {
+      for (let y = 0; y < rh; y++) {
+        if ((y & 15) === 0) await cache.checkpoint()
+        const dy = top + y, sy = ry + y
+        if (dy < 0 || dy >= hh || sy < 0 || sy >= ph) continue
+        const x0 = Math.max(0, -left, -rx), x1 = Math.min(rw, w - left, pw - rx)
+        if (x1 > x0) out.set(src.subarray((sy * pw + rx + x0) * 4, (sy * pw + rx + x1) * 4), ((dy * w) + left + x0) * 4)
+      }
+    } else {
+      for (let v = 0; v < rh; v++) {
+        if ((v & 15) === 0) await cache.checkpoint()
+        const dy = top + v
+        if (dy < 0 || dy >= hh) continue
+        for (let u = 0; u < rw; u++) {
+          const dx = left + u, sx = rx + v, sy = ry + rw - 1 - u
+          if (dx < 0 || dx >= w || sx < 0 || sx >= pw || sy < 0 || sy >= ph) continue
+          const si = (sy * pw + sx) * 4, di = (dy * w + dx) * 4
+          out[di] = src[si]; out[di + 1] = src[si + 1]; out[di + 2] = src[si + 2]; out[di + 3] = src[si + 3]
+        }
+      }
+    }
+    return out
+  }
   /** One image's pixels at its original size, straight alpha (from the atlas, or a folder file not used yet). */
-  async function imageRgba(name, file, source = state) {
+  async function imageRgba(name, file, source = state, cache = null) {
     let r
     if (source === state) r = rt.atlas && rt.atlas.findRegion(name)
     else {
-      const p = Attach.parseAtlas(source.atlasText).get(name)
+      const p = (cache?.atlas || Attach.parseAtlas(source.atlasText)).get(name)
       const im = p && (source.images.get(lower(p.page)) || source.images.get(lower(baseName(p.page))))
       if (p && im) r = { x: p.x, y: p.y, width: p.w, height: p.h, originalWidth: p.origW, originalHeight: p.origH,
         offsetX: p.offX, offsetY: p.offY, rotate: p.rotate, page: { name: p.page }, texture: { getImage: () => im.img } }
@@ -3662,18 +3804,27 @@
       try {
         const bm = await createImageBitmap(await file())
         const c = document.createElement('canvas')
-        c.width = bm.width; c.height = bm.height
-        const g = c.getContext('2d', { willReadFrequently: true })
-        g.drawImage(bm, 0, 0)
-        bm.close()
-        return { rgba: g.getImageData(0, 0, c.width, c.height).data, width: c.width, height: c.height }
+        try {
+          c.width = bm.width; c.height = bm.height
+          const g = c.getContext('2d', { willReadFrequently: true })
+          g.drawImage(bm, 0, 0)
+          return { rgba: g.getImageData(0, 0, c.width, c.height).data, width: c.width, height: c.height }
+        } finally { bm.close(); c.width = c.height = 1 }
       } catch { return null }
     }
     if (!r) return null
     const w = r.originalWidth || r.width, hh = r.originalHeight || r.height
-    const px = source === state ? regionPixels(r, w, hh) : regionPixelsCanvas(r, w, hh)
+    const px = cache ? await exportRegionPixels(r, w, hh, cache) : source === state ? regionPixels(r, w, hh) : regionPixelsCanvas(r, w, hh)
     if (!px) return null
-    if (pagePma(source.images, r.page.name, source.pma)) unpremultiply(px)
+    if (pagePma(source.images, r.page.name, source.pma)) {
+      if (!cache) unpremultiply(px)
+      else for (let i = 0; i < px.length; i += 4) {
+        if ((i & 262143) === 0) await cache.checkpoint()
+        const a = px[i + 3]
+        if (a === 0 || a === 255) continue
+        for (let k = 0; k < 3; k++) px[i + k] = Math.min(255, Math.round((px[i + k] * 255) / a))
+      }
+    }
     return { rgba: px, width: w, height: hh }
   }
 
@@ -3703,10 +3854,13 @@
     }
     // SKEL: the skeleton as Spine binary of the chosen version (renderer/spine-binary-write.js)
     const skel = !!opts.skel
-    const writer = A.createWriter({ baseName: opts.name, exactBaseName: !!opts.exactBaseName, packed: !!opts.packed, skel, settings: { ...opts.settings, dedupe: false }, version, write })
+    const writer = A.createWriter({ baseName: opts.name, exactBaseName: !!opts.exactBaseName, packed: !!opts.packed, skel, settings: { ...opts.settings, dedupe: false }, version, write, signal: opts.signal })
+    const imageCache = createExportImageCache(source, opts.signal)
+    try {
     const missing = []
     for (const it of items) {
-      const img = await imageRgba(it.name, it.file, source)
+      await imageCache.checkpoint()
+      const img = await imageRgba(it.name, it.file, source, imageCache)
       if (!img) { missing.push(it.name); continue }
       await writer.addRgba(img.rgba, img.width, img.height, it.name)
     }
@@ -3717,6 +3871,7 @@
     }
     const out = await writer.finish(json)
     return { ...out, skel, images: items.length - missing.length, missing }
+    } finally { imageCache.dispose(); writer.dispose() }
   }
 
   function setProjectExport(index, value) { if (projects[index]) { projects[index].exported = !!value; renderTree(); renderProps() } }
@@ -3745,10 +3900,17 @@
   }
   async function exportSelectedProjects(options = {}) {
     const plans = mediaExportPlans()
-    const directory = options.directory || await pickDirectory()
-    if (!directory) return { canceled: true }
-    const write = window.NovaFlowSequenceAtlas.createFileWriter({ handle: directory }), results = []
+    const directory = options.write ? null : options.directory || await pickDirectory()
+    if (!options.write && !directory) return { canceled: true }
+    if (options.signal?.aborted) throw new DOMException('Export cancelled', 'AbortError')
+    const writeFile = options.write || window.NovaFlowSequenceAtlas.createFileWriter({ handle: directory, signal: options.signal }), results = []
+    const write = async (name, bytes) => {
+      if (options.signal?.aborted) throw new DOMException('Export cancelled', 'AbortError')
+      await writeFile(name, bytes)
+      if (options.signal?.aborted) throw new DOMException('Export cancelled', 'AbortError')
+    }
     for (const plan of plans) {
+      if (options.signal?.aborted) throw new DOMException('Export cancelled', 'AbortError')
       const prefix = plans.length > 1 ? plan.name + '/' : ''
       const r = await exportProject({ ...options, project: plan.entries[0].src, name: plan.name, exactBaseName: true,
         packed: options.packed !== false, settings: options.settings || atlasSettings() }, (name, bytes) => write(prefix + name, bytes))
@@ -3803,9 +3965,9 @@
   }
   async function exportMedia(options) {
     const plans = mediaExportPlans(options.mode, options.mode === 'merged' ? options.name : undefined)
-    const directory = options.directory || await pickDirectory()
-    if (!directory) return { canceled: true }
-    const A = window.NovaFlowSequenceAtlas, write = A.createFileWriter({ handle: directory }), encoder = options.encoder
+    const directory = options.write ? null : options.directory || await pickDirectory()
+    if (!options.write && !directory) return { canceled: true }
+    const A = window.NovaFlowSequenceAtlas, write = options.write || A.createFileWriter({ handle: directory }), encoder = options.encoder
     const progress = window.parent && window.parent.NovaFlowExportProgressDialog
     const token = progress && progress.begin({ title: options.kind === 'video' ? '导出视频' : '导出序列帧', detail: '准备勾选的工程…' })
     try {
@@ -4408,7 +4570,7 @@
     const row = e.currentTarget, list = row.parentElement
     const y0 = e.clientY
     let dragging = false, target = null
-    row.setPointerCapture(e.pointerId)
+    if (e.isTrusted) row.setPointerCapture(e.pointerId)
     const clear = () => list.querySelectorAll('.wrow').forEach((r) => r.classList.remove('drop-a', 'drop-b', 'dragging'))
     const move = (ev) => {
       if (!dragging && Math.abs(ev.clientY - y0) < 4) return
@@ -4794,6 +4956,7 @@
     const ow = region.originalWidth || w, oh = region.originalHeight || hh
     const c = document.createElement('canvas')
     c.width = w; c.height = hh
+    try {
     const g = c.getContext('2d', { willReadFrequently: true })
     g.scale(w / ow, hh / oh)
     const left = region.offsetX || 0, top = oh - (region.offsetY || 0) - region.height
@@ -4805,6 +4968,7 @@
       g.drawImage(img, region.x, region.y, region.height, region.width, 0, 0, region.height, region.width)
     } else g.drawImage(img, region.x, region.y, region.width, region.height, left, top, region.width, region.height)
     try { return g.getImageData(0, 0, w, hh).data } catch { return null }
+    } finally { c.width = c.height = 1 }
   }
 
   function meshAction(kind) {
@@ -5172,7 +5336,9 @@
   // With 图层 · 选择 on, the image under the pointer is the topmost one whose own pixel there
   // is opaque (alpha > 16); it shows as a green silhouette with its name and a click picks it.
 
-  const pagePixels = new Map() // atlas page image -> { data, w, h, tint }
+  // Do not retain deleted projects solely because their atlas pages were used
+  // for hit testing. Live project images remain strongly held by project state.
+  let pagePixels = new WeakMap() // atlas page image -> { data, w, h, tint }
 
   function pageOf(att) {
     const r = att.region
@@ -6119,6 +6285,7 @@
 
   function bindViewport() {
     const c = $('#overlay')
+    const capturePointer = (e) => { if (e.isTrusted) c.setPointerCapture(e.pointerId) }
     let drag = null
     const at = (e) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] }
     c.addEventListener('contextmenu', (e) => e.preventDefault())
@@ -6138,14 +6305,14 @@
       const [sx, sy] = at(e)
       if (e.button === 2) {
         drag = { kind: 'pan', sx, sy, cx: rt.cam.x, cy: rt.cam.y, moved: false }
-        c.setPointerCapture(e.pointerId)
+        capturePointer(e)
         return
       }
       if (e.button === 1) {
         e.preventDefault()
         state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: e.ctrlKey || e.metaKey }
         drag = { kind: 'box' }
-        c.setPointerCapture(e.pointerId)
+        capturePointer(e)
         return
       }
       if (e.button !== 0) return
@@ -6160,17 +6327,17 @@
       }
       if (state.meshEdit) {
         drag = meshPointerDown(e, sx, sy)
-        if (drag) c.setPointerCapture(e.pointerId)
+        if (drag) capturePointer(e)
         return
       }
       if (state.clipEdit) {
         drag = clipPointerDown(e, sx, sy)
-        if (drag) c.setPointerCapture(e.pointerId)
+        if (drag) capturePointer(e)
         return
       }
       if (state.pathEdit) {
         drag = pathPointerDown(e, sx, sy)
-        if (drag) c.setPointerCapture(e.pointerId)
+        if (drag) capturePointer(e)
         return
       }
       if (state.weightEdit) {
@@ -6190,7 +6357,7 @@
             else if (!we.vsel.has(vi)) we.vsel = new Set([vi])
             renderWeightPanel()
             drag = { kind: 'wdirect', sy, base: ctx.model, idxs: [...we.vsel], moved: false }
-            c.setPointerCapture(e.pointerId)
+            capturePointer(e)
             return
           }
         }
@@ -6206,13 +6373,13 @@
         if (we.direct) {
           state.wbox = { x0: sx, y0: sy, x1: sx, y1: sy, add: e.ctrlKey || e.metaKey || e.shiftKey }
           drag = { kind: 'wbox' }
-          c.setPointerCapture(e.pointerId)
+          capturePointer(e)
           return
         }
         state.weightStroke = { model: ctx.model, changed: false }
         weightDab(sx, sy)
         drag = { kind: 'weights', sx, sy, moved: true }
-        c.setPointerCapture(e.pointerId)
+        capturePointer(e)
         return
       }
       // an X / Y handle of the picked item: drag limited to that axis
@@ -6224,7 +6391,7 @@
           if (t.kind === 'bone' && state.multi.length > 1 && !e.ctrlKey && !e.metaKey && !e.shiftKey) drag.clickSingle = hitBone(sx, sy)
           drag.axis = hh.axis
           drag.axisDir = hh.hd.ax[hh.axis]
-          c.setPointerCapture(e.pointerId)
+          capturePointer(e)
         }
         return
       }
@@ -6233,7 +6400,7 @@
         if (jh) {
           if (!(state.sel && state.sel.kind === 'bone' && state.sel.name === jh.bone)) select({ kind: 'bone', name: jh.bone }, false, { quiet: true })
           drag = jointDrag(jh, sx, sy)
-          c.setPointerCapture(e.pointerId)
+          capturePointer(e)
           return
         }
       }
@@ -6254,7 +6421,7 @@
       // the project picked in the tree: a drag anywhere moves it on the stage (its view offset)
       if (state.sel && state.sel.kind === 'project' && !(e.ctrlKey || e.metaKey) && (state.tool === 'move' || state.tool === 'pose')) {
         drag = { kind: 'projectMove', sx, sy, ox: state.offset.x, oy: state.offset.y, moved: false }
-        c.setPointerCapture(e.pointerId)
+        capturePointer(e)
         return
       }
       const MT = meshTarget()
@@ -6264,7 +6431,7 @@
           // Ctrl+drag always box-picks vertices, even over a bone (Spine's box select)
           state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: true, verts: MT.slotName }
           drag = { kind: 'box' }
-          c.setPointerCapture(e.pointerId)
+          capturePointer(e)
           return
         }
         if (vi >= 0) {
@@ -6278,10 +6445,10 @@
             state.vsel.indices = new Set([vi])
             // 设置: a dense mesh has a vertex under every press - the first drag moves the whole mesh
             // (the vertex gets picked); dragging a picked vertex moves that vertex (user: 图片要能拖动，包括网格)
-            if (wholeFirst) { drag = wholeFirst; c.setPointerCapture(e.pointerId); return }
+            if (wholeFirst) { drag = wholeFirst; capturePointer(e); return }
           }
           drag = vertexDrag(MT, sx, sy)
-          c.setPointerCapture(e.pointerId)
+          capturePointer(e)
           return
         }
         // a press on the picked mesh's own pixels (not on a vertex) moves / turns / scales the whole
@@ -6297,7 +6464,7 @@
           })()
           if (inClip || (own && own.slot === MT.slotName)) {
             const whole = attDrag(state.sel, sx, sy)
-            if (whole) { drag = whole; c.setPointerCapture(e.pointerId); return }
+            if (whole) { drag = whole; capturePointer(e); return }
           }
         }
         // another image under the pointer: that one is picked instead (the mesh's box select
@@ -6305,11 +6472,11 @@
         if (!bh && !(ih && ih.slot !== MT.slotName)) {
           // 设置: empty space drags the whole mesh too (rotate / scale about its centre, as a region does);
           // Ctrl+drag box-picks vertices
-          if ((state.mode === 'setup' || animOn()) && !(e.ctrlKey || e.metaKey)) { const whole = attDrag(state.sel, sx, sy); if (whole) { drag = whole; c.setPointerCapture(e.pointerId); return } }
+          if ((state.mode === 'setup' || animOn()) && !(e.ctrlKey || e.metaKey)) { const whole = attDrag(state.sel, sx, sy); if (whole) { drag = whole; capturePointer(e); return } }
           // empty space: box-pick vertices (Ctrl adds); a click clears them
           state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: e.ctrlKey || e.metaKey, verts: MT.slotName }
           drag = { kind: 'box' }
-          c.setPointerCapture(e.pointerId)
+          capturePointer(e)
           return
         }
       }
@@ -6330,7 +6497,7 @@
         if (bh && !(state.sel && state.sel.kind === 'bone' && state.sel.name === bh && state.multi.length <= 1)) { select({ kind: 'bone', name: bh }); return }
         const parent = (state.sel && state.sel.kind === 'bone' && state.sel.name) || state.json.bones[0].name
         state.creating = { parent, p0: toWorld(sx, sy), p1: null, sx, sy, keepSel: e.shiftKey }
-        c.setPointerCapture(e.pointerId)
+        capturePointer(e)
         return
       }
       if (e.ctrlKey || e.metaKey) {
@@ -6338,7 +6505,7 @@
         if (bh) { select({ kind: 'bone', name: bh }, true); return }
         state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: true }
         drag = { kind: 'box' }
-        c.setPointerCapture(e.pointerId)
+        capturePointer(e)
         return
       }
       // the picked image under the cursor drags, bones underneath or not (its handles are what Spine shows)
@@ -6369,7 +6536,7 @@
         state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: false }
         drag = { kind: 'box' }
       }
-      if (drag) c.setPointerCapture(e.pointerId)
+      if (drag) capturePointer(e)
     })
     c.addEventListener('pointerleave', () => { state.hoverImg = null; if (state.meshEdit) state.meshPointer = null })
     c.addEventListener('pointermove', (e) => {
@@ -7426,17 +7593,29 @@
         for (const name of order.slice().reverse()) {
           const sl = slotOf(name)
           const cl = clipped.get(name)
+          const visible = !state.hiddenSlots.has(name)
+          const dot = h('span', { 'data-order-control': '' }, visDot(visible, () => { visible ? state.hiddenSlots.add(name) : state.hiddenSlots.delete(name); refresh() }))
+          const jump = h('button', { class: 'cjump', type: 'button', draggable: false,
+            'data-order-control': '', title: `\u5728\u5de5\u7a0b\u6811\u4e2d\u5b9a\u4f4d ${name}`, 'aria-label': `\u5728\u5de5\u7a0b\u6811\u4e2d\u5b9a\u4f4d\u63d2\u69fd ${name}`,
+            html: ICON.slot,
+            onclick: (e) => { e.stopPropagation(); if (!pick) select({ kind: 'slot', name }, false) },
+          })
+          // A gesture begun on a control must never become a draw-order drag.
+          let orderControlDown = false
           const row = h('div', {
             class: 'row', 'data-selected': isSel('slot', name) ? '1' : null, 'data-key': 'order:' + name,
             'data-multi': state.multiSlots.includes(name) && !isSel('slot', name) ? '1' : null,
             'data-pickable': pick && pick.want === 'slot' ? '1' : null, 'data-clip': cl ? '1' : null,
+            'data-hidden': visible ? null : '1',
+            onpointerdown: (e) => { orderControlDown = !!e.target.closest('[data-order-control]') },
+            ondragstart: (e) => { if (orderControlDown) { e.preventDefault(); e.stopImmediatePropagation() } },
             title: `${cl ? `在剪裁「${cl.name}」里；` : ''}+ 上移一层，- 下移一层（支持多选）`, style: pad(2) + (cl ? `;--clip:${cl.tint}` : ''),
             onclick: (e) => {
               if (pick) { resolvePick('slot', name); return }
               if (e.shiftKey) { selectSlotRange(name, 'order:'); return }
               select({ kind: 'slot', name }, e.ctrlKey || e.metaKey, { noReveal: true })
             },
-          }, caret(null), h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, name), h('span', { class: 'meta' }, sl ? sl.bone : ''))
+          }, dot, caret(null), h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, name), h('span', { class: 'meta' }, sl ? sl.bone : ''), h('span', { class: 'end' }, jump))
           wireDrag(row, { type: 'order', name }, { type: 'order', name })
           rows.push(row)
         }
@@ -7774,10 +7953,15 @@
       .filter((a) => a.skin === sel.skin && a.slot === sel.slot)
   }
 
+  function visibleAttachmentRange(sel) {
+    return [...document.querySelectorAll('#tree .row[data-att-name]')].map((row) => ({ kind: 'att', skin: row.dataset.attSkin, slot: row.dataset.attSlot, name: row.dataset.attName }))
+      .filter((a) => a.skin === sel.skin)
+  }
+
   function selectAttachment(sel, e) {
     const additive = !!(e.ctrlKey || e.metaKey)
     if (e.shiftKey) {
-      const rows = visibleAttachments(sel), anchor = state.attachmentAnchor || state.sel
+      const rows = visibleAttachmentRange(sel), anchor = state.attachmentAnchor || state.sel
       const from = rows.findIndex((a) => sameAttachment(a, anchor)), to = rows.findIndex((a) => sameAttachment(a, sel))
       if (from >= 0 && to >= 0) { select(sel, additive, { noReveal: true, attachments: rows.slice(Math.min(from, to), Math.max(from, to) + 1) }); return }
     }
@@ -10127,14 +10311,46 @@
     return out
   }
 
+  /** One placeholder, one image per skin; the first skin is shown so the result is visible at once. */
+  function mergeToPlaceholder(list) {
+    edit(`已合并 ${list.length} 张图为一个皮肤占位符`, (j) => Ops.mergeIntoPlaceholder(j, list), (r) => {
+      state.multiAtts = []; state.attachmentAnchor = null
+      state.collapsed.delete('s:' + r.slot)
+      state.sel = { kind: 'ph', slot: r.slot, name: r.placeholder }; revealInTree(state.sel)
+      if (r.firstSkin) setSkin(r.firstSkin)
+      status(`占位符 ${r.placeholder}：${Object.keys(r.skins).length} 个皮肤各一张图` + (r.created.length ? `，新建皮肤 ${r.created.length} 个` : ''))
+    })
+  }
+
+  /** Placeholders in the project sharing this one's name without the trailing number (draw_b_00, draw_b_01 ...). */
+  function placeholderSiblings(sel) {
+    const stem = (n) => String(n).replace(/[\s_.\/-]*\d+$/, '')
+    if (stem(sel.name) === sel.name) return []
+    const out = []
+    for (const s of state.json.slots || []) for (const ph of Ops.placeholderList(state.json, s.name)) if (stem(ph.name) === stem(sel.name)) out.push({ slot: s.name, name: ph.name })
+    return out
+  }
+
+  function batchConvertToPlaceholders() {
+    const list = selectedAttachments()
+    if (!list.length) return
+    mergeToPlaceholder(list)
+  }
+
   function multiAttachmentBody() {
     const list = selectedAttachments()
     const canCopy = list.every((a) => !Ops.isPlaceholder(state.json, a.slot, a.name))
+    const canConvert = list.length > 1 && list.every((a) => {
+      const att = skinOf(a.skin)?.attachments[a.slot]?.[a.name]
+      return a.skin === 'default' && att && !['linkedmesh','clipping','boundingbox','path'].includes(att.type) && !Ops.isPlaceholder(state.json, a.slot, a.name)
+    })
     return [h('div', { class: 'name-row' }, h('span', { class: 'nm' }, `${list.length} 个附件`),
       canCopy ? ibtn('copy', `复制这 ${list.length} 个附件（Ctrl+D）`, duplicateAttachments) : null,
       ibtn('trash', `删除这 ${list.length} 个附件（Delete）`, deleteSelection)),
     h('div', { class: 'hint' }, 'Ctrl 点选加选 / 取消，Shift 连选，Ctrl+A 全选当前插槽的附件。'),
-    h('div', { class: 'hint' }, list.map((a) => h('div', {}, a.name)))]
+    h('div', { class: 'hint' }, list.map((a) => h('div', {}, a.name))),
+    h('div', { class: 'btns' }, btn('\u8f6c\u4e3a\u76ae\u80a4\u5360\u4f4d\u7b26', batchConvertToPlaceholders, { full: true, disabled: !canConvert,
+      title: canConvert ? '合成一个占位符，每个皮肤一张图' : '\u53ea\u80fd\u9009\u62e9 default \u76ae\u80a4\u4e2d\u53ef\u8f6c\u6362\u7684\u666e\u901a\u9644\u4ef6' }))]
   }
 
   /** The picked image (an attachment in the default skin, or one skin's content of a placeholder). */
@@ -10855,9 +11071,10 @@
   /** A value with a slider and a number box (位置 / 间距 / 偏移 / 混合); `scale` = shown per stored unit. */
   function pathValue(k, value, cfg, onPreview, onCommit) {
     const sc = cfg.scale || 1
-    const shown = Math.round(value * sc * 100) / 100
+    const shown = Number((value * sc).toFixed(2))
     const range = h('input', { type: 'range', min: Math.min(cfg.min, shown), max: Math.max(cfg.max, shown), step: cfg.step, value: shown, disabled: !!cfg.disabled, style: 'flex:1;min-width:0' })
-    const box = h('input', { type: 'number', step: 'any', value: String(shown), disabled: !!cfg.disabled })
+    const box = h('input', { type: 'number', step: 'any', value: String(shown), disabled: !!cfg.disabled, ...(cfg.label ? { style: 'flex:0 0 76px;width:76px' } : {}) })
+    if (cfg.label) { box.setAttribute('aria-label', cfg.label); range.setAttribute('aria-label', cfg.label + '滑块') }
     range.addEventListener('input', () => { box.value = String(Math.round(Number(range.value) * 100) / 100); onPreview(k, Number(range.value) / sc) })
     range.addEventListener('change', () => onCommit(k, Number(range.value) / sc))
     box.addEventListener('change', () => { const v = Number(box.value); if (Number.isFinite(v)) onCommit(k, v / sc) })
@@ -10967,6 +11184,8 @@
       textInput(sel.name, (v) => edit(`已改名占位符 → ${v}`, (j) => Ops.renameAttachment(j, sel.slot, sel.name, v), (r) => { state.sel = { ...sel, name: r.attachment } }), { rename: true }),
       ibtn('trash', '删除占位符', deleteSelection)))
     kids.push(field('当前皮肤', h('span', {}, state.skin)))
+    const siblings = placeholderSiblings(sel)
+    if (siblings.length > 1) kids.push(h('div', { class: 'btns' }, btn(`合并同组 ${siblings.length} 个占位符`, () => mergeToPlaceholder(siblings), { primary: true, full: true, title: '合成一个占位符，每个皮肤一张图' })))
     if (image) {
       if (image.skin !== state.skin) kids.push(h('div', { class: 'hint' }, '当前显示 default 皮肤的图片，编辑会作用于这张默认图片。'))
       // Keep the placeholder's rename/delete header, and reuse the image's mesh/export controls.
@@ -11272,20 +11491,29 @@
     return out
   }
 
-  /** Mix sliders, 0-100 like Spine: setup value in 设置, a key at the current frame in 动画. */
+  /** Transform mixes accept signed percentages beyond 100; IK keeps its native range. */
   function mixSlider(kind, name, key, value, opts) {
-    const o = opts || { max: 100, step: 1, scale: 100, fmt: (v) => String(Math.round(v)) }
+    const o = opts || { min: 0, max: 100, step: 1, scale: 100, fmt: (v) => String(Math.round(v)) }
     const sc = o.scale || 1
-    return sliderInput(value * sc,
-      (v) => {
-        if (animOn()) return
-        const c = kind === 'ik' ? rt.data.findIkConstraint(name) : rt.data.findTransformConstraint(name)
-        if (c) { c[key] = v / sc; pose() }
-      },
-      (v) => {
-        if (animOn()) edit(`已在第 ${state.frame} 帧打约束关键帧`, (j) => Ops.keyConstraint(j, state.anim, kind, name, timeSec(), { ...(kind === 'ik' ? ikNow(name) : {}), [key]: v / sc }))
-        else edit(`已修改 ${name}`, (j) => Ops.setConstraintProps(j, kind, name, { [key]: v / sc }))
-      }, o)
+    const preview = (_key, v) => {
+      if (animOn()) return
+      const c = kind === 'ik' ? rt.data.findIkConstraint(name) : rt.data.findTransformConstraint(name)
+      if (c) { c[key] = v; pose() }
+    }
+    const commit = (_key, v) => {
+      if (animOn()) edit(`已在第 ${state.frame} 帧打约束关键帧`, (j) => Ops.keyConstraint(j, state.anim, kind, name, timeSec(), { ...(kind === 'ik' ? ikNow(name) : transformNow(name)), [key]: v }))
+      else edit(`已修改 ${name}`, (j) => Ops.setConstraintProps(j, kind, name, { [key]: v }))
+    }
+    if (kind === 'transform') {
+      const label = { rotateMix: '旋转', translateMix: '平移', scaleMix: '缩放', shearMix: '斜切' }[key]
+      return pathValue(key, value, { ...o, label: `变换约束 ${name} ${label}混合（%）` }, preview, commit)
+    }
+    return sliderInput(value * sc, v => preview(key, v / sc), v => commit(key, v / sc), o)
+  }
+
+  function transformNow(name) {
+    const live = rt.skeleton && rt.skeleton.findTransformConstraint(name)
+    return live ? Object.fromEntries(['rotateMix', 'translateMix', 'scaleMix', 'shearMix'].map(k => [k, live[k]])) : {}
   }
 
   /** An IK constraint's values on this frame (what a key at this frame keeps). */
@@ -11533,6 +11761,7 @@
     const input = (k, cls) => {
       const disabled = !t || (setupOnly && !t.mesh && (k === 'shearX' || k === 'shearY'))
       const i = h('input', { type: 'number', step: 'any', class: cls || null, 'data-k': k, value: disabled ? '' : fmt(v[k]), disabled,
+        'aria-label': ({rotation:'旋转（度）',x:'移动 X',y:'移动 Y',scaleX:'缩放 X',scaleY:'缩放 Y',shearX:'倾斜 X',shearY:'倾斜 Y'})[k],
         title: t && t.mesh ? (t.anim ? '相对当前形状：输入数值整体移动 / 旋转 / 缩放 / 斜切网格，写进这一帧的形状关键帧' : '相对当前形状：输入数值整体移动 / 旋转 / 缩放 / 斜切网格（写进顶点）') : null })
       i.addEventListener('change', () => { const n = Number(i.value); if (Number.isFinite(n) && t) commitXform(t, k, n) })
       i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); e.stopPropagation() })
@@ -12927,8 +13156,659 @@
     if (st.style.marginBottom !== v + 'px') { st.style.marginBottom = v ? v + 'px' : ''; layoutFloats() }
   }
 
+  // Narrow assistant entry: the same native operations and one ordinary undo step.
+  const agentJsonIds = new WeakMap(); let agentJsonSequence = 0
+  function agentAttachments() {
+    return (state.json?.skins || []).flatMap(skin=>Object.entries(skin.attachments || {}).flatMap(([slotName,items])=>Object.entries(items).map(([name,a])=>({skinName:skin.name,slotName,name,type:a.type||'region',vertexCount:a.uvs?.length/2||0,hull:a.hull||0,weighted:!!(a.uvs&&a.vertices?.length>a.uvs.length)})))).slice(0,100)
+  }
+  function agentEditVertices() {
+    if (!state.weightEdit && !state.meshEdit) return []
+    const edit = state.weightEdit || state.meshEdit
+    const context = state.weightEdit ? (typeof weightContext === 'function' ? weightContext() : null) : (typeof meshModelOf === 'function' ? meshModelOf(state.json, edit.skin, edit.slot, edit.name) : null)
+    if (!context?.model?.points || !rt.w || !rt.h) return []
+    return context.model.points.map((point, index) => {
+      const [sx, sy] = state.weightEdit ? weScreen(context, point) : toScreen(point.x, point.y)
+      return { index, x: sx / rt.w, y: sy / rt.h, weights: (point.w || []).map(([bone, weight]) => [bone, weight]) }
+    }).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y) && point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1)
+      .sort((a, b) => Math.hypot(a.x - .5, a.y - .5) - Math.hypot(b.x - .5, b.y - .5)).slice(0, 64)
+  }
+  function agentContext() {
+    if (!state.json) return { active: true, loaded: false, fps: FPS }
+    if (!agentJsonIds.has(state.json)) agentJsonIds.set(state.json, 'project-' + (++agentJsonSequence))
+    const selected = selectedBones(), activeAnimation = state.json.animations?.[state.anim] || {}
+    const shownTarget=typeof xformTarget==='function'?xformTarget():null
+    return { active: true, loaded: true, revision: agentJsonIds.get(state.json), name: state.fileName,
+      fps: FPS, frame: state.frame, playing: !!state.playing, mode: state.mode, animation: state.anim,
+      axes: state.axes, displayedTransform: shownTarget?xformValues(shownTarget):null,
+      animations: Object.keys(state.json.animations || {}).slice(0, 40), selectedBones: selected,
+      bones: state.json.bones.slice(0, 100).map(({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})=>({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})),
+      boneCount: state.json.bones.length, slotCount: state.json.slots.length,
+      slots: state.json.slots.slice(0,60).map(({name,bone,attachment,color,blend})=>({name,bone,attachment,color,blend})),
+      skins: state.json.skins.map(s=>s.name).slice(0,60),
+      constraints: ['ik','transform','path'].flatMap(kind=>(state.json[kind]||[]).slice(0,40).map(c=>({kind,...c,bones:c.bones.slice()}))),
+      picking: state.pick?{want:state.pick.want,text:state.pick.text}:null,
+      exportProjects: typeof projectExportInfo==='function'?projectExportInfo():[], exportVersion: typeof ownVersion==='function'?ownVersion():null,
+      attachments: agentAttachments(), selectedAttachment: state.sel?.kind==='att'?{skinName:state.sel.skin,slotName:state.sel.slot,name:state.sel.name}:null,
+      editingVertices: agentEditVertices(),
+      weightEditing: state.weightEdit?{skinName:state.weightEdit.skin,slotName:state.weightEdit.slot,name:state.weightEdit.name,boneIndex:state.weightEdit.bone,mode:state.weightEdit.mode,direct:state.weightEdit.direct,brushSize:state.weightEdit.size,strength:state.weightEdit.strength}:null,
+      meshEditing: state.meshEdit?{skinName:state.meshEdit.skin,slotName:state.meshEdit.slot,name:state.meshEdit.name}:null,
+      selectedKeys: Object.fromEntries(selected.slice(0, 4).map(name=>[name, Object.fromEntries(Object.entries(activeAnimation.bones?.[name] || {}).map(([kind,keys])=>[kind,keys.slice(0,64)]))])) }
+  }
+  // Read-only, bounded snapshot of existing animation tracks. Never select a
+  // bone or expose a partial response as a complete relative-edit baseline.
+  function agentInspectProject() {
+    if (!state.json) throw new Error('请先新建或导入动画工程')
+    if (!agentJsonIds.has(state.json)) agentJsonIds.set(state.json, 'project-' + (++agentJsonSequence))
+    const allSelected = selectedBones()
+    const name = typeof state.fileName === 'string' ? state.fileName : ''
+    const animation = typeof state.anim === 'string' && Object.hasOwn(state.json.animations || {}, state.anim) ? state.anim : null
+    const authored = animation && typeof rt !== 'undefined' ? rt.data?.findAnimation?.(animation) : null
+    const durationSeconds = Number.isFinite(authored?.duration) && authored.duration >= 0 ? authored.duration : null
+    return {revision:agentJsonIds.get(state.json),name:name.slice(0,200),nameTruncated:name.length>200,
+      animation,fps:FPS,frame:state.frame,playing:!!state.playing,mode:state.mode,
+      durationSeconds,durationAvailable:durationSeconds!==null,
+      selectedBones:allSelected.slice(0,16),selectionComplete:allSelected.length<=16,
+      boneCount:Array.isArray(state.json.bones)?state.json.bones.length:0,
+      slotCount:Array.isArray(state.json.slots)?state.json.slots.length:0}
+  }
+  function agentInspectBones(op) {
+    if (!state.json || !state.anim || op?.name !== state.anim || !Object.hasOwn(state.json.animations || {}, op.name)) throw new Error('只能读取当前动画')
+    const names = op.boneNames
+    if (!Array.isArray(names) || !names.length || names.length > 4 || new Set(names).size !== names.length || names.some(name => typeof name !== 'string' || !name || name.length > 100 || state.json.bones.filter(bone => bone.name === name).length !== 1)) throw new Error('读取对象无效')
+    if (!agentJsonIds.has(state.json)) agentJsonIds.set(state.json, 'project-' + (++agentJsonSequence))
+    // Tracks below come from the authored JSON, so use its parsed animation as
+    // the duration source too. A temporary visual preview may have other keys.
+    const runtimeAnimation = typeof rt !== 'undefined' ? rt.data?.findAnimation?.(state.anim) : null
+    const durationSeconds = Number.isFinite(runtimeAnimation?.duration) && runtimeAnimation.duration >= 0 ? runtimeAnimation.duration : null
+    const result = {name:state.anim,revision:agentJsonIds.get(state.json),fps:FPS,durationSeconds,durationAvailable:durationSeconds !== null,bones:[],complete:true,truncated:false}
+    const simpleValue = value => value === null || typeof value === 'boolean' || typeof value === 'string' && value.length <= 64 || typeof value === 'number' && Number.isFinite(value) || Array.isArray(value) && value.length <= 8 && value.every(item => typeof item === 'number' && Number.isFinite(item))
+    const tracksByBone = state.json.animations[op.name].bones || {}
+    for (const boneName of names) {
+      const bone = {boneName,tracks:Object.create(null),complete:true}, tracks = Object.hasOwn(tracksByBone,boneName) ? tracksByBone[boneName] : {}
+      result.bones.push(bone)
+      if (!tracks || typeof tracks !== 'object' || Array.isArray(tracks)) { bone.complete=false; result.complete=false; continue }
+      const channels = Object.entries(tracks)
+      if (channels.length > 16) { bone.complete=false; result.complete=false; result.truncated=true }
+      for (const [channel, keys] of channels.slice(0,16)) {
+        if (channel.length > 100 || !Array.isArray(keys)) { bone.complete=false; result.complete=false; continue }
+        bone.tracks[channel]=[]
+        if (JSON.stringify(result).length > 3000) { delete bone.tracks[channel]; bone.complete=false; result.complete=false; result.truncated=true; break }
+        for (const key of keys) {
+          if (!key || typeof key !== 'object' || Array.isArray(key) || Object.keys(key).length > 16 || Object.entries(key).some(([field,value])=>field.length>64 || !simpleValue(value))) { bone.complete=false; result.complete=false; break }
+          const copy = JSON.parse(JSON.stringify(key))
+          bone.tracks[channel].push(copy)
+          if (JSON.stringify(result).length > 3000) { bone.tracks[channel].pop(); bone.complete=false; result.complete=false; result.truncated=true; break }
+        }
+      }
+    }
+    return result
+  }
+  // A preview is prepared against the complete in-memory project, not against
+  // a model's proposed fields. Ops.keyBone can change a paired axis implicitly.
+  // It remains private until a user-facing confirmation flow is wired to it.
+  let communityKeyPreview = null
+  const communityActivePointers = new Set()
+  if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+    document.addEventListener('pointerdown',event=>communityActivePointers.add(event.pointerId),true)
+    const releasePointer=event=>communityActivePointers.delete(event.pointerId)
+    window.addEventListener('pointerup',releasePointer,true)
+    window.addEventListener('pointercancel',releasePointer,true)
+  }
+  function communityPreviewStable() {
+    return communityActivePointers.size===0 && state.mode === 'animate' && !state.playing && !state.pick && !state.drag && !state.creating && !state.dope?.curveDrag && !state.meshEdit && !state.meshDrag && !state.weightEdit && !state.weightStroke && !state.clipEdit && !state.clipDrag && !state.pathEdit && !state.pathDrag && state.temp && Number.isInteger(state.temp.size) && state.temp.size === 0 && !rt.animationPreview
+  }
+  function agentPreviewCommunityKeys(op, baseline) {
+    communityKeyPreview = null
+    const fail = () => { throw new Error('无法完整核对关键帧预览，未修改作品') }
+    if (!state.json || !communityPreviewStable() || op?.operation !== 'key_bones' || Object.keys(op).some(key=>!['action','operation','name','keys'].includes(key)) || op.name !== state.anim || !Array.isArray(op.keys) || !op.keys.length || op.keys.length > 12) fail()
+    const names = [...new Set(op.keys.map(key => key?.boneName))]
+    if (!names.length || names.length > 4 || names.some(name => typeof name !== 'string' || !name || !state.json.bones.some(b => b.name === name))) fail()
+    // Selection is the user's explicit target boundary, not a model inference.
+    if(JSON.stringify(names.slice().sort())!==JSON.stringify(selectedBones().slice().sort()))fail()
+    const live = agentInspectBones({name:op.name,boneNames:names})
+    const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key,canonical(value[key])])) : value
+    const equal = (a,b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b))
+    const comparable = value => value && ({name:value.name,fps:value.fps,durationSeconds:value.durationSeconds,durationAvailable:value.durationAvailable,bones:names.map(name=>value.bones?.find(b=>b.boneName===name))})
+    if (!baseline || baseline.complete !== true || baseline.truncated !== false || live.complete !== true || live.truncated !== false || live.durationAvailable !== true || !equal(comparable(baseline),comparable(live))) fail()
+    const properties = ['rotation','x','y','scaleX','scaleY','shearX','shearY'], seen = new Set()
+    const allowed = new Map(names.map(name=>[name,new Set()]))
+    for (const key of op.keys) {
+      const id = key?.boneName + ':' + key?.frame
+      if (!key || typeof key!=='object' || Object.keys(key).some(name=>!['boneName','frame','values'].includes(name)) || !names.includes(key.boneName) || !Number.isInteger(key.frame) || key.frame < 0 || key.frame / FPS > live.durationSeconds + 1e-9 || seen.has(id) || !key.values || typeof key.values !== 'object' || Array.isArray(key.values)) fail()
+      seen.add(id)
+      const entries = Object.entries(key.values)
+      if (!entries.length || entries.some(([name,value])=>!properties.includes(name) || !Number.isFinite(value) || Math.abs(value) > (name.startsWith('scale') ? 100 : 100000))) fail()
+      const channels=allowed.get(key.boneName)
+      for (const [name] of entries) channels.add(name==='rotation'?'rotate':name==='x'||name==='y'?'translate':name==='scaleX'||name==='scaleY'?'scale':'shear')
+    }
+    const source = JSON.stringify(state.json)
+    if (!source || source.length > 8*1024*1024) fail()
+    const before=JSON.parse(source), operation=JSON.parse(JSON.stringify(op))
+    let after=JSON.parse(source)
+    try { for(const key of operation.keys) after=Ops.keyBone(after,operation.name,key.boneName,key.frame/FPS,key.values).json } catch { fail() }
+    // Runtime preview data can be stale or refer to an uncommitted animation.
+    // Reparse both exact JSON snapshots using the same native reader instead.
+    let beforeDuration,afterDuration
+    try {
+      beforeDuration=readData(before).findAnimation(operation.name)?.duration
+      afterDuration=readData(after).findAnimation(operation.name)?.duration
+    } catch { fail() }
+    if(!Number.isFinite(beforeDuration) || !Number.isFinite(afterDuration) || beforeDuration !== live.durationSeconds || afterDuration !== beforeDuration)fail()
+    const masked = value => {
+      const copy=JSON.parse(JSON.stringify(value)), animation=copy.animations?.[operation.name]
+      if (!animation) fail()
+      const bones=animation.bones && typeof animation.bones==='object' ? animation.bones : {}
+      for(const name of names) delete bones[name]
+      if(Object.keys(bones).length) animation.bones=bones; else delete animation.bones
+      return copy
+    }
+    if (!equal(masked(before),masked(after))) fail()
+    const changes=[]
+    for(const name of names) {
+      const oldTracks=before.animations[operation.name].bones?.[name] || {},newTracks=after.animations[operation.name].bones?.[name] || {}
+      for(const channel of new Set([...Object.keys(oldTracks),...Object.keys(newTracks)])) {
+        if(equal(oldTracks[channel],newTracks[channel]))continue
+        if(!allowed.get(name).has(channel) || !Array.isArray(oldTracks[channel] || []) || !Array.isArray(newTracks[channel] || [])) fail()
+        changes.push({boneName:name,channel,before:oldTracks[channel] || [],after:newTracks[channel] || []})
+      }
+    }
+    if (!changes.length || JSON.stringify(changes).length > 6000) fail()
+    const token=globalThis.crypto?.randomUUID?.()
+    if(!token)fail()
+    communityKeyPreview={token,expiresAt:Date.now()+120000,source,expectedAfter:JSON.stringify(after),project:state.json,fileName:state.fileName,mode:state.mode,frame:state.frame,selection:JSON.stringify(selectedBones()),operation,names,fps:FPS,animation:state.anim,durationSeconds:live.durationSeconds}
+    return {token,animation:op.name,targets:names.slice(),fps:FPS,durationSeconds:live.durationSeconds,changes,
+      warning:'仅核对轨道数据未写入其他对象；骨骼层级和约束仍可能带来视觉联动。'}
+  }
+  function agentCommitCommunityKeys(token, confirmedTargets) {
+    const preview=communityKeyPreview
+    communityKeyPreview=null
+    if (!preview || Date.now()>preview.expiresAt || !communityPreviewStable() || token !== preview.token || !Array.isArray(confirmedTargets) || JSON.stringify(confirmedTargets.slice().sort()) !== JSON.stringify(preview.names.slice().sort()) || state.json !== preview.project || state.fileName !== preview.fileName || state.mode !== preview.mode || state.frame !== preview.frame || JSON.stringify(selectedBones()) !== preview.selection || state.anim !== preview.animation || FPS !== preview.fps || JSON.stringify(state.json) !== preview.source) throw new Error('预览已失效或目标未确认，未修改作品')
+    const live=agentInspectBones({name:preview.animation,boneNames:preview.names})
+    let actualDuration
+    try {actualDuration=readData(JSON.parse(preview.source)).findAnimation(preview.animation)?.duration} catch {}
+    if(!live.complete || live.truncated || !live.durationAvailable || live.durationSeconds !== preview.durationSeconds || actualDuration !== preview.durationSeconds)throw new Error('动画状态已变化，未修改作品')
+    // edit() can also fail after applyJson, e.g. during refresh. Keep an
+    // independent copy and both undo stacks, and verify rollback on every
+    // failure. This prototype stays private until the UI and runtime are tested.
+    const saved={...snapshot(),json:JSON.parse(preview.source)}, history=state.history.slice(), future=state.future.slice()
+    const editorState={mode:state.mode,axes:state.axes,anim:state.anim,frame:state.frame,skin:state.skin}
+    try {
+      const result=edit('小桃写入 '+preview.operation.keys.length+' 个骨骼关键帧',json=>{
+        const value=preview.operation.keys.reduce((current,key)=>Ops.keyBone(current.json,preview.animation,key.boneName,key.frame/FPS,key.values),{json})
+        if(JSON.stringify(value.json)!==preview.expectedAfter)throw new Error('实际结果与预览不一致')
+        return value
+      })
+      if(!result || JSON.stringify(state.json)!==preview.expectedAfter)throw new Error('实际结果与预览不一致')
+      const context=agentContext()
+      if(JSON.stringify(state.json)!==preview.expectedAfter)throw new Error('实际结果与预览不一致')
+      return {phase:'applied',operation:'key_bones',keyCount:preview.operation.keys.length,context}
+    } catch {
+      let restored=false
+      try {
+        Object.assign(state,editorState)
+        restore(saved)
+        state.history=history; state.future=future
+        restored=JSON.stringify(state.json)===preview.source && Object.entries(editorState).every(([key,value])=>state[key]===value)
+      } catch {}
+      if(restored)throw new Error('关键帧写入失败，已恢复作品数据')
+      throw new Error('关键帧写入状态未确认，请检查作品')
+    }
+  }
+  function agentDiscardCommunityKeys() {communityKeyPreview=null}
+  // One existing rotation key only; approval and undo use dedicated controls.
+  let singleBoneRotationPreview=null, singleBoneRotationUndo=null
+  const rotationCanonical=value=>Array.isArray(value)?value.map(rotationCanonical):value&&typeof value==='object'
+    ?Object.fromEntries(Object.keys(value).sort().map(key=>[key,rotationCanonical(value[key])])):value
+  const rotationEqual=(a,b)=>JSON.stringify(rotationCanonical(a))===JSON.stringify(rotationCanonical(b))
+  const rotationMapEntries=value=>value instanceof Map?[...value.entries()]:null
+  const rotationMapMatches=(value,entries,original)=>entries===null?value===original:value instanceof Map&&value.size===entries.length&&entries.every(([key,item])=>value.has(key)&&value.get(key)===item)
+  function rotationMetadata() {
+    return {audio:state.audio,audioEntries:rotationMapEntries(state.audio),audioFolder:state.audioFolder,
+      audioVersions:state.audioVersions,versionEntries:rotationMapEntries(state.audioVersions),atlasText:state.atlasText,atlasChanged:state.atlasChanged}
+  }
+  function rotationMetadataMatches(meta) {
+    return rotationMapMatches(state.audio,meta.audioEntries,meta.audio)&&state.audioFolder===meta.audioFolder&&
+      rotationMapMatches(state.audioVersions,meta.versionEntries,meta.audioVersions)&&state.atlasText===meta.atlasText&&state.atlasChanged===meta.atlasChanged
+  }
+  function rotationStackMatches(stack,ref,items) {return stack===ref&&stack.length===items.length&&items.every((item,i)=>stack[i]===item)}
+  function requireSingleBoneRotationClick(event,action) {
+    const owner=event?.view,button=event?.currentTarget,attr=({confirm:'data-novaflow-single-rotation-confirm',cancel:'data-novaflow-single-rotation-cancel',undo:'data-novaflow-single-rotation-undo'})[action]
+    let trusted=false
+    try {const getter=Object.getOwnPropertyDescriptor(new owner.MouseEvent('click'),'isTrusted')?.get;trusted=typeof getter==='function'&&getter.call(event)===true} catch {}
+    if(!attr||!owner||(owner!==window&&owner!==window.parent)||typeof owner.MouseEvent!=='function'||!(event instanceof owner.MouseEvent)||
+      event.type!=='click'||!trusted||!button?.isConnected||button.ownerDocument!==owner.document||!button.contains(event.target)||
+      button.getAttribute?.(attr)!=='1'||owner.document?.querySelectorAll?.('['+attr+'="1"]').length!==1||
+      owner.navigator?.userActivation?.isActive!==true||window.navigator?.userActivation?.isActive!==true){
+      const error=new Error('请在确认界面亲自点击，未修改作品');error.code='single-rotation-trusted-click-required';throw error
+    }
+  }
+  function singleBoneRotationMatches(preview,token) {
+    if(!preview||!communityKeyPreview||token!==preview.token||communityKeyPreview.token!==token||Date.now()>preview.expiresAt||!communityPreviewStable()||
+      state.json!==preview.project||state.fileName!==preview.fileName||state.mode!==preview.mode||state.frame!==preview.frame||state.anim!==preview.animation||
+      state.skin!==preview.skin||JSON.stringify(selectedBones())!==preview.selection||JSON.stringify(state.json)!==preview.source||
+      !rotationStackMatches(state.history,preview.historyRef,preview.history)||!rotationStackMatches(state.future,preview.futureRef,preview.future)||!rotationMetadataMatches(preview.metadata))return false
+    return true
+  }
+  function agentPrepareSingleBoneRotation(op,baseline) {
+    singleBoneRotationPreview=null;singleBoneRotationUndo=null;agentDiscardCommunityKeys()
+    const fail=()=>{agentDiscardCommunityKeys();throw new Error('无法安全核对单骨骼旋转预览，未修改作品')}
+    if(!op||op.action!=='animation'||op.operation!=='key_bones'||!Array.isArray(op.keys)||op.keys.length!==1||!Array.isArray(state.history)||state.history.length>=200||!Array.isArray(state.future))fail()
+    const key=op.keys[0],values=key?.values
+    if(!key||!values||typeof values!=='object'||Array.isArray(values)||Object.keys(values).length!==1||!Object.hasOwn(values,'rotation')||!Number.isFinite(values.rotation))fail()
+    const bone=state.json?.bones?.find(item=>item.name===key.boneName),track=baseline?.bones?.find(item=>item.boneName===key.boneName)?.tracks?.rotate
+    if(!bone||!Array.isArray(track)||!Number.isInteger(key.frame)||key.frame<0)fail()
+    const targetTime=Math.round(key.frame/FPS*10000)/10000,atTime=item=>Number.isFinite(item?.time??0)&&Math.abs((item.time??0)-targetTime)<1e-4
+    const oldKeys=track.filter(atTime);if(oldKeys.length!==1||!Number.isFinite(oldKeys[0].angle))fail()
+    let proposal;try {proposal=agentPreviewCommunityKeys(op,baseline)} catch {fail()}
+    const change=proposal.changes?.[0]
+    if(proposal.targets?.length!==1||proposal.targets[0]!==key.boneName||proposal.changes?.length!==1||change?.boneName!==key.boneName||change.channel!=='rotate'||
+      !Array.isArray(change.before)||!Array.isArray(change.after)||change.before.length!==change.after.length)fail()
+    const before=change.before.filter(atTime),after=change.after.filter(atTime),withoutAngle=item=>{const copy={...item};delete copy.angle;return copy}
+    if(before.length!==1||after.length!==1||!Number.isFinite(after[0].angle)||!rotationEqual(withoutAngle(before[0]),withoutAngle(after[0]))||
+      !rotationEqual(change.before.filter(item=>!atTime(item)),change.after.filter(item=>!atTime(item))))fail()
+    const setup=Number.isFinite(bone.rotation)?bone.rotation:0,preview=communityKeyPreview
+    singleBoneRotationPreview={token:preview.token,expiresAt:preview.expiresAt,project:state.json,source:preview.source,expectedAfter:preview.expectedAfter,
+      fileName:state.fileName,mode:state.mode,frame:state.frame,skin:state.skin,animation:state.anim,selection:JSON.stringify(selectedBones()),
+      boneName:key.boneName,keyFrame:key.frame,historyRef:state.history,history:state.history.slice(),futureRef:state.future,future:state.future.slice(),metadata:rotationMetadata()}
+    return {token:preview.token,expiresAt:preview.expiresAt,animation:op.name,boneName:key.boneName,frame:key.frame,
+      fromRotation:setup+before[0].angle,toRotation:setup+after[0].angle,changes:proposal.changes,targets:proposal.targets,warning:proposal.warning}
+  }
+  function agentValidateSingleBoneRotation(token) {try{return singleBoneRotationMatches(singleBoneRotationPreview,token)}catch{return false}}
+  function agentDiscardSingleBoneRotation(token) {
+    if(!singleBoneRotationPreview||singleBoneRotationPreview.token!==token)return false
+    singleBoneRotationPreview=null;agentDiscardCommunityKeys();return true
+  }
+  function agentDiscardSingleBoneRotationUndo(token) {
+    if(!singleBoneRotationUndo||singleBoneRotationUndo.token!==token)return false
+    singleBoneRotationUndo=null;return true
+  }
+  function agentCancelSingleBoneRotation(token,event) {
+    requireSingleBoneRotationClick(event,'cancel')
+    if(!agentDiscardSingleBoneRotation(token))throw new Error('旋转预览已失效，未修改作品')
+    return {phase:'cancelled',operation:'key_bones'}
+  }
+  function agentCommitSingleBoneRotation(token,event) {
+    requireSingleBoneRotationClick(event,'confirm')
+    const preview=singleBoneRotationPreview
+    if(!singleBoneRotationMatches(preview,token)){singleBoneRotationPreview=null;agentDiscardCommunityKeys();throw new Error('旋转预览已失效，未修改作品')}
+    singleBoneRotationPreview=null
+    const history=state.history.slice(),future=state.future.slice(),editorState={mode:state.mode,axes:state.axes,anim:state.anim,frame:state.frame,skin:state.skin}
+    try {
+      const pending=communityKeyPreview
+      const live=agentInspectBones({name:preview.animation,boneNames:[preview.boneName]})
+      const currentDuration=readData(JSON.parse(preview.source)).findAnimation(preview.animation)?.duration
+      if(!pending||pending.token!==token||!live.complete||live.truncated||!live.durationAvailable||live.durationSeconds!==pending.durationSeconds||currentDuration!==pending.durationSeconds)throw new Error('基线已变化')
+      const before=snapshot(),key=pending.operation.keys[0]
+      const result=Ops.keyBone(state.json,preview.animation,key.boneName,key.frame/FPS,key.values)
+      if(JSON.stringify(result.json)!==preview.expectedAfter)throw new Error('实际结果与预览不一致')
+      applyJson(result.json);state.history.push(before);state.future=[];validateSelection();refresh()
+      agentDiscardCommunityKeys()
+      if(JSON.stringify(state.json)!==preview.expectedAfter||
+        state.history.length!==history.length+1||state.history.at(-1)?.json!==preview.project||state.future.length!==0||!rotationMetadataMatches(preview.metadata))throw new Error('写入后状态不一致')
+      const undoToken=globalThis.crypto?.randomUUID?.();if(!undoToken)throw new Error('无法创建撤销票据')
+      singleBoneRotationUndo={token:undoToken,expiresAt:Date.now()+120000,project:state.json,expectedAfter:preview.expectedAfter,before:preview.project,
+        beforeText:preview.source,fileName:state.fileName,mode:state.mode,frame:state.frame,skin:state.skin,animation:state.anim,selection:JSON.stringify(selectedBones()),
+        historyRef:state.history,history:state.history.slice(),futureRef:state.future,future:state.future.slice(),metadata:preview.metadata,boneName:preview.boneName,keyFrame:preview.keyFrame}
+      return {phase:'applied',operation:'key_bones',undoToken,animation:preview.animation,boneName:preview.boneName,frame:preview.keyFrame}
+    } catch {
+      let restored=false
+      try {Object.assign(state,editorState);applyJson(preview.project);state.history=history;state.future=future;validateSelection();refresh()
+        restored=state.json===preview.project&&JSON.stringify(state.json)===preview.source&&Object.entries(editorState).every(([key,value])=>state[key]===value)&&rotationMetadataMatches(preview.metadata)} catch {}
+      if(restored)throw new Error('旋转写入失败，已恢复作品数据')
+      throw new Error('旋转写入状态未确认，请检查作品')
+    }
+  }
+  function agentUndoSingleBoneRotation(token,event) {
+    requireSingleBoneRotationClick(event,'undo')
+    const record=singleBoneRotationUndo;singleBoneRotationUndo=null
+    if(!record||record.token!==token||Date.now()>record.expiresAt||!communityPreviewStable()||state.json!==record.project||JSON.stringify(state.json)!==record.expectedAfter||
+      state.fileName!==record.fileName||state.mode!==record.mode||state.frame!==record.frame||state.skin!==record.skin||state.anim!==record.animation||
+      JSON.stringify(selectedBones())!==record.selection||!rotationStackMatches(state.history,record.historyRef,record.history)||!rotationStackMatches(state.future,record.futureRef,record.future)||
+      state.history.at(-1)?.json!==record.before||!rotationMetadataMatches(record.metadata))throw new Error('撤销已失效，未修改作品')
+    const current=snapshot(),history=state.history.slice(),future=state.future.slice(),editorState={mode:state.mode,axes:state.axes,anim:state.anim,frame:state.frame,skin:state.skin}
+    try {
+      // Equivalent to native undo for this JSON-only edit, without restore()
+      // stopping audio or replacing unrelated audio/atlas resources.
+      state.future.push(current);state.history.pop();applyJson(record.before);validateSelection();refresh()
+      if(state.json!==record.before||JSON.stringify(state.json)!==record.beforeText||!rotationMetadataMatches(record.metadata)||
+        Object.entries(editorState).some(([key,value])=>state[key]!==value))throw new Error('撤销后状态不一致')
+      status('已撤销');return {phase:'undone',operation:'key_bones',animation:record.animation,boneName:record.boneName,frame:record.keyFrame}
+    } catch {
+      let restored=false
+      try {Object.assign(state,editorState);applyJson(current.json);state.history=history;state.future=future;validateSelection();refresh()
+        restored=state.json===record.project&&JSON.stringify(state.json)===record.expectedAfter&&rotationMetadataMatches(record.metadata)&&Object.entries(editorState).every(([key,value])=>state[key]===value)} catch {}
+      if(restored)throw new Error('撤销失败，原修改保持不变')
+      throw new Error('撤销状态未确认，请检查作品')
+    }
+  }
+
+  // Bounded, explicit-user-confirmed new idle-animation draft.  This path is
+  // independent of model/provider and never creates or modifies a project at
+  // preview time.  It shares the editor's native single-entry undo stack.
+  let idleAnimationPreview=null, idleAnimationUndo=null
+  function requireIdleAnimationClick(event,action) {
+    const owner=event?.view,button=event?.currentTarget,attr=({confirm:'data-novaflow-idle-confirm',cancel:'data-novaflow-idle-cancel',undo:'data-novaflow-idle-undo'})[action]
+    let trusted=false
+    try {const getter=Object.getOwnPropertyDescriptor(new owner.MouseEvent('click'),'isTrusted')?.get;trusted=typeof getter==='function'&&getter.call(event)===true} catch {}
+    if(!attr||!owner||(owner!==window&&owner!==window.parent)||typeof owner.MouseEvent!=='function'||!(event instanceof owner.MouseEvent)||
+      event.type!=='click'||!trusted||!button?.isConnected||button.ownerDocument!==owner.document||!button.contains(event.target)||
+      button.getAttribute?.(attr)!=='1'||owner.document?.querySelectorAll?.('['+attr+'="1"]').length!==1||
+      owner.navigator?.userActivation?.isActive!==true||window.navigator?.userActivation?.isActive!==true){
+      const error=new Error('请在确认界面亲自点击，未修改作品');error.code='idle-animation-trusted-click-required';throw error
+    }
+  }
+  const idleEditorState=()=>({mode:state.mode,axes:state.axes,anim:state.anim,frame:state.frame,skin:state.skin,sel:state.sel,multi:state.multi,chainPick:state.chainPick,chainRoots:state.chainRoots})
+  function idleStateMatches(record,token) {
+    return !!record && token===record.token && Date.now()<=record.expiresAt && communityPreviewStable() && state.json===record.project &&
+      state.fileName===record.fileName && state.mode===record.editor.mode && state.axes===record.editor.axes && state.frame===record.editor.frame &&
+      state.anim===record.editor.anim && state.skin===record.editor.skin && JSON.stringify(selectedBones())===record.selection &&
+      JSON.stringify({sel:state.sel,multi:state.multi,chainPick:state.chainPick,chainRoots:state.chainRoots})===record.selectionState &&
+      JSON.stringify(state.json)===record.source && rotationStackMatches(state.history,record.historyRef,record.history) &&
+      rotationStackMatches(state.future,record.futureRef,record.future) && rotationMetadataMatches(record.metadata)
+  }
+  function agentPrepareIdleAnimation(draft) {
+    idleAnimationPreview=null;idleAnimationUndo=null
+    const fail=()=>{throw new Error('无法安全核对待机动画草稿，未修改作品')}
+    const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key))
+    if(!state.json || !communityPreviewStable() || !Array.isArray(state.history) || state.history.length>=200 || !Array.isArray(state.future) ||
+      !exact(draft,['action','operation','name','durationSeconds','keys']) || draft.action!=='animation' || draft.operation!=='create_idle' ||
+      typeof draft.name!=='string' || draft.name!==draft.name.trim() || !draft.name || draft.name.length>100 || /^(?:__proto__|constructor|prototype)$/i.test(draft.name) ||
+      !state.json.animations || Object.hasOwn(state.json.animations,draft.name) || draft.durationSeconds!==2 || !Array.isArray(draft.keys) ||
+      draft.keys.length<3 || draft.keys.length>12 || !Number.isSafeInteger(FPS) || FPS<1 || FPS>120)fail()
+    const selection=selectedBones(),names=[...new Set(draft.keys.map(key=>key?.boneName))]
+    if(!Array.isArray(selection)||selection.length<1||selection.length>4||names.length!==selection.length||
+      JSON.stringify(names.slice().sort())!==JSON.stringify(selection.slice().sort()) ||
+      names.some(name=>typeof name!=='string'||!name||/^(?:__proto__|constructor|prototype)$/i.test(name)||!state.json.bones?.some(bone=>bone.name===name)))fail()
+    const seen=new Set(),last=FPS*2
+    for(const key of draft.keys) {
+      if(!exact(key,['boneName','frame','values'])||!names.includes(key.boneName)||!Number.isSafeInteger(key.frame)||key.frame<0||key.frame>last||
+        !key.values||typeof key.values!=='object'||Array.isArray(key.values)||seen.has(key.boneName+':'+key.frame))fail()
+      seen.add(key.boneName+':'+key.frame)
+      if(!exact(key.values,['rotation'])||!Number.isFinite(key.values.rotation)||Math.abs(key.values.rotation)>180||![0,FPS,last].includes(key.frame))fail()
+    }
+    // Each target loops back to its own first pose; at least one intermediate
+    // pose differs, so an empty/static animation is never reported as created.
+    let moving=false
+    for(const name of names){
+      const keys=draft.keys.filter(key=>key.boneName===name),first=keys.find(key=>key.frame===0),end=keys.find(key=>key.frame===last)
+      const middle=keys.find(key=>key.frame===FPS)
+      if(keys.length!==3||!first||!middle||!end||!rotationEqual(first.values,end.values))fail()
+      if(!rotationEqual(middle.values,first.values))moving=true
+    }
+    if(!moving)fail()
+    const source=JSON.stringify(state.json);if(!source||source.length>8*1024*1024)fail()
+    const operation=JSON.parse(JSON.stringify(draft)),before=JSON.parse(source);let after
+    try {
+      after=Ops.createAnimation(before,operation.name).json
+      for(const key of operation.keys)after=Ops.keyBone(after,operation.name,key.boneName,key.frame/FPS,key.values).json
+      const duration=readData(after).findAnimation(operation.name)?.duration
+      if(!Number.isFinite(duration)||Math.abs(duration-2)>1e-7)fail()
+      const rest=JSON.parse(JSON.stringify(after));delete rest.animations[operation.name]
+      if(!rotationEqual(rest,before))fail()
+      const written=after.animations[operation.name]?.bones
+      if(!written||JSON.stringify(Object.keys(written).sort())!==JSON.stringify(names.slice().sort()))fail()
+    } catch {fail()}
+    const token=globalThis.crypto?.randomUUID?.();if(!token)fail()
+    idleAnimationPreview={token,expiresAt:Date.now()+120000,project:state.json,source,expectedAfter:JSON.stringify(after),fileName:state.fileName,
+      editor:idleEditorState(),selection:JSON.stringify(selection),selectionState:JSON.stringify({sel:state.sel,multi:state.multi,chainPick:state.chainPick,chainRoots:state.chainRoots}),historyRef:state.history,history:state.history.slice(),futureRef:state.future,
+      future:state.future.slice(),metadata:rotationMetadata(),operation,names:names.slice(),fps:FPS}
+    return {token,expiresAt:idleAnimationPreview.expiresAt,name:operation.name,durationSeconds:2,fps:FPS,targets:names.slice(),keys:operation.keys,
+      warning:'草稿只会新建此动画并写入所选骨骼；骨骼层级和约束仍可能产生视觉联动。'}
+  }
+  function agentValidateIdleAnimation(token) {try{return idleStateMatches(idleAnimationPreview,token)}catch{return false}}
+  function agentDiscardIdleAnimation(token) {if(!idleAnimationPreview||idleAnimationPreview.token!==token)return false;idleAnimationPreview=null;return true}
+  function agentCancelIdleAnimation(token,event) {
+    requireIdleAnimationClick(event,'cancel')
+    if(!agentDiscardIdleAnimation(token))throw new Error('草稿已失效，未修改作品')
+    return {phase:'cancelled',operation:'create_idle'}
+  }
+  function agentCommitIdleAnimation(token,event) {
+    requireIdleAnimationClick(event,'confirm')
+    const preview=idleAnimationPreview
+    if(!idleStateMatches(preview,token)){idleAnimationPreview=null;throw new Error('草稿已失效，未修改作品')}
+    idleAnimationPreview=null
+    const history=state.history.slice(),future=state.future.slice(),editor=idleEditorState(),before=snapshot()
+    try {
+      let next=Ops.createAnimation(state.json,preview.operation.name).json
+      for(const key of preview.operation.keys)next=Ops.keyBone(next,preview.operation.name,key.boneName,key.frame/FPS,key.values).json
+      const duration=readData(next).findAnimation(preview.operation.name)?.duration
+      if(JSON.stringify(next)!==preview.expectedAfter||!Number.isFinite(duration)||Math.abs(duration-2)>1e-7)throw new Error('实际结果与预览不一致')
+      applyJson(next);state.history.push(before);state.future=[];state.anim=preview.operation.name;state.mode='animate';state.frame=0;validateSelection();refresh()
+      if(JSON.stringify(state.json)!==preview.expectedAfter||state.history.length!==history.length+1||state.history.at(-1)?.json!==preview.project||
+        state.future.length!==0||!rotationMetadataMatches(preview.metadata))throw new Error('写入后状态不一致')
+      const undoToken=globalThis.crypto?.randomUUID?.();if(!undoToken)throw new Error('无法创建撤销票据')
+      idleAnimationUndo={token:undoToken,expiresAt:Date.now()+120000,project:state.json,expectedAfter:preview.expectedAfter,before:preview.project,beforeText:preview.source,
+        fileName:state.fileName,editor:idleEditorState(),previousEditor:editor,selection:JSON.stringify(selectedBones()),historyRef:state.history,history:state.history.slice(),
+        selectionState:JSON.stringify({sel:state.sel,multi:state.multi,chainPick:state.chainPick,chainRoots:state.chainRoots}),
+        futureRef:state.future,future:state.future.slice(),metadata:preview.metadata,name:preview.operation.name}
+      return {phase:'applied',operation:'create_idle',name:preview.operation.name,keyCount:preview.operation.keys.length,undoToken}
+    } catch {
+      let restored=false
+      try {Object.assign(state,editor);applyJson(preview.project);state.history=history;state.future=future;validateSelection();refresh()
+        restored=state.json===preview.project&&JSON.stringify(state.json)===preview.source&&rotationMetadataMatches(preview.metadata)&&state.anim===editor.anim&&state.frame===editor.frame} catch {}
+      if(restored)throw new Error('动画写入失败，已恢复作品数据')
+      throw new Error('动画写入状态未确认，请检查作品')
+    }
+  }
+  function agentUndoIdleAnimation(token,event) {
+    requireIdleAnimationClick(event,'undo')
+    const record=idleAnimationUndo;idleAnimationUndo=null
+    if(!record||record.token!==token||Date.now()>record.expiresAt||!communityPreviewStable()||state.json!==record.project||JSON.stringify(state.json)!==record.expectedAfter||
+      state.fileName!==record.fileName||state.mode!==record.editor.mode||state.axes!==record.editor.axes||state.frame!==record.editor.frame||state.skin!==record.editor.skin||state.anim!==record.editor.anim||
+      JSON.stringify(selectedBones())!==record.selection||!rotationStackMatches(state.history,record.historyRef,record.history)||!rotationStackMatches(state.future,record.futureRef,record.future)||
+      JSON.stringify({sel:state.sel,multi:state.multi,chainPick:state.chainPick,chainRoots:state.chainRoots})!==record.selectionState||
+      state.history.at(-1)?.json!==record.before||!rotationMetadataMatches(record.metadata))throw new Error('撤销已失效，未修改作品')
+    const current=snapshot(),history=state.history.slice(),future=state.future.slice(),editor=idleEditorState()
+    try {
+      state.future.push(current);state.history.pop();applyJson(record.before);Object.assign(state,record.previousEditor);validateSelection();refresh()
+      if(state.json!==record.before||JSON.stringify(state.json)!==record.beforeText||!rotationMetadataMatches(record.metadata)||state.anim!==record.previousEditor.anim||state.frame!==record.previousEditor.frame)throw new Error('撤销后状态不一致')
+      status('已撤销');return {phase:'undone',operation:'create_idle',name:record.name}
+    } catch {
+      let restored=false
+      try {Object.assign(state,editor);applyJson(current.json);state.history=history;state.future=future;validateSelection();refresh()
+        restored=state.json===record.project&&JSON.stringify(state.json)===record.expectedAfter&&rotationMetadataMatches(record.metadata)} catch {}
+      if(restored)throw new Error('撤销失败，原修改保持不变')
+      throw new Error('撤销状态未确认，请检查作品')
+    }
+  }
+  // Assistant preview only: commit and undo require a trusted click on the
+  // unique user-facing confirmation controls and a still-matching snapshot.
+  let communitySeekPreview = null, communitySeekUndo = null
+  const communitySeekPointers = new Set()
+  if (typeof document !== 'undefined' && typeof window !== 'undefined' && window.navigator) {
+    document.addEventListener('pointerdown',event=>communitySeekPointers.add(event.pointerId),true)
+    const communitySeekPointerEnd=event=>communitySeekPointers.delete(event.pointerId)
+    window.addEventListener('pointerup',communitySeekPointerEnd,true)
+    window.addEventListener('pointercancel',communitySeekPointerEnd,true)
+  }
+  function communitySeekStable() {
+    return !!state.json && state.mode==='animate' && Number.isSafeInteger(state.frame) && state.frame>=0 && !!state.anim && Object.hasOwn(state.json.animations || {},state.anim)
+      && !state.playing && !state.pick && !state.drag && !state.creating && !state.dope?.drag && !state.dope?.curveDrag
+      && !state.meshEdit && !state.meshDrag && !state.weightEdit && !state.weightStroke && !state.clipEdit && !state.clipDrag
+      && !state.pathEdit && !state.pathDrag && !rt.animationPreview && state.temp instanceof Map && state.temp.size===0
+      && communitySeekPointers.size===0
+  }
+  function communitySeekSnapshot() {
+    if(!communitySeekStable())throw new Error('动画正在播放或编辑，不能定位预览帧')
+    const authored=rt.data?.findAnimation?.(state.anim), duration=authored?.duration
+    if(!Number.isFinite(duration)||duration<0)throw new Error('当前动画时长不可用')
+    const json=JSON.stringify(state.json)
+    if(json.length>2*1024*1024)throw new Error('工程过大，无法安全预览定位')
+    return {project:state.json,authored:rt.data,json,animation:state.anim,frame:state.frame,mode:state.mode,
+      selection:JSON.stringify({sel:state.sel,multi:state.multi,multiSlots:state.multiSlots,multiAtts:state.multiAtts,multiCons:state.multiCons,keySel:state.dope?.keySel}),
+      duration,fps:FPS}
+  }
+  function communitySeekMatches(expected,frame) {
+    if(!communitySeekStable() || state.json!==expected.project || rt.data!==expected.authored || state.anim!==expected.animation
+      || state.frame!==frame || state.mode!==expected.mode || FPS!==expected.fps)return false
+    const actual=communitySeekSnapshot()
+    return actual.json===expected.json && actual.selection===expected.selection && actual.duration===expected.duration
+  }
+  function agentPrepareCommunitySeek(frame) {
+    communitySeekPreview=null
+    const snapshot=communitySeekSnapshot(),lastFrame=Math.round(snapshot.duration*snapshot.fps)
+    if(!Number.isSafeInteger(lastFrame)||!Number.isInteger(frame)||frame<0||frame>18000||frame>lastFrame)throw new Error('目标帧超出当前动画范围')
+    const token=window.crypto.randomUUID()
+    communitySeekPreview={token,snapshot,target:frame,expiresAt:Date.now()+120000}
+    return {token,animation:snapshot.animation,fromFrame:snapshot.frame,targetFrame:frame,expiresAt:communitySeekPreview.expiresAt}
+  }
+  function agentValidateCommunitySeek(token) {
+    const preview=communitySeekPreview
+    try {return !!preview && preview.token===token && Date.now()<=preview.expiresAt && communitySeekMatches(preview.snapshot,preview.snapshot.frame)}
+    catch {return false}
+  }
+  function agentCancelCommunitySeek(token) {
+    if(!communitySeekPreview || communitySeekPreview.token!==token)return false
+    communitySeekPreview=null;return true
+  }
+  function agentDiscardCommunitySeekUndo(token) {
+    if(!communitySeekUndo || communitySeekUndo.token!==token)return false
+    communitySeekUndo=null;return true
+  }
+  function requireCommunitySeekClick(event,action) {
+    const owner=event?.view,button=event?.currentTarget
+    const attr=action==='confirm'?'data-novaflow-qwen-seek-confirm':'data-novaflow-qwen-seek-undo'
+    let trusted=false
+    try {const getter=Object.getOwnPropertyDescriptor(new owner.MouseEvent('click'),'isTrusted')?.get;trusted=typeof getter==='function'&&getter.call(event)===true} catch {}
+    if(!owner || (owner!==window&&owner!==window.parent) || typeof owner.MouseEvent!=='function' || !(event instanceof owner.MouseEvent)
+      || event.type!=='click' || !trusted || !button?.isConnected || button.ownerDocument!==owner.document || !button.contains(event.target)
+      || button.getAttribute?.(attr)!=='1' || owner.document?.querySelectorAll?.('['+attr+'="1"]').length!==1
+      || owner.navigator?.userActivation?.isActive!==true || window.navigator?.userActivation?.isActive!==true){const error=new Error('请在确认界面亲自点击，未更改帧位置');error.code='qwen-seek-trusted-click-required';throw error}
+  }
+  function agentCommitCommunitySeek(token,event) {
+    requireCommunitySeekClick(event,'confirm')
+    const preview=communitySeekPreview;communitySeekPreview=null
+    if(!preview||preview.token!==token||Date.now()>preview.expiresAt||!communitySeekMatches(preview.snapshot,preview.snapshot.frame))throw new Error('定位预览已失效，未更改帧位置')
+    // Use the same path as dragging the timeline ruler. Unlike gotoFrame it
+    // never calls audioPlayer.stop(); temp/playback are checked above.
+    setFrame(preview.target)
+    if(!communitySeekMatches(preview.snapshot,preview.target))throw new Error('定位状态发生变化，请检查当前帧')
+    const undoToken=window.crypto.randomUUID()
+    communitySeekUndo={token:undoToken,snapshot:preview.snapshot,target:preview.target,expiresAt:Date.now()+120000}
+    return {phase:'applied',operation:'seek',animation:preview.snapshot.animation,frame:preview.target,changed:preview.target!==preview.snapshot.frame,undoToken}
+  }
+  function agentUndoCommunitySeek(token,event) {
+    requireCommunitySeekClick(event,'undo')
+    const undo=communitySeekUndo;communitySeekUndo=null
+    if(!undo||undo.token!==token||Date.now()>undo.expiresAt||!communitySeekMatches(undo.snapshot,undo.target))throw new Error('定位撤销已失效，未更改帧位置')
+    setFrame(undo.snapshot.frame)
+    if(!communitySeekMatches(undo.snapshot,undo.snapshot.frame))throw new Error('撤销状态发生变化，请检查当前帧')
+    return {phase:'applied',operation:'seek_undo',animation:undo.snapshot.animation,frame:undo.snapshot.frame}
+  }
+  function agentAction(op) {
+    if (!state.json) throw new Error('请先新建或导入动画工程')
+    let boneReceipt, constraintReceipt
+    if (['auto_mesh','auto_weights','edit_mesh','edit_weights','select_attachment'].includes(op.operation)) {
+      const L={skin:op.skinName,slot:op.slotName,name:op.attachmentName}
+      const attachment=state.json.skins.find(s=>s.name===L.skin)?.attachments?.[L.slot]?.[L.name]
+      if(!attachment||!['region','mesh','linkedmesh','path'].includes(attachment.type||'region'))throw new Error('当前附件不存在或不支持此操作')
+      if(['auto_mesh','edit_mesh'].includes(op.operation)&&!['region','mesh'].includes(attachment.type||'region'))throw new Error('只有独立图片或网格可以自动蒙皮')
+      if(op.operation==='auto_weights'&&state.json.bones.length<=1)throw new Error('骨架只有 root，先建好骨骼')
+      setMode('setup');select({kind:'att',...L},false)
+      const finish=()=>{if(op.operation==='auto_mesh'||op.operation==='edit_mesh')enterMeshEdit(L);if(op.operation==='auto_weights'||op.operation==='edit_weights')enterWeightEdit(L);refresh();return {phase:'applied',operation:op.operation,attachment:agentAttachments().find(a=>a.skinName===L.skin&&a.slotName===L.slot&&a.name===L.name),context:agentContext()}}
+      if(op.operation==='auto_mesh'||op.operation==='auto_weights')return runBatch([L],op.operation==='auto_mesh'?'自动蒙皮':'自动权重',op.operation==='auto_mesh'?meshOneLayer:weighOneLayer).then(result=>{if(result.done!==1||result.skipped)throw new Error(result.why||'原生附件处理未完成');return {...finish(),nativeResult:{done:result.done,verts:result.verts,skipped:result.skipped}}})
+      return finish()
+    } else if (op.operation === 'select_bone') {
+      if (!state.json.bones.some(b=>b.name===op.boneName)) throw new Error('当前工程没有这根骨骼')
+      if(state.pick?.want==='bone')resolvePick('bone',op.boneName)
+      else select({kind:'bone',name:op.boneName},false)
+    } else if (['create_constraint','update_constraint','select_constraint'].includes(op.operation)) {
+      const kind=op.constraintKind,creating=op.operation==='create_constraint'
+      if(!['ik','transform','path'].includes(kind))throw new Error('约束类型无效')
+      const previous=(state.json[kind]||[]).find(c=>c.name===op.name)
+      if(!creating&&!previous)throw new Error('当前约束不存在，未修改其他约束')
+      if(op.operation==='select_constraint'){select({kind,name:op.name},false);refresh();return {phase:'applied',operation:op.operation,constraint:{...previous,bones:previous.bones.slice()},context:agentContext()}}
+      const allowed=kind==='ik'?['mix','softness','bendPositive','compress','stretch','uniform']:kind==='transform'?['rotation','x','y','scaleX','scaleY','shearY','rotateMix','translateMix','scaleMix','shearMix','local','relative']:['positionMode','spacingMode','rotateMode','rotation','position','spacing','rotateMix','translateMix']
+      const values=op.values||{},booleans=['bendPositive','compress','stretch','uniform','local','relative'],modes={positionMode:['fixed','percent'],spacingMode:['length','fixed','percent','proportional'],rotateMode:['tangent','chain','chainScale']}
+      if(!values||Array.isArray(values)||Object.entries(values).some(([key,value])=>!allowed.includes(key)||(booleans.includes(key)?typeof value!=='boolean':modes[key]?!modes[key].includes(value):typeof value!=='number'||!Number.isFinite(value)||(!(kind==='transform'&&/Mix$/.test(key))&&(Math.abs(value)>100000||(/Mix$|^mix$/.test(key)&&(value<0||value>1))))||key==='softness'&&value<0)))throw new Error('约束属性无效')
+      if(creating&&(!Array.isArray(op.boneNames)||!op.boneNames.length||op.boneNames.length>60||new Set(op.boneNames).size!==op.boneNames.length||op.boneNames.some(name=>!state.json.bones.some(b=>b.name===name))||typeof op.targetName!=='string'||!(kind==='path'?state.json.slots:state.json.bones).some(item=>item.name===op.targetName)))throw new Error('约束骨骼或目标不存在')
+      if(op.name!==undefined&&(typeof op.name!=='string'||!op.name.trim()||op.name!==op.name.trim()||op.name.length>100))throw new Error('约束名称无效')
+      setMode('setup')
+      let actualName=op.name
+      const applied=edit('小桃'+(creating?'新建':'修改')+'原生约束',j=>{
+        if(!creating)return withOrder(Ops.setConstraintProps(j,kind,op.name,{...values,...(op.targetName?{target:op.targetName}:{})}))
+        let offsets={}
+        if(kind==='transform'){const m=setupMatrices();offsets=m[op.boneNames[0]]&&m[op.targetName]?Ops.transformOffsets(m[op.boneNames[0]],m[op.targetName]):{}}
+        const method=kind==='ik'?Ops.createIk:kind==='transform'?Ops.createTransform:Ops.createPathConstraint
+        return withOrder(method(j,{...offsets,...values,bones:op.boneNames,target:op.targetName,...(op.name?{name:op.name}:{})}))
+      },result=>{actualName=result.constraint||actualName})
+      if(applied===null)throw new Error('原生约束修改失败，已保留原约束')
+      const actual=state.json[kind].find(c=>c.name===actualName)
+      if(!actual)throw new Error('原生约束没有实际建立')
+      select({kind,name:actualName},false)
+      constraintReceipt={constraintKind:kind,previousConstraint:previous?{...previous,bones:previous.bones.slice()}:null,constraint:{...actual,bones:actual.bones.slice()}}
+    } else if (['create_slot','select_slot','update_slot'].includes(op.operation)) {
+      const creating=op.operation==='create_slot', name=creating?op.name:op.slotName
+      const previous=state.json.slots.find(slot=>slot.name===name)
+      if(typeof name!=='string'||!name.trim()||name!==name.trim()||name.length>100||(creating?(!!previous||!state.json.bones.some(b=>b.name===op.parentBoneName)):!previous))throw new Error('插槽名称或父骨骼无效')
+      if(op.operation==='update_slot'){
+        const values=op.values,allowed=['blend','color','dark']
+        if(!values||Array.isArray(values)||!Object.keys(values).length||Object.entries(values).some(([key,value])=>!allowed.includes(key)||(key==='blend'?!['normal','additive','multiply','screen'].includes(value):typeof value!=='string'||!(key==='color'?/^[a-f0-9]{8}$/i:/^(?:[a-f0-9]{6})?$/i).test(value))))throw new Error('插槽属性无效')
+      }
+      if(creating||op.operation==='update_slot'){
+        setMode('setup')
+        const applied=edit('小桃'+(creating?'新建':'修改')+'插槽 '+name,j=>creating?Ops.addSlot(j,op.parentBoneName,name):Ops.setSlotProps(j,name,op.values))
+        if(applied===null)throw new Error('原生插槽修改失败，已保留原工程')
+      }
+      select({kind:'slot',name},false);refresh()
+      return {phase:'applied',operation:op.operation,previousSlot:previous?{...previous}:null,slot:{...state.json.slots.find(slot=>slot.name===name)},context:agentContext()}
+    } else if (['create_skin','select_skin'].includes(op.operation)) {
+      const name=op.name,creating=op.operation==='create_skin',existing=state.json.skins.some(skin=>skin.name===name)
+      if(typeof name!=='string'||!name.trim()||name!==name.trim()||name.length>100||(creating?existing:!existing))throw new Error('皮肤名称无效')
+      if(creating){const applied=edit('小桃新建皮肤 '+name,j=>Ops.createSkin(j,name));if(applied===null)throw new Error('原生皮肤创建失败，已保留原工程')}
+      select({kind:'skin',name},false);setSkin(name);refresh()
+      return {phase:'applied',operation:op.operation,skin:{name},context:agentContext()}
+    } else if (op.operation === 'select_animation') {
+      if (!Object.hasOwn(state.json.animations,op.name)) throw new Error('当前动画不存在')
+      state.anim=op.name;setMode('animate')
+    } else if (op.operation === 'create_bone' || op.operation === 'update_bone') {
+      const creating=op.operation==='create_bone',name=creating?op.name:op.boneName
+      if(typeof name!=='string'||!name.trim()||name.length>100||!state.json.bones.some(b=>b.name===(creating?op.parentBoneName:name))||creating&&state.json.bones.some(b=>b.name===name))throw new Error('骨骼名称或父级无效')
+      if(creating&&name!==name.trim())throw new Error('骨骼名称不能以空格开头或结尾')
+      const props=['length','rotation','x','y','scaleX','scaleY','shearX','shearY'],entries=Object.entries(op.values||{})
+      if(!op.values||Array.isArray(op.values)||!entries.length||entries.some(([k,v])=>!props.includes(k)||!Number.isFinite(v)||Math.abs(v)>(k.startsWith('scale')?100:100000)||k==='length'&&v<0))throw new Error('骨骼设置属性超出原生范围')
+      const before=state.json.bones.find(b=>b.name===name),changed=creating||entries.some(([k,v])=>(before[k]??(k.startsWith('scale')?1:0))!==v)
+      setMode('setup')
+      // Typed poses use the skeleton's parent-space local values. Show those
+      // same values, rather than the projection along its rotated own axes.
+      state.axes='parent'
+      if(changed)edit('小桃'+(creating?'新建':'设置')+'骨骼 '+name,j=>Ops.setBoneProps(creating?Ops.addBone(j,{name,parent:op.parentBoneName}).json:j,name,op.values))
+      select({kind:'bone',name},false)
+      boneReceipt={changed,previousBone:before?{...before}:null,bone:{...state.json.bones.find(b=>b.name===name)}}
+    } else if (op.operation === 'create_animation') {
+      if (typeof op.name!=='string'||!op.name.trim()||op.name.length>100) throw new Error('动画名称无效')
+      edit('小桃新建动画 '+op.name,j=>Ops.createAnimation(j,op.name),r=>{state.anim=r.animation;state.mode='animate';state.frame=0})
+    } else if (op.operation === 'key_bones') {
+      if (!Object.hasOwn(state.json.animations,op.name)||!Array.isArray(op.keys)||!op.keys.length||op.keys.length>120) throw new Error('动画关键帧方案无效')
+      const props=['rotation','x','y','scaleX','scaleY','shearX','shearY'],seen=new Set()
+      for (const key of op.keys) {
+        const token=key.boneName+':'+key.frame
+        if (!state.json.bones.some(b=>b.name===key.boneName)||!Number.isInteger(key.frame)||key.frame<0||key.frame>18000||seen.has(token)||!key.values||Array.isArray(key.values)) throw new Error('骨骼或关键帧位置无效')
+        seen.add(token)
+        const entries=Object.entries(key.values)
+        if (!entries.length||entries.some(([k,v])=>!props.includes(k)||!Number.isFinite(v)||Math.abs(v)>(k.startsWith('scale')?100:100000))) throw new Error('关键帧属性超出原生范围')
+      }
+      edit('小桃写入 '+op.keys.length+' 组骨骼关键帧',j=>op.keys.reduce((r,k)=>Ops.keyBone(r.json,op.name,k.boneName,k.frame/FPS,k.values),{json:j}))
+      state.anim=op.name;setMode('animate')
+      state.axes='parent'
+    } else if (op.operation === 'seek') {
+      if(!Number.isInteger(op.frame)||op.frame<0||op.frame>18000)throw new Error('动画帧位置无效')
+      setMode('animate');gotoFrame(op.frame)
+    } else if (op.operation === 'play' || op.operation === 'pause') {
+      if ((op.operation === 'play') !== !!state.playing) togglePlay()
+    } else if (op.operation === 'undo') undo()
+    else if (op.operation === 'redo') redo()
+    else throw new Error('未接入的动画操作')
+    refresh()
+    return {phase:'applied',operation:op.operation,...boneReceipt,...constraintReceipt,...(op.keys?{keyCount:op.keys.length}:{}),context:agentContext()}
+  }
+
   const tickedOf = () => tickedLayers()
   window.NovaFlowSkeletonEditorAPI = {
+    agentContext, agentInspectProject, agentInspectBones, agentPrepareCommunitySeek, agentValidateCommunitySeek, agentCancelCommunitySeek, agentDiscardCommunitySeekUndo, agentCommitCommunitySeek, agentUndoCommunitySeek,
+    agentPrepareSingleBoneRotation, agentValidateSingleBoneRotation, agentDiscardSingleBoneRotation, agentDiscardSingleBoneRotationUndo, agentCancelSingleBoneRotation, agentCommitSingleBoneRotation, agentUndoSingleBoneRotation,
+    agentPrepareIdleAnimation, agentValidateIdleAnimation, agentDiscardIdleAnimation, agentCancelIdleAnimation, agentCommitIdleAnimation, agentUndoIdleAnimation,
+    agentPreview: agentPreviewImage, agentAction,
     on(fn) { hostListeners.add(fn); return () => hostListeners.delete(fn) },
     /** 外壳点 iframe 外面的遮罩：编辑器里开着的下拉框关掉 */
     closeDropdown: () => ddClose(),
