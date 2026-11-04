@@ -43,15 +43,10 @@
     $('comfy').textContent = value.runtimeStarting ? '启动中' : value.runtimeReady === false ? '未就绪' : value.comfy ? value.comfy.image || value.comfy.video ? '已连接' : '未就绪' : '—';
     $('freeMemory').disabled = freeing || !online || value.runtimeReady === false || value.claimBusy === true || !!value.currentTaskId || (!value.comfy?.image && !value.comfy?.video);
     $('freeMemory').textContent = freeing ? '请求中…' : freeMessage || '释放模型资源';
-    const claimsPaused = value.claimsPaused === true;
-    if (claimsPaused) {
-      $('activityBadge').textContent = value.claimOutcomeUnknown ? '领取状态待核对' : value.claimBusy || value.currentTaskId ? '等待任务完成' : '接单已暂停';
-      $('activityBadge').dataset.active = 'false';
-    }
     const policy = value.policy;
     const sharing = ready && policy?.sharing_enabled;
-    $('sharing').textContent = claimsPaused ? '接单已暂停' : value.pendingApproval ? '待审批' : !policy ? '分享未开通' : !policy.enabled ? '节点已停用' : !policy.sharing_enabled ? '分享未开通' : sharing ? '算力分享中' : '分享已开通';
-    $('sharing').dataset.active = String(!!sharing && !claimsPaused);
+    $('sharing').textContent = value.pendingApproval ? '待审批' : !policy ? '分享未开通' : !policy.enabled ? '节点已停用' : !policy.sharing_enabled ? '分享未开通' : sharing ? '算力分享中' : '分享已开通';
+    $('sharing').dataset.active = String(!!sharing);
     $('policy').textContent = value.pendingApproval ? '设备已自动登记，等待管理员命名、分配账号和开通权限。' : !policy ? '算力节点自动连接，使用权限由后台开通。' : policy.enabled === false ? '后台已停用此节点，停止接收新任务' :
       '本人使用：' + (policy.owner_enabled ? '已开通' : '未开通') + '　对外分享：' + (policy.sharing_enabled ? policy.sharing_scope === 'selected' ? '指定用户' : '共享算力池' : '未开通');
     $('error').textContent = value.lastError || '';

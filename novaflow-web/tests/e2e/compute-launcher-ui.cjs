@@ -66,12 +66,6 @@ app.whenReady().then(async () => {
   assert.match(await run(`document.querySelector('#ramUsage').textContent`), /8\.0 \/ 16\.0 GB · 50%/);
   assert.match(await run(`document.querySelector('#vramUsage').textContent`), /4\.0 \/ 16\.0 GB · 25%/);
   assert.equal(await run(`document.querySelector('#freeMemory').disabled`), false);
-  win.webContents.send('compute:state', { ...state, claimsPaused: true });
-  await new Promise(resolve => setTimeout(resolve, 100));
-  assert.equal(await run(`document.querySelector('#activityBadge').textContent`), '接单已暂停', 'maintenance state remains visible');
-  assert.equal(await run(`!!document.querySelector('#pauseClaims')`), false);
-  win.webContents.send('compute:state', state);
-  await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(await run(`document.querySelector('#activityBadge').textContent`), '空闲', 'normal operation resumes when maintenance ends');
   win.webContents.send('compute:state', { ...state, currentTaskId:'fixture-task' });
   await new Promise(resolve => setTimeout(resolve, 100));

@@ -4,8 +4,6 @@ contextBridge.exposeInMainWorld('foartCompute', {
   website: () => ipcRenderer.invoke('compute:website'),
   logs: () => ipcRenderer.invoke('compute:logs'),
   getLogs: () => ipcRenderer.invoke('compute:getLogs'),
-  pauseClaims: () => ipcRenderer.invoke('compute:pauseClaims'),
-  resumeClaims: () => ipcRenderer.invoke('compute:resumeClaims'),
   freeMemory: () => ipcRenderer.invoke('compute:freeMemory'),
   onLog(fn) { const listener = (_e, value) => fn(value); ipcRenderer.on('compute:log', listener); return () => ipcRenderer.removeListener('compute:log', listener); },
   onState(fn) { const listener = (_e, value) => fn(value); ipcRenderer.on('compute:state', listener); return () => ipcRenderer.removeListener('compute:state', listener); }

@@ -123,19 +123,6 @@ handle('state', state);
 handle('website', () => shell.openExternal(WEBSITE));
 handle('logs', () => shell.openPath(dataDir));
 handle('getLogs', () => lines.slice());
-handle('pauseClaims', async () => {
-  if (!assistant?.getState().sharing || typeof assistant.pauseClaims !== 'function') throw new Error('请先连接支持安全暂停的算力节点');
-  const result = await assistant.pauseClaims({ timeoutMs: 30000 });
-  const messages = {'pause-timeout':'已暂停新接单，仍在等待当前任务完成。',
-    'claim-outcome-unknown':'已暂停新接单，但控制面领取结果未知，请先核对任务。',
-    'pause-resumed':'暂停已取消。'};
-  return { ...result, ...(result.ok ? {} : { error: messages[result.reason] || '暂停状态未确认' }), state: state() };
-});
-handle('resumeClaims', async () => {
-  if (!assistant || typeof assistant.resumeClaims !== 'function') throw new Error('算力节点尚未连接');
-  assistant.resumeClaims();
-  return { ok: true, state: state() };
-});
 handle('freeMemory', async () => {
   if (!assistant?.getState().sharing) throw new Error('请先连接算力节点');
   if (typeof assistant.worker?.releaseIdleModels !== 'function') throw new Error('当前运行环境不支持安全释放，请更新后重试');
