@@ -8,17 +8,16 @@ import { execFileSync } from 'node:child_process';
 import { createContext, runInContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { quoteFeature } from '../../packages/shared/src/feature-credits.mjs';
-import { DEFAULT_RUNNINGHUB_LLM_MODEL } from '../../packages/shared/src/runninghub-llm.mjs';
 
 const require = createRequire(import.meta.url);
-const { MATERIAL_FIELDS, parseAifxMaterialText, buildAifxMaterialReverseRequest } = require('../../admin/admin-server/aifx-material.js');
+const { DEFAULT_AIFX_MATERIAL_MODEL, MATERIAL_FIELDS, parseAifxMaterialText, buildAifxMaterialReverseRequest } = require('../../admin/admin-server/aifx-material.js');
 const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
 const runtimeSource = readFileSync(fileURLToPath(new URL('../../renderer/aifx-repaint-runtime.js', import.meta.url)), 'utf8');
 const serverSource = readFileSync(fileURLToPath(new URL('../../admin/admin-server/server.js', import.meta.url)), 'utf8');
 const materialSource = readFileSync(fileURLToPath(new URL('../../admin/admin-server/aifx-material.js', import.meta.url)), 'utf8');
 const LOCAL_MATERIAL = { name: 'GLOWING PETAL', material: 'made of petals. NO METAL.', elements: 'made of petals.', colours: 'yellow, red', breakup: 'It SHEDS petals.' };
 
-function page() {
+function page({ withState = false } = {}) {
   const storage = new Map();
   const calls = { local: [], cloud: [] };
   class Node {
@@ -61,7 +60,7 @@ function page() {
     },
   };
   const context = {
-    console, setTimeout, clearTimeout, URL, Blob, performance, Math, JSON, Promise,
+    console, setTimeout, clearTimeout, URL, Blob, performance, Math, JSON, Promise, AbortController,
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, String(value)),
@@ -89,7 +88,8 @@ function page() {
   };
   context.window = context;
   context.globalThis = context;
-  runInContext(runtimeSource, createContext(context), { filename: 'aifx-repaint-runtime.js' });
+  const source = withState ? runtimeSource.replace('  window.NovaFlowAifxMvp = {', '  window.__aifxState = state; window.NovaFlowAifxMvp = {') : runtimeSource;
+  runInContext(source, createContext(context), { filename: 'aifx-repaint-runtime.js' });
   return { context, calls, storage, api: context.NovaFlowAifxMvp };
 }
 
@@ -116,7 +116,7 @@ test('cloud recognition previews image_reverse, posts image-reverse, and shows t
   p.storage.set('novaflow_web_session_v1', JSON.stringify({ token: 'session-token' }));
   p.context.cloudReply = () => ({
     ok: true,
-    result: { ok: true, material: cloudMaterial, model: 'xai/grok-4.7', quota: { charged_credits: 4, balance_after: 96 } },
+    result: { ok: true, material: cloudMaterial, model: DEFAULT_AIFX_MATERIAL_MODEL, quota: { charged_credits: 4, balance_after: 96 } },
   });
   p.api.setMaterialEngine('grok');
   assert.equal(p.storage.get('novaflow.aifx.material.engine.v1'), 'grok');
@@ -132,8 +132,12 @@ test('cloud recognition previews image_reverse, posts image-reverse, and shows t
   assert.equal(found.quota.charged_credits, 4);
   assert.equal(found.quota.balance_after, 96);
   assert.equal(p.context.NovaFlowFeatureCreditPrices.settlementText(found.quota), '实扣 4 积分，剩余 96');
-  const built = buildAifxMaterialReverseRequest({ images: [{ dataUrl: 'data:image/jpeg;base64,QQ==', name: 'reference.jpg' }] }, DEFAULT_RUNNINGHUB_LLM_MODEL);
-  assert.equal(built.body.model, 'xai/grok-4.7');
+  assert.equal('model' in p.calls.cloud[0], false);
+  const images = [{ dataUrl: 'data:image/jpeg;base64,QQ==', name: 'reference.jpg' }];
+  const built = buildAifxMaterialReverseRequest({ images });
+  assert.equal(built.body.model, 'deepseek/deepseek-v4.1-flash');
+  assert.equal(buildAifxMaterialReverseRequest({ images, model: 'xai/grok-4.7' }).body.model, 'xai/grok-4.7');
+  assert.throws(() => buildAifxMaterialReverseRequest({ images, model: 'other/model' }), /不支持材质识别/);
   assert.equal(built.resultOptions.aifxMaterial, true);
   assert.equal(built.resultOptions.requiredProviderCalls, 1);
   assert.match(serverSource, /purpose === "aifx-material"\) return aifxMaterial\.buildAifxMaterialReverseRequest/);
@@ -186,6 +190,44 @@ test('switching the engine drops the cached read and asks the new channel', asyn
   assert.equal(again.read.material, 'cloud glass');
   p.storage.set('novaflow.aifx.material.engine.v1', 'nope');
   assert.equal(p.api.materialEngine(), 'local');
+});
+
+test('the panel has only 本地 and 云端; a stored 小桃 choice reads as local', async () => {
+  assert.deepEqual([...runtimeSource.matchAll(/data-aifx-material-engine-value="([a-z]+)"/g)].map(match => match[1]), ['local', 'grok']);
+  assert.doesNotMatch(runtimeSource, /xiaotao/i);
+  const p = page();
+  p.storage.set('novaflow.aifx.material.engine.v1', 'xiaotao');
+  assert.equal(p.api.materialEngine(), 'local');
+});
+
+test('a run from the 小桃 panel reads in the cloud with its model, once, and leaves 本地 alone', async () => {
+  const p = page({ withState: true });
+  p.storage.set('novaflow_web_session_v1', JSON.stringify({ token: 'session-token' }));
+  p.context.cloudReply = () => ({ ok: true, result: { ok: true, material: { ...LOCAL_MATERIAL } } });
+  p.context.NovaFlowAifxRestyleWorkflow = { getPreset: () => null, splitSupplement: () => ({ additions: '', spread: '', colour: null }), referenceMaterial: () => 'read' };
+  Object.assign(p.context, { addEventListener() {}, removeEventListener() {} });
+  p.context.NovaFlowAifxRestyleClient = { ensureRuntime: async () => { throw new Error('stop here'); } };
+  const blob = {};
+  Object.assign(p.context.__aifxState, { source: {}, reference: { blob, image, fileName: 'reference.jpg' } });
+  await assert.rejects(p.api.runProductionPipeline({ model: 'xai/grok-4.7' }), /stop here/);
+  assert.equal(p.calls.cloud.length, 1);
+  assert.equal(p.calls.cloud[0].model, 'xai/grok-4.7');
+  assert.equal(p.calls.local.length, 0);
+  assert.equal(p.api.materialEngine(), 'local');
+  await assert.rejects(p.api.runProductionPipeline({ model: 'xai/grok-4.7' }), /stop here/);
+  assert.equal(p.calls.cloud.length, 1);
+  await assert.rejects(p.api.runProductionPipeline(), /stop here/);
+  assert.equal(p.calls.cloud.length, 1);
+  assert.equal(p.calls.local.length, 1);
+});
+
+test('the 小桃 panel hands its model to the run and the object transfer toggle is gone', () => {
+  const tools = readFileSync(fileURLToPath(new URL('../../renderer/xiaotao-foart-tools.js', import.meta.url)), 'utf8');
+  const spine = readFileSync(fileURLToPath(new URL('../../renderer/spine-split-runtime.js', import.meta.url)), 'utf8');
+  assert.match(tools, /runProductionPipeline\(\{model:selected\?\.provider==='api'\?selected\.modelId:''\}\)/);
+  assert.match(runtimeSource, /panelModel \? \{ model: panelModel \}/);
+  assert.match(serverSource, /aifxMaterial === true \? \{ \.\.\.config, model: body\.model \}/);
+  assert.doesNotMatch(spine, /useXiaotaoStyle|小桃画风分析/);
 });
 
 test('the panel toggle is next to the reference image and supplement stays local', async () => {

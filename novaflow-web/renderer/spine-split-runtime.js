@@ -7996,54 +7996,16 @@
     return window.NovaFlowQwen21Turbo.apply(workflow)
   }
 
-  let objectTransferXiaotaoOutcomeUnknown = false
   async function objectTransferSceneArtStyleText(sceneCanvas) {
-    const api = window.electronAPI, tool = objectTransferState(), scene = state.source
-    const useXiaotao = tool.useXiaotaoStyle === true, cutout = tool.referenceCutoutDataUrl, placement = [tool.x, tool.y, tool.scale]
+    const api = window.electronAPI
     const legacyFailure = () => {
       if (typeof window.confirm === 'function' && window.confirm('画风分析未完成。将继续使用场景参考图，是否按原流程继续？')) return ''
       throw new Error('已取消对象迁移：画风分析未完成。')
     }
-    if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') {
-      if (useXiaotao) throw new Error('小桃画风分析不可用，未继续生成。')
-      return legacyFailure()
-    }
+    if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return legacyFailure()
     try {
       setSplitBusyDetail('正在读取画面的画风...')
-      let payload = { name: 'scene.png', dataUrl: sceneCanvas.toDataURL('image/png') }
-      if (useXiaotao) {
-        if (objectTransferXiaotaoOutcomeUnknown) throw new Error('上次在线请求账单待核对，请先查看账单，勿重复提交。')
-        const controller = window.NovaFlowXiaotaoArtAgent?.panel?.controller, selection = controller?.businessModelSnapshot?.()
-        const owner = api.captureFoartBillingOwner?.(), sessionGuard = api.captureFoartSessionGuard?.()
-        if (!selection || !['api', 'local'].includes(selection.provider) || !selection.modelId || !owner?.current?.() || typeof sessionGuard !== 'function' || !sessionGuard() ||
-            (selection.provider === 'api' && typeof controller?.recordBusinessBillingNotice !== 'function') || typeof window.crypto?.randomUUID !== 'function')
-          throw new Error('小桃模型或登录状态不可用，未继续生成。')
-        const current = () => { try {
-          const now = controller.businessModelSnapshot()
-          return state.busy && state.busyAction === 'objectTransfer' && state.source === scene && objectTransferState() === tool && tool.useXiaotaoStyle === true &&
-            tool.referenceCutoutDataUrl === cutout && [tool.x, tool.y, tool.scale].every((v, i) => v === placement[i]) &&
-            window.NovaFlowXiaotaoArtAgent?.panel?.controller === controller && owner.current() && sessionGuard() &&
-            now?.provider === selection.provider && now?.modelId === selection.modelId && now?.epoch === selection.epoch
-        } catch { return false } }
-        const ask = (text) => current() && typeof window.confirm === 'function' && window.confirm(text)
-        payload = { ...payload, requestId: window.crypto.randomUUID(), purpose: 'style', assistantSelectionScope: 'xiaotao',
-          assistantProvider: selection.provider, assistantModelId: selection.modelId, assistantSelectionEpoch: selection.epoch, isInputCurrent: current }
-        if (selection.provider === 'local') {
-          payload.confirmNodeUpload = async ({ nodeName, nodeIdSuffix, count, retentionHours }) => ask(`将 ${count} 张场景图发送至当前账号所属节点 ${nodeName || ''} ${nodeIdSuffix || ''} 的任务目录分析。默认约 ${retentionHours} 小时后清理，节点离线或任务仍活动时可能延后。确认继续？`)
-        } else {
-          payload.confirmImageUpload = async ({ count }) => ask(`将 ${count} 张场景图发送给所选在线模型 ${selection.modelId} 分析。确认上传？`)
-          payload.onPricingQuote = (quote) => setSplitBusyDetail(`小桃预估 ${quote.estimatedCredits} 积分，等待确认`)
-          payload.confirmPricingQuote = async (quote) => ask(`使用 ${selection.modelId} 分析画风，预估 ${quote.estimatedCredits} 积分；${controller.onlineOperationMinimumConfirmed?.() ? '成功操作最低 1 积分，' : ''}最终按实际用量结算。预估不是上限，实际扣分可能高于预估。确认继续？`)
-          payload.onBillingNotice = (notice) => controller.recordBusinessBillingNotice(notice, { selection, owner, sessionGuard })
-        }
-        const result = await api.promptAssistantDescribeArtStyle(payload)
-        if (result?.billingUnknown || result?.errorCode === 'billing-record-unavailable') objectTransferXiaotaoOutcomeUnknown = true
-        if (!current()) throw new Error('模型、账号或素材已变化，未继续生成；如已提交请核对账单。')
-        if (!result?.ok || !String(result.style || '').trim()) throw new Error(result?.error || '小桃画风分析未完成，未继续生成。')
-        const style = String(result.style).trim()
-        state.lastProcessingDebug = { ...(state.lastProcessingDebug || {}), objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyle: style.slice(0, 400) } }
-        return style
-      }
+      const payload = { name: 'scene.png', dataUrl: sceneCanvas.toDataURL('image/png') }
       const result = await api.promptAssistantDescribeArtStyle(payload)
       const style = result?.ok === false ? '' : String(result?.style || '').trim()
       if (!style) return legacyFailure()
@@ -8051,7 +8013,7 @@
       return style
     } catch (error) {
       state.lastProcessingDebug = { ...(state.lastProcessingDebug || {}), objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyleError: String(error && error.message || error).slice(0, 300) } }
-      if (useXiaotao || /已取消对象迁移/.test(String(error?.message || ''))) throw error
+      if (/已取消对象迁移/.test(String(error?.message || ''))) throw error
       return legacyFailure()
     }
   }
@@ -28931,7 +28893,6 @@
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
         button('\u91cd\u7f6e', () => resetObjectTransferPlacement(size), false),
         button('\u9000\u51fa', () => stopObjectTransferEdit(), false, { [TOOL_ACTION_ATTR]: 'objectTransferExit' }),
-        button(objectTransferState().useXiaotaoStyle ? '小桃画风分析：开' : '小桃画风分析：关', () => { if (!state.busy) { objectTransferState().useXiaotaoStyle = !objectTransferState().useXiaotaoStyle; render(); syncSplitWorkspace() } }, objectTransferState().useXiaotaoStyle === true, { title: '使用小桃当前所选大脑分析画风，在线会先确认报价与图片上传' }),
         h('span', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, color: error ? 'rgba(252,165,165,0.96)' : 'rgba(230,230,230,0.72)', display: 'inline-flex', alignItems: 'center', padding: '0 9px', fontSize: '11px', fontWeight: '600', maxWidth: '420px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, error || '\u62d6\u52a8\u4e3b\u4f53\u5b9a\u4f4d\uff0c\u6eda\u8f6e\u6216\u53f3\u4e0b\u89d2\u7b49\u6bd4\u7f29\u653e')
       ]),
       h('div', Object.assign(splitCanvasPanHandlers(), { onwheel: handleSplitCanvasWheel, style: transparentEditCanvasStyle({ width: '100%', height: '100%', minHeight: 0, overflow: 'auto', borderRadius: '10px', border: '0', padding: '10px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: splitCanvasIdlePanCursor() }) }), art)

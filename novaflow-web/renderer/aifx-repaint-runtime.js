@@ -1363,7 +1363,6 @@
                       <input type="radio" name="aifx-material-engine" value="grok" data-aifx-material-engine-value="grok">
                       <span>云端</span>
                     </label>
-                    <label class="aifx-material-engine-option" title="使用小桃当前选择的大脑"><input type="radio" name="aifx-material-engine" value="xiaotao" data-aifx-material-engine-value="xiaotao"><span>小桃</span></label>
                   </div>
                   <div class="aifx-material-engine-note" data-aifx-material-credit></div>
                   <div class="aifx-material-engine-settlement" data-aifx-material-settlement></div>
@@ -1807,7 +1806,7 @@
   const MATERIAL_ENGINE_KEY = 'novaflow.aifx.material.engine.v1'
   const referenceMaterials = new WeakMap()
   const materialMeta = new WeakMap()
-  const materialBindings = new WeakMap()
+  const materialSources = new WeakMap()
   const materialBlobs = new Set()
   // The AI 助手 hands the GPU over only when the image runtime's queue is empty, and refuses while
   // anything is drawing or while it is busy with another request. 2026-10-15: a 2-minute picture job
@@ -1821,10 +1820,15 @@
   // can stop it - the run too, when one is waiting on it.
   const ASSISTANT_WAIT_LABEL = { 'aifx-material': '识别参考图材质', 'aifx-supplement': '翻译提示词补充' }
   const materialEngine = () => {
-    try { const value = localStorage.getItem(MATERIAL_ENGINE_KEY); return value === 'grok' || value === 'xiaotao' ? value : 'local' } catch { return 'local' }
+    try { return localStorage.getItem(MATERIAL_ENGINE_KEY) === 'grok' ? 'grok' : 'local' } catch { return 'local' }
   }
+  // 云端 reads with this model unless a run came from the 小桃 panel: that run reads in the cloud
+  // with the model chosen there, and the 本地/云端 choice here stays as it was for the next run.
+  const CLOUD_MATERIAL_MODEL = 'deepseek/deepseek-v4.1-flash'
+  let panelModel = ''
+  const activeEngine = () => panelModel ? 'grok' : materialEngine()
+  const materialSource = () => panelModel || (materialEngine() === 'grok' ? CLOUD_MATERIAL_MODEL : 'local')
   const materialCreditText = () => {
-    if (materialEngine() === 'xiaotao') return '使用小桃当前所选大脑；在线请求将先确认报价。'
     if (materialEngine() !== 'grok') return ''
     const api = window.NovaFlowFeatureCreditPrices
     const quoted = api && typeof api.quoteFeature === 'function' ? api.quoteFeature({ feature: 'image_reverse', units: 1 }) : null
@@ -1837,8 +1841,9 @@
       return String(parsed?.session?.token || parsed?.token || '').trim()
     } catch { return '' }
   }
+  const dropMaterial = (blob) => { referenceMaterials.delete(blob); materialSources.delete(blob); materialMeta.delete(blob) }
   const clearMaterialCache = () => {
-    for (const blob of materialBlobs) { referenceMaterials.delete(blob); materialBindings.delete(blob); materialMeta.delete(blob) }
+    for (const blob of materialBlobs) dropMaterial(blob)
     materialBlobs.clear()
   }
   const nestedResult = (result) => result?.result && typeof result.result === 'object' ? result.result : {}
@@ -1846,41 +1851,6 @@
     const text = String(result?.error || nestedResult(result).error || '')
     if (/登录|积分/.test(text)) return text
     return '云端材质识别失败，请稍后重试'
-  }
-  // Capture the selected brain and owner before any upload or quote.
-  const captureXiaotaoBinding = (inputCurrent) => {
-    const api = window.electronAPI, controller = window.NovaFlowXiaotaoArtAgent?.panel?.controller
-    const selection = controller?.businessModelSnapshot?.(), owner = api?.captureFoartBillingOwner?.(), sessionGuard = api?.captureFoartSessionGuard?.()
-    if (!api?.promptAssistantDescribeArtStyle || !selection || !['api', 'local'].includes(selection.provider) || !selection.modelId ||
-        !owner?.current?.() || typeof sessionGuard !== 'function' || !sessionGuard() || typeof window.crypto?.randomUUID !== 'function' ||
-        (selection.provider === 'api' && typeof controller?.recordBusinessBillingNotice !== 'function')) throw new Error('小桃模型或登录状态不可用，未提交。')
-    const current = () => { try {
-      const now = controller.businessModelSnapshot()
-      return inputCurrent() === true && owner.current() && sessionGuard() && window.NovaFlowXiaotaoArtAgent?.panel?.controller === controller &&
-        now?.provider === selection.provider && now?.modelId === selection.modelId && now?.epoch === selection.epoch
-    } catch { return false } }
-    return { api, controller, selection, owner, sessionGuard, current }
-  }
-  let xiaotaoOutcomeUnknown = false
-  const askXiaotao = async (input, binding, signal) => {
-    if (xiaotaoOutcomeUnknown) throw new Error('上次在线请求账单待核对，请先查看账单，勿重复提交。')
-    const { api, controller, selection, owner, sessionGuard, current } = binding
-    const ask = (message) => current() && !signal?.aborted && typeof window.confirm === 'function' && window.confirm(message)
-    const payload = { ...input, requestId: window.crypto.randomUUID(), assistantSelectionScope: 'xiaotao', assistantProvider: selection.provider,
-      assistantModelId: selection.modelId, assistantSelectionEpoch: selection.epoch, isInputCurrent: current, ...(signal ? { signal } : {}) }
-    if (selection.provider === 'local') {
-      if (input.dataUrl) payload.confirmNodeUpload = async ({ nodeName, nodeIdSuffix, count, retentionHours }) => ask(`将 ${count} 张参考图发送至当前账号所属节点 ${nodeName || ''} ${nodeIdSuffix || ''} 的任务目录分析。默认约 ${retentionHours} 小时后清理，节点离线或任务仍活动时可能延后。确认继续？`)
-    } else {
-      if (input.dataUrl) payload.confirmImageUpload = async ({ count }) => ask(`将 ${count} 张参考图发送给所选在线模型 ${selection.modelId} 分析。确认上传？`)
-      payload.onPricingQuote = (quote) => setStatus('小桃预估 ' + quote.estimatedCredits + ' 积分，等待确认', '')
-      payload.confirmPricingQuote = async (quote) => ask(`使用 ${selection.modelId}，预估 ${quote.estimatedCredits} 积分；${controller.onlineOperationMinimumConfirmed?.() ? '成功操作最低 1 积分，' : ''}最终按实际用量结算。预估不是上限，实际扣分可能高于预估。确认继续？`)
-      payload.onBillingNotice = (notice) => controller.recordBusinessBillingNotice(notice, { selection, owner, sessionGuard })
-    }
-    const result = await api.promptAssistantDescribeArtStyle(payload)
-    if (result?.billingUnknown || result?.errorCode === 'billing-record-unavailable') xiaotaoOutcomeUnknown = true
-    if (!current() || signal?.aborted) throw new Error('模型、账号或素材已变化，结果未应用；如已提交请核对账单。')
-    if (!result?.ok) throw new Error(result?.error || '小桃分析未完成，未继续生成。')
-    return result
   }
   // Local only. Cloud material recognition must not enter this function.
   const askAssistant = async (payload, timeoutMs) => {
@@ -1923,6 +1893,7 @@
           token,
           surface: 'aifx',
           purpose: 'aifx-material',
+          ...(panelModel ? { model: panelModel } : {}),
           supportsNegativePrompt: false,
           images: [{ name: payload.name || 'reference.jpg', imageUrl: payload.dataUrl, dataUrl: payload.dataUrl, label: '参考图', role: 'reference' }],
         }),
@@ -1936,7 +1907,7 @@
     }
   }
   // No automatic channel switch: local never calls image-reverse, cloud never calls describe-art-style.
-  const askMaterial = (payload, timeoutMs) => materialEngine() === 'grok'
+  const askMaterial = (payload, timeoutMs, engine) => engine === 'grok'
     ? askCloudMaterial(payload, timeoutMs)
     : askAssistant(payload, timeoutMs)
   const materialFromResult = (result, engine, image) => {
@@ -1947,7 +1918,7 @@
       return {
         read: null,
         quota: null,
-        error: engine === 'xiaotao' ? (String(result?.error || '') || '小桃材质分析未完成，未继续生成。') : engine === 'grok' ? cloudFailureMessage(result) : '本地材质识别不可用，请打开本地算力节点后重试',
+        error: engine === 'grok' ? cloudFailureMessage(result) : '本地材质识别不可用，请打开本地算力节点后重试',
       }
     }
     const read = {
@@ -1964,17 +1935,13 @@
       error: '',
     }
   }
-  const readReferenceMaterial = (blob, image, options = {}) => {
-    if (materialEngine() === 'xiaotao' && referenceMaterials.has(blob) && !materialBindings.get(blob)?.current()) { referenceMaterials.delete(blob); materialBindings.delete(blob); materialMeta.delete(blob) }
+  const readReferenceMaterial = (blob, image) => {
+    const source = materialSource()
+    if (referenceMaterials.has(blob) && materialSources.get(blob) !== source) dropMaterial(blob)
     if (!referenceMaterials.has(blob)) {
-      const engineAtStart = materialEngine()
-      const sourceAtStart = state.source, referenceAtStart = state.reference
-      let binding = null
+      const engineAtStart = activeEngine()
+      materialSources.set(blob, source)
       const job = (async () => {
-        if (engineAtStart === 'xiaotao') {
-          binding = captureXiaotaoBinding(() => materialEngine() === 'xiaotao' && state.source === sourceAtStart && state.reference === referenceAtStart && referenceAtStart?.blob === blob)
-          materialBindings.set(blob, binding)
-        }
         // On the black plate the effect will sit on, and no bigger than the model looks at.
         const scale = Math.min(1, 768 / Math.max(1, image.naturalWidth, image.naturalHeight))
         const canvas = document.createElement('canvas')
@@ -1984,14 +1951,10 @@
         context.fillStyle = '#000'
         context.fillRect(0, 0, canvas.width, canvas.height)
         context.drawImage(image, 0, 0, canvas.width, canvas.height)
-        const input = { name: 'reference.jpg', dataUrl: canvas.toDataURL('image/jpeg', 0.92), purpose: options.supplement ? 'aifx-material-supplement' : 'aifx-material', ...(options.supplement ? { supplement: options.supplement } : {}) }
-        const result = engineAtStart === 'xiaotao' ? await askXiaotao(input, binding, state.abort?.signal) : await askMaterial(input, REFERENCE_MATERIAL_TIMEOUT_MS)
+        const input = { name: 'reference.jpg', dataUrl: canvas.toDataURL('image/jpeg', 0.92), purpose: 'aifx-material' }
+        const result = await askMaterial(input, REFERENCE_MATERIAL_TIMEOUT_MS, engineAtStart)
         const outcome = materialFromResult(result, engineAtStart, image)
-        if (options.supplement) {
-          outcome.supplement = String(result?.supplement || '').trim()
-          if (!outcome.supplement || /[\u3400-\u9fff]/.test(outcome.supplement)) throw new Error('小桃补充文字转换未完成，未继续生成。')
-        }
-        if (materialEngine() === engineAtStart && (engineAtStart !== 'xiaotao' || binding?.current())) materialMeta.set(blob, { engine: engineAtStart, quota: outcome.quota, error: outcome.error || '', supplement: outcome.supplement || '' })
+        if (materialSource() === source) materialMeta.set(blob, { engine: engineAtStart, quota: outcome.quota, error: outcome.error || '' })
         return outcome
       })().catch((error) => {
         const outcome = {
@@ -1999,13 +1962,13 @@
           quota: null,
           error: engineAtStart === 'grok' ? '云端材质识别失败，请稍后重试' : (String(error?.message || '') || '本地材质识别不可用，请打开本地算力节点后重试'),
         }
-        if (materialEngine() === engineAtStart) materialMeta.set(blob, { engine: engineAtStart, quota: null, error: outcome.error })
+        if (materialSource() === source) materialMeta.set(blob, { engine: engineAtStart, quota: null, error: outcome.error })
         return outcome
       })
       referenceMaterials.set(blob, job)
       materialBlobs.add(blob)
       job.then((outcome) => {
-        if (materialEngine() !== engineAtStart || referenceMaterials.get(blob) !== job) return
+        if (materialSource() !== source || referenceMaterials.get(blob) !== job) return
         if (!outcome.read) referenceMaterials.delete(blob)
       })
     }
@@ -2015,11 +1978,11 @@
     const meta = materialMeta.get(entry.blob) || {}
     entry.material = read
     entry.materialQuota = read ? meta.quota || null : null
-    entry.materialError = read ? '' : (meta.error || (materialEngine() === 'grok' ? '云端材质识别失败，请稍后重试' : '本地材质识别不可用，请打开本地算力节点后重试'))
+    entry.materialError = read ? '' : (meta.error || (activeEngine() === 'grok' ? '云端材质识别失败，请稍后重试' : '本地材质识别不可用，请打开本地算力节点后重试'))
     entry.materialState = read ? 'ready' : 'failed'
   }
   const setMaterialEngine = (value) => {
-    const next = value === 'grok' || value === 'xiaotao' ? value : 'local'
+    const next = value === 'grok' ? 'grok' : 'local'
     const previous = materialEngine()
     try { localStorage.setItem(MATERIAL_ENGINE_KEY, next) } catch { /* storage unavailable */ }
     if (previous === next) {
@@ -2028,11 +1991,6 @@
     }
     clearMaterialCache()
     const reference = state.reference
-    if (next === 'xiaotao' && reference) {
-      reference.material = null; reference.materialQuota = null; reference.materialState = 'failed'
-      reference.materialError = '请在生成时确认使用小桃分析参考图。'
-      refreshUi(); return
-    }
     if (reference?.blob && reference.image) {
       reference.material = null
       reference.materialQuota = null
@@ -2058,18 +2016,6 @@
   const translateSupplement = (text) => {
     const supplement = String(text || '').trim()
     if (!supplement || !/[㐀-鿿]/.test(supplement)) return Promise.resolve(supplement)
-    if (materialEngine() === 'xiaotao') {
-      const source = state.source, reference = state.reference, typed = state.supplement, signal = state.abort?.signal
-      try {
-        const binding = captureXiaotaoBinding(() => materialEngine() === 'xiaotao' && state.source === source && state.reference === reference && state.supplement === typed && !signal?.aborted)
-        return askXiaotao({ purpose: 'aifx-supplement', supplement }, binding, signal).then(result => {
-          const english = String(result.supplement || '').trim()
-          if (!english || /[\u3400-\u9fff]/.test(english)) throw new Error('小桃补充文字转换未完成，未继续生成。')
-          return english
-        })
-      } catch (error) { return Promise.reject(error) }
-    }
-
     if (!supplementTranslations.has(supplement)) {
       const job = (async () => {
         const result = await askAssistant({ purpose: 'aifx-supplement', supplement }, SUPPLEMENT_TIMEOUT_MS)
@@ -2173,7 +2119,7 @@
     CLIENT()?.interrupt?.()
   }
 
-  const runGenerate = async () => {
+  const runGenerate = async ({ model = '' } = {}) => {
     const restyle = RESTYLE()
     const client = CLIENT()
     if (!restyle || !client) throw new Error('AI 特效：生成模块未加载')
@@ -2212,18 +2158,7 @@
       promise.then(resolve, reject)
     })
     try {
-      const runEngine = materialEngine(), sourceAtRun = state.source, referenceAtRun = state.reference, supplementAtRun = state.supplement, attributeAtRun = state.attribute
-      const binding = runEngine === 'xiaotao' ? captureXiaotaoBinding(() => materialEngine() === runEngine && state.isGenerating && !signal.aborted && state.source === sourceAtRun && state.reference === referenceAtRun && state.supplement === supplementAtRun && state.attribute === attributeAtRun) : null
-      const assertRunCurrent = () => { if (binding && !binding.current()) throw new Error('模型、账号或素材已变化，未继续生成；如已提交请核对账单。') }
-      let combinedSupplement = ''
-      if (binding?.selection.provider === 'api' && referenceAtRun) {
-        const wordsAtRun = restyle.splitSupplement(supplementAtRun)?.additions || ''
-        const cached = referenceAtRun.materialState === 'ready' && referenceMaterials.has(referenceAtRun.blob) && materialBindings.get(referenceAtRun.blob)?.current()
-        if (/[\u3400-\u9fff]/.test(wordsAtRun) && !cached) {
-          if (referenceAtRun.materialState === 'reading') throw new Error('参考图正在分析，请等待完成后再生成。')
-          combinedSupplement = wordsAtRun
-        }
-      }
+      panelModel = String(model || '')
       // Before the runtime: the read runs on the AI 助手's own model and hands the GPU back after.
       let referenceMaterial = null
       if (state.reference) {
@@ -2231,15 +2166,13 @@
         setStatus('识别参考图材质', reference.fileName)
         // A read that failed when the picture came in is asked again here; the card follows.
         if (reference.materialState === 'failed') { reference.materialState = 'reading'; refreshUi() }
-        const read = readReferenceMaterial(reference.blob, reference.image, combinedSupplement ? { supplement: combinedSupplement } : {})
+        const read = readReferenceMaterial(reference.blob, reference.image)
         read.then((material) => {
           if (state.reference !== reference) return
           applyMaterialOutcome(reference, material)
           refreshUi()
         })
         referenceMaterial = await stoppable(read)
-        assertRunCurrent()
-        if (runEngine === 'xiaotao' && (!referenceMaterial || !materialBindings.get(reference.blob)?.current())) throw new Error(materialMeta.get(reference.blob)?.error || '小桃材质分析未完成，未继续生成。')
       }
       // A reference read out as words goes through the style path, so its picture is not sent at all.
       const referencePicture = Boolean(state.reference) && !referenceMaterial
@@ -2253,11 +2186,9 @@
       if (/[㐀-鿿]/.test(toSay)) {
         setStatus('翻译提示词补充', '')
         // A failed translation keeps the Chinese rather than dropping the request.
-        supplementEnglish = combinedSupplement ? materialMeta.get(referenceAtRun.blob)?.supplement : (await stoppable(translateSupplement(toSay)))
-        if (!supplementEnglish && runEngine === 'xiaotao') throw new Error('小桃补充文字转换未完成，未继续生成。')
+        supplementEnglish = await stoppable(translateSupplement(toSay))
         supplementEnglish = supplementEnglish || toSay
       }
-      assertRunCurrent()
       const recolour = controls && controls.colour
       const overrides = { shape: currentShape(), spread: controls ? controls.spread : '', colour: recolour }
       const preset = restyle.getPreset(state.attribute)
@@ -2267,7 +2198,6 @@
       const tint = state.reference ? ((recolour && recolour.tint) || state.reference.accent) : undefined
       setStatus('准备运行时', '正在准备生成环境。')
       await stoppable(client.ensureRuntime({ reason: 'aifx-restyle' }))
-      assertRunCurrent()
 
       // On the Web a staged upload belongs to the one task that takes it, so every run (and every
       // candidate below) uploads afresh; the desktop runtime keeps the files and the names stay valid.
@@ -2290,7 +2220,6 @@
       const recipe = snapshotRecipe()
       stageSpan = 1 / total
       for (let index = 0; index < total; index += 1) {
-        assertRunCurrent()
         if (state.abort.signal.aborted) throw new Error('AI 特效生成已取消')
         stageBase = index / total
         setProgress(0.01)
@@ -2337,7 +2266,6 @@
             setProgress(0.05 + 0.85 * (reported > 0 ? reported / 100 : creep))
           },
         }))
-        assertRunCurrent()
         const frames = []
         for (const url of result.frames) {
           frames.push(await client.loadImage(url))
@@ -2363,6 +2291,7 @@
       // A stopped run ends quietly; the candidates that did land stay.
       if (!state.abort?.signal.aborted) throw error
     } finally {
+      panelModel = ''
       window.removeEventListener('novaflow:web-task-wait', onWait)
       const stopped = Boolean(state.abort?.signal.aborted)
       state.progress = 0
@@ -3561,7 +3490,7 @@
     const materialCreditLine = materialCreditText()
     put(refs.materialCredit, 'textContent', materialCreditLine)
     put(refs.materialCredit, 'hidden', !materialCreditLine)
-    const settledQuota = state.reference?.materialState === 'ready' && (materialEngineNow === 'grok' || materialEngineNow === 'xiaotao') ? state.reference.materialQuota : null
+    const settledQuota = state.reference?.materialState === 'ready' && materialEngineNow === 'grok' ? state.reference.materialQuota : null
     put(refs.materialSettlement, 'textContent', window.NovaFlowFeatureCreditPrices?.settlementText?.(settledQuota) || '')
     if (refs.previewStatus) {
       // Centred only while there is nothing on the canvas to cover.

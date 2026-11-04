@@ -10073,7 +10073,7 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LL
 
 function buildGrokImageReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
   const purpose = normalizeSmartAiText(payload?.purpose || "", 80).toLowerCase();
-  if (purpose === "aifx-material") return aifxMaterial.buildAifxMaterialReverseRequest(payload, String(model || DEFAULT_RUNNINGHUB_LLM_MODEL));
+  if (purpose === "aifx-material") return aifxMaterial.buildAifxMaterialReverseRequest(payload);
   if (payload?.surface === 'art' && payload?.purpose === 'art-director') return artDirection.build(payload, model);
   if (payload?.surface === 'art' && payload?.purpose === 'art-director-review') return artDirection.buildReview(payload, model);
   if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, model);
@@ -10247,7 +10247,9 @@ async function callGrokResponseAttempt(body, inputMeta, resultOptions = {}) {
   let providerCallStarted = false;
   let attemptUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   try {
-    const posted = await postRunningHubResponses({ body, config, timeoutMs: 60000 });
+    // The configured model wins on the wire, so a material read carries its own.
+    const callConfig = resultOptions?.aifxMaterial === true ? { ...config, model: body.model } : config;
+    const posted = await postRunningHubResponses({ body, config: callConfig, timeoutMs: 60000 });
     providerCallStarted = posted.providerCallStarted === true;
     const data = posted.data;
     attemptUsage = normalizeGrokResponseUsage(data);

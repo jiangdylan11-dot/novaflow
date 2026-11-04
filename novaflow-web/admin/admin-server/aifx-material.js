@@ -24,7 +24,19 @@ function parseAifxMaterialText(text) {
   return MATERIAL_FIELDS.every((key) => Object.prototype.hasOwnProperty.call(parsed, key)) ? parsed : null;
 }
 
-function buildAifxMaterialReverseRequest(payload, model) {
+// 云端 reads with DeepSeek; a run from the 小桃 panel names the model chosen there.
+const DEFAULT_AIFX_MATERIAL_MODEL = 'deepseek/deepseek-v4.1-flash';
+const AIFX_MATERIAL_MODELS = new Set([DEFAULT_AIFX_MATERIAL_MODEL, 'xai/grok-4.7', 'openai/gpt-6.1-sol-saver']);
+
+function aifxMaterialModel(value) {
+  const model = String(value || '').trim() || DEFAULT_AIFX_MATERIAL_MODEL;
+  if (AIFX_MATERIAL_MODELS.has(model)) return model;
+  const error = new Error('所选模型不支持材质识别');
+  error.statusCode = 400;
+  throw error;
+}
+
+function buildAifxMaterialReverseRequest(payload) {
   const images = Array.isArray(payload?.images) ? payload.images : [];
   const image = images[0] && typeof images[0] === 'object' ? images[0] : {};
   const dataUrl = String(image.dataUrl || image.imageUrl || image.url || '');
@@ -41,7 +53,7 @@ function buildAifxMaterialReverseRequest(payload, model) {
   ].join('\n');
   return {
     body: {
-      model: String(model || ''),
+      model: aifxMaterialModel(payload?.model),
       store: false,
       temperature: 0.2,
       max_output_tokens: 800,
@@ -68,4 +80,4 @@ function buildAifxMaterialReverseRequest(payload, model) {
   };
 }
 
-module.exports = { MATERIAL_FIELDS, parseAifxMaterialText, buildAifxMaterialReverseRequest };
+module.exports = { DEFAULT_AIFX_MATERIAL_MODEL, MATERIAL_FIELDS, parseAifxMaterialText, buildAifxMaterialReverseRequest };
