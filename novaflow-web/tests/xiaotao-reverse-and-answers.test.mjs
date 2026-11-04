@@ -131,6 +131,14 @@ test('a planner timeout after a finished tool closes the turn on the real result
   await f.c.send('把图1高清放大');
   assert.equal(f.c.state.error,'');assert.match(f.c.state.messages.at(-1).content,/高清放大/);
 });
+test('a bare 不满意 after a video asks what to change, and the answer revises that video',async()=>{
+  const f=await fixture({refs:refs(),foart:[done('好的')]});
+  f.c.state.activeTask={executor:'foart',surface:'video',mode:'text_video',baseRequest:'做一个橘猫视频',revisions:[],status:'completed',outputs:[]};
+  await f.c.send('不满意');
+  assert.equal(f.starts.length,0);assert.match(f.c.state.messages.at(-1).content,/想改哪里/);
+  await f.c.send('猫太小了');
+  assert.equal(f.starts.length,1);assert.match(f.starts[0].message,/做一个橘猫视频[\s\S]*猫太小了/);
+});
 test('a failed turn stays in this session context',async()=>{
   const f=await fixture({refs:refs(),foart:[{ok:false,error:'操作未完成'},done('好的')]});
   assert.equal(await f.c.send('把图1换成黑白'),false);
