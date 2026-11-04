@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 import { createContext, runInContext } from 'node:vm';
 import { createWorkerLoraCatalog } from '../../worker/src/models/lora-catalog.mjs';
 import { qwenEditLoraAvailable } from '../../worker/src/worker-core.mjs';
-import { QWEN21_EDIT_LORA_NAME } from '../../packages/shared/src/workflow-modules.mjs';
+import { QWEN21_EDIT_LORA_NAME, QWEN21_UC_LORA_NAME } from '../../packages/shared/src/workflow-modules.mjs';
 import { startLocalServer } from '../../worker/src/local-server.mjs';
 
 const require = createRequire(import.meta.url);
@@ -177,6 +177,9 @@ try {
   await writeFile(turbo, gguf(q21Tensors));
   await writeFile(target, safetensors(lora(q21Tensors, 'comfy')));
   names.push(QWEN21_EDIT_LORA_NAME);
+  assert.equal(await qwenEditLoraAvailable(true, workerCatalog), false);
+  await writeFile(join(models, 'loras', ...QWEN21_UC_LORA_NAME.split('/')), safetensors(lora(q21Tensors)));
+  names.push(QWEN21_UC_LORA_NAME);
   assert.equal(await qwenEditLoraAvailable(true, workerCatalog), true); checks += 1;
   await writeFile(target, safetensors(broken));
   assert.equal(await qwenEditLoraAvailable(true, workerCatalog), false); checks += 1;

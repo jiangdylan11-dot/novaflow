@@ -26,7 +26,7 @@ import { videoRuntimeUrl } from './runtime-services.mjs';
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength, audioGraphExtras } from './comfy/workflow-runner.mjs';
 import { cleanAudioCaption } from './comfy/audio-reprompt.mjs';
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
-import { workflowModule, QWEN21_EDIT_LORA_CAPABILITY, QWEN21_EDIT_LORA_NAME } from '../../packages/shared/src/workflow-modules.mjs';
+import { workflowModule, QWEN21_EDIT_LORA_CAPABILITY, QWEN21_EDIT_LORA_NAME, QWEN21_UC_LORA_NAME } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy, detectQwenImage21, WORKER_MODEL_MANIFEST } from './models/model-manager.mjs';
 import { createWorkerLoraCatalog } from './models/lora-catalog.mjs';
 import {detectSharedImageCapabilities, RMBG_CAPABILITY, SAM_B_CAPABILITY, SAM_L_CAPABILITY, SAM_H_CAPABILITY, SAM_AUTO_CAPABILITY, QWEN_INPAINT_CAPABILITY, SEEDVR_CAPABILITY, SEETHROUGH_CAPABILITY, SEETHROUGH_LAMA_CAPABILITY, FLUX_FILL_CAPABILITY, FLUX_REMOVAL_CAPABILITY} from './models/shared-workflow-capabilities.mjs';
@@ -382,8 +382,9 @@ export async function qwenEditLoraAvailable(turboReady, catalog) {
   if (!turboReady) return false;
   try {
     const result = await catalog.read('qwen', { engine: 'qwen-2.1', modelName: 'Qwen-Image-2.1-Turbo-BF16.gguf' });
-    const target = QWEN21_EDIT_LORA_NAME.toLowerCase();
-    return result.ok === true && Array.isArray(result.items) && result.items.some(item => String(item.name || '').replace(/\\/g, '/').toLowerCase() === target);
+    if (result.ok !== true || !Array.isArray(result.items)) return false;
+    const names = new Set(result.items.map(item => String(item.name || '').replaceAll('\\', '/').toLowerCase()));
+    return names.has(QWEN21_EDIT_LORA_NAME.toLowerCase()) && names.has(QWEN21_UC_LORA_NAME);
   } catch (_) { return false; }
 }
 

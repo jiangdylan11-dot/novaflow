@@ -10,6 +10,7 @@ import { createWorkerLoraCatalog } from '../../worker/src/models/lora-catalog.mj
 
 const root = new URL('../../', import.meta.url);
 const name = 'qwen/qwen2_1-femaledVaginus-nsfw-v1_3-fine_L22-31.safetensors';
+const uc = 'qwen/qwen-image-2.1-uncensored-lora.safetensors';
 const token = 'qwen21-nsfw-lora-v1';
 const other = 'qwen/another.safetensors';
 function load(relative) {
@@ -23,16 +24,16 @@ for (const mode of ['txt2img', 'img2img']) {
   test(`${mode}: node resolves only the fixed token; toggle off and manual selection remain independent`, () => {
     const state = {provider:'local',mode,nsfw:false,nsfwLoraEnabled:true,nsfwLoraName:token,loras:[{name:other,strength:.6}]};
     const selection = nodeApi.effectiveSelection(state);
-    assert.equal(selection.length, 2); assert.equal(selection[1].name, name); assert.equal(selection[1].strength, 1);
+    assert.equal(selection.length, 3); assert.equal(selection[0].name, uc); assert.equal(selection[2].name, name); assert.equal(selection[2].strength, 1);
     const manual = nodeApi.effectiveSelection({...state, loras:[...state.loras, {name,strength:.7}]});
-    assert.equal(manual.length, 2); assert.equal(manual[1].strength, .7);
+    assert.equal(manual.length, 3); assert.equal(manual[2].strength, .7);
     const off = nodeApi.effectiveSelection({...state, nsfwLoraEnabled:false});
     assert.equal(off.length, 1); assert.equal(off[0].name, other);
     assert.equal(state.loras.length, 1);
     assert.throws(() => nodeApi.effectiveSelection({...state,nsfwLoraName:'arbitrary'}));
     assert.throws(() => nodeApi.effectiveSelection({...state,nsfw:true}));
     assert.throws(() => nodeApi.effectiveSelection({...state,provider:'online'}));
-    assert.equal(nodeApi.effectiveSelection({...state,nsfwLoraName:name})[1].name,name);
+    assert.equal(nodeApi.effectiveSelection({...state,nsfwLoraName:name})[2].name,name);
   });
 }
 
@@ -50,9 +51,10 @@ test('actual worker graph validator rechecks the chosen model and missing files'
     const graph = {base:{class_type:'UNETLoader',inputs:{unet_name:'qwen-image-2.1.safetensors'}},step:{class_type:'KSampler',inputs:{model:['base',0]}}};
     nodeApi.apply(graph,{provider:'local',mode:'img2img',nsfw:false,nsfwLoraEnabled:true,nsfwLoraName:token});
     const runtimeName = name.replaceAll('/', '\\');
-    globalThis.__loraTestItems = [{name:runtimeName}];
+    globalThis.__loraTestItems = [{name:runtimeName}, {name:uc.replaceAll('/', '\\')}];
     await catalog.validateGraph(graph); assert.equal(globalThis.__loraTestModel,'qwen-image-2.1.safetensors');
-    assert.equal(graph.nf_art_lora_1.inputs.lora_name,runtimeName);
+    assert.equal(graph.nf_art_lora_1.inputs.lora_name,uc.replaceAll('/', '\\'));
+    assert.equal(graph.nf_art_lora_2.inputs.lora_name,runtimeName);
     globalThis.__loraTestItems = []; await assert.rejects(catalog.validateGraph(graph));
   } finally { process.resourcesPath = old; delete globalThis.__loraTestModel; delete globalThis.__loraTestItems; fs.rmSync(dir,{recursive:true,force:true}); }
 });

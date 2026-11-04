@@ -15,8 +15,10 @@ import { withReferences } from '../../worker/src/worker-core.mjs';
 import { workflowModelId, allWorkflowEntryMethods, QWEN21_EDIT_LORA_CAPABILITY } from '../../packages/shared/src/workflow-modules.mjs';
 
 const target = 'qwen/qwen2_1-femaledVaginus-nsfw-v1_3-fine_L22-31.safetensors';
+const uc = 'qwen/qwen-image-2.1-uncensored-lora.safetensors';
 const other = 'qwen/other-style.safetensors';
 const token = 'qwen21-nsfw-lora-v1';
+const features = {qwen21_nsfw_lora:true,qwen21_uc_lora:true};
 const loraSource = await readFile(new URL('../../renderer/art-generate-lora.js', import.meta.url), 'utf8');
 
 class FakeElement {
@@ -40,7 +42,7 @@ function harness(mode, { oldCache = false, selected = [], source = loraSource } 
   runInContext(source, context);
   const state = {provider:'local', mode, nsfw:false, loras:selected.map(x=>({...x}))};
   const api = context.NovaFlowArtGenerateLora;
-  let response = {ok:true, features:{qwen21_nsfw_lora:true}, items:[{name:target,autoManaged:token},{name:other}]};
+  let response = {ok:true, features, items:[{name:target,autoManaged:token},{name:uc,autoManaged:'qwen21-uc-lora-v1'},{name:other}]};
   const options = {host,state,loadCatalog:async()=>response};
   const select = () => allNodes(host).find(node=>node.tagName==='SELECT');
   const optionValues = () => select()?.children.map(n=>n.value).filter(Boolean) || [];
@@ -48,18 +50,19 @@ function harness(mode, { oldCache = false, selected = [], source = loraSource } 
 }
 const flush = async () => { for(let n=0;n<5;n++) await new Promise(resolve=>setTimeout(resolve,0)); };
 
-test('control catalog marks only auto-managed Qwen 2.1 item while preserving the old names/features', async () => {
+test('control catalog marks both managed Qwen 2.1 adapters and leaves the ordinary LoRA selectable', async () => {
   const secret='isolated-only-secret', encoded=base64UrlJson({sub:'synthetic',exp:Math.floor(Date.now()/1000)+120});
   const bearer='nfs_'+encoded+'.'+await hmacSha256(encoded,secret);
-  const row={detail:{lora_catalog:{version:1,updated_at:new Date().toISOString(),qwen21:{ok:true,items:[{name:target},{name:other}]}}}};
+  const row={detail:{lora_catalog:{version:1,updated_at:new Date().toISOString(),qwen21:{ok:true,items:[{name:target},{name:other},{name:uc}]}}}};
   const store={getUserById:async()=>({id:'synthetic',status:'active',plan:'free'}),listCapableModelDetails:async()=>[row]};
   const plane=createControlPlane({store,secrets:{sessionSecret:secret,controlSecret:'isolated'}});
   for(const variant of [undefined,'turbo']) {
     const response=await plane.handle({method:'GET',path:'/api/web/loras/qwen',query:{engine:'qwen-2.1',...(variant?{variant}:{})},headers:{authorization:'Bearer '+bearer}});
-    assert.equal(response.status,200); assert.equal(response.body.features.qwen21_nsfw_lora,true);
-    assert.deepEqual(response.body.items.map(x=>x.name),[target,other]);
+    assert.equal(response.status,200); assert.deepEqual(response.body.features,features);
+    assert.deepEqual(response.body.items.map(x=>x.name),[target,other,uc]);
     assert.equal(response.body.items[0].autoManaged,token);
     assert.equal(Object.hasOwn(response.body.items[1],'autoManaged'),false);
+    assert.equal(response.body.items[2].autoManaged,'qwen21-uc-lora-v1');
     assert(!JSON.stringify(response.body.items).includes('E:\\\\'));
   }
 });
@@ -69,11 +72,12 @@ test('redacted website preserves metadata-based filtering without exposing a mod
     ? '\n    if (!info?.ok || !Array.isArray(info.items)) throw new Error(info?.error || "读取兼容 LoRA 失败");\n    return info.items.map(item => item.name).filter(isSelectable);\n  '
     : `\n    return globalThis.NovaFlowWebRuntime.serverOnly('art-generate-lora', ${JSON.stringify(fn)}, arguments);\n  `;
   const built=redactModule(loraSource,{moduleName:'art-generate-lora',forceNames:allWorkflowEntryMethods().filter(name=>name!=='buildArtGenerateRunWorkflow'),replacement});
-  assert(!built.code.includes(target),'public browser code must not embed model filename');
+  assert(!built.code.includes(target) && !built.code.includes(uc),'public browser code must not embed managed model filenames');
   const h=harness('txt2img',{source:built.code});
   h.api.mount(h.options); h.api.setConnection(true,'redacted-test'); await flush();
   assert.deepEqual(h.optionValues(),[other]);
-  assert.equal(h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true},items:[]}),token);
+  assert.equal(h.api.verifiedNsfwName({ok:true,features,items:[]}),token);
+  assert.throws(()=>h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true},items:[]}),/缺少/);
 });
 
 for (const mode of ['txt2img','img2img']) test(`${mode}: only ordinary choices hide target; legacy selected item and switch behavior remain`, async () => {
@@ -82,13 +86,16 @@ for (const mode of ['txt2img','img2img']) test(`${mode}: only ordinary choices h
   assert.deepEqual(h.optionValues(),[other]);
   assert.deepEqual(h.state.loras,[{name:target,strength:.35,enabled:true}]);
   assert(h.host.textContent.includes('qwen2_1-femaledVaginus'));
-  assert.equal(h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true},items:[]}),token);
+  assert.equal(h.api.verifiedNsfwName({ok:true,features,items:[]}),token);
   const on=Array.from(h.api.effectiveSelection({...h.state,nsfwLoraEnabled:true,nsfwLoraName:token}));
-  assert.equal(on.length,1); assert.equal(on[0].name,target); assert.equal(on[0].strength,.35);
+  assert.equal(on.length,2); assert.equal(on[0].name,uc); assert.equal(on[1].name,target); assert.equal(on[1].strength,.35);
   const off=Array.from(h.api.effectiveSelection({...h.state,nsfwLoraEnabled:false}));
   assert.equal(off.length,1); assert.equal(off[0].name,target); assert.equal(off[0].strength,.35);
   const noManual=Array.from(h.api.effectiveSelection({...h.state,loras:[],nsfwLoraEnabled:true,nsfwLoraName:token}));
-  assert.equal(noManual.length,1); assert.equal(noManual[0].name,target); assert.equal(noManual[0].strength,1);
+  assert.equal(noManual.length,2); assert.equal(noManual[0].name,uc); assert.equal(noManual[1].name,target); assert.equal(noManual[1].strength,1);
+  const manualUc=Array.from(h.api.effectiveSelection({...h.state,loras:[{name:uc,strength:.5}],nsfwLoraEnabled:true,nsfwLoraName:token}));
+  assert.equal(manualUc.filter(item=>item.name===uc).length,1);
+  assert.equal(manualUc.find(item=>item.name===uc).strength,.5);
   assert.throws(()=>h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:false},items:[]}),/不兼容|缺少/);
 });
 
@@ -125,7 +132,7 @@ test('redacted web edit bridge keeps a legacy manual target at its strength only
   assert.equal(call.method,'defaultQwenLoraInpaintWorkflow');
   assert.equal(workflowModelId(call.module,call.options,call.method),QWEN21_EDIT_LORA_CAPABILITY);
   const choice=(key,values)=>({input:{required:{[key]:[values]}}}), empty={input:{required:{}}};
-  const info={NovaFlowGGUFBF16Loader:choice('unet_name',['Qwen-Image-2.1-Turbo-BF16.gguf']),CLIPLoader:choice('clip_name',['qwen3vl_8b_bf16_heretic.safetensors']),VAELoader:choice('vae_name',['qwen_image_2.1_vae_bf16.safetensors']),LoraLoaderModelOnly:choice('lora_name',[target,other]),...Object.fromEntries(['TextEncodeQwenImage21','VAEEncode','SetLatentNoiseMask','ImageToMask','SplitImageWithAlpha','InvertMask','ImageCompositeMasked','ImagePadForOutpaint','ImageCrop','MaskComposite','VAEDecode','SaveImage','LoadImage'].map(name=>[name,empty])),QwenImage21Cache:{input:{required:Object.fromEntries(['model','device','dtype'].map(name=>[name,['ANY']]))}},KSampler:{input:{required:Object.fromEntries(['model','positive','negative','latent_image','seed','steps','cfg','sampler_name','scheduler','denoise'].map(name=>[name,['ANY']]))}}};
+  const info={NovaFlowGGUFBF16Loader:choice('unet_name',['Qwen-Image-2.1-Turbo-BF16.gguf']),CLIPLoader:choice('clip_name',['qwen3vl_8b_bf16_heretic.safetensors']),VAELoader:choice('vae_name',['qwen_image_2.1_vae_bf16.safetensors']),LoraLoaderModelOnly:choice('lora_name',[target,other,uc].map(name=>name.replaceAll('/','\\'))),...Object.fromEntries(['TextEncodeQwenImage21','VAEEncode','SetLatentNoiseMask','ImageToMask','SplitImageWithAlpha','InvertMask','ImageCompositeMasked','ImagePadForOutpaint','ImageCrop','MaskComposite','VAEDecode','SaveImage','LoadImage'].map(name=>[name,empty])),QwenImage21Cache:{input:{required:Object.fromEntries(['model','device','dtype'].map(name=>[name,['ANY']]))}},KSampler:{input:{required:Object.fromEntries(['model','positive','negative','latent_image','seed','steps','cfg','sampler_name','scheduler','denoise'].map(name=>[name,['ANY']]))}}};
   const dir=await mkdtemp(join(tmpdir(),'foart-hidden-lora-'));
   try {
     await prepareComputeRenderer({outputDir:dir});
@@ -133,6 +140,7 @@ test('redacted web edit bridge keeps a legacy manual target at its strength only
     const mapped=withReferences(call.options,['task-a.png','task-mask.png'],[{name:'a.png'},{name:'mask.png'}],call.method);
     const graph=await host.buildGraph({module:call.module,method:call.method,options:mapped});
     const loras=Object.values(graph).filter(node=>node.class_type==='LoraLoaderModelOnly');
+    assert.equal(loras.filter(n=>n.inputs.lora_name===uc && n.inputs.strength_model===1).length,1);
     assert.equal(loras.filter(n=>n.inputs.lora_name===target).length,1);
     assert.equal(loras.find(n=>n.inputs.lora_name===target).inputs.strength_model,.35);
     assert.equal(loras.find(n=>n.inputs.lora_name===other).inputs.strength_model,.7);

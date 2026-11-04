@@ -45,6 +45,8 @@
   // Stable public capability; only the node resolves its target.
   const NSFW_LORA_FEATURE = 'qwen21-nsfw-lora-v1'
   const NSFW_LORA = 'qwen/qwen2_1-femaledVaginus-nsfw-v1_3-fine_L22-31.safetensors'
+  const UC_LORA_FEATURE = 'qwen21-uc-lora-v1'
+  const UC_LORA = 'qwen/qwen-image-2.1-uncensored-lora.safetensors'
   const managed = /lightning|(?:^|[\\/_-])(?:4|8)steps?|(?:^|[\\/])(?:qwen[-_ ]?image[-_ ]?2\.1[-_ ])?(?:viggle[-_ ])?turbo(?:[-_ .]|$)/i
   const key = (name) => String(name || '').replace(/\\/g, '/').toLowerCase()
   // What the page shows for a LoRA: its own file name, never the folder (it names the model) or the
@@ -89,11 +91,12 @@
     const feature = info?.features?.qwen21_nsfw_lora
     if (typeof feature === 'boolean') {
       const consistent = feature ? marked.length === 1 && names.some(name => key(name) === key(marked[0])) : marked.length === 0
-      return { names, managedNames: consistent ? marked : [], metadataReady: consistent }
+      const uc = Array.isArray(info.items) ? info.items.filter(item => item?.autoManaged === UC_LORA_FEATURE).map(item => item.name) : []
+      return { names, managedNames: [...(consistent ? marked : []), ...uc], metadataReady: consistent }
     }
     // The unredacted node/local catalogue can identify its own fixed adapter.
     // Public web builds use a placeholder and wait for trusted node metadata.
-    if (NSFW_LORA !== '<server-side>') return { names, managedNames: names.filter(name => key(name) === key(NSFW_LORA)), metadataReady: true }
+    if (NSFW_LORA !== '<server-side>') return { names, managedNames: names.filter(name => [key(NSFW_LORA), key(UC_LORA)].includes(key(name))), metadataReady: true }
     return { names, managedNames: [], metadataReady: false }
   }
 
@@ -129,7 +132,8 @@
     if (state.provider !== 'local' || !qwen21Route(state)) throw new Error('该 LoRA 仅支持当前本地 Qwen 2.1 生图路线')
     const requested = String(state.nsfwLoraName || '')
     const name = requested === NSFW_LORA_FEATURE ? NSFW_LORA : requested
-    if (key(name) !== key(NSFW_LORA)) throw new Error('NSFW LoRA 尚未验证，请重新开启开关')
+    if (key(name) !== key(NSFW_LORA)) throw new Error('破限 LoRA 尚未验证，请重新开启开关')
+    if (!active.some(item => key(item.name) === key(UC_LORA))) active.unshift({ name: UC_LORA, strength: 1 })
     if (!active.some(item => key(item.name) === key(name))) active.push({ name, strength: 1 })
     if (active.length > MAX_LORAS) throw new Error(`最多添加 ${MAX_LORAS} 个 LoRA`)
     return active
@@ -138,11 +142,11 @@
   function verifiedNsfwName(info) {
     if (info?.ok === false) throw new Error(info.error || '无法读取 Qwen 2.1 LoRA 目录')
     if (info?.features && Object.prototype.hasOwnProperty.call(info.features, 'qwen21_nsfw_lora')) {
-      if (info.features.qwen21_nsfw_lora === true) return NSFW_LORA_FEATURE
-      throw new Error('当前算力节点缺少指定 NSFW LoRA，或与 Qwen 2.1 不兼容；未提交任务')
+      if (info.features.qwen21_nsfw_lora === true && info.features.qwen21_uc_lora === true) return NSFW_LORA_FEATURE
+      throw new Error('当前算力节点缺少破限所需的 LoRA，或与 Qwen 2.1 不兼容；未提交任务')
     }
-    const found = catalogFromInfo(info).find(name => key(name) === key(NSFW_LORA))
-    if (!found) throw new Error('当前算力节点缺少指定 NSFW LoRA，或与 Qwen 2.1 不兼容；未提交任务')
+    const names = catalogFromInfo(info).map(key)
+    if (!names.includes(key(NSFW_LORA)) || !names.includes(key(UC_LORA))) throw new Error('当前算力节点缺少破限所需的 LoRA，或与 Qwen 2.1 不兼容；未提交任务')
     return NSFW_LORA_FEATURE
   }
 
@@ -182,9 +186,9 @@
   function validate(workflow, info) {
     const requested = Object.entries(workflow).filter(([id]) => /^nf_art_lora_/.test(id))
     if (!requested.length) return
-    const available = new Set(catalogFromInfo(info))
+    const available = new Set(catalogFromInfo(info).map(key))
     for (const [, node] of requested) {
-      if (!available.has(node.inputs.lora_name)) throw new Error(`LoRA 文件不可用，请刷新列表并重新选择：${node.inputs.lora_name}`)
+      if (!available.has(key(node.inputs.lora_name))) throw new Error(`LoRA 文件不可用，请刷新列表并重新选择：${node.inputs.lora_name}`)
     }
   }
 
@@ -284,7 +288,7 @@
     const select = element('select', '', 'box-sizing:border-box;width:100%;min-width:0;height:32px;min-height:32px;max-height:32px;background:#262626;color:#e9e9e9;border:1px solid #343434;border-radius:6px;padding:0 26px 0 10px;font-size:12px;appearance:none;-webkit-appearance:none;')
     select.setAttribute('data-novaflow-art-generate-select-field', '1')
     select.setAttribute('aria-label', '添加兼容 LoRA')
-    const available = record.names.filter(name => !(record.metadataReady && record.managedNames.some(managedName => key(managedName) === key(name))) && !items.some(item => key(item.name) === key(name)))
+    const available = record.names.filter(name => !record.managedNames.some(managedName => key(managedName) === key(name)) && !items.some(item => key(item.name) === key(name)))
     const placeholder = element('option', record.loading ? '正在读取兼容 LoRA…' : !record.metadataReady && record.names.length ? '目录待更新，自动管理项可能仍显示' : available.length ? '请选择兼容 LoRA' : record.names.length ? '所有兼容 LoRA 已添加' : '暂无 LoRA 可用')
     placeholder.value = ''
     select.appendChild(placeholder)

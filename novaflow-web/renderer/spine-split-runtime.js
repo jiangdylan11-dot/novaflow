@@ -8635,7 +8635,7 @@
       return {
         mode: normalizedMode,
         provider: 'qwen-2.1-nsfw-lora',
-        label: 'Qwen 2.1 + NSFW LoRA',
+        label: 'Qwen 2.1 Turbo · 破限',
         workflow: 'qwen',
         outputMode: 'patch',
         qwenControlMode: normalizedMode === 'edit' ? 1 : 2,
@@ -16702,7 +16702,7 @@
 
   // Hover text of the two model switches: what each is for, then its state.
   function selectionInpaintNsfwTitle(enabled) {
-    return `在当前 Qwen 2.1 Turbo 编辑底模添加指定 LoRA，不切换底模；需要支持此功能且安装兼容 LoRA 的算力节点。当前：${enabled ? '已开启' : '已关闭'}`
+    return `在当前 Qwen 2.1 Turbo 编辑底模加载两份破限 LoRA。当前：${enabled ? '已开启' : '已关闭'}`
   }
 
   function selectionInpaintFluxTitle(enabled) {
@@ -16739,6 +16739,7 @@
       const nsfwEnabled = !!state.selectionTool.inpaintNsfwEnabled
       patchSplitToolButtonVisual('selectionNsfw', nsfwEnabled)
       nsfwButton.setAttribute('aria-checked', nsfwEnabled ? 'true' : 'false')
+      nsfwButton.setAttribute('aria-label', `破限 ${nsfwEnabled ? '已开启' : '已关闭'}`)
       nsfwButton.setAttribute('data-novaflow-selection-inpaint-nsfw', nsfwEnabled ? 'on' : 'off')
       nsfwButton.title = selectionInpaintNsfwTitle(nsfwEnabled)
       nsfwButton.disabled = state.busy
@@ -23946,12 +23947,12 @@
           style: { marginLeft: '2px' }
         }) : null,
         ...(isGenerativeSplit ? generativeSplitToolbarNodes() : []),
-        showInpaintNsfw ? button('NSFW', () => toggleSelectionInpaintNsfw(), inpaintNsfwEnabled, {
+        showInpaintNsfw ? button('破限', () => toggleSelectionInpaintNsfw(), inpaintNsfwEnabled, {
           [TOOL_ACTION_ATTR]: 'selectionNsfw',
           'data-novaflow-selection-inpaint-nsfw': inpaintNsfwEnabled ? 'on' : 'off',
           role: 'switch',
           'aria-checked': inpaintNsfwEnabled ? 'true' : 'false',
-          'aria-label': `NSFW ${inpaintNsfwEnabled ? '已开启' : '已关闭'}`,
+          'aria-label': `破限 ${inpaintNsfwEnabled ? '已开启' : '已关闭'}`,
           title: selectionInpaintNsfwTitle(inpaintNsfwEnabled),
           disabled: state.busy,
           style: { marginLeft: '2px', minWidth: '48px' }

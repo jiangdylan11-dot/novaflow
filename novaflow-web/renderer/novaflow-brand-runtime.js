@@ -83440,7 +83440,7 @@
 
   async function verifyArtNsfwLora() {
     const lora = window.NovaFlowArtGenerateLora;
-    if (!lora?.verifiedNsfwName || typeof window.electronAPI?.qwenLoraCatalog !== 'function') throw new Error('无法验证 NSFW LoRA，请检查本地算力节点；未提交任务');
+    if (!lora?.verifiedNsfwName || typeof window.electronAPI?.qwenLoraCatalog !== 'function') throw new Error('无法验证破限 LoRA，请检查本地算力节点；未提交任务');
     const info = await window.electronAPI.qwenLoraCatalog({nsfw:false, engine:'qwen-2.1', variant:ART_GENERATE_STATE.localQwen21Variant});
     const name = lora.verifiedNsfwName(info);
     // Browser validates manual entries; the node resolves and revalidates the feature.
@@ -83464,7 +83464,7 @@
     renderArtGenerateSurfaces({forceBottom:true});
     try {
       const name = await verifyArtNsfwLora();
-      if (ART_GENERATE_STATE.running || ART_GENERATE_STATE.provider !== 'local' || ART_GENERATE_STATE.mode !== mode || ART_GENERATE_STATE.localQwen21Variant !== variant || window.NovaFlowUiDesignDrawing?.isActive?.()) throw new Error('模型或模式已变化，请重新开启 NSFW');
+      if (ART_GENERATE_STATE.running || ART_GENERATE_STATE.provider !== 'local' || ART_GENERATE_STATE.mode !== mode || ART_GENERATE_STATE.localQwen21Variant !== variant || window.NovaFlowUiDesignDrawing?.isActive?.()) throw new Error('模型或模式已变化，请重新开启破限');
       ART_GENERATE_STATE.nsfwLoraName = name;
       ART_GENERATE_STATE.nsfwLoraEnabled = true;
       return true;
@@ -83486,8 +83486,8 @@
 
   function renderArtGenerateParamRow() {
     const nsfwSwitch = window.NovaFlowUiDesignDrawing?.isActive?.() ? null : createArtEl('div', {className:'novaflow-art-generate-param'}, [
-      createArtEl('span', {text:'NSFW'}),
-      renderArtGenerateToggleButton(ART_GENERATE_STATE.nsfwLoraEnabled, 'NSFW', () => { void setArtGenerateNsfwLoraEnabled(!ART_GENERATE_STATE.nsfwLoraEnabled); })
+      createArtEl('span', {text:'破限'}),
+      renderArtGenerateToggleButton(ART_GENERATE_STATE.nsfwLoraEnabled, '破限', () => { void setArtGenerateNsfwLoraEnabled(!ART_GENERATE_STATE.nsfwLoraEnabled); })
     ]);
     if (nsfwSwitch) {
       nsfwSwitch.title = '为当前 Qwen 2.1 添加或移除指定 LoRA，不切换底模';
@@ -86596,7 +86596,7 @@
       if (ownerPreparationEpoch === artOwnerPreparationEpoch &&
           ART_GENERATE_STATE.runToken === ownerPreparationRunToken) ART_GENERATE_STATE.running = false;
     };
-    if (ART_GENERATE_STATE.nsfwLoraChecking) { setArtGenerateStatus('正在检查 NSFW LoRA，请稍候', true); return; }
+    if (ART_GENERATE_STATE.nsfwLoraChecking) { setArtGenerateStatus('正在检查破限 LoRA，请稍候', true); return; }
     if (ART_GENERATE_STATE.provider === 'local' && ART_GENERATE_STATE.nsfw === true && !window.NovaFlowUiDesignDrawing?.isActive?.()) {
       setArtGenerateStatus('旧版 NSFW 生图路线已移除，未提交任务；请刷新页面后重新选择模型。', true);
       return;
