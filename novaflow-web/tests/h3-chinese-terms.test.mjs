@@ -15,3 +15,6 @@ test('words the user did not write are left alone',()=>{
   assert.equal(r('A cat.','英文 only'),'A cat.');
   assert.equal(r('A cat.','cat'),'A cat.');
 });
+test('a word between colour and robe and a bare wuxia are covered too',()=>{
+  assert.equal(r('Cinematic wuxia style, Li Xiaoyao in a loose cyan traditional robe.','国风武侠，身穿青衫的李逍遥'),'Cinematic 国风 wuxia style, 李逍遥 in a loose 青衫.');
+});

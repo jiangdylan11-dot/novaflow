@@ -3,7 +3,7 @@
 // The words the user wrote go back into the English text here. Only a term the user
 // actually wrote is touched; everything else stays as the model wrote it.
 const TERMS=Object.freeze([
-  ['青衫',/\b(?:(?:dark |light |pale |deep )?(?:cyan|teal|azure|turquoise|green|blue-green|blue green|gr[ae]y-blue|gr[ae]y blue|indigo|bluish|greenish)[- ])(?:robes?|gowns?|tunics?|garments?|shirts?|clothes|clothing|attire|cloaks?)\b/gi],
+  ['青衫',/\b(?:(?:dark |light |pale |deep )?(?:cyan|teal|azure|turquoise|green|blue-green|blue green|gr[ae]y-blue|gr[ae]y blue|indigo|bluish|greenish)[- ](?:[a-z]+ )?)(?:robes?|gowns?|tunics?|garments?|shirts?|clothes|clothing|attire|cloaks?)\b/gi],
   ['国风',/\b(?:traditional )?Chinese[- ]style\b|\bChinese national style\b|\bguofeng\b/gi],
   ['汉服',/\bhanfu\b|\bHan[- ]style (?:clothing|dress|attire)\b|\btraditional Chinese (?:clothing|dress|attire|costume)\b/gi],
   ['旗袍',/\bqipao\b|\bcheongsam\b/gi],
@@ -30,6 +30,6 @@ export function restoreChineseTerms(english,source) {
   if(!text||!/[一-鿿]/.test(from))return text;
   let out=restoreNames(text,from);
   for(const [term,pattern] of TERMS)if(from.includes(term))out=out.replace(pattern,term);
-  if(from.includes('国风'))out=out.replace(/\bChinese wuxia\b/gi,'国风 wuxia');
+  if(from.includes('国风')&&!out.includes('国风'))out=out.replace(/\b(?:Chinese )?wuxia\b/i,'国风 wuxia');
   return out;
 }
