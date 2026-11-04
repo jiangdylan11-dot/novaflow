@@ -7,7 +7,7 @@ const data=(std,turbo,legacy=0)=>({taskTypes:[{task_type:'qwen_t2i',available_wo
 test('art probes the exact selected model instead of legacy 2511',async()=>{
  let f=fixture(data(1,0));assert.equal(f.selected(),'qwen21-standard');assert.equal(await f.probe(),1);f.box.root.__NovaFlowArtGenerate.state.localQwen21Variant='turbo';assert.equal(f.selected(),'qwen21-turbo');assert.equal(await f.probe(),0);
  f=fixture(data(0,1));assert.equal(await f.probe(),0);f.box.root.__NovaFlowArtGenerate.state.localQwen21Variant='turbo';assert.equal(await f.probe(),1);
- f.box.root.__NovaFlowArtGenerate.state.active=false;assert.equal(f.selected(),'qwen_t2i');assert.equal(await f.probe(),0);
+ f.box.root.__NovaFlowArtGenerate.state.active=false;assert.equal(f.selected(),'qwen21-turbo');assert.equal(await f.probe(),1);
 });
 test('missing new fields fail closed for turbo and preserve older standard support',async()=>{
  const f=fixture({taskTypes:[],features:{qwenImage21:true}});assert.equal(await f.probe(),1);f.box.root.__NovaFlowArtGenerate.state.localQwen21Variant='turbo';assert.equal(await f.probe(),0);

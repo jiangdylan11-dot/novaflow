@@ -13567,7 +13567,8 @@
 
   async function exportForAgent(format='psd',deliverFile) {
     if(!['psd','png','layer','json'].includes(format))throw new Error('不支持的导出格式')
-    const result=await getUiLayerExport(format),blob=await dataUrlToBlob(result.dataUrl)
+    // A picture with no layers yet still exports as itself.
+    const result=format==='png'&&!state.parts.length&&state.source?.dataUrl?{dataUrl:state.source.dataUrl,name:state.source.fileName||'image.png'}:await getUiLayerExport(format),blob=await dataUrlToBlob(result.dataUrl)
     const fileName=format==='psd'?`${String(state.source?.fileName||'spine_layers').replace(/\.[^/.]+$/g,'')}_layers.psd`:result.name
     if(!blob.size)throw new Error('文件为空，未导出')
     let delivered
