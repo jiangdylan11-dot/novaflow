@@ -91,7 +91,7 @@
   }
 
   function workflowFor(role, inputName, info) {
-    const prefix = `NovaFlow_Reference_${role}_${Date.now()}`;
+    const prefix = `Foart_Reference_${role}_${Date.now()}`;
     const base = { "1": { class_type: "LoadImage", inputs: { image: inputName } } };
     if (role === "background" && info.BiRefNetRMBG) {
       return { ...base, "2": { class_type: "BiRefNetRMBG", inputs: { image: ["1", 0], model: "BiRefNet-general", mask_blur: 2, mask_offset: 2, invert_output: true, refine_foreground: false, background: "Color", background_color: "#808080" } }, "3": { class_type: "SaveImage", inputs: { images: ["2", 0], filename_prefix: prefix } } };

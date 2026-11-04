@@ -31,7 +31,7 @@
     audioVae: 'minimax_h3_audio_vae_fp32.safetensors',
   })
 
-  const DEFAULT_PREFIX = 'video/NovaFlow_AIFX'
+  const DEFAULT_PREFIX = 'video/Foart_AIFX'
   const OUTPUT_FPS = 24
   const DEFAULT_STEPS = 4
   const RESOLUTION_MULTIPLE = 32

@@ -3984,7 +3984,7 @@
         try {
           if (options.kind === 'video') {
             if (!encoder || !encoder.exportEncodeFramesToVideo) throw new Error('视频编码器尚未就绪')
-            const r = await encoder.exportCreateTempDir({ prefix: 'novaflow_project_' }); if (!r.dir || r.ok === false) throw new Error(r.error || '无法创建编码临时目录'); temp = r.dir
+            const r = await encoder.exportCreateTempDir({ prefix: 'foart_project_' }); if (!r.dir || r.ok === false) throw new Error(r.error || '无法创建编码临时目录'); temp = r.dir
           }
           for (let f = 0; f < scene.count; f++) {
             g.clearRect(0, 0, output.width, output.height)

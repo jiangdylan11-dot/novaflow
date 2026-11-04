@@ -2236,7 +2236,7 @@
         )
       : ''
     const clientId = cleanText(options.clientId) || `novaflow_ui_design_${Date.now()}_${Math.random().toString(16).slice(2)}`
-    const outputPrefix = cleanText(options.outputPrefix) || `NovaFlow_UI_${provider}_${Date.now()}`
+    const outputPrefix = cleanText(options.outputPrefix) || `Foart_UI_${provider}_${Date.now()}`
     const maxWaitMs = Math.max(1, Number(options.maxWaitMs) || DEFAULT_MAX_WAIT_MS)
     const pollIntervalMs = Math.max(0, Number.isFinite(Number(options.pollIntervalMs)) ? Number(options.pollIntervalMs) : DEFAULT_POLL_INTERVAL_MS)
     let authorizationContext = null

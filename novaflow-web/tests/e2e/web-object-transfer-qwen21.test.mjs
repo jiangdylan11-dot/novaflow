@@ -78,8 +78,8 @@ section('the 万物迁移 graph: two references at their own size, the encoder l
   const info = nodes();
   const resolved = s.resolveObjectTransferRuntime(info);
   for (const [label, graph, steps, cfg] of [
-    ['integration', s.buildObjectTransferQwenWorkflow(info, uploads, 'NovaFlow_object_transfer_x', resolved), 8, 1],
-    ['restyle', s.buildObjectTransferRestyleWorkflow(info, uploads, 'NovaFlow_object_transfer_x_restyle', resolved, ''), 8, 1]
+    ['integration', s.buildObjectTransferQwenWorkflow(info, uploads, 'Foart_object_transfer_x', resolved), 8, 1],
+    ['restyle', s.buildObjectTransferRestyleWorkflow(info, uploads, 'Foart_object_transfer_x_restyle', resolved, ''), 8, 1]
   ]) {
     checkEqual(label + ': no 2511 pieces', PIECES_2511.filter((type) => byType(graph, type).length), []);
     checkEqual(label + ': the GGUF loader carries the 2.1 file', byType(graph, 'NovaFlowGGUFBF16Loader').map(([, n]) => n.inputs.unet_name), ['Qwen-Image-2.1-Turbo-BF16.gguf']);
@@ -124,7 +124,7 @@ section('特效提取 / 去特效 on 2.1: the extract redraws the plate onto a b
     ['de-effect', s.buildEffectDeeffectQwenWorkflow, s.effectDeeffectPromptText()]
   ]) {
     for (const [how, given] of [['page-resolved', resolved], ['node-resolved (Web marker)', 'marker']]) {
-      const graph = build(info, 'plate_input.png', 'NovaFlow_effect_x', given);
+      const graph = build(info, 'plate_input.png', 'Foart_effect_x', given);
       checkEqual(`${label} ${how}: no 2511 pieces`, PIECES_2511.filter((type) => byType(graph, type).length), []);
       checkEqual(`${label} ${how}: the 2.1 files`, [byType(graph, 'NovaFlowGGUFBF16Loader')[0][1].inputs.unet_name, byType(graph, 'CLIPLoader')[0][1].inputs.clip_name, byType(graph, 'VAELoader')[0][1].inputs.vae_name],
         ['Qwen-Image-2.1-Turbo-BF16.gguf', 'qwen3vl_8b_bf16_heretic.safetensors', 'qwen_image_2.1_vae_bf16.safetensors']);
@@ -146,7 +146,7 @@ section('特效提取 / 去特效 on 2.1: the extract redraws the plate onto a b
       check(`${label} ${how}: the seed is a non-negative integer`, Number.isInteger(sampler.inputs.seed) && sampler.inputs.seed >= 0, sampler.inputs.seed);
       seeds.push(sampler.inputs.seed);
       const [splitId] = byType(graph, 'SplitImageWithAlpha')[0];
-      checkEqual(`${label} ${how}: RGB is saved under the run prefix`, [byType(graph, 'SaveImage')[0][1].inputs.images, byType(graph, 'SaveImage')[0][1].inputs.filename_prefix], [[splitId, 0], 'NovaFlow_effect_x']);
+      checkEqual(`${label} ${how}: RGB is saved under the run prefix`, [byType(graph, 'SaveImage')[0][1].inputs.images, byType(graph, 'SaveImage')[0][1].inputs.filename_prefix], [[splitId, 0], 'Foart_effect_x']);
       for (const [id, node] of Object.entries(graph)) {
         for (const value of Object.values(node.inputs)) if (Array.isArray(value)) check(`${label} ${how}: ${id} links to a node`, Boolean(graph[value[0]]), value);
       }

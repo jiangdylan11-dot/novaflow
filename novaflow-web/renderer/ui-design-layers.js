@@ -58,7 +58,7 @@
       '6': { class_type: 'EmptyLatentImage', inputs: { width: w, height: h, batch_size: 1 } },
       '7': { class_type: 'KSampler', inputs: { model: ['4', 0], positive: ['5', 0], negative: ['5', 1], latent_image: ['6', 0], seed, steps: 28, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 } },
       '8': { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['3', 0] } },
-      '9': { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: 'NovaFlow_UI_Layer_' + seed } }
+      '9': { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: 'Foart_UI_Layer_' + seed } }
     }
     names.forEach((name, i) => {
       const n = String(100 + i), scale = String(200 + i)
@@ -111,7 +111,7 @@
       ? 'Create only one continuous finished background plate. Opaque complete scene. No UI, controls, panels, icons, letters or numbers. ' + layer.prompt
       : 'Create exactly ONE independent complete game UI art asset on actual transparent alpha. Native RGBA, transparent outer margins, no opaque scene or painted checkerboard. No letters or numbers: text is a separate editable layer. Do not output an entire interface or multiple assets. ' + layer.prompt
     const numberedPrompt = prompt + '\n' + refs.map((r, i) => 'Image ' + (i + 1) + ': ' + r.role).join('\n')
-    const built = await bridge.buildRunWorkflow({ provider: 'local', mode: 'img2img', taskProfile: 'ui-layer', uploadedNames: names, referenceRoles: refs.map(r => ({ role: r.role })), referenceSizes: await Promise.all(refs.map(async r => { const image = await load(r.dataUrl, doc); return { width: image.naturalWidth, height: image.naturalHeight } })), maxReferences: 10, prompt: numberedPrompt, outputPrefix: 'NovaFlow_UI_Layer_' + seed, state: { provider: 'local', mode: 'img2img', width: Math.max(64, Math.min(1024, layer.width)), height: Math.max(64, Math.min(1024, layer.height)), nsfw: false, randomSeed: false, seed, localDrawEngine: 'qwen-2.1', samplingOverrides: { 'qwen-2.1:img2img': { steps: 28, cfg: 1 } }, uiRunIntent: 'redesign' } })
+    const built = await bridge.buildRunWorkflow({ provider: 'local', mode: 'img2img', taskProfile: 'ui-layer', uploadedNames: names, referenceRoles: refs.map(r => ({ role: r.role })), referenceSizes: await Promise.all(refs.map(async r => { const image = await load(r.dataUrl, doc); return { width: image.naturalWidth, height: image.naturalHeight } })), maxReferences: 10, prompt: numberedPrompt, outputPrefix: 'Foart_UI_Layer_' + seed, state: { provider: 'local', mode: 'img2img', width: Math.max(64, Math.min(1024, layer.width)), height: Math.max(64, Math.min(1024, layer.height)), nsfw: false, randomSeed: false, seed, localDrawEngine: 'qwen-2.1', samplingOverrides: { 'qwen-2.1:img2img': { steps: 28, cfg: 1 } }, uiRunIntent: 'redesign' } })
     const workflow = built?.workflow || built
     if (!workflow || (built.modelKey && !String(built.modelKey).includes('2.1'))) throw new Error('未匹配 Qwen 2.1 资产工作流，原图层保留')
     await bridge.validateWorkflowNodes(base, workflow)

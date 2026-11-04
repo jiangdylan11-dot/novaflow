@@ -233,7 +233,7 @@
   const IMAGE_OUTPAINT_ORIGINAL_EDGE_FEATHER_PX = 24
   // Editing and completion keep their Qwen-Image-2.1 base when NSFW is enabled.
   const IMAGE_ANGLE_ADJUST_TIMEOUT_MS = 600000
-  const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'NovaFlow_angle_adjust'
+  const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'Foart_angle_adjust'
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_DEFAULT = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MIN = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MAX = 359
@@ -246,7 +246,7 @@
   const IMAGE_ANGLE_ADJUST_ZOOM_STEP = 0.1
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
-  const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
+  const OBJECT_TRANSFER_FILENAME_PREFIX = 'Foart_object_transfer'
   // The reference object may hang off the plate: half a robot at the frame edge is a real composition,
   // so placement is only held back far enough to keep a grabbable sliver of it on the canvas.
   const OBJECT_TRANSFER_MIN_VISIBLE_RATIO = 0.1
@@ -268,7 +268,7 @@
   const OBJECT_TRANSFER_QWEN21_RESTYLE_STEPS = 8
   const OBJECT_TRANSFER_QWEN21_RESTYLE_CFG = 1
   const EFFECT_EXTRACT_TIMEOUT_MS = 10 * 60 * 1000
-  const EFFECT_EXTRACT_FILENAME_PREFIX = 'NovaFlow_effect_extract'
+  const EFFECT_EXTRACT_FILENAME_PREFIX = 'Foart_effect_extract'
   const EFFECT_EXTRACT_ALPHA_FLOOR = 3
   const EFFECT_REMOVE_PROVIDER = 'Qwen-Image-2.1 de-effect'
   const QWEN_EDIT_REFERENCE_PIXELS = 1024 * 1024
@@ -276,7 +276,7 @@
   const QWEN_EDIT_PLATE_MIN = 320
   const QWEN_EDIT_PLATE_MAX = 1600
   const QWEN_EDIT_PLATE_ROUNDING_MARGIN = 0.1
-  const EFFECT_REMOVE_FILENAME_PREFIX = 'NovaFlow_effect_remove'
+  const EFFECT_REMOVE_FILENAME_PREFIX = 'Foart_effect_remove'
   
   
   
@@ -4284,8 +4284,8 @@
   }
 
   function safeDownloadFileName(fileName, fallback) {
-    const name = String(fileName || fallback || 'novaflow-output.png').trim() || 'novaflow-output.png'
-    return name.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').slice(0, 160) || 'novaflow-output.png'
+    const name = String(fileName || fallback || 'foart-output.png').trim() || 'foart-output.png'
+    return name.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').slice(0, 160) || 'foart-output.png'
   }
 
   function blobToDataUrl(blob) {
@@ -6844,7 +6844,7 @@
 
   async function uploadDataUrlDirect(baseUrl, fileName, dataUrl) {
     const api = window.electronAPI
-    const safeName = String(fileName || `novaflow_${Date.now()}.png`).replace(/[^\w.-]+/g, '_') || `novaflow_${Date.now()}.png`
+    const safeName = String(fileName || `foart_${Date.now()}.png`).replace(/[^\w.-]+/g, '_') || `foart_${Date.now()}.png`
     if (api && typeof api.runtimeUploadImage === 'function') {
       const result = await api.runtimeUploadImage({ baseUrl, fileName: safeName, dataBase64: dataUrlToBase64(dataUrl), mimeType: dataUrlMime(dataUrl), type: 'input', subfolder: '' })
       if (!result || !result.ok) throw new Error(result && result.error || '\u4e0a\u4f20\u5931\u8d25')
@@ -9199,8 +9199,8 @@
 
   async function runRmbgCutout(imageDataUrl) {
     const baseUrl = await detectComfyBaseUrl()
-    const imageName = await uploadDataUrl(baseUrl, `novaflow_cutout_${Date.now()}.png`, imageDataUrl)
-    const prefix = `novaflow_cutout_${Date.now()}`
+    const imageName = await uploadDataUrl(baseUrl, `foart_cutout_${Date.now()}.png`, imageDataUrl)
+    const prefix = `foart_cutout_${Date.now()}`
     // Node selection belongs to the assigned worker. The browser cannot read
     // its private catalogue; defaultRmbgWorkflow selects the same node there.
     if (window.NovaFlowWebRuntime) {
@@ -9231,7 +9231,7 @@
   async function runSamPointCutout(imageDataUrl, seedCanvas, options) {
     const baseUrl = await detectComfyBaseUrl()
     const info = await comfyAllObjectInfo(baseUrl)
-    const imageName = await uploadDataUrl(baseUrl, `novaflow_sam_cutout_${Date.now()}.png`, imageDataUrl)
+    const imageName = await uploadDataUrl(baseUrl, `foart_sam_cutout_${Date.now()}.png`, imageDataUrl)
     const errors = []
     const modelSizes = options && Array.isArray(options.modelSizes) && options.modelSizes.length
       ? options.modelSizes
@@ -9279,7 +9279,7 @@
       const latentInputName = latentInputDataUrl && !workflowText
         ? await uploadDataUrl(baseUrl, `novaflow_inpaint_latent_${stamp}_${prefixSuffix || route.provider}.png`, latentInputDataUrl)
         : ''
-      const prefixBase = initialOptions && initialOptions.prefix ? String(initialOptions.prefix) : `novaflow_inpaint_${stamp}`
+      const prefixBase = initialOptions && initialOptions.prefix ? String(initialOptions.prefix) : `foart_inpaint_${stamp}`
       const prefix = prefixSuffix ? `${prefixBase}_${prefixSuffix}` : prefixBase
       const workflow = workflowText
         ? patchGenericWorkflow(JSON.parse(workflowText), { loadImages: [imageName, maskName], prefix, prompt })
@@ -11994,7 +11994,7 @@
     const seed = Number.isFinite(Number(spec.seed)) ? Math.floor(Number(spec.seed)) : Math.floor(Math.random() * 1000000000)
     const resolution = Number(spec.resolution) || 1024
     const steps = Number(spec.steps) || 30
-    const prefix = String(spec.prefix || `novaflow_spine_${Date.now()}`)
+    const prefix = String(spec.prefix || `foart_spine_${Date.now()}`)
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: uploadedName } },
       '2': { class_type: 'SeeThrough_LoadLayerDiffModel', inputs: { model: 'seethroughv0.0.2_layerdiff3d', vae_ckpt: '', unet_ckpt: '' } },
@@ -12015,14 +12015,14 @@
     const baseUrl = await detectComfyBaseUrl()
     const uploadedName = await uploadImage(baseUrl)
     const size = await sourceSize()
-    const prefix = `novaflow_spine_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+    const prefix = `foart_spine_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
     const seed = Math.floor(Math.random() * 1000000000)
     const resolution = seeThroughResolution(size, options)
     const steps = seeThroughStepCount(options)
     const workflow = await buildSeeThroughSplitWorkflow(baseUrl, uploadedName, {
       seed, resolution, steps, prefix, useLama: state.inpaintMode !== 'off', headLayer: !state.includeFaceDetails
     })
-    const sent = await requestJson(baseUrl, '/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: `novaflow_spine_${Date.now()}`, prompt: workflow }) })
+    const sent = await requestJson(baseUrl, '/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: `foart_spine_${Date.now()}`, prompt: workflow }) })
     const promptId = String(sent && sent.data && sent.data.prompt_id || '')
     if (!sent || !sent.ok || !promptId) throw new Error('拆图下发失败')
     const promptContext = { options, resolution, steps }
@@ -14835,7 +14835,7 @@
       : `${label}.png`
     return {
       dataUrl,
-      name: safeDownloadFileName(fileName, 'novaflow-canvas.png'),
+      name: safeDownloadFileName(fileName, 'foart-canvas.png'),
       label,
       mode: String(current.mode || state.viewMode || '')
     }
@@ -22341,7 +22341,7 @@
     const profile = state.generativeSplit.profile
     const backgroundPrompt = advancedPrompts ? state.generativeSplit.backgroundPrompt : ''
     const runId = ++generativeSplitRunId
-    const prefix = `NovaFlow_GenerativeSplit_${Date.now()}_${runId}`
+    const prefix = `Foart_GenerativeSplit_${Date.now()}_${runId}`
     const seed = Math.floor(Math.random() * 1_000_000_000)
     const union = canvasOfSize(source.width, source.height)
     const unionCtx = union.getContext('2d')

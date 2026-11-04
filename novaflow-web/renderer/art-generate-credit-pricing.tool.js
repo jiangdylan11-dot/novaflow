@@ -130,7 +130,7 @@
         mode: snapshot.mode,
         prompt: '',
         uploadedNames: snapshot.mode === 'img2img' ? ['__novaflow_price_estimate__.png'] : [],
-        outputPrefix: 'NovaFlow_Price_Estimate',
+        outputPrefix: 'Foart_Price_Estimate',
         nodeIdPrefix: 'nf_art_price_estimate',
         settings: snapshot.settings,
       })

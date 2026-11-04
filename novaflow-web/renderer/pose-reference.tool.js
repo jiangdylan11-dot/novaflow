@@ -621,7 +621,7 @@
     const footer = element('footer', { class: 'nf-pose-foot' }, [status, undoDelete,
       action('导入姿势', () => imageInput.click(), { title: '导入图片并识别单人或多人姿势' }),
       action('保存姿势', async () => { if (importing || saving) return; saveName.value = `我的姿势 ${(await savedLibrary().list()).filter(p => p.custom).length + 1}`; savePanel.hidden = false; saveName.focus(); saveName.select(); }, { title: '将当前人物、姿势和镜头保存到姿势库' }),
-      action('导出 PNG', async () => { const image = await capture(); download(await (await fetch(image)).blob(), 'NovaFlow_姿势参考.png'); message('姿势图已导出'); }),
+      action('导出 PNG', async () => { const image = await capture(); download(await (await fetch(image)).blob(), 'Foart_姿势参考.png'); message('姿势图已导出'); }),
       action('用作姿势参考', async () => { referenceSlot(root.__NovaFlowArtGenerate); const image = await capture(); applyReference(root.__NovaFlowArtGenerate, snapshot(), image); close(); }, { class: 'nf-pose-primary' }), savePanel, imageInput]);
     dialog.append(element('header', { class: 'nf-pose-head' }, [element('h2', { id: 'nf-pose-title', text: '姿势参考' }), closeButton]), element('div', { class: 'nf-pose-body' }, [side, view]), footer);
     overlay.append(dialog); root.document.body.append(overlay);

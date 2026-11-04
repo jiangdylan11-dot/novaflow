@@ -162,9 +162,9 @@
     if (!MEDIA.test(value)) {
       const ext = Object.keys(MIME).find(key => MIME[key] === type);
       if (!ext) throw new Error('不支持入库的文件类型');
-      value = 'NovaFlow_' + Date.now() + '.' + ext;
+      value = 'Foart_' + Date.now() + '.' + ext;
     }
-    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])\./i.test(value)) value = 'NovaFlow_' + value;
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])\./i.test(value)) value = 'Foart_' + value;
     return value;
   }
   async function digest(blob) {

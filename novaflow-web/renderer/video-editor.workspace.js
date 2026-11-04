@@ -794,7 +794,7 @@
       let reserved = ''
       try {
         if (publish && typeof electronAPI.aiSeqCacheReserveOutput === 'function') {
-          const r = await electronAPI.aiSeqCacheReserveOutput({ format, baseName: 'novaflow_video_edit' })
+          const r = await electronAPI.aiSeqCacheReserveOutput({ format, baseName: 'foart_video_edit' })
           if (r?.ok === false) throw new Error(r?.error || '资源位预留失败')
           reserved = text(r?.path || r?.filePath, '')
         }
@@ -809,7 +809,7 @@
           setStatus(note, false, true); busy('done', '已保存', note, null)
         } else {
           const url = result.url || (result.blob ? URL.createObjectURL(result.blob) : '')
-          if (url) { const a = documentRef.createElement('a'); a.href = url; a.download = text(result.fileName, 'novaflow_video_edit.' + format); documentHost.appendChild(a); a.click(); a.remove() }
+          if (url) { const a = documentRef.createElement('a'); a.href = url; a.download = text(result.fileName, 'foart_video_edit.' + format); documentHost.appendChild(a); a.click(); a.remove() }
           busy('done', '已导出', text(result.fileName, '') + '（' + seconds + ' s）', null)
         }
         return Object.assign({ ok: true }, result)

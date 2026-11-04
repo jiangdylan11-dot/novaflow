@@ -63,7 +63,7 @@
         : { class_type: 'BasicScheduler', inputs: { model: ['7', 0], scheduler: 'simple', steps: 40, denoise: 1 } },
       '12': { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['9', 0], guider: ['8', 0], sampler: ['10', 0], sigmas: ['11', 0], latent_image: ['6', 2] } },
       '13': { class_type: 'VAEDecode', inputs: { samples: ['12', 0], vae: ['5', 0] } },
-      '14': { class_type: 'SaveImage', inputs: { images: ['13', 0], filename_prefix: options.outputPrefix || 'NovaFlow_GenerativeSplit' } }
+      '14': { class_type: 'SaveImage', inputs: { images: ['13', 0], filename_prefix: options.outputPrefix || 'Foart_GenerativeSplit' } }
     }
     return graph
   }

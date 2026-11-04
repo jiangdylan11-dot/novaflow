@@ -3790,7 +3790,7 @@
 
   const exportBaseName = (options) => {
     const name = String(options && options.name || '').trim()
-    return name || 'novaflow_aifx'
+    return name || 'foart_aifx'
   }
 
   // 画板上的原素材文件（没有生成结果时导出它）

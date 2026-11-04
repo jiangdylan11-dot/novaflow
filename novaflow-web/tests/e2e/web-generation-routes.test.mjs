@@ -35,12 +35,12 @@ const sandbox = createDomSandbox({
   NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test' },
   fetch: async (input, init = {}) => {
     const url = String(input);
-    if (url.endsWith('/api/web/capabilities')) return response({ taskTypes: ['qwen_t2i', 'h3_i2v'].map(task_type => ({ task_type, available_workers: 1 })) });
+    if (url.endsWith('/api/web/capabilities')) return response({ taskTypes: ['qwen_t2i', 'h3_i2v'].map(task_type => ({ task_type, available_workers: 1 })), features: { qwenImage21: true } });
     if (url.endsWith('/api/web/tasks') && init.method === 'POST') {
       const body = JSON.parse(init.body);
       assert.ok(isAllowedWorkflowCall(body.workflow.module, body.workflow.method), JSON.stringify(body.workflow));
       submissions.push(body);
-      task = { id: 'test-task', assigned_worker_id: 'test-worker', status: 'completed', output_manifest: { files: [{ name: 'NovaFlow_result-task.mp4', kind: 'video' }] } };
+      task = { id: 'test-task', assigned_worker_id: 'test-worker', status: 'completed', output_manifest: { files: [{ name: 'Foart_result-task.mp4', kind: 'video' }] } };
       return response({ task });
     }
     if (url.endsWith('/api/web/tasks/test-task')) return response({ task });
@@ -73,24 +73,24 @@ assert.equal(sent.status, 200);
 assert.equal((await sent.json()).prompt_id, 'test-task');
 assert.deepEqual(submissions[0].references, []);
 const history = await sandbox.fetch('http://127.0.0.1:8189/api/history/test-task');
-assert.equal((await history.json())['test-task'].outputs['nf-output'].gifs[0].filename, 'NovaFlow_result-task.mp4');
+assert.equal((await history.json())['test-task'].outputs['nf-output'].gifs[0].filename, 'Foart_result-task.mp4');
 const binary = await sandbox.electronAPI.runtimeRequestBinary({ path: '/view?filename=NovaFlow_result-task.mp4' });
 assert.equal(binary.dataBase64, 'AQID');
 assert.equal(binary.contentType, 'video/mp4');
-assert.equal(warehouseFiles.at(-1).name, 'NovaFlow_result-task.mp4');
+assert.equal(warehouseFiles.at(-1).name, 'Foart_result-task.mp4');
 assert.deepEqual([...new Uint8Array(await warehouseFiles.at(-1).blob.arrayBuffer())], [1, 2, 3]);
 const direct = await sandbox.fetch('http://127.0.0.1:8189/view?filename=NovaFlow_result-task.mp4&type=output');
 assert.deepEqual([...new Uint8Array(await direct.arrayBuffer())], [1, 2, 3]);
 assert.equal((await sandbox.fetch('http://127.0.0.1:8189/object_info')).status, 503);
 runInContext(await readFile(new URL('ai-sequence-minimax-h3-output.resource.js', web), 'utf8'), context);
 const outputResource = sandbox.NovaFlowAiSequenceMiniMaxH3OutputResource;
-const published = await outputResource.publish({ promptId: 'test-task', filename: 'NovaFlow_result-task.mp4', type: 'output' });
+const published = await outputResource.publish({ promptId: 'test-task', filename: 'Foart_result-task.mp4', type: 'output' });
 assert.ok(published.objectUrl.startsWith('blob:'));
 assert.equal(published.id, 'test-task:output::NovaFlow_result-task.mp4');
 assert.deepEqual([...new Uint8Array(await (await fetch(published.objectUrl)).arrayBuffer())], [1, 2, 3]);
 assert.equal((await outputResource.list()).length, 1);
 assert.equal((await api.aiSeqReadTempFile({ path: 'C:/private.txt' })).ok, false);
-assert.equal((await api.minimaxH3OutputPublish({ promptId: 'other-task', filename: 'NovaFlow_result-task.mp4' })).ok, false);
+assert.equal((await api.minimaxH3OutputPublish({ promptId: 'other-task', filename: 'Foart_result-task.mp4' })).ok, false);
 outputResource.dispose();
 await api.runtimeUploadImage({ fileName: 'test.png', dataBase64: 'AQID' });
 const cutoutIntent = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultRmbgWorkflow', ['', 'test.png', 'cutout', null]);
@@ -114,7 +114,7 @@ const brand = instrumentModule(await readFile(new URL('novaflow-brand-runtime.js
 runInContext(brand, context);
 const art = sandbox.__nfBuilders['browser-art'];
 const built = art.buildArtGenerateWorkflowWithSeed(42, () => art.buildArtGenerateRunWorkflow(
-  'local', 'txt2img', [], 'NovaFlow_Test', 'a girl by the sea', '', 'client', [],
+  'local', 'txt2img', [], 'Foart_Test', 'a girl by the sea', '', 'client', [],
   { provider: 'local', mode: 'txt2img', width: 512, height: 512, seed: 42, localTextQuality: 'instant', references: ['PRIVATE_PIXELS'], promptHistory: ['PRIVATE_HISTORY'] }
 ));
 assert.equal(built.workflow.module, 'novaflow-brand-runtime');
@@ -125,14 +125,14 @@ const artSent = await sandbox.electronAPI.runtimeRequestJson({ path: '/prompt', 
 assert.equal(artSent.data.prompt_id, 'test-task');
 
 const inpaint = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultQwenInpaintWorkflow', [
-  'http://127.0.0.1:8188', 'image.png', 'mask.png', 'NovaFlow_Repair', 'repair', { inpaintMode: 'complete' }
+  'http://127.0.0.1:8188', 'image.png', 'mask.png', 'Foart_Repair', 'repair', { inpaintMode: 'complete' }
 ]);
 const options = JSON.parse(String(inpaint)).options;
 const mapped = withReferences(options, ['task-image.png', 'task-mask.png'], [{ name: 'image.png' }, { name: 'mask.png' }], 'defaultQwenInpaintWorkflow');
-assert.deepEqual(mapped.__args.slice(1, 5), ['task-image.png', 'task-mask.png', 'NovaFlow_Repair', 'repair']);
+assert.deepEqual(mapped.__args.slice(1, 5), ['task-image.png', 'task-mask.png', 'Foart_Repair', 'repair']);
 assert.throws(() => withReferences(options, [], [], 'defaultQwenInpaintWorkflow'), /uploaded task reference/);
 const latentInpaint = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultQwenInpaintWorkflow', [
-  'http://127.0.0.1:8188', 'image.png', 'mask.png', 'NovaFlow_Repair', 'repair', { inpaintMode: 'completion', latentInputName: 'latent.png' }
+  'http://127.0.0.1:8188', 'image.png', 'mask.png', 'Foart_Repair', 'repair', { inpaintMode: 'completion', latentInputName: 'latent.png' }
 ]);
 const latentOptions = JSON.parse(String(latentInpaint)).options;
 const latentRefs = [{ name: 'image.png' }, { name: 'mask.png' }, { name: 'latent.png' }];
@@ -155,7 +155,7 @@ const host = await createWorkflowHost({ rendererDir, objectInfo: {
   RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']], sensitivity: ['FLOAT', { default: 1 }] } } },
   BiRefNetRMBG: { input: { required: { image: ['IMAGE'], model: [['BiRefNet-general', 'BiRefNet_lite']] }, optional: { mask_blur: ['INT', { default: 0 }], background: [['Alpha', 'Color'], { default: 'Alpha' }] } } }
 } });
-const cutout = await host.buildGraph({ module: 'spine-split-runtime', method: 'defaultRmbgWorkflow', options: { __args: ['', 'task-image.png', 'NovaFlow_Cutout', null] } });
+const cutout = await host.buildGraph({ module: 'spine-split-runtime', method: 'defaultRmbgWorkflow', options: { __args: ['', 'task-image.png', 'Foart_Cutout', null] } });
 assert.equal(cutout['1'].inputs.image, 'task-image.png');
 assert.equal(cutout['2'].class_type, 'BiRefNetRMBG');
 assert.equal(cutout['2'].inputs.model, 'BiRefNet-general');
@@ -163,7 +163,7 @@ assert.equal(cutout['2'].inputs.background, 'Alpha');
 assert.equal(JSON.stringify(cutout['3'].inputs.images), '["2",0]');
 await assert.rejects((await createWorkflowHost({ rendererDir, objectInfo: {
   RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']] } } }
-} })).buildGraph({ module: 'spine-split-runtime', method: 'defaultRmbgWorkflow', options: { __args: ['', 'task-image.png', 'NovaFlow_Cutout', null] } }), /抠图组件/);
+} })).buildGraph({ module: 'spine-split-runtime', method: 'defaultRmbgWorkflow', options: { __args: ['', 'task-image.png', 'Foart_Cutout', null] } }), /抠图组件/);
 await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'patchWorkflow', options: {} }), /not available/);
 // The split graph names the task's copy of the source, carries the page's seed and prefix, and adds
 // the whole-head node only where the catalogue has it; without See-through it refuses.
@@ -210,7 +210,7 @@ const host21 = await createWorkflowHost({ rendererDir, objectInfo: qwen21Info })
 const completionRoute = { mode: 'completion', provider: 'qwen-completion-v4', workflow: 'qwen', outputMode: 'patch', v4: true };
 const build21 = async (inputSize, extra = {}, promptText = 'leg') => {
   const call = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultQwenInpaintWorkflow', [
-    'http://127.0.0.1:8188', 'image.png', 'mask.png', 'NovaFlow_Complete', promptText, { inpaintMode: 'completion', route: completionRoute, inpaintEngine: 'qwen-2.1', latentInputName: 'latent.png', inputSize, ...extra }
+    'http://127.0.0.1:8188', 'image.png', 'mask.png', 'Foart_Complete', promptText, { inpaintMode: 'completion', route: completionRoute, inpaintEngine: 'qwen-2.1', latentInputName: 'latent.png', inputSize, ...extra }
   ]);
   // The worker never forwards the 2.1 engine choice (see above); the dormant 2.1 completion graph
   // is still built here directly so it keeps working for when it is switched on again.
@@ -285,7 +285,7 @@ assert.deepEqual(byClass(g21Aligned, 'SamplerCustom')[0][1].inputs.latent_image,
 const promptOf = (graph) => byClass(graph, 'TextEncodeQwenImage21')[0][1].inputs.prompt;
 // Local txt2img / img2img switch to Qwen-Image-2.1 on a compute node that carries it.
 const buildArt = async (mode, refs, sizes, extraState = {}) => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-  'local', mode, refs, 'NovaFlow_Art', 'a swordswoman in red', '', 'client', sizes, { provider: 'local', mode, width: 900, height: 1300, seed: 42, randomSeed: false, localDrawEngine: extraState.nsfw ? '' : 'qwen-2.1', ...extraState }, 4, {}
+  'local', mode, refs, 'Foart_Art', 'a swordswoman in red', '', 'client', sizes, { provider: 'local', mode, width: 900, height: 1300, seed: 42, randomSeed: false, localDrawEngine: extraState.nsfw ? '' : 'qwen-2.1', ...extraState }, 4, {}
 ] } })));
 const t2i = await buildArt('txt2img', [], []);
 assert.equal(byClass(t2i, 'TextEncodeQwenImage21').length, 1);
@@ -294,7 +294,7 @@ assert.deepEqual([t2iLatent.width, t2iLatent.height], [896, 1312]);
 const t2iSampler = byClass(t2i, 'KSampler')[0][1].inputs;
 // Foart's current default is 25 steps; CFG 1 with no user's negative prompt.
 assert.deepEqual([t2iSampler.seed, t2iSampler.steps, t2iSampler.cfg], [42, 25, 1]);
-assert.equal(byClass(t2i, 'SaveImage')[0][1].inputs.filename_prefix, 'NovaFlow_Art');
+assert.equal(byClass(t2i, 'SaveImage')[0][1].inputs.filename_prefix, 'Foart_Art');
 // W / H on reference 1's size (as a new reference 1 fills them): an edit on the encoder's own latent.
 const i2i = await buildArt('img2img', ['ref.png'], [{ width: 624, height: 1360 }], { width: 624, height: 1360 });
 const i2iEncode = byClass(i2i, 'TextEncodeQwenImage21')[0][1].inputs;

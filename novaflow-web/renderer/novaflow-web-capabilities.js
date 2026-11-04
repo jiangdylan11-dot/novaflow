@@ -479,7 +479,7 @@
     // 视频合并 reserves a resource-list slot before it renders and reads the
     // path back; the export puts its clip under this token.
     const format = String((payload && payload.format) || 'mp4').toLowerCase() === 'webm' ? 'webm' : 'mp4';
-    const fileName = String((payload && payload.baseName) || 'novaflow_output').replace(/[^A-Za-z0-9_.-]+/g, '_').slice(0, 80) + '.' + format;
+    const fileName = String((payload && payload.baseName) || 'foart_output').replace(/[^A-Za-z0-9_.-]+/g, '_').slice(0, 80) + '.' + format;
     const path = 'web-video://reserved/' + encodeURIComponent(key) + '/' + fileName;
     cache.set(key, { reservedAt: Date.now(), blob: null, bytes: 0, path, fileName, format });
     return { ...ok({ key, reserved: true, path, fileName }), key, path, fileName, reserved: true };
@@ -1216,7 +1216,7 @@
   }
 
   api.exportCreateTempDir = async (payload) => {
-    const prefix = String((payload && payload.prefix) || 'novaflow_tmp_').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 60);
+    const prefix = String((payload && payload.prefix) || 'foart_tmp_').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 60);
     const dir = 'web-temp://' + (++webTempSeq) + '/' + prefix;
     webTempDirs.set(dir, new Map());
     return { ok: true, dir, result: { dir } };
@@ -1922,7 +1922,7 @@
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
       const mimeType = format === 'webm' ? 'video/webm' : 'video/mp4';
       const blob = new Blob([bytes], { type: mimeType });
-      const fileName = (filePath.split('/').pop() || ('novaflow_video_merge.' + format));
+      const fileName = (filePath.split('/').pop() || ('foart_video_merge.' + format));
       const token = filePath || ('web-video://' + seq + '/' + fileName);
       // Keep the returned URL on the held entry so releaseVideoOutputs can revoke it.
       const url = URL.createObjectURL(blob);
@@ -2104,7 +2104,7 @@
       }
       const mimeType = format === 'webm' ? 'video/webm' : 'video/mp4';
       const blob = new Blob([bytes], { type: mimeType });
-      const fileName = (filePath.split('/').pop() || ('novaflow_video_edit.' + format));
+      const fileName = (filePath.split('/').pop() || ('foart_video_edit.' + format));
       const token = filePath || ('web-video://' + seq + '/' + fileName);
       const url = URL.createObjectURL(blob);
       videoOutputs.set(token, { tool: 'video-edit', token, blob, fileName, url });
@@ -2178,7 +2178,7 @@
       const out = data instanceof Uint8Array ? data : new Uint8Array(data);
       const mimeType = format === 'webm' ? 'video/webm' : 'video/mp4';
       const blob = new Blob([out], { type: mimeType });
-      const fileName = (filePath.split('/').pop() || ('novaflow_video_mix.' + format));
+      const fileName = (filePath.split('/').pop() || ('foart_video_mix.' + format));
       const token = filePath || ('web-video://' + seq + '/' + fileName);
       const url = URL.createObjectURL(blob);
       videoOutputs.set(token, { tool: 'video-mix', token, blob, fileName, url });
@@ -3100,7 +3100,7 @@
     catch (error) { return fail(error && error.message ? error.message : error); }
     if (folder) {
       try {
-        let fileName = String(options.fileName || options.path || 'novaflow-output.bin').split(/[\\/]/).pop();
+        let fileName = String(options.fileName || options.path || 'foart-output.bin').split(/[\\/]/).pop();
         const data = options.data || options.buffer || options.bytes;
         if (!data) return fail('Web 版需要在保存时一并提供文件内容', { code: 'web_needs_data' });
         // A save into a folder that already has this name asks once (覆盖 /
@@ -3125,7 +3125,7 @@
       }
     }
     return await api.exportPickSaveFile({
-      defaultPath: options.path || options.fileName || 'novaflow-output.bin',
+      defaultPath: options.path || options.fileName || 'foart-output.bin',
       data: options.data || options.buffer || options.bytes,
       mimeType: options.mimeType || 'application/octet-stream'
     });

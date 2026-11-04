@@ -66,7 +66,7 @@
   }
 
   function normalizeOutputPrefix(value) {
-    return String(value || '').trim() || 'NovaFlow_Art_Generate'
+    return String(value || '').trim() || 'Foart_Art_Generate'
   }
 
   function normalizeOptionalText(value) {

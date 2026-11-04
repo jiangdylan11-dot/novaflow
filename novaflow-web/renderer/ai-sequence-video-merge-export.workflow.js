@@ -240,7 +240,7 @@
       const result = await electronAPI.exportPickSaveFile({
         mode: 'video',
         format: state.format === 'webm' ? 'webm' : 'mp4',
-        baseName: normalizeText(baseName, 'novaflow_video_merge'),
+        baseName: normalizeText(baseName, 'foart_video_merge'),
       })
       if (result?.canceled) return null
       if (result && result.ok === false) throw new Error(result.error || 'video_merge_save_picker_failed')
@@ -254,7 +254,7 @@
       const format = state.format === 'webm' ? 'webm' : 'mp4'
       const result = await electronAPI.aiSeqCacheReserveOutput({
         format,
-        baseName: normalizeText(baseName, 'novaflow_video_merge'),
+        baseName: normalizeText(baseName, 'foart_video_merge'),
       })
       if (!result || result.ok === false) throw new Error(result?.error || 'video_merge_resource_output_reserve_failed')
       const filePath = normalizeText(result?.path || result?.filePath, '')

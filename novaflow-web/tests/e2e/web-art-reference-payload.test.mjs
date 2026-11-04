@@ -68,7 +68,7 @@ test('Web image-to-image uploads pixels separately from its ControlNet task para
     names.push(uploaded.result.name);
   }
   const built = art.buildArtGenerateRunWorkflow(
-    'local', 'img2img', names, 'NovaFlow_Test', 'restyle', '', 'client', [],
+    'local', 'img2img', names, 'Foart_Test', 'restyle', '', 'client', [],
     { provider: 'local', mode: 'img2img', width: 800, height: 800 }
   );
   art.applyArtReferenceControlNet(built.workflow, names, null);

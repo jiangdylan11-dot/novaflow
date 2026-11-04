@@ -125,7 +125,7 @@ for (const [extraState, latent] of [[{uiNativeEditPrompt:true,uiPreserveLayout:t
 const uiRoles = (roles) => roles.map((role, index) => ({ index, role }));
 const buildUi = async (host, names, sizes, roles, extraState = {}) => JSON.parse(JSON.stringify(await host.buildGraph({
   module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-    'local', 'img2img', names, 'NovaFlow_UI', 'slot main screen', '', 'client', sizes,
+    'local', 'img2img', names, 'Foart_UI', 'slot main screen', '', 'client', sizes,
     { provider: 'local', mode: 'img2img', width: 756, height: 1638, seed: 7, randomSeed: false, localUiEngine: 'qwen-2.1', ...extraState },
     16, { taskProfile: 'ui-design', referenceRoles: roles.map((item, index) => (typeof item === 'string' ? { index, role: item } : { index, ...item })) }
   ] }
@@ -188,7 +188,7 @@ const reflowUi = await buildUi(host21, ['portrait.png'], [{width:576,height:1248
 assert.equal(reflowUi['7'].inputs.latent_image[0], '6');
 // A filled negative prompt is used for real: cfg 1 would never evaluate it, so the run goes to 2.5.
 const withNegative = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-  'local', 'img2img', names.slice(0, 2), 'NovaFlow_UI', 'slot main screen', '模糊，水印', 'client', sizes.slice(0, 2),
+  'local', 'img2img', names.slice(0, 2), 'Foart_UI', 'slot main screen', '模糊，水印', 'client', sizes.slice(0, 2),
   { provider: 'local', mode: 'img2img', width: 756, height: 1638, seed: 7, randomSeed: false, localUiEngine: 'qwen-2.1' },
   16, { taskProfile: 'ui-design', referenceRoles: [{ index: 0, role: 'style' }, { index: 1, role: 'content' }] }
 ] } })));
@@ -198,7 +198,7 @@ assert.equal(byClass(withNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
 const [splitId] = byClass(ui, 'SplitImageWithAlpha')[0];
 const finish = byClass(ui, 'ImageScale').find(([, node]) => node.inputs.image[0] === splitId)[1].inputs;
 assert.deepEqual([finish.width, finish.height], [756, 1638]);
-assert.equal(byClass(ui, 'SaveImage')[0][1].inputs.filename_prefix, 'NovaFlow_UI');
+assert.equal(byClass(ui, 'SaveImage')[0][1].inputs.filename_prefix, 'Foart_UI');
 
 // A long list of large references shares one pixel cap.
 const bigNames = Array.from({ length: 10 }, (_, i) => `big_${i}.png`);
@@ -246,7 +246,7 @@ assert.equal(Object.keys(byClass(textOnly, 'TextEncodeQwenImage21')[0][1].inputs
 // Drawing img2img on 2.1 with W / H on reference 1's size is an edit in place: reference 1 goes in at
 // the working size, the sampler takes the encoder's own latent and the output comes back at W / H.
 const buildDraw = async (names, sizes, width, height, negative = '', extraState = {}) => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-  'local', 'img2img', names, 'NovaFlow_Art', 'recolour', negative, 'client', sizes,
+  'local', 'img2img', names, 'Foart_Art', 'recolour', negative, 'client', sizes,
   { provider: 'local', mode: 'img2img', width, height, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1', ...extraState }, 4, {}
 ] } })));
 const drawI2i = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720);
@@ -298,7 +298,7 @@ assert.equal(fewExtra[byClass(fewExtra, 'TextEncodeQwenImage21')[0][1].inputs['i
 // graph; the quality profile's automatic negatives in the compiled argument neither switch CFG nor go
 // to 2.1.
 const drawT2i = async (userNegative, compiledNegative, extraState = {}) => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-  'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', compiledNegative, 'client', [],
+  'local', 'txt2img', [], 'Foart_Art', 'a knight', compiledNegative, 'client', [],
   { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1', negativePrompt: userNegative, ...extraState }, 4, {}
 ] } })));
 const profileOnly = await drawT2i('', '错误人体，畸形手指，低完成度');
@@ -316,7 +316,7 @@ assert.deepEqual([byClass(drawTyped, 'KSampler')[0][1].inputs.steps, byClass(dra
 await assert.rejects(buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720, '', { localDrawEngine: '' }), /当前本地生成路线不可用/);
 const noQwen21Host = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
 await assert.rejects(noQwen21Host.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-  'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', '', 'client', [],
+  'local', 'txt2img', [], 'Foart_Art', 'a knight', '', 'client', [],
   { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1' }, 4, {}
 ] } }), /当前算力节点无法生成/);
 

@@ -72746,7 +72746,7 @@
     if (!result || !String(result.imageUrl || "").startsWith("data:image/")) return null;
     return {
       dataUrl: result.imageUrl,
-      name: result.name || "novaflow_art.png",
+      name: result.name || "foart_art.png",
       label: "\u5f53\u524d\u9009\u4e2d\u7f8e\u5de5\u751f\u6210\u56fe"
     };
   }
@@ -84881,7 +84881,7 @@
       createArtEl("div", { className: "novaflow-art-generate-set-preview" }, createArtEl("img", { src: result.imageUrl, alt: title })),
       createArtEl("div", { style: { minWidth: "0", display: "grid", gap: "3px" } }, [
         createArtEl("div", { style: { fontSize: "12px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: title }),
-        createArtEl("div", { style: { fontSize: "11px", color: "rgba(160,160,160,0.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: result.name || "novaflow_generate.png" })
+        createArtEl("div", { style: { fontSize: "11px", color: "rgba(160,160,160,0.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: result.name || "foart_generate.png" })
       ]),
       createArtEl("div", { text: "\u2304", style: { color: "rgba(255,255,255,0.70)", textAlign: "center", fontSize: "15px" } })
     ]));
@@ -85359,14 +85359,14 @@
     if (!bridge) return false;
     try {
       if (typeof bridge.addSourceDataUrlResource === "function") {
-        return !!(await bridge.addSourceDataUrlResource(result.name || "novaflow_generate.png", result.imageUrl, {
+        return !!(await bridge.addSourceDataUrlResource(result.name || "foart_generate.png", result.imageUrl, {
           message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90",
           generationElapsedSec: result.generationElapsedSec,
           isCurrent: options.isCurrent
         }));
       }
       if (options.isCurrent || typeof bridge.importSourceDataUrl !== "function") return false;
-      return !!(await bridge.importSourceDataUrl(result.name || "novaflow_generate.png", result.imageUrl, {
+      return !!(await bridge.importSourceDataUrl(result.name || "foart_generate.png", result.imageUrl, {
         message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90",
         generationElapsedSec: result.generationElapsedSec
       }));
@@ -85447,7 +85447,7 @@
   }
 
   async function artUploadDataUrl(baseUrl, fileName, dataUrl) {
-    const safeName = String(fileName || `novaflow_art_${Date.now()}.png`).replace(/[^\w.-]+/g, "_") || `novaflow_art_${Date.now()}.png`;
+    const safeName = String(fileName || `foart_art_${Date.now()}.png`).replace(/[^\w.-]+/g, "_") || `foart_art_${Date.now()}.png`;
     const api = window.electronAPI;
     if (api && typeof api.runtimeUploadImage === "function") {
       const result = await api.runtimeUploadImage({
@@ -85933,7 +85933,7 @@
       workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: round32(state?.width), height: round32(state?.height), batch_size: 1 } };
       workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps, cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
       workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
-      workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
+      workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "Foart_Art") } };
       return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow,{cfg:turboCfg}):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-t2i":"qwen-image-2.1-t2i" };
     }
     const sizes = references.map((_, index) => {
@@ -86012,7 +86012,7 @@
       workflow["9"] = { class_type: "ImageScale", inputs: { image: output, upscale_method: "lanczos", width: requested.width, height: requested.height, crop: "disabled" } };
       output = ["9", 0];
     }
-    workflow["10"] = { class_type: "SaveImage", inputs: { images: output, filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
+    workflow["10"] = { class_type: "SaveImage", inputs: { images: output, filename_prefix: String(outputPrefix || "Foart_Art") } };
     return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow,{cfg:turboCfg}):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-i2i":"qwen-image-2.1-i2i" };
   }
 
@@ -86148,11 +86148,11 @@
       workflow['100']={class_type:'LoadImage',inputs:{image:names[0]}};
       workflow['5']={class_type:'TextEncodeQwenImage21',inputs:encode};
       workflow['200']={class_type:'LatentUpscale',inputs:{samples:['5',2],upscale_method:'nearest-exact',width:Math.round(requested.width/2),height:Math.round(requested.height/2),crop:'disabled'}};
-      workflow['50']={class_type:'SaveLatent',inputs:{samples:['200',0],filename_prefix:String(outputPrefix||'NovaFlow_UI')+'_latent'}};
+      workflow['50']={class_type:'SaveLatent',inputs:{samples:['200',0],filename_prefix:String(outputPrefix||'Foart_UI')+'_latent'}};
       workflow['7']={class_type:'KSampler',inputs:{model,positive:['5',0],negative:['5',1],latent_image:['50',0],seed,steps:sampling?.steps||40,cfg:sampling?.cfg||guidance.cfg,sampler_name:'euler',scheduler:'simple',denoise:1}};
       workflow['8']={class_type:'VAEDecode',inputs:{samples:['7',0],vae:['3',0]}};
       workflow['9']={class_type:'SplitImageWithAlpha',inputs:{image:['8',0]}};
-      workflow['11']={class_type:'SaveImage',inputs:{images:['9',0],filename_prefix:String(outputPrefix||'NovaFlow_UI')}};
+      workflow['11']={class_type:'SaveImage',inputs:{images:['9',0],filename_prefix:String(outputPrefix||'Foart_UI')}};
       return finishUiQwen21(workflow);
     }
 
@@ -86252,7 +86252,7 @@
     // 2.1 always decodes RGBA; a UI screen is opaque, so keep the colour and drop the alpha.
     workflow["9"] = { class_type: "SplitImageWithAlpha", inputs: { image: ["8", 0] } };
     workflow["10"] = { class_type: "ImageScale", inputs: { image: ["9", 0], upscale_method: "lanczos", width: requested.width, height: requested.height, crop: "disabled" } };
-    workflow["11"] = { class_type: "SaveImage", inputs: { images: ["10", 0], filename_prefix: String(outputPrefix || "NovaFlow_UI") } };
+    workflow["11"] = { class_type: "SaveImage", inputs: { images: ["10", 0], filename_prefix: String(outputPrefix || "Foart_UI") } };
     if (nativeEdit) {
       // A latent noise mask still passes the untouched image through the VAE.
       // Paste only the edited pixels onto the original reference at output.
@@ -86907,7 +86907,7 @@
         }
         if (!isArtGenerateRunCurrent(runToken)) return;
         prepared?.assertCurrent?.();
-        const prefix = `NovaFlow_Generate_${runProvider}_${runMode}_${Date.now()}`;
+        const prefix = `Foart_Generate_${runProvider}_${runMode}_${Date.now()}`;
         const workflowRun = buildArtGenerateWorkflowWithSeed(
           fixedSeed ? baseSeed + batchIndex : null,
           () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, drawingRepair ? `${compiledPrompt.text}\n\n本次纠正：${drawingRepair}` : compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
@@ -87398,7 +87398,7 @@
           provider,
           state.mode,
           uploadedNames,
-          String(options.outputPrefix || `NovaFlow_UI_${Date.now()}`),
+          String(options.outputPrefix || `Foart_UI_${Date.now()}`),
           String(options.prompt || ""),
           String(options.negativePrompt || ""),
           String(options.clientId || `novaflow_ui_${Date.now()}_${Math.random().toString(16).slice(2)}`),

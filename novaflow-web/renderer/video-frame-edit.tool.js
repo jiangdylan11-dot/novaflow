@@ -788,7 +788,7 @@
     setStatus('正在生成…')
     let dir = ''
     try {
-      const created = await bridge.exportCreateTempDir({ prefix: 'novaflow_frame_edit_' })
+      const created = await bridge.exportCreateTempDir({ prefix: 'foart_frame_edit_' })
       if (!created?.ok || !created.dir) throw new Error(created?.error || '创建临时目录失败')
       dir = String(created.dir)
       const order = model.order
