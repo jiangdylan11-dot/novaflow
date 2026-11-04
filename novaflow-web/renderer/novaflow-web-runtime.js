@@ -981,8 +981,7 @@
         !policy.config?.xiaotao_online||typeof policy.config.xiaotao_online!=='object')
         return no('companion-pricing-changed','在线积分策略不可用，本次未提交。');
       operationTerms=policy.config.xiaotao_online;
-      const operationArtV3=operationTerms.operation_art_v3===true;
-      if(!operationArtV3 || !operationCreditPolicy(operationTerms) || ((payload.currentDrawingTextOnly===true||payload.currentDrawingVisionOnly===true)&&!decimalCreditPolicy(operationTerms)) ||
+      if(operationTerms.operation_art_v3!==true || !operationCreditPolicy(operationTerms) || ((payload.currentDrawingTextOnly===true||payload.currentDrawingVisionOnly===true)&&!decimalCreditPolicy(operationTerms)) ||
         (payload.currentDrawingVisionOnly===true&&(operationTerms.operation_vision_chat_v3!==true||!images.length)) ||
         !Array.isArray(policy.models) || !policy.models.some(m=>m.id===selected.modelId&&m.available===true))
         return no('online-business-unavailable','\u5728\u7ebf\u7f8e\u5de5\u8ba1\u8d39\u7b56\u7565\u672a\u5f00\u901a\uff0c\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
@@ -1009,39 +1008,36 @@
           (stage==='structure'&&images.length&&quote.imageCount!==images.length))
           return no('assistant-business-quote-unavailable','本阶段报价不可用，未提交。',{...(lastQuota?{quota:lastQuota}:{})});
         const hasScope=Object.hasOwn(quote,'billingScope'),hasRecoveryId=Object.hasOwn(quote,'recoveryOperationId');
-        if(hasScope!==hasRecoveryId||(operationArtV3?(!hasScope||quote.billingScope!=='operation-v3'||!validOperationId(quote.recoveryOperationId)):(hasScope||hasRecoveryId))||
-          (operationArtV3&&recoveryId&&recoveryId!==quote.recoveryOperationId))
+        if(hasScope!==hasRecoveryId||!hasScope||quote.billingScope!=='operation-v3'||!validOperationId(quote.recoveryOperationId)||
+          (recoveryId&&recoveryId!==quote.recoveryOperationId))
           return no('assistant-business-quote-unavailable','操作计费信息不匹配，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
         payload.onPricingQuote({...quote,quoteToken:undefined,stage});
         if(!current())return no('assistant-selection-changed','模型或会话已变，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
         if(await payload.confirmPricingQuote({...quote,quoteToken:undefined,stage})!==true)
           return no('assistant-business-quote-declined','已取消当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
         if(!current())return no('assistant-selection-changed','模型或会话已变，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
-        if(operationArtV3){
-          accountOwner=accountOwner||captureFoartBillingOwner();
-          if(!accountOwner?.current?.())return no('assistant-selection-changed','登录会话已变化，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
-          recoveryId=quote.recoveryOperationId;
-        } else if(!notice(quote.requestId,null,true))return no('billing-record-unavailable','当前阶段未提交，请重试。',{...(lastQuota?{quota:lastQuota}:{})});
+        accountOwner=accountOwner||captureFoartBillingOwner();
+        if(!accountOwner?.current?.())return no('assistant-selection-changed','登录会话已变化，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
+        recoveryId=quote.recoveryOperationId;
         pendingId=quote.requestId;
         if(!current())return no('assistant-selection-changed','模型或会话已变，请核对账单记录。',{...(lastQuota?{quota:lastQuota}:{})});
-        submitted=true;if(operationArtV3)v3Submitted=true;if(stage==='english')englishSubmitted=true;companionCloudUsed.add(requestId);
+        submitted=true;v3Submitted=true;if(stage==='english')englishSubmitted=true;companionCloudUsed.add(requestId);
         const result=await api(base,'POST','/api/web/companion/art/execute',{quoteToken:quote.quoteToken,epoch:selected.epoch,...(stage==='structure'&&images.length?{images}:{})},180000,abort.signal);
-        const stagePending=operationArtV3&&stage==='structure'&&!gptImage&&result?.ok===true&&result.stage==='structure'&&result.settlement?.requestId===quote.requestId&&result.settlement?.status==='pending'&&typeof result.stageToken==='string'&&result.stageToken.length>0&&result.stageToken.length<=180000;
+        const stagePending=stage==='structure'&&!gptImage&&result?.ok===true&&result.stage==='structure'&&result.settlement?.requestId===quote.requestId&&result.settlement?.status==='pending'&&typeof result.stageToken==='string'&&result.stageToken.length>0&&result.stageToken.length<=180000;
         const settled=result?.settlement?.requestId===quote.requestId&&validCreditAmount(result.settlement.settledCredits,decimalCreditPolicy(operationTerms))&&
-          (operationArtV3?(result.settlement.status==='settled'&&(result.settlement.uncollectedCredits===undefined||validCreditAmount(result.settlement.uncollectedCredits,decimalCreditPolicy(operationTerms)))):
-            result.settlement.pricingSource==='token_rate_estimate'&&typeof result.settlement.cacheKnown==='boolean');
-        const quota=settled?{status:'settled',settled_credits:result.settlement.settledCredits,...(!operationArtV3?{pricing_source:'token_rate_estimate',cache_known:result.settlement.cacheKnown,pricing_note:result.settlement.cacheKnown?'\u6309\u63a5\u53e3\u7528\u91cf\u548c\u76ee\u5f55\u8d39\u7387\u8ba1\u7b97\uff0c\u975e\u4f9b\u5e94\u5546\u5b9e\u8d26':'\u6309\u63a5\u53e3\u7528\u91cf\u548c\u76ee\u5f55\u8d39\u7387\u8ba1\u7b97\uff1b\u7f13\u5b58\u7528\u91cf\u672a\u77e5\uff0c\u975e\u4f9b\u5e94\u5546\u5b9e\u8d26'}:{}),
+          result.settlement.status==='settled'&&(result.settlement.uncollectedCredits===undefined||validCreditAmount(result.settlement.uncollectedCredits,decimalCreditPolicy(operationTerms)));
+        const quota=settled?{status:'settled',settled_credits:result.settlement.settledCredits,
           ...(result.settlement.balanceShort?{balance_short:true}:{}),...(result.settlement.uncollectedCredits?{uncollected_credits:result.settlement.uncollectedCredits}:{})}:null;
         if(settled){
           lastQuota=quota;
-          if(operationArtV3&&!(result.settlement.uncollectedCredits>0))v3FinalSettled=true;
+          if(!(result.settlement.uncollectedCredits>0))v3FinalSettled=true;
           if(!notice(quote.requestId,quota,false))
             return no('billing-record-unavailable','本阶段已结算，但账单记录未能更新，请核对实际扣费。',{quota,billingUnknown:true});
           pendingId='';
         }
         if(stagePending){stageToken=result.stageToken;parentRequestId=quote.requestId;if(!current())return no('assistant-selection-changed','模型或会话已变，请核对账单。');continue;}
         if(!current())return no('assistant-selection-changed',settled?'模型或会话已变，本阶段已结算，请核对账单。':'模型或会话已变，账单状态待核对。',{...(quota?{quota}:{}),billingUnknown:!settled});
-        if(operationArtV3&&settled&&result.settlement.uncollectedCredits>0)
+        if(settled&&result.settlement.uncollectedCredits>0)
           return no('operation-incomplete',incompleteSettlementMessage({charged:result.settlement.settledCredits,uncollected:result.settlement.uncollectedCredits}),{quota,billingUnknown:true});
         if(result?.ok!==true||!settled){
           console.warn('[NovaFlow] Xiaotao art phase rejected',stage,result?.errorCode||'assistant-business-invalid-result',result?.validationIssue||'');

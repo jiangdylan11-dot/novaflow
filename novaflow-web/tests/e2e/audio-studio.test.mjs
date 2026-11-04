@@ -63,7 +63,7 @@ test('the worker renders a loop longer than the loop and writes the length into 
   const straight = audioGraphExtras(TASK_TYPE.AUDIO_MUSIC, { prompt: 'x', duration_seconds: 30, loop: false });
   assert.equal(straight.generate_seconds, 30);
   const sfx = audioGraphExtras(TASK_TYPE.AUDIO_SFX, { prompt: 'coin pickup,', duration_seconds: 1, reprompt: false });
-  assert.equal(sfx.generate_seconds, 1.6);
+  assert.equal(sfx.generate_seconds, 2.1);
   assert.equal(sfx.caption_fallback, 'coin pickup. Length: 2 seconds');
   assert.equal(sfx.reprompt, false);
   assert.match(audioRepromptPrompt('sfx', '  打开木门  ', 3.4), /sound design expert[\s\S]*Input: 打开木门\nTarget audio length: 3 seconds\./);

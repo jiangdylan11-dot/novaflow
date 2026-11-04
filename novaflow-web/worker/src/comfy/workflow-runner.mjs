@@ -100,8 +100,8 @@ export function audioGraphExtras(taskType, parameters) {
   const loop = music && p.loop !== false;
   const generateSeconds = loop
     ? Math.min(300, duration + Math.max(2, Math.round((Number(p.crossfade_ms) || 800) / 1000 + 2)))
-    // The effects model fades out early and the clean node trims that tail, so render long to land near the asked length.
-    : music ? duration : Math.min(30, duration * 1.6);
+    // Short effects lose about a second to the model's fade and the clean node's trim (measured on 3-7 s rain).
+    : music || duration >= 7 ? duration : duration + 1.1;
   const body = String(p.prompt || '').trim().replace(/\s*Length:\s*\d+\s*seconds?\.?\s*$/i, '').replace(/[\s.,;]+$/, '');
   const caption = body + '. Length: ' + Math.round(generateSeconds) + ' seconds';
   return {
