@@ -1884,6 +1884,9 @@
       // The local model only chats and rewrites prompts; every software
       // operation belongs to an online model.
       if(communityChatOnly && !promptDiscussion && localOperationIntent(message))return offerLocalPrompt(message,{recordMessage});
+      // 和在线大脑同一套框架：在线大脑会去写页面提示词的请求（视频 H3 / 绘图页面上的画面描述，
+      // 或带着素材的描述），本地大脑也直接写进提示词框，不在对话里回一段方案。
+      if(communityChatOnly && !capabilityOnly && !promptDiscussion && localPagePromptRequest(message,task))return writeLocalPagePrompt(message,{recordMessage});
       const continuation=answersQuestion(message) && !task?.discussion ? pendingIntent : null;
       const requestMessage=reverseImage ? '用户要求：'+message+'\n请看图片，写出能重新生成这张图的完整中文提示词，写清主体、动作、服饰、场景、构图、光线和画风。只输出提示词，不解释、不提问。' : continuation?.foart ? continuation.message+'\n用户回答：'+message+'\n这是对上一条提问的回答，结合上文现在直接执行，不要再询问。' : continuation ? continuation.message+'\n用户补充：'+message : task?.revision
         ? '继续修改同一个'+({video:'视频',audio:'音频',image:'图片',animation:'骨骼动画'}[state.activeTask.surface] || '')+'任务。\n原始用户需求：'+state.activeTask.baseRequest
@@ -2314,12 +2317,43 @@
     let pendingLocalPromptOffer=null;
     function offerLocalPrompt(message,{recordMessage=true}={}){
       if(recordMessage)pushUser(message);
-      const drawing=activePromptSource()?.surface==='drawing'&&!/打开|进入|切换|关闭|跳到|帧|播放|暂停|导出|导入|保存/.test(message);
-      pendingLocalPromptOffer=drawing?{message}:null;
-      state.messages.push({role:'assistant',content:LOCAL_CHAT_ONLY_NOTICE+(drawing?'\n\n也可以由我按这句话直接写一版提示词填进绘图输入框，你自己点生成。要吗？回复“要”即可。':'')});
-      state.error='';state.status=drawing?'等待回复':'未执行操作';notify();return true;
+      const surface=activePromptSource()?.surface,writable=['drawing','video'].includes(surface)&&!/打开|进入|切换|关闭|跳到|帧|播放|暂停|导出|导入|保存/.test(message);
+      pendingLocalPromptOffer=writable?{message,surface}:null;
+      state.messages.push({role:'assistant',content:LOCAL_CHAT_ONLY_NOTICE+(writable?'\n\n也可以由我按这句话直接写一版提示词填进'+(surface==='video'?'视频':'绘图')+'输入框，你自己点生成。要吗？回复“要”即可。':'')});
+      state.error='';state.status=writable?'等待回复':'未执行操作';notify();return true;
+    }
+    // A description on the video H3 or drawing page (or one sent with
+    // material) is a prompt to write, the same request an online brain takes
+    // to the page. Questions and talk about the picture stay in chat.
+    function localPagePromptRequest(message,task){
+      const surface=activePromptSource()?.surface,text=String(message||'').trim();
+      if(!['video','drawing'].includes(surface)||!text||text.length>1500)return false;
+      if(/[？?]|吗[。！!～~]*$|呢[。！!～~]*$|什么|怎么|如何|为什么|为何|哪(?:个|些|种|里)|是否|能不能|可不可以|行不行/.test(text)||/(?:看|分析|识别|描述|评价|点评|对比|比较|检查).{0,8}(?:图|画面|照片|截图|素材)/.test(text)||discussionOnly(text))return false;
+      if(/^(?:你好|您好|嗨|哈喽|hi|hello|谢谢|多谢|好的|好|嗯|ok|收到|再见)[。！!～~\s]*$/i.test(text))return false;
+      const files=state.staged.filter(item=>item.status==='ready');
+      if(files.length)return surface==='video'||files.every(item=>item.kind==='image');
+      return !!task&&!task.discussion&&task.surface===(surface==='video'?'video':'image');
+    }
+    async function writeLocalPagePrompt(message,{recordMessage=true}={}){
+      if(activePromptSource()?.surface==='drawing')return runLocalPromptOffer({message},message,{recordMessage});
+      return writeLocalVideoPrompt(message,{recordMessage});
+    }
+    // The video box gets an H3 draft from the local optimizer. This message's
+    // attachments go where an online brain would put them (首尾帧 etc.) first.
+    async function writeLocalVideoPrompt(message,{recordMessage=true}={}){
+      const say=text=>{if(recordMessage)pushUser(message);state.messages.push({role:'assistant',content:text});state.error='';state.status='未执行操作';notify();return false;};
+      if(state.staged.some(item=>item.status==='ready')&&!(await consumeStaged(message)))return false;
+      if(retired)return false;
+      const info=activePromptSource();
+      if(info?.surface!=='video')return say('请先打开视频 H3 页面，再让我写提示词。');
+      let workspace;try{workspace=capturePromptWorkspace(info);}catch{return say('视频页面还没准备好，请稍后再发一次。');}
+      return prepareSelectedH3TextDraft(message,{recordMessage,source:{status:'ready',source:'conversation',prompt:message,requirements:'',...workspace}});
     }
     async function runLocalPromptOffer(offer,message,{recordMessage=true}={}){
+      if(offer.surface==='video'||activePromptSource()?.surface==='video'){
+        if(recordMessage)pushUser(message);
+        return writeLocalVideoPrompt(offer.message,{recordMessage:false});
+      }
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate,info=activePromptSource();
       if(recordMessage)pushUser(message);
       const say=text=>{state.messages.push({role:'assistant',content:text});state.error='';state.status='未执行操作';state.pending=false;notify();return false;};
