@@ -2671,7 +2671,7 @@
         !confirmed&&!includeResult&&(!state.activeTask||priorAudioNavigation)&&!invocationUploads.length&&task?.surface==='audio'&&!task.discussion&&
         /(?:生成|制作|创建|合成|generate|create).{0,12}(?:音乐|music)|(?:音乐|music).{0,12}(?:生成|制作|创建|合成|generate|create)/i.test(message)&&!forbidsGeneration(message);
       const operationNeedsTools=confirmed||includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
-        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|修改|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)/.test(message);
+        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|修改|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成/.test(message);
       const operationGeneral=operationTextOnly&&selectedPricingPayload().operationFoartGeneralV3===true&&!capabilityOnly&&!confirmed&&!includeResult&&!!operationNeedsTools;
       if(operationTextOnly && !capabilityOnly && !operationOpen && !operationRotation && !operationAudio && !operationGeneral && operationNeedsTools) {
         state.error=operationVision?'当前操作级计费仅支持独立的文字和图片聊天；工具、作品上下文及音视频附件尚未接入。':'当前操作级计费仅支持独立的纯文字聊天；工具、作品上下文和附件尚未接入。';state.status='未提交，不扣积分';notify();return false;
