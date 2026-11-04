@@ -69,10 +69,12 @@
     return amount.toFixed(6).replace(/\.?0+$/,'');
   }
   const cleanBillingNotices = rows => (Array.isArray(rows)?rows:[]).filter(row=>row && typeof row.id==='string' && row.id.length<=100 && CHAT_MODELS[row.modelId]?.provider==='api' && typeof row.unknown==='boolean' && (row.confirmed===null || creditUnits(row.confirmed)!==null) && (row.unknown || row.confirmed!==null) && (row.owner===undefined || typeof row.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(row.owner))).slice(-20).map(({id,modelId,confirmed,unknown,owner})=>({id,modelId,confirmed,unknown,...(owner===undefined?{}:{owner})}));
-  function billingNoticeText(row,provider) {return row.unknown?(provider==='local'?'此前在线扣费待核对':'本次扣费待核对'):`本次扣费 ${displayCredits(row.confirmed)} 积分`;}
+  function billingNoticeText(row) {return row.unknown?'本次扣费待核对':`本次扣费 ${displayCredits(row.confirmed)} 积分`;}
+  // Billing belongs to online models; the local free model never shows it.
   function billingNoticeForView(provider,business,art) {
+    if(provider!=='api')return null;
     const pending=[...business,...art].filter(row=>row?.unknown===true).at(-1);
-    return pending || (provider==='api' ? business.at(-1)||art.at(-1)||null : null);
+    return pending || business.at(-1)||art.at(-1)||null;
   }
   function appendBillingNotice(rows,row) {return cleanBillingNotices([...rows.filter(item=>item.id!==row.id&&(item.unknown||item.owner!==row.owner)),row]);}
   const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
@@ -2744,10 +2746,10 @@
     }
     function render(state) {
       lastPricingKey=controller.pricingPolicyKey();
-      const artNotices=controller.artBillingNotices(),operationNotices=state.pending?[]:controller.operationRecoveryNotices(),businessNotices=controller.visibleBillingNotices();
+      const artNotices=controller.artBillingNotices(),operationNotices=state.pending||state.provider!=='api'?[]:controller.operationRecoveryNotices(),businessNotices=controller.visibleBillingNotices();
       const latestNotice=billingNoticeForView(state.provider,businessNotices,artNotices);
       billingAlerts.replaceChildren();billingAlerts.hidden=!latestNotice&&Array.isArray(operationNotices)&&!operationNotices.length;
-      if(latestNotice)billingAlerts.append(el('p','nf-xiaotao-billing-note',billingNoticeText(latestNotice,state.provider)));
+      if(latestNotice)billingAlerts.append(el('p','nf-xiaotao-billing-note',billingNoticeText(latestNotice)));
       if(operationNotices===null)billingAlerts.append(el('p','nf-xiaotao-error','无法读取待核对账单记录，在线操作暂不可提交。'));
       for(const row of operationNotices||[]){
         const status=row.recovery?.status,settled=status==='settled',detail=settled
@@ -2756,7 +2758,7 @@
           : status==='unavailable'?'暂时无法查询账单状态，请稍后再试，勿重复提交。':'操作或账单状态待核对，请勿重复提交。';
         const item=el('p','nf-xiaotao-error',`${CHAT_MODELS[row.modelId]?.label||'在线模型'}：${detail}`),check=el('button','','查询状态');
         check.type='button';check.onclick=()=>void controller.checkOperationRecovery(row.operationId);item.append(check);
-        if(settled&&row.recovery.uncollected===0){const dismiss=el('button','','关闭');dismiss.type='button';dismiss.onclick=()=>void controller.checkOperationRecovery(row.operationId,true);item.append(dismiss);}
+        const dismiss=el('button','nf-xiaotao-notice-close','×');dismiss.type='button';dismiss.setAttribute('aria-label','关闭提醒');dismiss.onclick=()=>void controller.checkOperationRecovery(row.operationId,true);item.append(dismiss);
         billingAlerts.append(item);
       }
       if (CHAT_MODELS[state.modelId]?.retired) {retiredSelection.value=state.modelId;if (!retiredSelection.parentNode) modelSelect.prepend(retiredSelection);}

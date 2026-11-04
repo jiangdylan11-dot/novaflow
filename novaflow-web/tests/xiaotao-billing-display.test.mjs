@@ -8,14 +8,14 @@ const paid={id:'paid-last',modelId:'xai/grok-4.7',owner:'owner-a',confirmed:0.01
 const pending={id:'unresolved',modelId:'xai/grok-4.7',owner:'owner-a',confirmed:null,unknown:true};
 test('local 9B hides the prior settled online charge without deleting its ledger',()=>{
  const f=fixture();f.c.state.billingNotices=[paid];assert.equal(f.choose('api',f.c.visibleBillingNotices(),[]).confirmed,0.013434);
- assert.equal(f.text(f.choose('api',f.c.visibleBillingNotices(),[]),'api'),'本次扣费 0.013434 积分');
+ assert.equal(f.text(f.choose('api',f.c.visibleBillingNotices(),[])),'本次扣费 0.013434 积分');
  assert.equal(f.choose('local',f.c.visibleBillingNotices(),[]),null);assert.equal(f.c.state.billingNotices.length,1);
  assert.equal(f.choose('local',[],[paid]),null);assert.equal(f.choose('api',[],[paid]).confirmed,0.013434);
 });
-test('unresolved prior online charges stay visible on local and are labelled as prior',()=>{
- const f=fixture();f.c.state.billingNotices=[pending,paid];const row=f.choose('local',f.c.visibleBillingNotices(),[]);
- assert.equal(row.id,'unresolved');assert.equal(f.text(row,'local'),'此前在线扣费待核对');assert.equal(f.c.state.billingNotices.length,2);
- assert.equal(f.choose('local',[],[pending]).id,'unresolved');assert.equal(f.choose('api',[pending,paid],[]).id,'unresolved');
+test('the local model never shows online billing, unresolved rows stay on online models',()=>{
+ const f=fixture();f.c.state.billingNotices=[pending,paid];
+ assert.equal(f.choose('local',f.c.visibleBillingNotices(),[]),null);assert.equal(f.c.state.billingNotices.length,2);
+ assert.equal(f.choose('local',[],[pending]),null);assert.equal(f.choose('api',[pending,paid],[]).id,'unresolved');
 });
 test('another account’s known and unresolved notices are not shown',()=>{
  const f=fixture();f.c.state.billingNotices=[{...pending,owner:'owner-b'},{...paid,owner:'owner-b'}];

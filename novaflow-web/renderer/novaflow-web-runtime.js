@@ -279,7 +279,7 @@
       root.localStorage.removeItem(key);return binding.current()&&root.localStorage.getItem(key)===null;
     }catch{return false;}
   }
-  async function operationRecoveryStatus(operationId,forgetSettled=false) {
+  async function operationRecoveryStatus(operationId) {
     const binding=captureFoartBillingOwner();
     if(!binding||!operationRecoveryId(operationId)||!operationRecoveryList(binding)?.some(row=>row.operationId===operationId))
       return {ok:false,error:'登录会话或待核记录不可用。'};
@@ -296,8 +296,6 @@
         if(hasMarker&&!decimalCreditPolicy(value))throw Error();
         if(!['success','cancel'].includes(value.outcome)||!validCreditAmount(value.charged,hasMarker)||!validCreditAmount(value.uncollected,hasMarker))throw Error();
       }
-      if(forgetSettled&&(status!=='settled'||value.uncollected!==0))return {ok:false,error:'账单尚未完整结算，记录会继续保留。'};
-      if(forgetSettled&&!operationRecoveryForget(binding,operationId))throw Error();
       return {ok:true,operation:{operationId,status,...(status==='settled'?{outcome:value.outcome,charged:value.charged,uncollected:value.uncollected}:{})}};
     }catch{return {ok:false,error:'账单状态暂时无法查询，请稍后再试；不要重复提交。'};}
   }
@@ -3348,8 +3346,9 @@
     },
     captureFoartBillingOwner,
     listCompanionOperationRecovery(){const binding=captureFoartBillingOwner();return binding?operationRecoveryList(binding):[];},
-    checkCompanionOperationRecovery:operationId=>operationRecoveryStatus(operationId,false),
-    dismissCompanionOperationRecovery:operationId=>operationRecoveryStatus(operationId,true),
+    checkCompanionOperationRecovery:operationRecoveryStatus,
+    // Closing removes this browser's reminder only; the server ledger decides the charge.
+    dismissCompanionOperationRecovery(operationId){const binding=captureFoartBillingOwner();return {ok:Boolean(binding)&&operationRecoveryForget(binding,operationId)};},
 
     async clientAuthBootstrap() {
       try {

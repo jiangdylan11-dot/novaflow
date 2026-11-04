@@ -41,13 +41,12 @@ test('submitted unknown survives refresh with only account-bound ID, status quer
   assert.doesNotMatch(storage.get(key),/PRIVATE|TICKET|token|image/i);
   const again=setup({storage,status});assert.deepEqual(plain(again.api.listCompanionOperationRecovery()),[{operationId,modelId:model}]);
   const check=await again.api.checkCompanionOperationRecovery(operationId);assert.equal(check.operation.status,'pending-reconciliation');
-  assert.equal((await again.api.dismissCompanionOperationRecovery(operationId)).ok,false);assert.equal(storage.has(key),true);
   state='unknown';assert.equal((await again.api.checkCompanionOperationRecovery(operationId)).operation.status,'unknown');
-  assert.equal((await again.api.dismissCompanionOperationRecovery(operationId)).ok,false);assert.equal(storage.has(key),true);
   assert.equal(again.calls.filter(x=>x.path.endsWith('/operation/execute')).length,0);
   assert.deepEqual(JSON.parse(again.calls.find(x=>x.path.endsWith('/operation/status')).body),{operationId});
   state='settled';assert.equal((await again.api.checkCompanionOperationRecovery(operationId)).operation.charged,1);
-  assert.equal((await again.api.dismissCompanionOperationRecovery(operationId)).ok,true);assert.equal(storage.has(key),false);
+  state='pending-settlement';const statusCalls=again.calls.length;
+  assert.equal((await again.api.dismissCompanionOperationRecovery(operationId)).ok,true);assert.equal(storage.has(key),false);assert.equal(again.calls.length,statusCalls);
 });
 
 test('fractional operation quote, receipt, and recovered status preserve six-digit amounts',async()=>{
@@ -60,7 +59,7 @@ test('fractional operation quote, receipt, and recovered status preserve six-dig
   storage.set(key,JSON.stringify({operationId,modelId:model}));
   const second=setup({storage,status:()=>Response.json({ok:true,operation:{operationId,status:'settled',outcome:'cancel',charged:0.25,uncollected:0.000001,...decimalTerms}})});
   const recovered=await second.api.checkCompanionOperationRecovery(operationId);assert.equal(recovered.operation.charged,0.25);assert.equal(recovered.operation.uncollected,0.000001);
-  assert.equal((await second.api.dismissCompanionOperationRecovery(operationId)).ok,false);assert.equal(storage.has(key),true);
+  assert.equal(storage.has(key),true);
 });
 
 test('recovery uses each frozen operation policy even when the current global policy changed',async()=>{
@@ -90,7 +89,7 @@ test('recovery rejects fractional legacy, partial, and contradictory frozen poli
     const storage=new Map(),key=prefix+accountA+':'+operationId;storage.set(key,JSON.stringify({operationId,modelId:model}));
     const f=setup({storage,status:()=>Response.json({ok:true,operation:{operationId,status:'settled',outcome:'success',uncollected:0,...snapshot}})});
     assert.equal((await f.api.checkCompanionOperationRecovery(operationId)).ok,false);
-    assert.equal((await f.api.dismissCompanionOperationRecovery(operationId)).ok,false);assert.equal(storage.has(key),true);
+    assert.equal(storage.has(key),true);
     assert.equal(f.calls.some(x=>x.path.endsWith('/pricing')),false);assert.equal(f.calls.some(x=>x.path.endsWith('/operation/execute')),false);
   }
 });
