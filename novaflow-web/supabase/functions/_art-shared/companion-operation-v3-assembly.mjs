@@ -7,8 +7,9 @@ import {postRunningHubResponses,normalizeRunningHubLlmBaseUrl} from './runninghu
 import {createXiaotaoOperationV3Prepare} from './xiaotao-operation-v3-prepare.mjs';
 import {createXiaotaoOperationV3Chat} from './xiaotao-operation-v3-chat.mjs';
 import {createXiaotaoV3FoartPlanner} from './xiaotao-operation-v3-foart-planner.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
-const MODELS=new Set(['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash']);
+const MODELS=new Set(XIAOTAO_ONLINE_MODEL_IDS);
 const unavailable=()=>{throw Object.assign(new Error('operation-billing-unavailable'),{code:'operation-billing-unavailable',statusCode:503});};
 
 // Only the server constructs this object; no request or database field can

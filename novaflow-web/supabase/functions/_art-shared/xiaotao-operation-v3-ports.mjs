@@ -8,12 +8,13 @@ import {normalizeCreditConfig, settleXiaotaoOnlineCredits} from './feature-credi
 import {xiaotaoCreditAmountPolicy,isXiaotaoCreditAmount,exactXiaotaoTokenCost} from './xiaotao-decimal-usage.mjs';
 import {createHash} from 'node:crypto';
 import {Buffer} from 'node:buffer';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const fail = (code, statusCode = 400) => { throw Object.assign(new Error(code), {code, statusCode}); };
 const text = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max;
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const money = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-const MODELS = new Set(['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash']);
+const MODELS = new Set(XIAOTAO_ONLINE_MODEL_IDS);
 
 function assessedRecord(record) {
   // The adapter must inspect the unnormalized provider payload first: aliases

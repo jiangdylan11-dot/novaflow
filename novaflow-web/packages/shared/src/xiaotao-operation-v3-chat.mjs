@@ -13,6 +13,7 @@ import {estimateXiaotaoOnlineCredits} from './feature-credits.mjs';
 import {hasXiaotaoDecimalV1,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 import {createXiaotaoOperationV3Tickets} from './xiaotao-operation-v3-ticket.mjs';
 import {createXiaotaoOperationV3Ports} from './xiaotao-operation-v3-ports.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const fail=(code,statusCode=400,extra={})=>{throw Object.assign(new Error(code),{code,statusCode},extra);};
 function untrustedTicketModel(token) {
@@ -20,7 +21,7 @@ function untrustedTicketModel(token) {
   try {
     const parts=token.split('.');if(parts.length!==2)throw Error();
     const parsed=JSON.parse(Buffer.from(parts[0],'base64url').toString('utf8'));
-    if(!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(parsed?.model))throw Error();
+    if(!XIAOTAO_ONLINE_MODEL_IDS.includes(parsed?.model))throw Error();
     return parsed.model;
   } catch {fail('invalid-operation-ticket');}
 }
@@ -107,9 +108,9 @@ export function createXiaotaoOperationV3Chat({enabled=false,visionEnabled=false,
     if(!policy.models.some(row=>row.id===model&&row.available===true))fail('operation-model-unavailable',503);
     if(intent.mode==='style-analysis'&&policy.config.xiaotao_online.operation_style_v3!==true)fail('operation-billing-disabled',503);
     if(intent.mode==='video-rewrite'&&policy.config.xiaotao_online.operation_video_rewrite_v3!==true)fail('operation-billing-disabled',503);
-    if(intent.mode==='video-rewrite'&&compiled.imageCount&&(!policy.config.xiaotao_online.operation_vision_chat_v3||!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(model)))fail('model-vision-unavailable',503);
+    if(intent.mode==='video-rewrite'&&compiled.imageCount&&(!policy.config.xiaotao_online.operation_vision_chat_v3||!XIAOTAO_ONLINE_MODEL_IDS.includes(model)))fail('model-vision-unavailable',503);
     if(intent.mode==='ui-draft'&&policy.config.xiaotao_online.operation_ui_draft_v3!==true)fail('operation-billing-disabled',503);
-    if(intent.mode==='ui-draft'&&compiled.imageCount&&(!policy.config.xiaotao_online.operation_vision_chat_v3||!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(model)))fail('model-vision-unavailable',503);
+    if(intent.mode==='ui-draft'&&compiled.imageCount&&(!policy.config.xiaotao_online.operation_vision_chat_v3||!XIAOTAO_ONLINE_MODEL_IDS.includes(model)))fail('model-vision-unavailable',503);
     if(intent.mode==='audio-rewrite'&&policy.config.xiaotao_online.operation_audio_rewrite_v3!==true)fail('operation-billing-disabled',503);
     if(intent.mode==='style-analysis'&&compiled.imageCount&&(!policy.config.xiaotao_online.operation_vision_chat_v3||!policy.config.xiaotao_online.operation_style_vision_models?.includes(model)))fail('model-vision-unavailable',503);
     const tickets=createXiaotaoOperationV3Tickets({enabled:true,secret:key,isCurrent:async candidate=>isCurrent(candidate)});

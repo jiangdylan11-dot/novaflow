@@ -9,11 +9,12 @@ import {COMPANION_OUTPUT_TOKENS} from './companion-pricing.mjs';
 import {estimateXiaotaoOnlineCredits,normalizeCreditConfig} from './feature-credits.mjs';
 import {xiaotaoCreditAmountPolicy,isXiaotaoCreditAmount,equalXiaotaoCreditAmounts} from './xiaotao-decimal-usage.mjs';
 import {validateFoartContext} from './foart-tool-plan.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const DOMAIN='nf.xiaotao.foart-continuation.v1';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HEX=/^[a-f0-9]{64}$/;
-const MODEL=new Set(['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash']);
+const MODEL=new Set(XIAOTAO_ONLINE_MODEL_IDS);
 const fail=(code,statusCode=400)=>{throw Object.assign(new Error(code),{code,statusCode});};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function rejectEmbeddedMedia(value,key='',depth=0) {

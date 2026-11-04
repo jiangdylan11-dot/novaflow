@@ -1,5 +1,11 @@
 (function () {
   if (window.__NovaFlowSmartAI && window.__NovaFlowSmartAI.version) return;
+  // BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)
+  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true},{"id":"glm/glm-5.3-flash","label":"智谱 GLM-5.3 Flash","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
+  const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));
+  const isXiaotaoOnlineModel = id => XIAOTAO_ONLINE_MODEL_IDS.includes(id);
+  const isXiaotaoFlatRateModel = id => XIAOTAO_ONLINE_MODELS.some(model => model.id === id && model.flatRate);
+  // END GENERATED xiaotao-online-models
 
   const VERSION = "20260817-prompt-editor-modal-1";
   const STYLE_ID = "novaflow-smart-ai-style";
@@ -5181,7 +5187,7 @@
       if(currentDrawingVisionOnly&&(options.generationMode!=='img2img'||!Array.isArray(options.images)||options.images.length<1||options.images.length>3))throw new Error('请确认一至三张参考图，未提交或扣费。');
       if(currentDrawingTextOnly && (options.generationMode!=='txt2img' || !Array.isArray(options.images) || options.images.length!==0))
         throw new Error('当前仅支持纯文字生图提示词优化，未提交或扣费。');
-      if((currentDrawingTextOnly?api.onlineTextArtAvailableSync?.()!==true:currentDrawingVisionOnly?api.onlineVisionArtAvailableSync?.()!==true:api.onlineBusinessAvailableSync?.()!==true) || !['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(selected.modelId) || !Number.isSafeInteger(selected.epoch))
+      if((currentDrawingTextOnly?api.onlineTextArtAvailableSync?.()!==true:currentDrawingVisionOnly?api.onlineVisionArtAvailableSync?.()!==true:api.onlineBusinessAvailableSync?.()!==true) || !isXiaotaoOnlineModel(selected.modelId) || !Number.isSafeInteger(selected.epoch))
         throw new Error('所选在线模型的绘图优化尚未开放，未提交或扣费。');
       if(typeof api.promptAssistantOptimizePrompt!=='function')throw new Error('所选模型的绘图优化尚未就绪，未提交或扣费。');
       const current=()=>{const active=window.NovaFlowXiaotaoArtAgent?.panel?.controller,now=active?.businessModelSnapshot?.();return !signal?.aborted&&active===selectedController&&now?.provider===selected.provider&&now?.modelId===selected.modelId&&now?.epoch===selected.epoch&&(typeof options.selectionStillCurrent!=='function'||options.selectionStillCurrent()===true);};

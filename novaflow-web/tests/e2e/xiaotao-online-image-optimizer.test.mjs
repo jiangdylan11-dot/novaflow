@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const source=await readFile(new URL('../../renderer/novaflow-smart-ai.js',import.meta.url),'utf8');
 const a=source.indexOf('  function verifiedAgentPromptHandoff('),b=source.indexOf('  // H3 prompts kept in the prompt history',a);assert.ok(a>0&&b>a);
+const onlineModels=source.match(/\/\/ BEGIN GENERATED xiaotao-online-models[\s\S]*?\/\/ END GENERATED xiaotao-online-models/)[0];
 function fixture({enabled=true,changed=false,gpt=false,failure=null,model='openai/gpt-6.1-sol-saver',useImages=true}={}){
   let calls=0,captured;const selected={provider:'api',modelId:model,epoch:1};
   const controller={businessModelSnapshot:()=>({...selected})};
@@ -12,12 +13,12 @@ function fixture({enabled=true,changed=false,gpt=false,failure=null,model='opena
   if(gpt)Object.assign(response,{targetEngine:'gpt-image-2.5',promptContract:'gpt-image-semantic-fusion-v1',modelPrompt:response.displayPrompt});
   const api={onlineBusinessAvailableSync:()=>enabled,promptAssistantOptimizePrompt:async payload=>{calls++;captured=payload;if(changed)selected.epoch++;return failure||response;}};
   const ctx={window:{electronAPI:api,crypto:{randomUUID:()=> 'request-1234'},NovaFlowXiaotaoArtAgent:{panel:{controller}}},ORDINARY_ART_PROMPT_SCHEMA:'nf.art.prompt.v1',validateSmartAiArtPromptPreservation:()=>({ok:true}),protectSmartAiResourceMentions:text=>({text}),restoreSmartAiResourceMentions:text=>({ok:true,text})};
-  vm.createContext(ctx);vm.runInContext(source.slice(a,b)+'\nglobalThis.invoke=optimizeForAgent;',ctx);
+  vm.createContext(ctx);vm.runInContext(onlineModels+'\n'+source.slice(a,b)+'\nglobalThis.invoke=optimizeForAgent;',ctx);
   const quote=()=>{},confirm=async()=>true,billing=()=>true,images=[{role:'subject',dataUrl:'data:image/png;base64,iVBORw0KGgo='}];
   return {run:()=>ctx.invoke({assistantSelectionScope:'xiaotao',surface:'art',prompt:'red ball',negativePrompt:'keep existing',generationMode:'img2img',engine:gpt?'gpt-image-2.5':'qwen-2.1',supportsNegativePrompt:false,onPricingQuote:quote,confirmPricingQuote:confirm,onBillingNotice:billing,...(useImages?{images}:{})}),get calls(){return calls;},get captured(){return captured;},quote,confirm,billing,images};
 }
 test('all three online selections retain their exact model identity and a closed gate makes no call',async()=>{
-  for(const model of ['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash']){
+  for(const model of ['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash','qwen/qwen3.8-flash-next','glm/glm-5.3-flash']){
     const f=fixture({model,useImages:false}),result=await f.run();assert.equal(f.calls,1);assert.equal(f.captured.assistantModelId,model);assert.equal(result.optimization.modelIdentity.id,model);
     const closed=fixture({model,enabled:false,useImages:false});await assert.rejects(closed.run());assert.equal(closed.calls,0);
   }

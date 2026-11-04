@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import {readFoartPlan,validateFoartContext} from './foart-tool-plan.mjs';
 import {xiaotaoCreditAmountPolicy,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const fail=(code,statusCode=400)=>{throw Object.assign(new Error(code),{code,statusCode});};
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -15,7 +16,7 @@ const foartPlanSurface=op=>op.action==='animation'?'animation':op.action==='medi
 const phase=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,64}$/.test(value);
 function identity(value) {
   if(!value||!uuid(value.operationId)||!uuid(value.userId)||typeof value.sessionId!=='string'||!value.sessionId||value.sessionId.length>128||
-    !['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(value.model)||!/^sha256:[a-f0-9]{64}$/.test(value.policyVersion||'')||!hex(value.intentHash))fail('invalid-server-actor');
+    !XIAOTAO_ONLINE_MODEL_IDS.includes(value.model)||!/^sha256:[a-f0-9]{64}$/.test(value.policyVersion||'')||!hex(value.intentHash))fail('invalid-server-actor');
   return {p_operation_id:value.operationId.toLowerCase(),p_user_id:value.userId.toLowerCase(),p_session_id:value.sessionId,
     p_model:value.model,p_policy_version:value.policyVersion,p_intent_hash:value.intentHash};
 }

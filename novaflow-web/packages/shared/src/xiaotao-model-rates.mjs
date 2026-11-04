@@ -1,12 +1,20 @@
 // RunningHub standard LLM catalogue snapshot, checked 2026-10-31.
 // USD per million tokens. These rates determine Foart credits from usage and
 // are not a provider invoice. DeepSeek uses the approved fixed peak user rate.
+// Qwen and GLM use the higher (non-discount) listed rate, checked 2026-11-04.
 // Source: https://www.runninghub.ai/call-api/llm/models (busy-time selection).
 const RATES = Object.freeze({
   'deepseek/deepseek-v4.1-flash': Object.freeze({ input: 0.177, output: 0.7062, cached: 0.0036 }),
-  'glm/glm-5.3-flash': Object.freeze({ input: 0.12, output: 0.4, cached: 0.024 }),
+  'qwen/qwen3.8-flash-next': Object.freeze({ input: 0.118, output: 0.398, cached: 0.015 }),
+  'glm/glm-5.3-flash': Object.freeze({ input: 0.15, output: 0.5, cached: 0.024 }),
   'openai/gpt-6.1-sol-saver': Object.freeze({ input: 0.7, output: 3.5, cached: 0.035,
     highInput: 1.4, highOutput: 5.25, highAbove: 272000 })
+});
+
+const SNAPSHOTS = Object.freeze({
+  'deepseek/deepseek-v4.1-flash': 'runninghub-fixed-peak-2026-11-01',
+  'qwen/qwen3.8-flash-next': 'runninghub-2026-11-04',
+  'glm/glm-5.3-flash': 'runninghub-peak-2026-11-04'
 });
 
 export function hasXiaotaoModelRate(model) {
@@ -43,7 +51,7 @@ function ratesFor(model, config) {
   const defaults = RATES[model];
   if (!defaults) return null;
   const entry = config?.xiaotao_online?.model_rates?.[model];
-  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return {...defaults, snapshot:model === 'deepseek/deepseek-v4.1-flash' ? 'runninghub-fixed-peak-2026-11-01' : 'runninghub-2026-10-31'};
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return {...defaults, snapshot:SNAPSHOTS[model] || 'runninghub-2026-10-31'};
   const resolved = {...defaults};
   for (const key of ['input','output','cached','highInput','highOutput']) {
     if (!(key in defaults) || entry[key] == null || entry[key] === '' || typeof entry[key] === 'boolean') continue;

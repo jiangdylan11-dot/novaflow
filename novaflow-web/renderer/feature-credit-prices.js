@@ -2,6 +2,12 @@
 // packages/shared/src/feature-credits.mjs is the charge-path source.
 // tests/e2e/feature-credits.test.mjs fails if these quotes diverge.
 (function (root) {
+  // BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)
+  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true},{"id":"glm/glm-5.3-flash","label":"智谱 GLM-5.3 Flash","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
+  const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));
+  const isXiaotaoOnlineModel = id => XIAOTAO_ONLINE_MODEL_IDS.includes(id);
+  const isXiaotaoFlatRateModel = id => XIAOTAO_ONLINE_MODELS.some(model => model.id === id && model.flatRate);
+  // END GENERATED xiaotao-online-models
   var DEFAULT_PRICES = {
     xiaotao_vision: 4,
     online_chat_turn: 4,
@@ -237,7 +243,7 @@
 
   // The companion publishes these normalized rates from the very same
   // configuration used to reserve and settle credits. Never fall back to the
-  // generic token rate for the explicitly priced GLM/GPT routes.
+  // generic token rate for the explicitly priced GPT and flat-rate routes.
   function modelBudgetUsd(model, inputTokens, outputTokens, online) {
     var rates = online && online.model_rates && online.model_rates[model];
     if (!rates || typeof rates !== 'object') return null;
@@ -321,8 +327,7 @@
     if (!isFinite(outputBudget) || outputBudget < 0) outputBudget = policy.output_tokens;
     var inputTokens = Math.ceil(chars / policy.chars_per_token) + fileTokens;
     var tokens = inputTokens + outputBudget;
-    var pricedModel = /^(?:glm\/glm-5\.3-flash|openai\/gpt-6\.1-sol-saver)$/.test(String(spec.model || ''))
-      || xiaotaoDecimalPolicy(effective) && spec.model === 'deepseek/deepseek-v4.1-flash';
+    var pricedModel = spec.model === 'openai/gpt-6.1-sol-saver' || isXiaotaoFlatRateModel(spec.model);
     var modelUsd = pricedModel ? modelBudgetUsd(spec.model, inputTokens, outputBudget, stored) : null;
     if (pricedModel && modelUsd == null) return null;
     var usd = isGrok47(spec.model) ? grok47Usd(inputTokens, outputBudget, stored) : pricedModel ? modelUsd : tokens / 1000000 * policy.usd_per_million_tokens;

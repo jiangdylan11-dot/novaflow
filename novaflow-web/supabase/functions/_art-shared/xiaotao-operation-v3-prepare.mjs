@@ -14,12 +14,13 @@ import {canonicalizeXiaotaoV3UiIntent} from './xiaotao-ui-framework-v3.mjs';
 import {canonicalizeXiaotaoV3AudioIntent} from './xiaotao-audio-framework-v3.mjs';
 import {createXiaotaoOperationV3Tickets} from './xiaotao-operation-v3-ticket.mjs';
 import {createXiaotaoOperationV3Ports} from './xiaotao-operation-v3-ports.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const fail=(code,statusCode=400)=>{throw Object.assign(new Error(code),{code,statusCode});};
 const PLAIN_FIELDS=new Set(['mode','requestId','message','history','promptLanguage']);
 // RunningHub advertises image input for these exact routes. The separate
 // server-owned vision and video flags, plus the policy, are still mandatory.
-const VIDEO_VISION_MODELS=new Set(['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash']);
+const VIDEO_VISION_MODELS=new Set(XIAOTAO_ONLINE_MODEL_IDS);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function canonicalizeXiaotaoV3TextIntent(input) {
   if(!input || typeof input!=='object' || Array.isArray(input) || Object.keys(input).some(k=>!PLAIN_FIELDS.has(k)) || input.mode!=='chat') fail('operation-intent-unsupported');
@@ -90,7 +91,7 @@ export function createXiaotaoOperationV3Prepare({enabled=false,visionEnabled=fal
   return async function prepareXiaotaoOperationV3({user,sessionId,payload,signal,isCurrent}={}) {
     if(enabled!==true)fail('operation-billing-disabled',503);
     if(!user||typeof user.id!=='string'||!UUID.test(user.id)||typeof sessionId!=='string'||!sessionId||sessionId.length>128||typeof isCurrent!=='function') fail('invalid-server-actor');
-    if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(k=>!['nonce','model','intent'].includes(k))||!UUID.test(payload.nonce||'')||!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(payload.model)) fail('invalid-operation-terms');
+    if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(k=>!['nonce','model','intent'].includes(k))||!UUID.test(payload.nonce||'')||!XIAOTAO_ONLINE_MODEL_IDS.includes(payload.model)) fail('invalid-operation-terms');
     if(signal?.aborted)fail('cancelled-before-prepare',409);
     const actor={userId:user.id.toLowerCase(),sessionId};
     if(await isCurrent(actor)!==true)fail('selection-stale',401);

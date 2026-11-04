@@ -64,6 +64,14 @@
     if(typeof root.Image!=='function')return dataUrl;
     try {const next=await prepareOnlineStyleImage(dataUrl,{maxSide:count>1?640:1024,type:'image/jpeg'});return next.length<dataUrl.length?next:dataUrl;}catch{return dataUrl;}
   }
+  // BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)
+  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true},{"id":"glm/glm-5.3-flash","label":"智谱 GLM-5.3 Flash","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
+  const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));
+  const isXiaotaoOnlineModel = id => XIAOTAO_ONLINE_MODEL_IDS.includes(id);
+  const isXiaotaoFlatRateModel = id => XIAOTAO_ONLINE_MODELS.some(model => model.id === id && model.flatRate);
+  // END GENERATED xiaotao-online-models
+  const onlineOperationModel=isXiaotaoOnlineModel;
+  const flatRateOnlineModel=isXiaotaoFlatRateModel;
   const XIAOTAO_ONLINE_ART_RELEASE_ENABLED = false;
   // H3 first/last-frame vision remains closed until real-page and ledger
   // acceptance; its independent video and vision policies must also agree.
@@ -244,7 +252,6 @@
     }catch{return null;}
   }
   const validOperationId=id=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-  const onlineOperationModel=id=>['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver'].includes(id);
 
   // The published site can run behind a Cloudflare Pages gate (deploy/_worker.js)
   // that serves the application code only to a logged-in browser. A <script src>
@@ -651,7 +658,7 @@
         terms?.operation_video_rewrite_v3!==true||!operationCreditPolicy(terms)||
         !Array.isArray(policy.models)||!policy.models.some(m=>m.id===selected.modelId&&m.available===true))
         return no('video-draft-unavailable','所选模型的视频文字草稿未开通或价格不可用，未提交。');
-      if(hasImages&&(terms.operation_vision_chat_v3!==true||!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(selected.modelId)))
+      if(hasImages&&(terms.operation_vision_chat_v3!==true||!onlineOperationModel(selected.modelId)))
         return no('video-vision-unavailable','所选模型尚未开通首尾帧图片分析，未上传或扣费。');
       // prepare already transmits the signed image intent to the server, so
       // explicit user upload consent must occur before that first request.
@@ -866,7 +873,7 @@
       if(!current()||pricing?.ok!==true||!/^sha256:[a-f0-9]{64}$/.test(policy?.version||'')||!Number.isFinite(policy.expiresAt)||Date.now()>=policy.expiresAt||
         terms?.operation_audio_rewrite_v3!==true||!operationCreditPolicy(terms)||!Array.isArray(policy.models)||!policy.models.some(m=>m.id===selected.modelId&&m.available===true)||
         !rates||!rateValid(rates.input)||!rateValid(rates.output)||(selected.modelId==='xai/grok-4.7'?!rateValid(rates.cached_input):!rateValid(rates.cached))||
-        (selected.modelId==='deepseek/deepseek-v4.1-flash'&&(rates.input<=0||rates.output<=0||terms.operation_text_chat_v3!==true)))
+        (flatRateOnlineModel(selected.modelId)&&(rates.input<=0||rates.output<=0||terms.operation_text_chat_v3!==true)))
         return no('online-business-unavailable','所选模型的文字改写尚未开放或价格不可用，未提交。');
       const intent={mode:'audio-rewrite',requestId:id,kind:payload.kind,input:payload.input,seconds:payload.seconds,...(payload.bpm!==undefined?{bpm:payload.bpm}:{}),...(payload.requirements!==undefined?{requirements:payload.requirements}:{})};
       const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
@@ -904,7 +911,7 @@
       return no('online-business-unavailable','当前仅支持纯文字生图提示词优化，未提交或扣费。');
     if(payload.currentDrawingVisionOnly!==undefined&&(payload.currentDrawingVisionOnly!==true||!visionOnly||payload.currentDrawingTextOnly!==undefined||payload.assistantSelectionScope!=='xiaotao'||!['txt2img','img2img'].includes(payload.qwenPromptMode)||!Array.isArray(payload.images)||payload.images.length<1||payload.images.length>3))return no('online-business-unavailable','当前图片提示词优化尚未开通，未上传或扣费。');
     if((typeof XIAOTAO_ONLINE_ART_RELEASE_ENABLED==='undefined'||!XIAOTAO_ONLINE_ART_RELEASE_ENABLED)&&!textOnly&&!visionOnly)return no('online-business-unavailable','\u5728\u7ebf\u7f8e\u5de5\u5c1a\u672a\u5f00\u901a\uff0c\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
-    if(!['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'].includes(selected.modelId) || action!=='optimize-prompt' || payload.surface!=='art')return no('assistant-business-model-unavailable','\u6240\u9009\u6a21\u578b\u5c1a\u672a\u63a5\u901a\u6b64\u4e1a\u52a1\uff0c\u672a\u5207\u6362\u6216\u6263\u8d39\u3002');
+    if(!onlineOperationModel(selected.modelId) || action!=='optimize-prompt' || payload.surface!=='art')return no('assistant-business-model-unavailable','\u6240\u9009\u6a21\u578b\u5c1a\u672a\u63a5\u901a\u6b64\u4e1a\u52a1\uff0c\u672a\u5207\u6362\u6216\u6263\u8d39\u3002');
     if((payload.assistantProvider!==undefined&&payload.assistantProvider!==selected.provider)||(payload.assistantModelId!==undefined&&payload.assistantModelId!==selected.modelId))return no('assistant-selection-mismatch','\u6a21\u578b\u9009\u62e9\u5df2\u53d8\u5316\u3002');
     if(typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof controller?.subscribeBusinessModel!=='function')return no('assistant-business-quote-unavailable','\u62a5\u4ef7\u6216\u6a21\u578b\u72b6\u6001\u4e0d\u53ef\u7528\uff0c\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
     return selectedOnlineArtBusiness(payload,selected,controller);
@@ -957,7 +964,7 @@
     }
     if(images.length>3||imageBytes>20*1024*1024)return no('invalid-request','最多支持三张参考图且总计不超过 20 MiB，未提交或扣费。');
     if(images.length&&(typeof payload.confirmImageUpload!=='function'||typeof payload.isImageInputCurrent!=='function'))return no('assistant-business-consent-unavailable','参考图片上传确认或当前选择校验不可用，未提交或扣费。');
-    if(images.length&&selected.modelId==='deepseek/deepseek-v4.1-flash'&&payload.currentDrawingVisionOnly!==true)return no('model-vision-unavailable','当前模型尚未确认支持参考图片，请选择支持图片的模型；未上传或扣费。');
+    if(images.length&&flatRateOnlineModel(selected.modelId)&&payload.currentDrawingVisionOnly!==true)return no('model-vision-unavailable','当前模型尚未确认支持参考图片，请选择支持图片的模型；未上传或扣费。');
     Object.freeze(images);
     const abort=new AbortController();let cancelled=false,submitted=false,lastQuota=null,stageToken='',pendingId='',accountOwner=null,recoveryId='',operationTerms=null;
     const current=()=>{const x=controller.businessModelSnapshot();return !cancelled&&!payload.signal?.aborted&&
@@ -1842,7 +1849,6 @@
   // server policy. Session handles are opaque, in-memory and account-bound;
   // neither tickets nor project snapshots are written to browser storage.
   const foartOperationSessions = new WeakMap();
-  const foartOperationModels = new Set(['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver']);
   // Staged candidate only: a separate release gate must explicitly enable it.
   function foartOperationCopy(value) {
     const json=JSON.stringify(value);
@@ -1922,7 +1928,7 @@
     if(typeof guard!=='function'||!guard()||!accountOwner?.current?.())return {ok:false,providerSubmitted:false,errorCode:'assistant-selection-unavailable',error:'登录会话不可用，操作未提交。'};
     let request,record,providerSubmitted=false,session;
     try {
-      if(!foartOperationModels.has(payload.modelId)||(payload.mode!==undefined&&payload.mode!=='foart')||(payload.provider!==undefined&&payload.provider!=='api')||
+      if(!isXiaotaoOnlineModel(payload.modelId)||(payload.mode!==undefined&&payload.mode!=='foart')||(payload.provider!==undefined&&payload.provider!=='api')||
         (payload.expectedModelId!==undefined&&payload.expectedModelId!==payload.modelId)||
         ['images','uploads','attachments','files'].some(key=>payload[key]!=null&&(!Array.isArray(payload[key])||payload[key].length>0))||
         (payload.artContext!=null&&(typeof payload.artContext!=='object'||Array.isArray(payload.artContext)||Object.keys(payload.artContext).length>0))||

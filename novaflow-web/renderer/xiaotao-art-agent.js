@@ -1,19 +1,23 @@
 (function (root) {
   'use strict';
+  // BEGIN GENERATED xiaotao-online-models (run tools/sync-xiaotao-online-models.mjs)
+  const XIAOTAO_ONLINE_MODELS = Object.freeze([{"id":"deepseek/deepseek-v4.1-flash","label":"DeepSeek V4.1 Flash","flatRate":true,"vision":true},{"id":"qwen/qwen3.8-flash-next","label":"千问 Qwen3.8 Flash","flatRate":true,"vision":true},{"id":"glm/glm-5.3-flash","label":"智谱 GLM-5.3 Flash","flatRate":true,"vision":true},{"id":"xai/grok-4.7","label":"Grok 4.7","flatRate":false,"vision":true},{"id":"openai/gpt-6.1-sol-saver","label":"GPT-6.1 Sol Saver","flatRate":false,"vision":true}].map(model => Object.freeze(model)));
+  const XIAOTAO_ONLINE_MODEL_IDS = Object.freeze(XIAOTAO_ONLINE_MODELS.map(model => model.id));
+  const isXiaotaoOnlineModel = id => XIAOTAO_ONLINE_MODEL_IDS.includes(id);
+  const isXiaotaoFlatRateModel = id => XIAOTAO_ONLINE_MODELS.some(model => model.id === id && model.flatRate);
+  // END GENERATED xiaotao-online-models
   // Retain retired identifiers only for history and billing notices.
   const CHAT_MODELS = Object.freeze({
     next: {label:'此前模型已移除', provider:'local', retired:true, available:false, detail:'此前选择的模型已移除，旧对话仅供查看；请主动选择其他模型，未提交、不扣积分'},
     // Keep the retired identifier solely to preserve existing conversations.
     'gemma-4-12b-it': {label:'此前模型已移除', provider:'local', retired:true, available:false, detail:'此前选择的模型已从列表移除，请主动选择其他模型；未提交，不扣积分'},
     'qwen3.5-9b-heretic': {label:'Qwen3.5 9B（本地·免费）· Ultra Heretic', provider:'local', available:false, detail:'支持对话和提示词优化。操作软件请切换在线模型。'},
-    'deepseek/deepseek-v4.1-flash': {label:'DeepSeek V4.1 Flash', provider:'api', available:false, detail:'在线收费 · 峰闲价格规则待确认，暂未开通；未提交，不扣积分'},
-    'glm/glm-5.3-flash': {label:'GLM-5.3 Flash（已移除）', provider:'api', retired:true, available:false, detail:'GLM 已移除，旧对话仅供查看；请主动选择其他模型，未提交、不扣积分'},
-    'xai/grok-4.7': {label:'Grok 4.7', provider:'api', available:true, detail:'在线收费 · 发送前显示预估积分，按实际用量结算；音视频直接分析尚未接入'},
-    'openai/gpt-6.1-sol-saver': {label:'GPT-6.1 Sol Saver', provider:'api', available:false, detail:'在线收费 · 线路或积分价格尚未开通验证，不能发送'},
+    // Online brains come from the one shared list; they differ only by model id.
+    ...Object.fromEntries(XIAOTAO_ONLINE_MODELS.map(model=>[model.id,{label:model.label, provider:'api', available:model.id==='xai/grok-4.7', detail:'在线收费 · 线路或积分价格尚未开通验证，不能发送；未提交，不扣积分'}])),
     'legacy-online': {label:'原在线智能（旧记录）', provider:'api', retired:true, available:false, detail:'原在线线路已合并为 Grok 4.7；旧对话仅供查看，请主动选择模型，未提交、不扣积分'}
   });
   function selectedModelPayload(id) {
-    return ['gemma-4-12b-it','qwen3.5-9b-heretic','deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver'].includes(id) ? {modelId:id} : {};
+    return id==='gemma-4-12b-it' || id==='qwen3.5-9b-heretic' || isXiaotaoOnlineModel(id) ? {modelId:id} : {};
   }
   const LOCAL_CHAT_ONLY_NOTICE = '本地模型只支持对话和提示词优化，不能操作软件。需要操作时请切换到在线模型。';
   // Availability starts false; the server checks the selected node and owner.
@@ -816,16 +820,16 @@
       const policy=currentPricingPolicy();
       if(!policy)return false;
       const selected=id;
-      if(!['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver'].includes(selected))return false;
+      if(!isXiaotaoOnlineModel(selected))return false;
       const online=policy.config?.xiaotao_online, rates=selected==='xai/grok-4.7' ? online?.grok_4_7_rates : online?.model_rates?.[selected];
       if(hasDecimalCreditsFields(online) && !decimalCreditsPolicy(online) || online?.billing_scope==='operation' && !operationCreditsPolicy(online))return false;
-      if(selected==='deepseek/deepseek-v4.1-flash'&&requireAvailable&&(!operationCreditsPolicy(online)||online?.operation_text_chat_v3!==true))return false;
+      if(isXiaotaoFlatRateModel(selected)&&requireAvailable&&(!operationCreditsPolicy(online)||online?.operation_text_chat_v3!==true))return false;
       const tokenBilling=policy.config?.token_billing;
       const valid=value=>typeof value==='number' && Number.isFinite(value) && value>=0;
       if(!online || !(Number(policy.config.credits_per_usd)>0) || !(Number(online.markup)>0) || !Number.isSafeInteger(online.message_cap_credits) || online.message_cap_credits<1 || !tokenBilling || !['ceil','floor','round'].includes(tokenBilling.round) || !Number.isSafeInteger(tokenBilling.min_credits_per_image) || tokenBilling.min_credits_per_image<0 || !rates || !valid(rates.input) || !valid(rates.output))return false;
       if(selected==='xai/grok-4.7' && (!valid(rates.cached_input) || !valid(rates.high_input) || !valid(rates.high_output) || !valid(rates.high_cached_input) || !Number.isSafeInteger(rates.high_input_threshold)))return false;
       if(selected!=='xai/grok-4.7' && !valid(rates.cached))return false;
-      if(selected==='deepseek/deepseek-v4.1-flash'&&(rates.input<=0||rates.output<=0))return false;
+      if(isXiaotaoFlatRateModel(selected)&&(rates.input<=0||rates.output<=0))return false;
       if(selected==='openai/gpt-6.1-sol-saver' && (!valid(rates.highInput) || !valid(rates.highOutput) || !Number.isSafeInteger(rates.highAbove)))return false;
       return policy.models.some(item=>item?.id===id && (!requireAvailable || item.available===true));
     }
@@ -2591,11 +2595,11 @@
     modelTrigger.append(triggerName,triggerNote);
     modelMenu.id='nf-xiaotao-model-listbox';modelMenu.setAttribute('role','listbox');modelMenu.setAttribute('aria-label','小桃AI模型');modelMenu.hidden=true;modelBackdrop.hidden=true;modelBackdrop.setAttribute('aria-hidden','true');
     const modelOptions=new Map(),modelButtons=new Map(),modelParts=new Map(),modelIds=[];let onlinePricingGroup=null;
-    for (const [label, ids] of [['免费 · 本地', ['qwen3.5-9b-heretic']], ['收费 · 在线', ['deepseek/deepseek-v4.1-flash','xai/grok-4.7','openai/gpt-6.1-sol-saver']]]) {
+    for (const [label, ids] of [['免费 · 本地', ['qwen3.5-9b-heretic']], ['收费 · 在线', XIAOTAO_ONLINE_MODEL_IDS]]) {
       const group=el('optgroup'); group.label=label;
       const menuGroup=el('div','nf-xiaotao-model-group');menuGroup.setAttribute('role','group');menuGroup.setAttribute('aria-label',label);
       const groupTitle=el('div','nf-xiaotao-model-group-label',label);groupTitle.setAttribute('aria-hidden','true');menuGroup.append(groupTitle);
-      if(ids[0]==='deepseek/deepseek-v4.1-flash')onlinePricingGroup={group,menuGroup,groupTitle};
+      if(ids===XIAOTAO_ONLINE_MODEL_IDS)onlinePricingGroup={group,menuGroup,groupTitle};
       for (const id of ids) {const model=CHAT_MODELS[id], option=el('option','',model.label + (model.available ? '' : ' · 未开通')); option.value=id;modelOptions.set(id,option);group.append(option);
         const item=el('button','nf-xiaotao-model-option'),name=el('span','nf-xiaotao-model-name',model.label),note=el('span','nf-xiaotao-model-note');item.append(name,note);item.type='button';item.tabIndex=-1;item.id='nf-xiaotao-model-option-'+modelIds.length;item.setAttribute('role','option');item.setAttribute('data-model-id',id);item.setAttribute('aria-selected','false');modelIds.push(id);modelButtons.set(id,item);modelParts.set(id,{name,note});menuGroup.append(item);}
       modelSelect.append(group);

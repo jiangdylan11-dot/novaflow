@@ -3,9 +3,10 @@
 // pricing version from trusted server state. No production route uses this.
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {Buffer} from 'node:buffer';
+import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const DOMAIN='nf.xiaotao.operation.v3';
-const ALLOWED_MODELS=new Set(['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash']);
+const ALLOWED_MODELS=new Set(XIAOTAO_ONLINE_MODEL_IDS);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH=/^[a-f0-9]{64}$/i;
 const POLICY=/^sha256:[a-f0-9]{64}$/i;

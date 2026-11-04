@@ -6,10 +6,11 @@ import {createTrustedArtPhases} from '../_art-shared/companion-art-business.mjs'
 import {createXiaotaoV3FoartPlanner} from '../_art-shared/xiaotao-operation-v3-foart-planner.mjs';
 import {createXiaotaoV3FoartJournal} from '../_art-shared/xiaotao-operation-v3-foart-journal.mjs';
 import {createXiaotaoOperationV3Ports} from '../_art-shared/xiaotao-operation-v3-ports.mjs';
+import {XIAOTAO_ONLINE_MODEL_IDS} from '../_art-shared/xiaotao-online-models.mjs';
 
 const prohibited=()=>{throw Object.assign(new Error('recovery path cannot dispatch'),{code:'recovery-dispatch-forbidden',statusCode:503});};
 const bad=()=>{throw Object.assign(new Error('operation status unavailable'),{code:'operation-status-unknown',statusCode:503});};
-const models=['xai/grok-4.7','openai/gpt-6.1-sol-saver','deepseek/deepseek-v4.1-flash'];
+const models=XIAOTAO_ONLINE_MODEL_IDS;
 
 export function createRecoveryOnly({secret,rpc}={}){
   if(!Buffer.isBuffer(secret)||secret.length<32||typeof rpc!=='function')bad();
