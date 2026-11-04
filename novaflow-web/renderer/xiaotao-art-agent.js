@@ -1798,9 +1798,14 @@
       if(explicitDrawingGeneration){const info=activePromptSource();if(!info||info.surface!=='drawing'||!info.pagePrompt.trim()){
         state.error='请先在绘图页面填写当前提示词；本次未提交或扣费。';state.status='未提交';notify();return false;}}
       const reverseImage=state.provider==='api'&&imageReverseRequest(message);
-      // 本地大脑看不到图片：不让它假装没收到图，直接说明并建议切换在线模型。
+      // 本地反推读上传的图，没有上传就读绘图参考区的图；节点不能读图时才建议切换在线模型。
       if(state.provider==='local'&&imageReverseRequest(message)){
-        if(api()?.qwenBusinessImageAvailableSync?.()===true&&state.staged.length===1&&state.staged[0]?.kind==='image')return analyzeStagedImage('reverse');
+        if(api()?.qwenBusinessImageAvailableSync?.()===true){
+          if(state.staged.length===1&&state.staged[0]?.kind==='image')return analyzeStagedImage('reverse');
+          const pictures=state.staged.length?[]:(await bridge.captureChat({includeDrawingReferences:true}))?.images||[];
+          const wanted=pictures[Number(/参考图\s*(\d)/.exec(message)?.[1]||1)-1]||pictures[0];
+          if(wanted?.dataUrl)return analyzeStagedImage('reverse',wanted);
+        }
         const reply='本地模型看不到图片，没法反推。请在上方切换到在线模型（例如 DeepSeek V4.1 Flash），再发一次“反推一下图片”，在线模型会读取图片写出提示词。';
         if(recordMessage)pushUser(message);state.messages.push({role:'assistant',content:reply});state.error='';state.status='本地模型不读取图片，未执行。';notify();return true;
       }
@@ -2493,19 +2498,19 @@
     }
     // Explicit user actions over one staged image. They never change the work
     // or silently substitute a paid/other model.
-    async function analyzeStagedImage(kind) {
+    async function analyzeStagedImage(kind,pagePicture=null) {
       if (!['reverse','style'].includes(kind) || state.pending || state.generating || state.applying || state.uploading || state.staging) return false;
       if (!(await refreshQwenBusinessBeforeUse())) {state.error='本地图片分析节点尚未就绪，未提交请求。';notify();return false;}
       if (state.provider!=='local' || state.modelId!=='qwen3.5-9b-heretic') {state.error='此操作暂只支持本地 Qwen 免费模型；未切换模型或扣费。';notify();return false;}
       if (api()?.qwenBusinessImageAvailableSync?.()!==true) {state.error='当前 Qwen 业务试用仅支持文字，图片反推和画风分析尚未开放；本次未提交。';notify();return false;}
-      if (state.staged.length!==1 || state.staged[0]?.status!=='ready' || state.staged[0]?.kind!=='image' || !/^data:image\/(?:png|jpeg|webp);base64,/i.test(state.staged[0]?.previewUrl || '')) {
+      if (!pagePicture && (state.staged.length!==1 || state.staged[0]?.status!=='ready' || state.staged[0]?.kind!=='image' || !/^data:image\/(?:png|jpeg|webp);base64,/i.test(state.staged[0]?.previewUrl || ''))) {
         state.error='请先上传一张要分析的图片；不会自动读取其他图片。';notify();return false;
       }
-      const item=state.staged[0], image={name:item.name || 'image.png',dataUrl:item.previewUrl}, selected=businessModelSnapshot();
+      const item=state.staged[0], image=pagePicture?{name:pagePicture.name || 'image.png',dataUrl:pagePicture.dataUrl}:{name:item.name || 'image.png',dataUrl:item.previewUrl}, selected=businessModelSnapshot();
       const method=kind==='reverse' ? api()?.promptAssistantReverseImagePrompt : api()?.promptAssistantDescribeArtStyle;
       if(typeof method!=='function'){state.error='图片分析功能尚未接通，未提交请求。';notify();return false;}
       const requestId=root.crypto.randomUUID(), abort=new AbortController();promptAbort=abort;state.pending=true;state.error='';state.status='正在用本地免费模型分析上传图片。';
-      state.messages.push({role:'user',content:kind==='reverse'?'请反推这张上传图片的提示词。':'请分析这张上传图片的画风。'});notify();
+      state.messages.push({role:'user',content:pagePicture?'请反推参考区这张图片的提示词。':kind==='reverse'?'请反推这张上传图片的提示词。':'请分析这张上传图片的画风。'});notify();
       const cancel=()=>{void Promise.resolve(api()?.promptAssistantCancelRequest?.({requestId})).catch(()=>{});};abort.signal.addEventListener('abort',cancel,{once:true});
       try {
         const payload=kind==='reverse' ? {requestId,assistantSelectionScope:'xiaotao',images:[image],requirements:'描述图片内容，整理为提示词。'} : {requestId,assistantSelectionScope:'xiaotao',...image};
