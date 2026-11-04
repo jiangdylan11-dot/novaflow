@@ -558,7 +558,8 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       }
       if(scopedVision){
         const subjects=images.filter(image=>image.role==='subject').length,styles=images.filter(image=>image.role==='style').length;
-        if(styles>0&&(styles!==1||subjects!==1))fail('请明确指定一张主体图和一张风格图，未提交或扣费。');
+        // 风格参考可以有多张，一起作为画风来源；有风格参考时仍要一张明确的主体。
+        if(styles>0&&subjects!==1)fail('有风格参考时请明确指定一张主体图，未提交或扣费。');
         if(op.generationMode==='img2img'&&subjects!==1)fail('请明确指定一张主体图，未提交或扣费。');
       }
       onStatus('正在按所选模型优化提示词。');
