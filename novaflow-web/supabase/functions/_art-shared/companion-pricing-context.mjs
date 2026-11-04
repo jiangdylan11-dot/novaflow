@@ -4,7 +4,7 @@ import {companionPricingPolicy,companionProviderRevision} from './companion-pric
 import {createOnlineAiCharge} from './online-ai-charge.mjs';
 import {createXiaotaoV2CreditPorts} from './xiaotao-v2-credit-ports.mjs';
 import {createCompanionArtBusiness} from './companion-art-business.mjs';
-import {XIAOTAO_FLAT_RATE_MODEL_IDS} from './xiaotao-online-models.mjs';
+import {XIAOTAO_FLAT_RATE_MODEL_IDS,isXiaotaoFlatRateModel} from './xiaotao-online-models.mjs';
 
 // A malformed server overlay must not silently become a chargeable default.
 // Preserve the signal without throwing here: recovery-only paths must stay usable.
@@ -98,7 +98,7 @@ export async function createCompanionPricingContext({provider,dbSnapshot,envOnli
   const dbOnline=raw.xiaotao_online && typeof raw.xiaotao_online==='object' && !Array.isArray(raw.xiaotao_online) ? raw.xiaotao_online : {};
   // Existing authorization for extra routes remains explicit in companion env;
   // public/account DB settings alone do not grant a model route.
-  const enabledModels=envOnline === undefined ? ['openai/gpt-6.1-sol-saver', ...(operationRequired ? XIAOTAO_FLAT_RATE_MODEL_IDS : [])] : Array.isArray(overlay.enabled_models) ? overlay.enabled_models : [];
+  const enabledModels=envOnline === undefined ? ['openai/gpt-6.1-sol-saver', ...(operationRequired ? XIAOTAO_FLAT_RATE_MODEL_IDS : [])] : Array.isArray(overlay.enabled_models) ? overlay.enabled_models.some(isXiaotaoFlatRateModel) ? [...new Set([...overlay.enabled_models,...XIAOTAO_FLAT_RATE_MODEL_IDS])] : overlay.enabled_models : [];
   const online={...dbOnline,...overlay,message_cap_credits:cap,enabled_models:enabledModels};
   const creditConfig={...raw,xiaotao_online:online};
   validateEffectiveOnlinePrices(raw,online);
