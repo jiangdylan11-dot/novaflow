@@ -28,7 +28,7 @@ function harness(initial={}){
     liveRates:{current:async()=>null},createCompanionPricingContext:async opts=>{events.push('pricing-context');return {pricing:async()=>opts};},
     createRecoveryOnly:()=>({artCancel:async()=>{events.push('recover-art');return {ok:true};},
       foartCancel:async()=>{events.push('recover-foart');return {ok:true};}}),
-    createControlPlane:({companion})=>companion};
+    createControlPlane:({companion})=>companion,XIAOTAO_VISION_MODEL_IDS:['vision/a']};
   vm.createContext(sandbox);vm.runInContext(script,sandbox);
   return {envs,events,assemblies,make:()=>sandbox.make()};
 }

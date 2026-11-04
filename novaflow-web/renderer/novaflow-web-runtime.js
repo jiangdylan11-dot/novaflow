@@ -379,6 +379,16 @@
   // local model or a paid provider when the selection is unavailable.
   async function selectedBusinessPrompt(action, payload = {}) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {ok:false,errorCode:'invalid-request',error:'请求格式不正确。'};
+    // 'aifx-material': the 特效 material reader keeps its own model choice (same list as 小桃)
+    // and may only read a reference picture online. Everything else follows 小桃's choice.
+    if (payload.assistantSelectionScope === 'aifx-material') {
+      const owner = root.FoartAifxMaterialModel, read = owner?.businessModelSnapshot;
+      const selected = typeof read === 'function' ? read() : null;
+      if (action !== 'describe-art-style' || payload.purpose !== 'aifx-material' || selected?.provider !== 'api' || typeof selected.modelId !== 'string' || !Number.isSafeInteger(selected.epoch))
+        return {ok:false,errorCode:'invalid-request',error:'材质识别请求无效，本次未提交。'};
+      if (payload.assistantSelectionEpoch !== selected.epoch) return {ok:false,errorCode:'assistant-selection-mismatch',error:'模型选择已变化，请重新识别。'};
+      return selectedOnlineStyleAnalysis(payload,selected,owner);
+    }
     if (Object.hasOwn(payload,'assistantSelectionScope') && payload.assistantSelectionScope !== 'xiaotao') return {ok:false,errorCode:'invalid-request',error:'模型选择范围无效，本次未提交。'};
     const scoped = payload.assistantSelectionScope === 'xiaotao' || Object.hasOwn(payload,'assistantProvider') || Object.hasOwn(payload,'assistantModelId') || Object.hasOwn(payload,'assistantSelectionEpoch');
     if (!scoped) return localPromptAssistant(action,payload);
@@ -782,7 +792,8 @@
     let submitted=false,settled=false;
     const no=(errorCode,error,extra={})=>({ok:false,errorCode,error,providerSubmitted:submitted,...(submitted&&!settled?{billingUnknown:true}:{}),...extra});
     const keys=['requestId','name','purpose','dataUrl','supplement','assistantSelectionScope','assistantProvider','assistantModelId','assistantSelectionEpoch','signal','onPricingQuote','confirmPricingQuote','onBillingNotice','confirmImageUpload','isInputCurrent'];
-    if(Object.keys(payload).some(k=>!keys.includes(k))||payload.assistantSelectionScope!=='xiaotao'||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
+    const scope=payload.assistantSelectionScope,selectionOwner=()=>scope==='aifx-material'?root.FoartAifxMaterialModel:root.NovaFlowXiaotaoArtAgent?.panel?.controller;
+    if(Object.keys(payload).some(k=>!keys.includes(k))||!(scope==='xiaotao'||(scope==='aifx-material'&&payload.purpose==='aifx-material'))||payload.assistantProvider!==selected.provider||payload.assistantModelId!==selected.modelId||payload.assistantSelectionEpoch!==selected.epoch||
        typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof payload.isInputCurrent!=='function'||typeof controller?.subscribeBusinessModel!=='function')
       return no('style-analysis-unavailable','风格分析确认或状态检查不可用，未提交。');
     const id=payload.requestId,kind=payload.purpose||'style',hasImage=kind!=='aifx-supplement',combined=kind==='aifx-material-supplement';
@@ -796,7 +807,7 @@
     const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
     if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录状态不可用，未提交。');
     const abort=new AbortController();let cancelled=false;
-    const current=()=>{try{const x=controller.businessModelSnapshot();return !cancelled&&!abort.signal.aborted&&!payload.signal?.aborted&&owner.current()&&guard()&&payload.isInputCurrent()===true&&root.NovaFlowXiaotaoArtAgent?.panel?.controller===controller&&x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch;}catch{return false;}};
+    const current=()=>{try{const x=controller.businessModelSnapshot();return !cancelled&&!abort.signal.aborted&&!payload.signal?.aborted&&owner.current()&&guard()&&payload.isInputCurrent()===true&&selectionOwner()===controller&&x?.provider===selected.provider&&x?.modelId===selected.modelId&&x?.epoch===selected.epoch;}catch{return false;}};
     const onChange=()=>{cancelled=true;abort.abort();};
     const unsubscribe=controller.subscribeBusinessModel(onChange);if(typeof unsubscribe!=='function')return no('assistant-selection-unavailable','模型状态不可用，未提交。');
     foartSessionObservers.add(onChange);payload.signal?.addEventListener?.('abort',onChange,{once:true});
