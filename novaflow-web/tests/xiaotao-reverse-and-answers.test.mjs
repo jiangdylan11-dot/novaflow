@@ -169,12 +169,11 @@ test('with no prompt node a hand-edited draft goes to the cheapest online model,
   assert.equal(await c.translateH3Online('翻译这段'),'A cat walks.');
   assert.equal(chats[0].modelId,MODEL);assert.equal(chats[0].expectedModelId,MODEL);assert.equal(chats[0].operationBillingV3,true);assert.equal(chats[0].history.length,0);
 });
-test('local reverse reads the drawing reference when nothing is attached',async()=>{
-  const f=await fixture({refs:refs()});const sent=[];
-  Object.assign(f.api,{promptAssistantGetStatus:async()=>({ok:true,result:{features:{qwen35CpuTrial:true}}}),qwenBusinessAvailableSync:()=>true,qwenBusinessImageAvailableSync:()=>true,
-    promptAssistantReverseImagePrompt:async p=>{sent.push(p);return {ok:true,prompt:'a red cat',analysisBackend:'qwen-cpu',modelIdentity:{id:'qwen35-heretic',verification:'server-model-id'},resourcesReleased:true,generationReady:true};}});
+test('local reverse goes down the prompt path when the reference area has a picture',async()=>{
+  const f=await fixture({refs:refs()});
+  f.root.__NovaFlowArtGenerate.references=()=>refs();
+  Object.assign(f.api,{promptAssistantGetStatus:async()=>({ok:true,result:{features:{qwen35CpuTrial:true}}}),qwenBusinessAvailableSync:()=>true});
   await f.c.calibrateLocalStatus();assert.equal(f.c.setModel('qwen3.5-9b-heretic'),true);
-  await f.c.send('反推参考图2');
-  assert.equal(sent.length,1,f.c.state.error);assert.equal(sent[0].images[0].dataUrl,png('b'));
-  assert.match(f.c.state.messages.at(-1).content,/a red cat/);
+  await f.c.send('反推');
+  assert.doesNotMatch(f.c.state.messages.map(m=>m.content).join('\n'),/本地模型看不到图片/);
 });
