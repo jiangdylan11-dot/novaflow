@@ -1211,7 +1211,20 @@
     return true
   }
 
+  // A draft from the shared framework already carries its official English; Generate sends that
+  // instead of translating again, so the result never depends on a free prompt node.
+  const draftModelText = new Map()
+  const draftKey = (mode, prompt) => normalizeMode(mode || 'multi_reference') + '\n' + stringValue(prompt).trim()
+  function rememberDraft({ mode, prompt, modelText } = {}) {
+    if (!stringValue(prompt).trim() || !stringValue(modelText).trim()) return false
+    draftModelText.set(draftKey(mode, prompt), stringValue(modelText))
+    while (draftModelText.size > 20) draftModelText.delete(draftModelText.keys().next().value)
+    return true
+  }
+  const hasDraft = (mode, prompt) => draftModelText.has(draftKey(mode, prompt))
   async function compileForGeneration(options, optimize) {
+    const drafted = draftModelText.get(draftKey(options?.mode, options?.prompt))
+    if (drafted) return deepFreeze({ text: stringValue(options.prompt).trim(), modelText: drafted, referenceEditPolicy: null })
     try {
       const result = await compileOfficialForGeneration(options, optimize)
       assertExplicitReferences(options, result.modelText)
@@ -1258,6 +1271,8 @@
 
   const API = {
     compileForGeneration,
+    rememberDraft,
+    hasDraft,
     assertExplicitReferences,
     SNAPSHOT_VERSION,
     MINIMAX_H3_MODEL_ID,

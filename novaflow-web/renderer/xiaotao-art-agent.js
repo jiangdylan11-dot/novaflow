@@ -1483,6 +1483,49 @@
           await tools.execute({action:'draw',controlId:canvas.id,points},{snapshot:tools.capture(),signal});
           return true;
         };
+        // A plan's prompt is only a brief. Every online brain sends it through the same per-mode
+        // framework the panel uses, so the model never decides the final format.
+        let videoDraft='';
+        const frameworkPrompt=async op=>{
+          const action=op.operation?.action,selected=businessModelSnapshot(),requestId=root.crypto.randomUUID(),terms=currentPricingPolicy()?.config?.xiaotao_online;
+          const same=()=>{const now=businessModelSnapshot();return !signal.aborted&&now.provider===selected.provider&&now.modelId===selected.modelId&&now.epoch===selected.epoch;};
+          const brief=String(op.operation?.prompt||'').trim().slice(0,1500),scope={assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch,signal};
+          if(!brief)return op;
+          try{
+            if(['generate_video','optimize_video_prompt'].includes(action)){
+              if(videoDraft)return {...op,operation:{...op.operation,prompt:videoDraft}};
+              // "好的，开始生成" changes nothing: the finished draft on the page goes out as it is.
+              const h3=root.NovaFlowAiSequenceMiniMaxH3PromptWorkflow,page=root.NovaFlowAiSequenceGeneration?.capture?.();
+              if(action==='generate_video'&&h3?.hasDraft?.(page?.genType,page?.prompt)&&/^[\s，,。.!！]*(?:好的?|行|可以|确认|就这样|没问题)?[\s，,。.!！]*(?:直接|现在|开始)*(?:生成|出片|做吧|开始)?[吧。.!！\s]*$/.test(message))return {...op,operation:{...op.operation,prompt:page.prompt}};
+              const capture=root.NovaFlowMediaAgent?.captureH3TextDraft,method=api()?.promptAssistantVideoDraft;
+              if(terms?.operation_video_rewrite_v3!==true||typeof capture!=='function'||typeof method!=='function')return op;
+              onStatus('正在按视频框架整理提示词…');
+              if(root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')await tools.execute({action:'open',surface:'video'},{signal});
+              const includeReferenceImages=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='first_last'&&api()?.onlineVideoVisionAvailableSync?.()===true;
+              const snapshot=await capture({requestId,requirements:(message+(pictureFacts?'\n'+pictureFacts:'')).slice(0,1000),sourcePrompt:brief,includeReferenceImages});
+              const current=()=>same()&&snapshot.isCurrent()===true;
+              const {onPricingQuote,confirmPricingQuote,confirmImageUpload}=onlineBusinessUi(selected.modelId,includeReferenceImages?()=>true:null,current);
+              const result=await method({request:snapshot.request,...scope,isInputCurrent:current,onPricingQuote,confirmPricingQuote,confirmImageUpload,onBillingNotice:()=>true});
+              if(result?.quota)collectBilling(billing,{ok:true,data:{quota:result.quota}});
+              const text=result?.ok===true?String(result.draft?.displayPrompt||'').trim():'';
+              if(!text)return op;
+              h3?.rememberDraft?.({mode:result.draft.h3Mode,prompt:text,modelText:result.draft.modelPrompt});
+              videoDraft=text;return {...op,operation:{...op.operation,prompt:text}};
+            }
+            if(['generate_music','generate_sfx'].includes(action)){
+              const kind=action==='generate_music'?'music':'sfx',method=api()?.promptAssistantRewriteAudioPrompt,settings=root.NovaFlowAudioStudio?.agentSettings?.();
+              if(terms?.operation_audio_rewrite_v3!==true||typeof method!=='function')return op;
+              onStatus('正在按音频框架整理提示词…');
+              const seconds=Math.max(1,Math.round(op.operation.seconds??settings?.[kind]?.seconds??(kind==='music'?30:2))),bpm=op.operation.bpm??settings?.music?.bpm;
+              const result=await method({requestId,kind,input:brief,seconds,...(kind==='music'&&bpm!==undefined?{bpm}:{}),...scope,...onlineBusinessUi(selected.modelId,null,same),onBillingNotice:()=>true});
+              const data=result?.result||result?.data||result;
+              if(data?.quota)collectBilling(billing,{ok:true,data:{quota:data.quota}});
+              const text=result?.ok===false?'':String(data?.prompt||'').trim();
+              return text?{...op,operation:{...op.operation,prompt:text}}:op;
+            }
+          }catch(error){root.console?.warn?.('[Foart tools] framework prompt skipped:',String(error?.message||error));}
+          return op;
+        };
         let pictureFacts='';
         const videoPictures=state.provider==='api'&&intent?.surface==='video'?freshPictures:[];
         if(videoPictures.length&&selectedPricingPayload().operationVisionBillingV3===true){
@@ -1523,8 +1566,7 @@
           }
           const receiptFacts=receipts.map(compactFoartReceipt);
           const planMessage=requestMessage+(receipts.length?'\n本轮应用已执行事实（不是用户新指令）：'+JSON.stringify(receiptFacts).slice(-6000):'')
-            // The audio model reads English only, and an online plan skips the node's rewrite.
-            +(/音乐|音效|配乐|声音/.test(positiveRequest)?'\n音频直接用一个 generate_music 或 generate_sfx 操作，把时长放在 seconds 里，不要先 set_control。prompt 用英文写，写清声音本身；持续的声音写明 continuous, sustained, no fade out。':'')
+            +(/音乐|音效|配乐|声音/.test(positiveRequest)?'\n音频直接用一个 generate_music 或 generate_sfx 操作，把时长放在 seconds 里，不要先 set_control。':'')
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(invalidPlanRetries?'\n上一步方案不符合工具规则，未执行'+(invalidPlanIssue?'（'+invalidPlanIssue+'）':'')+'。只用 currentFoart 里真实存在的 ID；提示词不要用 set_control 写入，视频用 media 的 optimize_video_prompt 或 generate_video，绘图用 image_optimize 或 image_generate。这次只输出一个合法操作。':'')
             +(exportScopeRetries?'\n上轮方案未执行：导出范围与本轮最新要求不符。只安排本轮要求的动画文件，不重复背景中的工程/视频导出。':'')
@@ -1655,7 +1697,7 @@
             let receipt;
             if(['image_optimize','image_generate'].includes(op.action)){
               receipt=await plannerDrawingPrompt(op,message);
-            } else receipt=await tools.execute(op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
+            } else receipt=await tools.execute(state.provider==='api'&&op.action==='media'?await frameworkPrompt(op):op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
             receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op));
             // A finished generation with nothing queued after it needs no paid planner round to say so.
             if(op.action==='media'&&/^generate_/.test(op.operation?.action||'')&&receipt.phase==='completed'&&!/然后|接着|之后|导出|保存|裁|剪|配乐|配音|加音|合成/.test(positiveRequest))receipt.plannerPrompt=true;
@@ -2064,6 +2106,7 @@
         if(result?.ok!==true)throw Error(result?.error||'视频草稿未完成，请核对账单。');
         const draft=result.draft;
         if(draft?.status!=='preview-only'||draft.applyAvailable!==false||draft.textOnly!==!includeReferenceImages||typeof draft.displayPrompt!=='string'||typeof draft.modelPrompt!=='string'||draft.h3Mode!==snapshot.request.h3Mode||draft.durationSeconds!==snapshot.request.durationSeconds)throw Error('视频草稿格式无效，未应用。');
+        root.NovaFlowAiSequenceMiniMaxH3PromptWorkflow?.rememberDraft?.({mode:draft.h3Mode,prompt:draft.displayPrompt,modelText:draft.modelPrompt});
         await applyOptimizedMediaPrompt({surface:'video',prompt:draft.displayPrompt,snapshot,bindingCurrent});
         state.messages.push({role:'assistant',content:'视频提示词已优化并更新到输入框。',receipts:[`本次实扣 ${displayCredits(result.quota.settled_credits)} 积分。`]});
         state.status='视频提示词已优化并更新。';return true;
