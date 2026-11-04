@@ -3432,7 +3432,8 @@
 
   function selectedImageProbeType() {
     const state=root.__NovaFlowArtGenerate?.state;
-    if(!state?.active || state.provider!=='local')return 'qwen_t2i';
+    if(!state?.active)return state?.localQwen21Variant==='turbo' ? 'qwen21-turbo' : 'qwen21-standard';
+    if(state.provider!=='local')return 'qwen_t2i';
     let engine='';
     try {engine=root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider,state.mode,state)?.engine || state.localDrawEngine || '';} catch {return 'qwen_t2i';}
     if(engine!=='qwen-2.1')return 'qwen_t2i';
