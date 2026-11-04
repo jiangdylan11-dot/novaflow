@@ -125,6 +125,18 @@
   }
   // One resolver for every path that serializes or sends a reference. The slot
   // may keep a blob: URL for display; File does not survive JSON.stringify.
+  // The image goes out twice (prepare + execute); a full-size PNG can use up the whole
+  // request window. The model reads a 1024 px JPEG just as well.
+  async function chatVisionDataUrl(dataUrl) {
+    const doc=root.document;if(!doc||typeof root.Image!=='function'||!/^data:image\//.test(dataUrl||''))return dataUrl;
+    try {
+      const image=new root.Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=dataUrl;});
+      const scale=Math.min(1,1024/Math.max(image.naturalWidth,image.naturalHeight)),canvas=doc.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+      const context=canvas.getContext('2d');context.fillStyle='#808080';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);
+      const next=canvas.toDataURL('image/jpeg',.85);return next.length<dataUrl.length?next:dataUrl;
+    } catch {return dataUrl;}
+  }
   async function resolveReferenceDataUrl(ref) {
     const current = String(ref?.dataUrl || '');
     if (/^data:[^;,]+;base64,/i.test(current)) {
@@ -891,7 +903,13 @@
       })();
       return pricingRequest;
     }
-    function prefetchPricingPolicy(){if(!currentPricingPolicy()&&typeof api()?.companionPricing==='function')void refreshPricingPolicy();}
+    // A quote lives 60 s. Renew it just before it lapses so Send is never left disabled.
+    let lastPricingPrefetch=0;
+    function prefetchPricingPolicy(){
+      const policy=currentPricingPolicy();
+      if((policy&&policy.expiresAt-Date.now()>8000)||Date.now()-lastPricingPrefetch<5000||typeof api()?.companionPricing!=='function')return;
+      lastPricingPrefetch=Date.now();void refreshPricingPolicy();
+    }
     function selectedPricingPayload() {
       const policy=currentPricingPolicy();
       if(state.provider!=='api' || !policy || !policyAllowsOnline(state.modelId))return {};
@@ -1539,7 +1557,8 @@
           state.model=data.model||state.model;
           if(plan.status!=='act'){
             const actual=summarize(receipts),done=receipts.some(r=>r.phase==='completed');
-            if(plan.status==='done'&&!actual)fail('尚无实际工具回执，不能报告制作完成');
+            // Attachment placement runs before planning, so "already in place" is a fair answer; only a claimed output needs a receipt.
+            if(plan.status==='done'&&!actual&&/生成(?:好了|完成|成功)|(?:已经|已)(?:生成|制作完成|完成制作|导出)|制作(?:好了|完成|成功)|导出(?:好了|完成|成功)/.test(plan.reply))fail('尚无实际工具回执，不能报告制作完成');
             if(plan.status==='done'&&tools.capture().pending?.state==='running')fail('原生制作任务仍在运行，尚不能报告完成');
             if(plan.status==='done'&&receipts.some(r=>r.action==='particle'&&r.phase==='opened')&&!receipts.some(r=>r.outputs?.length))fail('粒子导出仅打开了参数，尚未返回实际文件，未报告导出完成');
             if(plan.status==='done'&&receipts.some(r=>r.action==='image_optimize'&&r.phase==='opened')&&!receipts.some(r=>r.nativePromptApplied))fail('优化入口仅已打开，结果尚未应用，未报告优化完成');
@@ -1813,6 +1832,7 @@
           if(!picked.length||picked.includes(undefined))fail('没有找到要反推的图片，请先放入图片；未提交，不扣积分');
           images.splice(0,images.length,...picked);
         }
+        if(operationVision)for(const image of images)image.dataUrl=await chatVisionDataUrl(image.dataUrl);
         const uploadOwner=operationVision&&images.length?api()?.captureFoartBillingOwner?.():null;
         const uploadModel=state.modelId;
         const uploadCurrent=()=>operation===serial&&!stopped&&state.provider==='api'&&state.modelId===uploadModel&&typeof uploadOwner?.current==='function'&&uploadOwner.current()===true;
@@ -2745,7 +2765,7 @@
       if (drag.dragging() || robotDrag.dragging()) return;
       closeOnNavigation();
       controller.refreshContext(); if (!open) return;
-      const policyKey=controller.pricingPolicyKey();if(policyKey!==lastPricingKey){lastPricingKey=policyKey;render(controller.state);if(!policyKey)controller.prefetchPricingPolicy();}
+      const policyKey=controller.pricingPolicyKey();if(policyKey!==lastPricingKey){lastPricingKey=policyKey;render(controller.state);}if(controller.state.provider==='api')controller.prefetchPricingPolicy();
       if(root.NovaFlowAudioStudio?.isOpen?.()) {
         const media=root.NovaFlowMediaAgent?.capture?.().artContext;
         contextLabel.textContent='全局助手 · 调用美工、音视、特效、动画和工具';

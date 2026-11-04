@@ -131,6 +131,8 @@
   function question(text) {
     return /[?？]|吗[。！!]?\s*$/.test(text);
   }
+  // "放进参考图" names the drawing reference slot unless a video was named.
+  function drawingReferenceRequest(text){return /(?:放|加|添加|传|设|当|作为|用作|做).{0,8}参考/.test(text)&&!/视频|首帧|尾帧|多参/.test(text);}
   function namedDestinations(text) {
     const first = /首帧|第一帧|开始帧/.test(text);
     const last = /(?<!首)尾帧|最后一帧|结束帧|末帧/.test(text);
@@ -142,7 +144,7 @@
     else if (frames) hits.push('first_last_unspecified');
     if (/图生视频/.test(text)) hits.push('image_video');
     if (/多参/.test(text)) hits.push('multi_reference');
-    if (/图生图/.test(text)) hits.push('img2img');
+    if (/图生图/.test(text)||drawingReferenceRequest(text)) hits.push('img2img');
     return hits;
   }
   // Route from the requested deliverable, independently of the currently open page.
@@ -159,7 +161,7 @@
     const animationExport=/导出/.test(positive)&&(/骨骼动画|Spine|(?:当前|现有|这个|idle).{0,8}动画/i.test(positive)||previousSurface==='animation'&&!/美工|图层|画布|图片|UI设计|PNG压缩|JPG压缩|工具版块|音视|视频(?:版块|编辑|剪辑)|首尾帧|多参|图生视频|文生视频/.test(positive));
     const animationAuthoring=animationExport||/骨骼|蒙皮|权重|关键帧|\broot\b|(?:动画|Spine).{0,8}(?:工程|版块|模块)|Spine\s*编辑/i.test(positiveTaskText(text))&&!/视频|音视|音频|音效|首尾帧|图生|文生|多参/.test(positiveTaskText(text));
     const artTool=/美工|图层|画布扩展|姿势参考|智能补图|局部编辑|去背|UI设计/.test(positive)&&!/视频|音频|音效|音乐/.test(positive);
-    const imageEdit = artTool||/换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(positive);
+    const imageEdit = artTool||drawingReferenceRequest(positive)||/换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(positive);
     const video = /视频|动画|动效|动态|动起来|动一动|跑起来|转起来|循环动|首尾帧|首帧|尾帧|多参|镜头|剪辑|时间轴/.test(positive);
     const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(positive);
     let surface = imageEdit && !/视频|片段/.test(positive) ? 'image' : audio&&!/视频|动画|动效|动态|首尾帧|多参/.test(positive)?'audio':video ? 'video' : audio ? 'audio'
@@ -314,7 +316,9 @@
     return new Promise(resolve => {
       const raf = scope.requestAnimationFrame;
       if (typeof raf === 'function') {
+        // A hidden tab never fires animation frames; the placement must still finish.
         raf(() => resolve());
+        if (typeof yieldTimer === 'function') yieldTimer(resolve, 200);
         return;
       }
       if (typeof yieldTimer === 'function') yieldTimer(resolve, 0);

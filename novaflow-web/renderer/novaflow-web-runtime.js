@@ -1756,7 +1756,7 @@
         if(!safeImageCurrent()||controller.signal.aborted)throw Object.assign(Error('会话或参考素材已变，未上传图片。'),{code:'assistant-selection-changed'});
         if(accepted!==true)throw Object.assign(Error('已取消图片上传，未提交。'),{code:'assistant-business-upload-declined'});
       }
-      timer = setTimeout(() => controller.abort(), 60000);
+      timer = setTimeout(() => controller.abort(), guardedImages?150000:60000);
       const request = {
         requestId: id, mode: payload.mode, promptLanguage: payload.promptLanguage, message: payload.message,
         ...(payload.modelId != null ? {modelId: payload.modelId} : {}),
