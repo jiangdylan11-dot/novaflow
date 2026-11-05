@@ -1161,6 +1161,7 @@ def _prompt_assistant_runtime_process_alive(runtime_config: dict | None = None) 
     generated_candidates = [
         str(config.get("generatedPath") or "").strip(),
         str(os.environ.get("NOVAFLOW_AI_RUNTIME_GENERATED_DIR") or "").strip(),
+        str(Path(tempfile.gettempdir()) / "Foart" / "AI-Runtime" / "runtime-generated"),
         str(Path(tempfile.gettempdir()) / "NovaFlow" / "AI-Runtime" / "runtime-generated"),
     ]
     uncertain = False

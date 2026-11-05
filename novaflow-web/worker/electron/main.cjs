@@ -213,7 +213,7 @@ function showWindow() {
 function clearRunFiles() {
   // Trial tasks are isolated; shared runtime outputs belong to the stable assistant.
   if (IS_UI_TRIAL) return;
-  const comfy = process.env?.NOVAFLOW_AI_RUNTIME_GENERATED_DIR || path.join(app.getPath('temp'), 'NovaFlow', 'AI-Runtime', 'runtime-generated');
+  const comfy = process.env?.NOVAFLOW_AI_RUNTIME_GENERATED_DIR || path.join(app.getPath('temp'), 'Foart', 'AI-Runtime', 'runtime-generated');
   const warehouses = (readConfig().warehouseFolders || []).map(folder => path.resolve(folder));
   const within = (inner, outer) => { const rel = path.relative(outer, inner); return !rel.startsWith('..') && !path.isAbsolute(rel); };
   for (const dir of [path.join(DATA_DIR, 'tasks'), path.join(comfy, 'input'), path.join(comfy, 'output'), path.join(comfy, 'temp-root')]) {

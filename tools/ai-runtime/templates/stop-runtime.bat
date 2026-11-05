@@ -6,8 +6,8 @@ for %%I in ("%SCRIPT_DIR%..") do set "RUNTIME_DIR=%%~fI"
 set "RUNTIME_JSON=%RUNTIME_DIR%\runtime.json"
 set "COMFY_MAIN=%RUNTIME_DIR%\engine\ComfyUI\main.py"
 set "GENERATED_DIR=%NOVAFLOW_AI_RUNTIME_GENERATED_DIR%"
-if not defined GENERATED_DIR set "GENERATED_DIR=%TEMP%\NovaFlow\AI-Runtime\runtime-generated"
-if not defined GENERATED_DIR set "GENERATED_DIR=%TMP%\NovaFlow\AI-Runtime\runtime-generated"
+if not defined GENERATED_DIR set "GENERATED_DIR=%TEMP%\Foart\AI-Runtime\runtime-generated"
+if not defined GENERATED_DIR set "GENERATED_DIR=%TMP%\Foart\AI-Runtime\runtime-generated"
 set "PID_FILE=%GENERATED_DIR%\runtime.pid"
 
 if not exist "%RUNTIME_JSON%" (

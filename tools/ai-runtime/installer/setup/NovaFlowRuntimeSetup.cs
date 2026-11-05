@@ -339,6 +339,10 @@ namespace NovaFlow.AiRuntimeSetup
                 throw;
             }
             if (migration != null) migration.Finish();
+            // An old patch record under the former name; nothing reads it.
+            try { File.Delete(Path.Combine(Path.GetFullPath(request.RuntimePath), "novaflow-runtime-int8-tensorwise-v1.json")); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
 
         private static void InstallIntoRuntime(InstallRequest request, BackgroundWorker reporter)

@@ -160,7 +160,7 @@ $evidence = [ordered]@{
     }
   })
 }
-$evidencePath = Join-Path $RuntimeRoot "novaflow-runtime-int8-tensorwise-v1.json"
+$evidencePath = Join-Path $RuntimeRoot "foart-runtime-int8-tensorwise-v1.json"
 $evidenceJson = $evidence | ConvertTo-Json -Depth 8
 [System.IO.File]::WriteAllText($evidencePath, $evidenceJson + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
 

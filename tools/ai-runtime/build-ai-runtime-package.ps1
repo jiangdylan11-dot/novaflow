@@ -5,12 +5,12 @@ param(
   [string] $SourceStrataRoot,
   [string] $SourceQwenRunnerRoot,
   [ValidateSet('none','cpu')][string] $QwenRunnerProfile = 'none',
-  [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime")),
+  [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/Foart-AI-Runtime")),
   [string] $InstallPath = "C:\ProgramData\Foart\AI-Runtime",
   [string] $AssetsPath,
   [string] $ModelsPath,
   [string] $CustomNodesPath,
-  [string] $Version = "0.2.5",
+  [string] $Version = "0.5.0",
   [switch] $NoZip
 )
 
@@ -563,7 +563,7 @@ if ($qwenRunnerLayout) {
 
 # The two NovaFlow patches are pinned to ComfyUI 0.24.1 file hashes (and the INT8 one to
 # comfy-kitchen 0.2.11). ComfyUI 0.37 ships INT8 TensorWise itself and no longer has the lines the
-# price patch anchors on, so an engine from 0.37 on is packed as it is; its NOVAFLOW-ENGINE.json
+# price patch anchors on, so an engine from 0.37 on is packed as it is; its FOART-ENGINE.json
 # manifest (version, commit, pip changes) goes into the package with it.
 $comfyVersion = Get-ComfyVersion $SourceComfyRoot
 if ($comfyVersion -and $comfyVersion -ge [version] "0.37.0") {
@@ -584,9 +584,10 @@ if ($comfyVersion -and $comfyVersion -ge [version] "0.37.0") {
   Write-Host "Applying verified INT8 TensorWise Runtime patch..."
   & $int8RuntimePatcher -RuntimeRoot $runtimePackageRoot -PythonExecutable (Join-Path $pythonDest "python.exe")
 }
-$engineManifest = Join-Path (Split-Path -Parent $SourceComfyRoot) "NOVAFLOW-ENGINE.json"
+$engineManifest = Join-Path (Split-Path -Parent $SourceComfyRoot) "FOART-ENGINE.json"
+if (-not (Test-Path -LiteralPath $engineManifest -PathType Leaf)) { $engineManifest = Join-Path (Split-Path -Parent $SourceComfyRoot) "NOVAFLOW-ENGINE.json" }
 if (Test-Path -LiteralPath $engineManifest -PathType Leaf) {
-  Copy-Item -LiteralPath $engineManifest -Destination (Join-Path $engineRoot "NOVAFLOW-ENGINE.json") -Force
+  Copy-Item -LiteralPath $engineManifest -Destination (Join-Path $engineRoot "FOART-ENGINE.json") -Force
 }
 
 $tokens = @{

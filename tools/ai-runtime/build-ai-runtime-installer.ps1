@@ -2,17 +2,17 @@
 param(
   [string] $RuntimeSourcePath = "",
   [string] $OutputRoot = "",
-  [string] $Version = "0.4.0",
+  [string] $Version = "0.5.0",
   [string] $CustomNodesSource = "",
   [string] $QwenComponentSourcePath = ""
 )
 
 $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($RuntimeSourcePath)) {
-  $RuntimeSourcePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime/package/AI-Runtime"))
+  $RuntimeSourcePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/Foart-AI-Runtime/package/AI-Runtime"))
 }
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
-  $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime-Installer"))
+  $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/Foart-AI-Runtime-Installer"))
 }
 trap {
   Write-Host $_.Exception.Message

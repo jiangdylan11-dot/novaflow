@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync,mkdirSync,writeFileSync,rmSync,existsSync } from 'node:fs';
 import { join,resolve } from 'node:path';
+import {foartRuntimeRoot} from '../../worker/src/runtime-location.mjs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { resolveQwenManagedRuntime } from '../../worker/src/qwen-managed-runtime.mjs';
@@ -11,7 +12,7 @@ import { qwenCpuFileStamp } from '../../worker/src/qwen-cpu-verification.mjs';
 // This read-only fixture uses the user's already-downloaded, verified official
 // runner if present. It copies only 42 MB of CPU files to its own temp folder;
 // it never runs a model, installs a package, or changes the source runtime.
-const source='E:/Foart/runtimes/ollama-v0.40.13';
+const source=join(foartRuntimeRoot(),'engine','llama','ollama-v0.40.13');
 const available=process.platform==='win32' && existsSync(join(source,'lib/ollama/llama-server.exe'));
 test('official CPU component stages, resolves and rejects injected files in both verifiers', {skip:!available},()=>{
   const root=mkdtempSync(join(tmpdir(),'foart-qwen-managed-'));

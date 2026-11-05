@@ -89,7 +89,7 @@ test('known staged Runtime applies once, verifies exact hashes, and remains idem
   const runtimeRoot = createFixtureRuntime()
   const first = runPatcher(runtimeRoot)
   assert.equal(first.status, 0, output(first))
-  const evidencePath = path.join(runtimeRoot, 'novaflow-runtime-int8-tensorwise-v1.json')
+  const evidencePath = path.join(runtimeRoot, 'foart-runtime-int8-tensorwise-v1.json')
   assert.equal(fs.existsSync(evidencePath), true)
   const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'))
   assert.equal(evidence.patchId, 'comfy-int8-tensorwise-v1')
@@ -116,7 +116,7 @@ test('unknown drift and the installed ProgramData Runtime fail closed', () => {
   }
 })
 
-test('both Runtime builders apply the INT8 patch and publish version 0.2.5', () => {
+test('both Runtime builders apply the INT8 patch and publish version 0.5.0', () => {
   const packageSource = fs.readFileSync(packageScriptPath, 'utf8')
   const installerSource = fs.readFileSync(installerScriptPath, 'utf8')
   for (const source of [packageSource, installerSource]) {

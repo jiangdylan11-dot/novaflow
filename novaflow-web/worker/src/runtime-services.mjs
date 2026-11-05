@@ -85,7 +85,7 @@ export function createRuntimeServices({
   const entries = [home('image', assertLocalOnly(imageUrl), roots.image || foartRuntimeRoot())];
   // Only a node that points video at a runtime of its own still has a second one to start.
   if (video !== imageUrl) entries.push(home('video', assertLocalOnly(video), roots.video || foartRuntimeRoot('AI-Runtime-H3')));
-  const shadowBase = join(stateFile ? dirname(stateFile) : join(tmpdir(), 'NovaFlow'), 'runtime-alt');
+  const shadowBase = join(stateFile ? dirname(stateFile) : join(tmpdir(), 'Foart'), 'runtime-alt');
   const owned = new Set();
   const borrowed = new Set();
   const portOf = entry => new URL(entry.url).port;
