@@ -87,7 +87,7 @@
     const generate=/做|生成|制作|重做/.test(message);
     const feedback=intent.revision && /不符合|不满意|需要|性格|凶悍|呲牙|龇牙|更.{0,8}(?:点|一些|一点)/.test(message);
     if(!promptEdit && !generate && !feedback)return null;
-    const onlyPrompt=promptEdit && !/并生成|重新生成|重新做|重做|直接生成|开始生成|再生成/.test(message);
+    const onlyPrompt=promptEdit && root.NovaFlowXiaotaoUpload?.videoRequestKind?.(message)!=='generate';
     const reuse=/^(?:请)?(?:按|用)(?:刚才|刚刚|上次|已经)?优化后的提示词(?:重新|再)?(?:做|生成|制作)(?:一次)?(?:视频|动画)?[。！!]*$/.test(message.trim());
     return {planId:root.crypto.randomUUID(),contextFingerprint,operations:[{action:onlyPrompt?'optimize_video_prompt':'generate_video',target:'video',
       prompt:generation.prompt || message,...(intent.seconds!==undefined?{seconds:intent.seconds}:{}),loop:!!intent.loop}],reuseOptimizedPrompt:reuse};

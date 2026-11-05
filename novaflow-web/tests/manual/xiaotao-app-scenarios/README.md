@@ -18,6 +18,7 @@ Foart tools, page capture, native fields, mode switches, uploads, receipts) is t
     SC=./scen-more.cjs node run.cjs     # 动画 / UI / 画布 / 粒子 / JPG
     SC=./scen-edit.cjs node run.cjs     # 抠图 / 扩图 / 拆图 / 角度 / 局部编辑 / 视频剪辑 / 音频编辑
     SC=./scen-rest.cjs node run.cjs     # 切开变速 / 帧编辑 / MP4 / 格式转换 / 去黑 / 姿势 / 万物迁移 / AI 特效 / 序列导出
+    SC=./scen-video-submit.cjs node run.cjs  # 附图的视频生成请求：图生视频 + 直接提交；"继续生成" 不重写提示词
     node run.cjs count3                 # one scenario by name
 
 FOART_URL overrides the page (default http://localhost:4893/editor.html); FOART_SHARED points at

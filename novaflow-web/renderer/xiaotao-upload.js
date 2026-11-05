@@ -149,6 +149,33 @@
   }
   // Route from the requested deliverable, independently of the currently open page.
   // Unassigned attachments remain conversation inputs; slot names are never a user decision.
+  const VIDEO_OUTPUT=/视频|动画|动效|动态|动起来|动一动|跑起来|转起来|循环动|首尾帧|首帧|尾帧|多参|镜头|剪辑|时间轴/;
+  // Making a video: a make-verb whose object is a video, not a video named as source material.
+  const MAKES_VIDEO=/(?:生成|制作|做)(?:一段|一个|一条|个|段|条)?[^，。；,;\n]{0,12}(?:视频|动画|动效|片子)(?![^，。；,;\n]*提示词)/;
+  // "特效" alone names the AI特效 panel unless the request makes a video: in
+  // "生成一段中奖动画，按 slot 特效表现" it describes that video, and the video gets the pictures.
+  function effectsPanelRequest(message){
+    const text=positiveTaskText(message);
+    return /AI\s*特效|特效(?:版块|板块|模块|面板)/i.test(text)||/特效/.test(text)&&!/粒子特效/.test(text)&&!MAKES_VIDEO.test(text);
+  }
+  // One reading of a video request for every brain and path: 'generate' submits a video,
+  // 'prompt' only writes the prompt box, '' is not about making a video.
+  const VIDEO_GO=new RegExp('(?:并|再|然后|接着|直接|开始|继续|马上|现在)(?:帮我|给我)?(?:生成|出片|制作|做)|重新(?:生成|做|制作)|重做|'+MAKES_VIDEO.source);
+  function latestRequest(message){return String(message||'').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1);}
+  function videoRequestKind(message){
+    const raw=latestRequest(message),text=positiveTaskText(raw);
+    if(effectsPanelRequest(raw))return '';
+    const forbids=/(?:不要|不用|不需要|不必|无需|别|先不|暂不)(?:再|实际|立即|直接|马上|自动|开始|继续|重新|帮我|给我|\s)*(?:生成|出片|制作)/.test(raw);
+    const promptWords=/提示词/.test(text);
+    if(forbids)return promptWords||VIDEO_OUTPUT.test(raw)?'prompt':'';
+    if(promptWords&&!VIDEO_GO.test(text))return /视频|首尾帧|多参|图生|文生|动画/.test(text)?'prompt':'';
+    return /生成|制作|做|出片|渲染/.test(text)&&(VIDEO_OUTPUT.test(text)||VIDEO_GO.test(text))?'generate':'';
+  }
+  // "然后继续帮我生成视频" adds nothing to the draft already on the page: that draft goes out as it is.
+  function bareGenerateCommand(message){
+    const text=latestRequest(message).replace(/然后|接着|继续|好的?|行|可以|确认|就这样|没问题|请|麻烦|帮我|给我|直接|现在|马上|开始|就|再|按(?:这个|刚才的?|当前的?|已写好的?|写好的?)?(?:提示词|稿子)?|用(?:这个|当前的?)?(?:提示词|稿子)|一下|生成|出片|做吧|制作|视频|动画|它|吧|啊|呀|[\s，,。.!！~]/g,'');
+    return !text&&/生成|出片|做|制作|开始/.test(latestRequest(message));
+  }
   function positiveTaskText(message){return String(message||'').replace(/(?:不要|不用|无需|不需要|(?<![分识区类告差鉴])别|先不|暂不|不(?:再|重新|额外)?(?:生成|生图|制作|导出|保存|新建|修改|改动|改变|合并|隐藏|删除|切换|引用|合成|重绘|执行|处理)|不AI改绘)[^，。；;！？!?\n]*/g,'');}
   // Words that ask to cut or retime an existing clip; these go to the 音视 edit resources, not a generation slot.
   const VIDEO_EDIT_WORDS='剪辑|裁切|裁剪|分割|截取|(?:只|仅)?保留(?:前|后|中间|最后)?.{0,4}\\d+(?:\\.\\d+)?\\s*(?:秒|s\\b)|剪(?:掉|成|短|一下)|截(?:成|短)|去掉(?:前|后|开头|结尾)|删掉(?:前|后|开头|结尾)|缩短|拼接|静音|变速|倍速|加速播放|慢放|倒放|镜像';
@@ -164,7 +191,7 @@
     const animationAuthoring=animationExport||/骨骼|蒙皮|权重|关键帧|\broot\b|(?:动画|Spine).{0,8}(?:工程|版块|模块)|Spine\s*编辑/i.test(positiveTaskText(text))&&!/视频|音视|音频|音效|首尾帧|图生|文生|多参/.test(positiveTaskText(text));
     const artTool=/美工|图层|画布扩展|姿势参考|智能补图|局部编辑|去背|UI设计/.test(positive)&&!/视频|音频|音效|音乐/.test(positive);
     const imageEdit = artTool||drawingReferenceRequest(positive)||/换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(positive);
-    const video = /视频|动画|动效|动态|动起来|动一动|跑起来|转起来|循环动|首尾帧|首帧|尾帧|多参|镜头|剪辑|时间轴/.test(positive);
+    const video = VIDEO_OUTPUT.test(positive);
     const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(positive);
     // Writing a video prompt without generating still uses the attached pictures.
     if(video&&/提示词/.test(text)&&!question(text)&&!/(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)/.test(text))discussion=false;
@@ -490,7 +517,7 @@
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, positiveTaskText, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, positiveTaskText, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

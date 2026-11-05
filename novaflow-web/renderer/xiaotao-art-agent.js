@@ -1147,7 +1147,7 @@
       const uploads = uploadApi(); if (!uploads) {state.error = '上传模块未加载'; notify(); return false;}
       const taskText=uploads.positiveTaskText?.(message)??message;
       const nativeArtRequest=/抠图|拆图|钢笔|放大|扩图|画布|去背|姿势参考|智能补图|局部编辑|蒙版|对象替换/.test(taskText)&&!/视频|音视|音频|音效|音乐/.test(taskText);
-      const productionRequest=nativeArtRequest||/压缩|去黑|图集|查看器|特效|粒子|模板|(?:转换|转为|转成).{0,8}(?:MP4|GIF|WEBM|MOV|AVI|MKV|格式)/i.test(taskText)||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
+      const productionRequest=nativeArtRequest||uploads.effectsPanelRequest?.(message)===true||/压缩|去黑|图集|查看器|粒子|模板|(?:转换|转为|转成).{0,8}(?:MP4|GIF|WEBM|MOV|AVI|MKV|格式)/i.test(taskText)||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
       const plan = productionRequest||!place?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask);
       const notes = []; let failed = plan.reject.length > 0;
       for (const item of plan.place) {
@@ -1474,7 +1474,7 @@
         // the unrelated editor that happened to be open before the user spoke.
         // Otherwise an art attachment can be offered to a skeleton file input.
         const uiRequest=/\bUI\b|UI设计|UI版块|界面设计/i.test(positiveRequest);
-        const specialized=/特效|粒子|压缩|去黑|图集|查看器|格式转换|模板制作|风格库/.test(positiveRequest);
+        const specialized=uploadApi()?.effectsPanelRequest?.(message)===true||/粒子|压缩|去黑|图集|查看器|格式转换|模板制作|风格库/.test(positiveRequest);
         const explicitTools=/(?:工具(?:版块|板块|模块)|(?:PNG|JPG|MP4)\s*压缩|PNG\s*去黑|视频格式转换|图集.{0,8}WebP|Spine\s*查看器)/i.test(positiveRequest);
         const explicitEffects=/AI\s*特效|特效(?:版块|板块|模块).{0,12}(?:材质|视频|风格)/i.test(positiveRequest);
         const explicitParticle=/粒子(?:特效|编辑|系统)|发射器|发射率/.test(positiveRequest);
@@ -1518,7 +1518,7 @@
               if(videoDraft)return {...op,operation:{...op.operation,prompt:videoDraft}};
               // "好的，开始生成" changes nothing: the finished draft on the page goes out as it is.
               const h3=root.NovaFlowAiSequenceMiniMaxH3PromptWorkflow,page=root.NovaFlowAiSequenceGeneration?.capture?.();
-              if(action==='generate_video'&&h3?.hasDraft?.(page?.genType,page?.prompt)&&/^[\s，,。.!！]*(?:好的?|行|可以|确认|就这样|没问题)?[\s，,。.!！]*(?:直接|现在|开始)*(?:生成|出片|做吧|开始)?[吧。.!！\s]*$/.test(message))return {...op,operation:{...op.operation,prompt:page.prompt}};
+              if(action==='generate_video'&&h3?.hasDraft?.(page?.genType,page?.prompt)&&uploadApi()?.bareGenerateCommand?.(message)===true)return {...op,operation:{...op.operation,prompt:page.prompt}};
               const capture=root.NovaFlowMediaAgent?.captureH3TextDraft,method=api()?.promptAssistantVideoDraft;
               if(terms?.operation_video_rewrite_v3!==true||typeof capture!=='function'||typeof method!=='function')return op;
               onStatus('正在按视频框架整理提示词…');
@@ -1650,6 +1650,8 @@
           let plan=contract.validateFoartPlan(data.toolPlan,snapshot);
           // A brain that answers a video prompt request in prose skips the H3 framework: send it through.
           if(plan.status!=='act'&&!receipts.length&&forbidsGeneration(message)&&/视频/.test(positiveRequest)&&/提示词/.test(message))plan={...plan,status:'act',reply:'已按视频框架写好提示词。',operations:[{action:'media',operation:{action:'optimize_video_prompt',target:'video',prompt:positiveRequest.slice(0,1500)}}]};
+          // "帮我生成…视频" writes the prompt AND submits; a brain that stops at the prompt step would leave the user waiting.
+          if(plan.status==='act'&&uploadApi()?.videoRequestKind?.(message)==='generate')plan={...plan,operations:plan.operations.map(op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?{...op,operation:{...op.operation,action:'generate_video'}}:op)};
           if(namedEnhancements.length===1&&plan.operations.some(op=>{const name=op.action==='art_action'?op.name:op.action==='activate_control'?Object.keys(enhancementNames).find(key=>snapshot.controls.find(control=>control.id===op.controlId)?.label===enhancementNames[key]):null;return name&&enhancementNames[name]&&name!==namedEnhancements[0];})){
             if(++artActionRetries>2)fail('方案仍未选择本次要求的'+enhancementNames[namedEnhancements[0]]+'，未执行其他增强功能');
             continue;
@@ -1766,7 +1768,7 @@
             } else receipt=await tools.execute(state.provider==='api'&&op.action==='media'?await frameworkPrompt(op):op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
             receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op));
             // A finished generation with nothing queued after it needs no paid planner round to say so.
-            if(op.action==='media'&&(/^generate_/.test(op.operation?.action||'')||op.operation?.action==='optimize_video_prompt'&&forbidsGeneration(message))&&receipt.phase==='completed'&&!/然后|接着|之后|导出|保存|裁|剪|配乐|配音|加音|合成/.test(positiveRequest))receipt.plannerPrompt=true;
+            if(op.action==='media'&&/^(?:generate_|optimize_video_prompt$)/.test(op.operation?.action||'')&&receipt.phase==='completed'&&!/然后|接着|之后|导出|保存|裁|剪|配乐|配音|加音|合成/.test(positiveRequest.replace(/^[\s，,。]*(?:然后|接着|之后)/,'')))receipt.plannerPrompt=true;
             if(receipt.phase==='review'&&receipt.optimization?.reviewRequired===true){
               if(typeof receipt.prompt!=='string'||typeof receipt.modelPrompt!=='string'||typeof receipt.reviewId!=='string'||!selectionStillCurrent())fail('优化草稿或模型状态无效，未应用。');
               pendingFoartImageReview={id:receipt.reviewId,selection:initialSelection};foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;
