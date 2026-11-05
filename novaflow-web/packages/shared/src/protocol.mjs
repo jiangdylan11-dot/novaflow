@@ -132,8 +132,6 @@ export const GRANT_DOWNLOAD_TTL_SECONDS = 3600; // 1 h result playback window
 // (spec 10).
 // ---------------------------------------------------------------------------
 export const TASK_TYPE = Object.freeze({
-  QWEN_T2I: 'qwen_t2i',
-  QWEN_EDIT: 'qwen2511_edit',
   H3_I2V: 'h3_i2v',
   // 音频: game background music (looped) and sound effects, text to audio.
   AUDIO_MUSIC: 'audio_music',
@@ -141,8 +139,6 @@ export const TASK_TYPE = Object.freeze({
 });
 
 export const TASK_TYPE_WORKFLOW = Object.freeze({
-  [TASK_TYPE.QWEN_T2I]: 'qwen_t2i.json',
-  [TASK_TYPE.QWEN_EDIT]: 'qwen2511_edit.json',
   [TASK_TYPE.H3_I2V]: 'h3_i2v.json',
   [TASK_TYPE.AUDIO_MUSIC]: 'audio_music.json',
   [TASK_TYPE.AUDIO_SFX]: 'audio_sfx.json'
@@ -200,8 +196,6 @@ export const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
 export const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
 
 export const TASK_TYPE_REQUIREMENTS = Object.freeze({
-  [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
-  [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED },
   // 音频 is light: the music model peaks under 7 GB, the effects model under 3 GB.
   [TASK_TYPE.AUDIO_MUSIC]: { modelId: AUDIO_MUSIC_MODEL_ID, minVramMb: 8000, kind: 'audio', label: '音乐', billing: BILLING.SELF_HOSTED },

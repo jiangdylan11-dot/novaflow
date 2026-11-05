@@ -673,8 +673,6 @@ const GRANT_DOWNLOAD_TTL_SECONDS = 3600; // 1 h result playback window
 // (spec 10).
 // ---------------------------------------------------------------------------
 const TASK_TYPE = Object.freeze({
-  QWEN_T2I: 'qwen_t2i',
-  QWEN_EDIT: 'qwen2511_edit',
   H3_I2V: 'h3_i2v',
   // 音频: game background music (looped) and sound effects, text to audio.
   AUDIO_MUSIC: 'audio_music',
@@ -682,8 +680,6 @@ const TASK_TYPE = Object.freeze({
 });
 
 const TASK_TYPE_WORKFLOW = Object.freeze({
-  [TASK_TYPE.QWEN_T2I]: 'qwen_t2i.json',
-  [TASK_TYPE.QWEN_EDIT]: 'qwen2511_edit.json',
   [TASK_TYPE.H3_I2V]: 'h3_i2v.json',
   [TASK_TYPE.AUDIO_MUSIC]: 'audio_music.json',
   [TASK_TYPE.AUDIO_SFX]: 'audio_sfx.json'
@@ -741,8 +737,6 @@ const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
 const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
 
 const TASK_TYPE_REQUIREMENTS = Object.freeze({
-  [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
-  [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED },
   // 音频 is light: the music model peaks under 7 GB, the effects model under 3 GB.
   [TASK_TYPE.AUDIO_MUSIC]: { modelId: AUDIO_MUSIC_MODEL_ID, minVramMb: 8000, kind: 'audio', label: '音乐', billing: BILLING.SELF_HOSTED },
@@ -912,15 +906,12 @@ function isSafeFilename(name) {
 
 // Base rates. Deliberately simple and auditable: a rate card, not a formula
 // nobody can reproduce by hand.
+const IMAGE_PRICE_KEY = 'image';
 const PRICE_TABLE = Object.freeze({
-  [TASK_TYPE.QWEN_T2I]: {
+  [IMAGE_PRICE_KEY]: {
     // per megapixel of output, per 20 sampling steps
     perMegapixelPer20Steps: 1.2,
     minimum: 0.6
-  },
-  [TASK_TYPE.QWEN_EDIT]: {
-    perMegapixelPer20Steps: 1.5,
-    minimum: 0.8
   },
   [TASK_TYPE.H3_I2V]: {
     // per second of generated video at 720p-equivalent
@@ -970,7 +961,7 @@ function priceFromRateCard(taskType, parameters = {}) {
   const type = String(taskType || '');
   const params = parameters && typeof parameters === 'object' ? parameters : {};
 
-  if (type === TASK_TYPE.QWEN_T2I || type === TASK_TYPE.QWEN_EDIT) {
+  if (type === IMAGE_PRICE_KEY) {
     const rate = PRICE_TABLE[type];
     const width = clampInt(params.width, 256, 4096, 1024);
     const height = clampInt(params.height, 256, 4096, 1024);
@@ -1032,13 +1023,15 @@ function estimateTask(taskType, parameters) {
 // `label` is what a user sees. `runtime` picks the ComfyUI instance. `price`
 // says how the cost is derived from the recorded options.
 
+// Every image run that names no other model runs on Turbo.
+const DEFAULT_IMAGE_MODEL_ID = 'qwen-image-2.1-turbo';
 const QWEN21_EDIT_LORA_CAPABILITY = 'qwen-image-2.1-turbo-edit-lora-v1';
 const QWEN21_EDIT_LORA_NAME = 'qwen/qwen2_1-femaledVaginus-nsfw-v1_3-fine_L22-31.safetensors';
 const QWEN21_UC_LORA_NAME = 'qwen/qwen-image-2.1-uncensored-lora.safetensors';
 
 const WORKFLOW_MODULES = Object.freeze({
   'novaflow-brand-runtime': {
-    label: '绘图', modelId: 'qwen-image-2511', minVramMb: 16000,
+    label: '绘图', modelId: DEFAULT_IMAGE_MODEL_ID, minVramMb: 16000,
     runtime: 'image', kind: 'image', price: 'image', positional: true,
     methods: ['buildArtGenerateRunWorkflow']
   },
@@ -1051,7 +1044,7 @@ const WORKFLOW_MODULES = Object.freeze({
   // node's catalogue when replayed.
   'spine-split-runtime': {
     label: '美工 · 补图 / 抠图 / 拆图 / 放大 / 扩图 / 迁移 / 角度 / 特效',
-    modelId: 'qwen-image-2511',
+    modelId: DEFAULT_IMAGE_MODEL_ID,
     minVramMb: 16000,
     runtime: 'image', kind: 'image', price: 'image',
     positional: true,
@@ -1065,7 +1058,7 @@ const WORKFLOW_MODULES = Object.freeze({
   // ---- 美工 -------------------------------------------------------------
   NovaFlowArtGenerateProviderWorkflow: {
     label: '绘图',
-    modelId: 'qwen-image-2511',
+    modelId: DEFAULT_IMAGE_MODEL_ID,
     minVramMb: 16000,
     runtime: 'image',
     kind: 'image',
@@ -1108,7 +1101,7 @@ const WORKFLOW_MODULES = Object.freeze({
   // ---- 拆图 / 抠图 ------------------------------------------------------
   NovaFlowSplitInpaintNsfwWorkflow: {
     label: '拆图 · 补全',
-    modelId: 'qwen-image-2511',
+    modelId: DEFAULT_IMAGE_MODEL_ID,
     minVramMb: 16000,
     runtime: 'image',
     kind: 'image',
@@ -1226,28 +1219,6 @@ function allWorkflowEntryMethods() {
 // presence and size and SAYS so, rather than implying it checked a hash.
 
 const MODEL_MANIFEST = Object.freeze([
-  {
-    model_id: 'qwen-image-2511',
-    display_name: 'Qwen Image (Rapid AIO)',
-    version: '2511.1',
-    runtime: 'image',
-    min_vram_mb: 16000,
-    compatible_workflows: ['qwen_t2i.json', 'qwen2511_edit.json'],
-    required_files: [
-      {
-        path: 'checkpoints/Qwen-Rapid-AIO-NSFW-v20.safetensors',
-        min_bytes: 4_000_000_000,
-        sha256: null
-      }
-    ],
-    download: {
-      // These weights are licensed per user, so this project does not
-      // redistribute them. The Model Manager imports them from an existing
-      // ComfyUI models folder or a URL the operator configures.
-      mode: 'import_or_configured_url',
-      hint: 'Point the worker at an existing ComfyUI models folder, or set a download URL in worker settings.'
-    }
-  },
   {
     model_id: 'minimax-h3',
     display_name: 'MiniMax H3 (image to video)',
@@ -1394,6 +1365,8 @@ const MODEL_MANIFEST = Object.freeze([
 ]);
 
 const QWEN21_MODEL_ID = 'qwen-image-2.1';
+// No node advertises these, so a task queued for one would wait forever.
+const RETIRED_MODEL_IDS = Object.freeze(['qwen-image-2511', 'prompt-assistant']);
 
 function findModel(modelId) {
   return MODEL_MANIFEST.find((m) => m.model_id === String(modelId || '')) || null;
@@ -1667,17 +1640,7 @@ function validateTaskParameters(taskType, raw) {
     return parameters;
   }
 
-  return {
-    prompt,
-    negative_prompt: negative,
-    seed,
-    width: clampInt(input.width, 256, 4096, 1024),
-    height: clampInt(input.height, 256, 4096, 1024),
-    steps: clampInt(input.steps, 1, 100, 20),
-    count: clampInt(input.count, 1, 10, 1),
-    cfg: Math.min(20, Math.max(0, Number(input.cfg) || 1.2)),
-    references: cleanRefs
-  };
+  throw bad('unsupported task type: ' + String(taskType));
 }
 
 
@@ -2838,7 +2801,7 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
         }
       }
       req = { modelId: workflowModelId(moduleName, parameters, method), minVramMb: entry.minVramMb, kind: entry.kind };
-      pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : 'qwen_t2i', pricingViewOf(parameters));
+      pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : IMAGE_PRICE_KEY, pricingViewOf(parameters));
       inputWorkflow = { module: moduleName, method };
     } else {
       if (!isKnownTaskType(taskType)) throw bad('unsupported task type: ' + taskType);
@@ -2853,6 +2816,9 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
         req = { ...req, modelId: parameters.assistant_tool_scope===QWEN_IMAGE_EDIT_SCOPE?QWEN_IMAGE_EDIT_CAPABILITY:QWEN_PLAN_CAPABILITY, minVramMb: 0 };
       pricing = priceTask(taskType, parameters);
     }
+
+    if (!req.modelId || RETIRED_MODEL_IDS.includes(req.modelId))
+      throw new HttpError(409, ERROR_CODE.NOT_FOUND, '所选模型已下线或不存在，任务未提交。');
 
     // A task that costs nothing is not gated on a balance. Reading credits at
     // all would only create a way for a zero-credit account to be refused work
@@ -3482,7 +3448,7 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
       ok: true,
       protocol: PROTOCOL_VERSION,
       taskTypes,
-      available_workers: Math.max(0, ...counts),
+      available_workers: Math.max(0, ...counts, qwen21, qwen21Turbo),
       features: { qwenImage21: qwen21 > 0, qwenImage21Workers: qwen21, qwenImage21Turbo: qwen21Turbo > 0, qwenImage21TurboWorkers: qwen21Turbo, qwen35CpuTrial: qwen35CpuTrial > 0, qwen35BusinessTrial: qwen35BusinessTrial > 0,qwen21NativeRewriteV3,
         qwen35FoartPlan:qwenPlanReady,qwen35FoartPlanOwnerBound:qwenPlanReady,
         qwen21LocalImageEdit:qwenImageEditReady,qwen21LocalImageEditOwnerLeaseBound:qwenImageEditReady,
@@ -3506,7 +3472,8 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
     if (kind === 'h3' && (!['t2v','i2v','fl2v','r2v'].includes(mode) || !Number.isInteger(steps) || steps < 1 || steps > 100)) throw bad('invalid LoRA context');
     // A 2.1 run takes the LoRAs every 2.1 node can load, checked against its own 2.1 model.
     const engine = kind === 'qwen' && query.engine === 'qwen-2.1' ? 'qwen-2.1' : '';
-    const modelId = kind === 'h3' ? 'minimax-h3' : engine ? (query.variant === 'turbo' ? 'qwen-image-2.1-turbo' : QWEN21_MODEL_ID) : 'qwen-image-2511';
+    if (kind === 'qwen' && !engine) throw bad('invalid LoRA context');
+    const modelId = kind === 'h3' ? 'minimax-h3' : query.variant === 'turbo' ? 'qwen-image-2.1-turbo' : QWEN21_MODEL_ID;
     const rows = await store.listCapableModelDetails(modelId, kind === 'h3' ? 15000 : 16000, HEARTBEAT_TIMEOUT_SECONDS, user.id, canUsePremiumNodes(user.plan), canUseSharedCompute(user.plan));
     let items;
     try { items = commonLoraCatalog(rows, { kind, mode, steps, engine, nsfw: query.nsfw === 'true' || query.nsfw === true }); }

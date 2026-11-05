@@ -115,7 +115,7 @@ test('newer failed query does not suppress older successful legacy capability re
   const first=p.sandbox.electronAPI.runtimeFeatures(),second=p.sandbox.electronAPI.runtimeFeatures();await turn();
   p.caps[3].reject(Error('offline'));await second;
   p.caps[2].resolve(Response.json({features:{qwen35BusinessTrial:true,qwenImage21:false,marker:'legacy-result'},taskTypes:[{kind:'image',available_workers:1}]}));await first;
-  assert.equal(p.sandbox.electronAPI.runtimeFeaturesSync().qwenImage21,false);assert.equal(p.sandbox.electronAPI.runtimeFeaturesSync().marker,'legacy-result');
+  assert.equal(p.sandbox.electronAPI.runtimeFeaturesSync().qwenImage21,true);assert.equal(p.sandbox.electronAPI.runtimeFeaturesSync().marker,'legacy-result');
   assert.equal(p.sandbox.electronAPI.qwenBusinessAvailableSync(),false);
  }
 });

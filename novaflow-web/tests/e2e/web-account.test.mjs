@@ -470,7 +470,8 @@ function loadAccount(sandbox) {
   await chargeSandbox.electronAPI.smartAiPromptOptimize({});
   const charged = events.filter((event) => event.type === 'novaflow:account-balance');
   check(charged.length, 1);
-  check(charged[0].detail.balance, 6);
+  // The answer may belong to an older session: the header reads the account again.
+  check(charged[0].detail.balance, undefined);
   check(charged[0].detail.source, 'charge');
   events.length = 0;
   await chargeSandbox.NovaFlowWebRuntime.control('GET', '/api/web/tasks/task-1');

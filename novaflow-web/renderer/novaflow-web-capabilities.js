@@ -205,7 +205,7 @@
     if (Date.now() - lastCaps.at < maxAgeMs) return lastCaps.count;
     try {
       const caps = await runtime.control('GET', '/api/web/capabilities');
-      lastCaps = { at: Date.now(), count: Number(caps.available_workers || 0), types: caps.taskTypes || [] };
+      lastCaps = { at: Date.now(), count: Number(caps.available_workers || 0), types: caps.taskTypes || [], features: caps.features || {} };
     } catch (_) {
       lastCaps = { at: Date.now(), count: 0, types: [] };
     }
@@ -229,8 +229,7 @@
       health: { ok: true },
       workers: online,
       source: 'web-compute-pool',
-      detail: online + ' 台算力可用；生图节点 ' + Number(lastCaps.types.find(t => t.task_type === 'qwen_t2i')?.available_workers || 0)
-        + '；本地分析节点 ' + Number(lastCaps.types.find(t => t.task_type === 'prompt_assistant')?.available_workers || 0)
+      detail: online + ' 台算力可用；生图节点 ' + Math.max(Number(lastCaps.features?.qwenImage21TurboWorkers || 0), Number(lastCaps.features?.qwenImage21Workers || 0))
     };
   };
 

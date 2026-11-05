@@ -100,7 +100,7 @@ try {
   check(status.ok === true && status.enabled === true && status.runtimeStatus === '模型可用', 'the NF4 cache folder alone makes the assistant available');
   equal(status.modelType, 'qwen3_vl_8b_abliterated_nf4', 'status names the Qwen3-VL model');
   check(status.cacheReady === true && status.cachePath === cacheDir && status.modelFolderReady === false, 'status names the cache it found and the raw folder it did not need');
-  equal(assistant.getState().models.find(m => m.model_id === PROMPT_ASSISTANT_MODEL_ID)?.status, 'ready', 'the node reports 提示词助手 ready from the cache alone');
+  equal(assistant.getState().models.find(m => m.model_id === PROMPT_ASSISTANT_MODEL_ID), undefined, 'the retired model is never advertised to the pool');
   check(!assistant.promptAssistant.running, 'the script is not started until asked');
 
   const optimize = await call('POST', '/local/prompt-assistant/optimize-prompt', { prompt: 'hello', surface: 'art', purpose: 'optimize', provider: 'gpt', requirements: 'more light' });
@@ -248,8 +248,7 @@ try {
     equal(disk.status, 'missing', layout.name + ': the production manifest no longer advertises NF4 weights');
     const node = createWorker({ dataDir: root, configPath: join(root, 'identity.json'), modelsRoot: models, tunnel: false, promptAssistant: local, logger: () => {} });
     const reported = (await node.reportModels()).find(m => m.model_id === PROMPT_ASSISTANT_MODEL_ID);
-    equal(reported.status, layout.enabled ? 'ready' : 'missing', layout.name + ': the node advertises 提示词助手 only when the assistant can run');
-    equal(reported.detail.prompt_assistant.enabled, layout.enabled, layout.name + ': the report says why');
+    equal(reported, undefined, layout.name + ': the retired model is never advertised to the pool');
   }
   check(!isReverseCacheDir(join(dataDir, 'layout-neither', 'models', 'prompt_assistant', 'cache', CACHE_DIR)), 'a missing cache folder is no cache');
   const partial = join(dataDir, 'partial-cache'); await writeCacheFolder(partial);

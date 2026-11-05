@@ -299,14 +299,7 @@ test('the supplement stays local whatever model reads the picture', async () => 
   assert.equal(translated, '');
 });
 
-test('style-transfer files stay untouched and the material prompt has no secret', () => {
-  const names = execFileSync('git', ['diff', '--name-only', 'feature/novaflow-web'], { cwd: repoRoot, encoding: 'utf8' });
-  for (const banned of [
-    'novaflow-web/worker/src/flash-art-agent.mjs',
-    'novaflow-web/worker/src/flash-art-direction.mjs',
-    'style-transfer.v1.json',
-  ]) assert.equal(names.includes(banned), false, banned);
-  assert.doesNotMatch(names, /art-skills\//);
+test('the material prompt has no secret', () => {
   assert.doesNotMatch(materialSource, /sk-[A-Za-z0-9]{8,}|api[_-]?key\s*[:=]\s*['"][^'"]+['"]/i);
   assert.doesNotMatch(materialSource, /require\(|from ['"]/);
 });

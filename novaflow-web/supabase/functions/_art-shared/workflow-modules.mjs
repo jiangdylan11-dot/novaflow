@@ -12,13 +12,15 @@
 // `label` is what a user sees. `runtime` picks the ComfyUI instance. `price`
 // says how the cost is derived from the recorded options.
 
+// Every image run that names no other model runs on Turbo.
+export const DEFAULT_IMAGE_MODEL_ID = 'qwen-image-2.1-turbo';
 export const QWEN21_EDIT_LORA_CAPABILITY = 'qwen-image-2.1-turbo-edit-lora-v1';
 export const QWEN21_EDIT_LORA_NAME = 'qwen/qwen2_1-femaledVaginus-nsfw-v1_3-fine_L22-31.safetensors';
 export const QWEN21_UC_LORA_NAME = 'qwen/qwen-image-2.1-uncensored-lora.safetensors';
 
 export const WORKFLOW_MODULES = Object.freeze({
   'novaflow-brand-runtime': {
-    label: '绘图', modelId: 'qwen-image-2511', minVramMb: 16000,
+    label: '绘图', modelId: DEFAULT_IMAGE_MODEL_ID, minVramMb: 16000,
     runtime: 'image', kind: 'image', price: 'image', positional: true,
     methods: ['buildArtGenerateRunWorkflow']
   },
@@ -31,7 +33,7 @@ export const WORKFLOW_MODULES = Object.freeze({
   // node's catalogue when replayed.
   'spine-split-runtime': {
     label: '美工 · 补图 / 抠图 / 拆图 / 放大 / 扩图 / 迁移 / 角度 / 特效',
-    modelId: 'qwen-image-2511',
+    modelId: DEFAULT_IMAGE_MODEL_ID,
     minVramMb: 16000,
     runtime: 'image', kind: 'image', price: 'image',
     positional: true,
@@ -45,7 +47,7 @@ export const WORKFLOW_MODULES = Object.freeze({
   // ---- 美工 -------------------------------------------------------------
   NovaFlowArtGenerateProviderWorkflow: {
     label: '绘图',
-    modelId: 'qwen-image-2511',
+    modelId: DEFAULT_IMAGE_MODEL_ID,
     minVramMb: 16000,
     runtime: 'image',
     kind: 'image',
@@ -88,7 +90,7 @@ export const WORKFLOW_MODULES = Object.freeze({
   // ---- 拆图 / 抠图 ------------------------------------------------------
   NovaFlowSplitInpaintNsfwWorkflow: {
     label: '拆图 · 补全',
-    modelId: 'qwen-image-2511',
+    modelId: DEFAULT_IMAGE_MODEL_ID,
     minVramMb: 16000,
     runtime: 'image',
     kind: 'image',

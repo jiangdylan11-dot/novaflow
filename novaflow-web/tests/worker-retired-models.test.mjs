@@ -25,13 +25,9 @@ test('retired Next is excluded from node inspection while Qwen 9B stays ready', 
   } finally { await worker.stop().catch(()=>{}); await rm(dir,{recursive:true,force:true}); }
 });
 
-test('retired Rapid AIO is rejected only for matching drawing or legacy edit graphs', () => {
+test('retired Rapid AIO is rejected only for matching drawing graphs', () => {
   const oldGraph={1:{class_type:'CheckpointLoaderSimple',inputs:{ckpt_name:'Qwen-Rapid-AIO-NSFW-v20.safetensors'}}};
   const normalGraph={1:{class_type:'UNETLoader',inputs:{unet_name:'qwen_image_2.1.safetensors'}}};
-  for(const task_type of ['qwen_t2i','qwen2511_edit']) {
-    assert.throws(()=>assertSupportedDrawingGraph(null,oldGraph,{task_type}),{errorCode:'retired-rapid-drawing'});
-    assert.doesNotThrow(()=>assertSupportedDrawingGraph(null,normalGraph,{task_type}));
-  }
   assert.throws(()=>assertSupportedDrawingGraph({module:'NovaFlowArtGenerateProviderWorkflow',method:'buildWorkflow'},oldGraph),{errorCode:'retired-rapid-drawing'});
   assert.doesNotThrow(()=>assertSupportedDrawingGraph({module:'NovaFlowArtGenerateProviderWorkflow',method:'buildWorkflow'},normalGraph));
   const mixedGraph={...normalGraph,2:{class_type:'CheckpointLoaderSimple',inputs:{ckpt_name:'Qwen-Rapid-AIO-NSFW-v20.safetensors'}}};

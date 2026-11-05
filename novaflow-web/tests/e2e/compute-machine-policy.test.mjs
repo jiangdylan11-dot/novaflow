@@ -35,14 +35,14 @@ test('machine policy controls private use, selected sharing, scheduling and revo
     assert.equal(relogin.status,200,JSON.stringify(relogin.body));
     assert.deepEqual(relogin.body.worker.policy,{pending_approval:false,enabled:true,owner_enabled:true,sharing_enabled:false,sharing_scope:'pool',allowed_user_ids:[]});
     const workerToken=reg.body.workerToken;
-    await call(ctx.url,'POST','/api/worker/models',{token:workerToken,body:{models:[{model_id:'qwen-image-2511',status:'ready'}]}});
+    await call(ctx.url,'POST','/api/worker/models',{token:workerToken,body:{models:[{model_id:'qwen-image-2.1-turbo',status:'ready'}]}});
     await call(ctx.url,'POST','/api/worker/heartbeat',{token:workerToken,body:{status:'idle'}});
     const nodes=async token => (await call(ctx.url,'GET','/api/web/nodes',{token})).body.nodes;
     assert.equal((await nodes(owner.session.token))[0].is_owner,true);
     assert.equal((await nodes(stranger.session.token)).length,0);
     assert.equal((await call(ctx.url,'GET','/api/web/capabilities')).body.available_workers,0);
     assert.equal((await call(ctx.url,'GET','/api/web/capabilities?worker='+id,{token:owner.session.token})).body.available_workers,1);
-    const body={task_type:'qwen_t2i',target_worker_id:id,parameters:{prompt:'test',width:512,height:512,count:1}};
+    const body={task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' },target_worker_id:id,parameters:{prompt:'test',width:512,height:512,count:1}};
     const create=async token => await call(ctx.url,'POST','/api/web/tasks',{token,body});
     const own=await create(owner.session.token);
     assert.equal(own.status,200,JSON.stringify(own.body));

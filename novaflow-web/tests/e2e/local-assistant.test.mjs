@@ -75,7 +75,7 @@ mock.method(childProcess, 'execFile', (file, args, ...rest) => {
 syncBuiltinESMExports();
 const webRoot = join(dataDir, 'web'); await mkdir(webRoot); await writeFile(join(webRoot, 'index.html'), '<html><head></head><body>NovaFlow</body></html>');
 const workflowDir = join(dataDir, 'workflows'); await mkdir(workflowDir);
-await writeFile(join(workflowDir, 'qwen_t2i.json'), JSON.stringify({ comfy: 'image', bindings: {}, graph: { '1': { class_type: 'Fixture', inputs: {} } } }));
+await writeFile(join(workflowDir, 'audio_sfx.json'), JSON.stringify({ comfy: 'image', bindings: {}, graph: { '1': { class_type: 'Fixture', inputs: {} } } }));
 const license = { state: async () => ({ status: licensed ? 'licensed' : 'locked', machineId: 'fixture' }),
   assertAllowed: async () => { if (!licensed) throw Object.assign(new Error('license rejected'), { status: 403 }); }, importLicense: async () => { throw new Error('fixture'); } };
 let serviceStarts = 0, cleanupRuns = 0, servicesStopped = true;
@@ -116,9 +116,9 @@ try {
   const html = await (await fetch(origin)).text();
   check(html.includes('localAssistant') && !html.includes(pairing), 'served page contains no pairing key');
   licensed = false;
-  check((await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i' })).status === 403, 'device license enforced in backend');
+  check((await call('POST', '/api/web/tasks', { task_type: 'audio_sfx' })).status === 403, 'device license enforced in backend');
   licensed = true;
-  const local = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
+  const local = (await call('POST', '/api/web/tasks', { task_type: 'audio_sfx', parameters: { prompt: 'x', reprompt: false } })).body.task;
   await wait(() => assistant.tasks.get(local.id).status === 'completed');
   check(upstreamCalls === 0, 'private generation never contacts cloud');
   {
@@ -140,14 +140,14 @@ try {
   rejectRegister = false;
 
   autoFinish = false;
-  const shared = { id: randomUUID(), task_type: 'qwen_t2i', parameters: {} };
+  const shared = { id: randomUUID(), task_type: 'audio_sfx', parameters: { prompt: 'x', reprompt: false } };
   remoteQueue.push(shared);
   await assistant.startSharing();
   await wait(() => assistant.getState().currentTaskId === shared.id && queued.length === 2);
   await assistant.stopSharing();
   check(!assistant.getState().draining && assistant.getState().localRunning, 'stop sharing cancels without closing local service');
   check(cancelled.has(queued[1]), 'running shared prompt interrupted immediately');
-  const later = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
+  const later = (await call('POST', '/api/web/tasks', { task_type: 'audio_sfx', parameters: { prompt: 'x', reprompt: false } })).body.task;
   check(queued.length === 2, 'private and shared never run concurrently');
   autoFinish = true;
   await wait(() => assistant.tasks.get(later.id).status === 'completed');
@@ -166,7 +166,7 @@ try {
   await assistant.startSharing();
   await wait(() => assistant.getState().currentTaskId === remote2.id && queued.length === 4);
   remoteQueue.push({ ...shared, id: randomUUID() });
-  const priority = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
+  const priority = (await call('POST', '/api/web/tasks', { task_type: 'audio_sfx', parameters: { prompt: 'x', reprompt: false } })).body.task;
   finished.add(queued[3]);
   await wait(() => assistant.getState().currentTaskId === priority.id && queued.length === 5);
   check(remoteQueue.length === 1, 'local waiting task takes priority over next shared job');
@@ -178,15 +178,15 @@ try {
   const sharedDownload = await fetch(assistant.worker.localEndpoint + '/gw/tasks/' + remote2.id + '/output/' + sharedFile, { headers: { 'x-novaflow-grant': finishedGrant } });
   check(Buffer.from(await sharedDownload.arrayBuffer()).equals(png), 'shared result remains downloadable after stopping sharing');
   autoFinish = false;
-  const cancel = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
+  const cancel = (await call('POST', '/api/web/tasks', { task_type: 'audio_sfx', parameters: { prompt: 'x', reprompt: false } })).body.task;
   await wait(() => assistant.tasks.get(cancel.id).prompt_id);
   check((await call('POST', '/api/web/tasks/' + cancel.id + '/cancel')).status === 200, 'running private task can be cancelled');
   await wait(() => !assistant.getState().currentTaskId);
   check(assistant.tasks.get(cancel.id).status === 'cancelled', 'worker completion/failure cannot overwrite cancellation');
 
-  const stopNow = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
+  const stopNow = (await call('POST', '/api/web/tasks', { task_type: 'audio_sfx', parameters: { prompt: 'x', reprompt: false } })).body.task;
   await wait(() => assistant.tasks.get(stopNow.id).prompt_id);
-  const stopQueued = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
+  const stopQueued = (await call('POST', '/api/web/tasks', { task_type: 'audio_sfx', parameters: { prompt: 'x', reprompt: false } })).body.task;
   await assistant.worker.stopLocal();
   check(cancelled.has(assistant.tasks.get(stopNow.id).prompt_id), 'local stop interrupts running prompt');
   check(assistant.tasks.get(stopNow.id).status === 'cancelled' && assistant.tasks.get(stopQueued.id).status === 'cancelled', 'local stop cancels active and queued work');
@@ -256,7 +256,7 @@ try {
     await moved.start();
     const movedPairing = new URL(moved.openUrl).hash.split('=')[1];
     const posted = await (await fetch(moved.getState().workbenchUrl + '/api/web/tasks', { method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-novaflow-local': movedPairing }, body: JSON.stringify({ task_type: 'qwen_t2i', parameters: {} }) })).json();
+      headers: { 'content-type': 'application/json', 'x-novaflow-local': movedPairing }, body: JSON.stringify({ task_type: 'audio_sfx', parameters: { prompt: 'x', reprompt: false } }) })).json();
     await wait(() => ['completed', 'failed'].includes(moved.tasks.get(posted.task.id).status));
     check(moved.tasks.get(posted.task.id).status === 'completed' && foreignPrompts === 0, 'a runtime moved to another port takes the tasks, not the ComfyUI on the configured one');
   } finally { await moved.stop(); foreign.closeAllConnections(); foreign.close(); }

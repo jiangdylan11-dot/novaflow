@@ -25,7 +25,7 @@ async function devLogin(email, balance) {
 }
 
 /** A worker that registers and heartbeats for real, but never runs ComfyUI. */
-async function fakeWorker({ ownerToken, name, vram = 32768, models = ['qwen-image-2511'] }) {
+async function fakeWorker({ ownerToken, name, vram = 32768, models = ['qwen-image-2.1-turbo'] }) {
   const workerId = uuid();
   const secret = generateWorkerSecret();
   const reg = await call(BASE, 'POST', '/api/worker/register', {
@@ -73,7 +73,7 @@ const owner = await devLogin('multi@novaflow.local', 100000);
 async function createTask(label) {
   const res = await call(BASE, 'POST', '/api/web/tasks', {
     token: owner.token,
-    body: { task_type: 'qwen_t2i', parameters: { prompt: label, width: 512, height: 512, steps: 4 } }
+    body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: label, width: 512, height: 512, steps: 4 } }
   });
   if (res.status !== 200) throw new Error('create failed: ' + JSON.stringify(res.body));
   return res.body.task.id;

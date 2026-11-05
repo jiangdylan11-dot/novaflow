@@ -1,3 +1,4 @@
+// GENERATED COPY - source: packages/shared/src/h3-chinese-terms.mjs
 // Models translate Chinese names and style words however the prompt asks them not to,
 // and H3 draws what the English says (青衫 became a bright cyan robe, 李逍遥 a girl).
 // The words the user wrote go back into the English text here. Only a term the user

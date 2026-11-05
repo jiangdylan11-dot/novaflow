@@ -1,13 +1,12 @@
 import { approveComputeWorker } from '../helpers.mjs';
-// Full pipeline E2E, against the REAL local ComfyUI.
+// Full pipeline E2E on Qwen-Image-2.1 Turbo.
 //
 // browser -> control plane -> scheduler -> worker -> ComfyUI -> result file
 //         -> gateway download (with Range) -> credits settled
 //
-// This is the acceptance path from the brief (items 1-18). It uses the actual
-// ComfyUI on 127.0.0.1:8188 and produces a real PNG; nothing here is mocked.
-// If ComfyUI is not running the suite says so and skips the generation half
-// rather than passing on a stub.
+// This is the acceptance path from the brief (items 1-18). Everything is real
+// except the sampler: ComfyUI is the stand-in from helpers/comfy-stub.mjs, so
+// the suite runs in full on any machine and never queues work on a real one.
 
 import { mkdtemp, rm, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,16 +15,22 @@ import { startLocalControlPlane } from '../../control-local/src/server.mjs';
 import { createWorker } from '../../worker/src/worker-core.mjs';
 import { check, checkEqual, call, section, finish, waitFor } from '../helpers.mjs';
 import { TASK_STATE } from '../../packages/shared/src/protocol.mjs';
+import { startComfyStub } from '../helpers/comfy-stub.mjs';
 
-const COMFY_IMAGE = process.env.NOVAFLOW_COMFY_IMAGE_URL || 'http://127.0.0.1:8188';
 const WORKFLOW_DIR = new URL('../../worker/workflows/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 
-async function comfyUp() {
-  try {
-    const res = await fetch(COMFY_IMAGE + '/system_stats', { signal: AbortSignal.timeout(6000) });
-    return res.ok;
-  } catch { return false; }
-}
+const RENDERER_DIR = new URL('../../worker-renderer/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const comfy = await startComfyStub();
+const turboTask = (prompt, extra = {}) => ({
+  task_type: 'renderer_workflow',
+  workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildRunWorkflow' },
+  parameters: { provider: 'local', mode: 'txt2img', prompt, width: 512, height: 512, steps: 4, count: 1,
+    localWorkflow: {
+      1: { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: 'Qwen-Image-2.1-Turbo-BF16.gguf' } },
+      9: { class_type: 'SaveImage', inputs: { images: [1, 0], filename_prefix: 'e2e' } }
+    } },
+  ...extra
+});
 
 const ctx = await startLocalControlPlane({ port: 0 });
 const BASE = ctx.url;
@@ -35,6 +40,7 @@ let worker = null;
 async function cleanup() {
   try { if (worker) await worker.stop(); } catch { /* already down */ }
   try { ctx.server.close(); } catch { /* already closed */ }
+  await comfy.close().catch(() => {});
   try { await rm(dataDir, { recursive: true, force: true }); } catch { /* left for inspection */ }
 }
 
@@ -60,9 +66,10 @@ try {
     controlUrl: BASE,
     dataDir,
     workflowDir: WORKFLOW_DIR,
+    rendererDir: RENDERER_DIR,
     configPath: join(dataDir, 'identity.json'),
-    comfyImageUrl: COMFY_IMAGE,
-    comfyVideoUrl: process.env.NOVAFLOW_COMFY_VIDEO_URL || 'http://127.0.0.1:8189',
+    comfyImageUrl: comfy.url,
+    comfyVideoUrl: comfy.url,
     gatewayPort: 0,
     gatewayHost: '127.0.0.1',
     workerName: 'e2e-node',
@@ -84,28 +91,17 @@ try {
     workers.body.workers);
   check('worker heartbeat recorded', Boolean(workers.body.workers[0].last_heartbeat), workers.body.workers[0]);
 
-  const comfyReady = await comfyUp();
-  check('local ComfyUI reachable for the generation half', comfyReady, { COMFY_IMAGE });
-  const qwenReady = ws.models.some((m) => m.model_id === 'qwen-image-2511' && m.status === 'ready');
-  check('qwen model reports ready', qwenReady, ws.models);
+  check('Turbo reports ready', ws.models.some((m) => m.model_id === 'qwen-image-2.1-turbo' && m.status === 'ready'), ws.models);
 
-  if (!comfyReady || !qwenReady) {
-    console.log('\n  SKIPPING the generation half: ComfyUI or the qwen model is not available here.');
-  } else {
+  {
     // -----------------------------------------------------------------------
     section('3. browser creates a task and it is auto-assigned');
     const created = await call(BASE, 'POST', '/api/web/tasks', {
       token,
-      body: {
-        task_type: 'qwen_t2i',
-        parameters: {
-          prompt: 'a small red cube on a white table, product photo',
-          negative_prompt: 'blurry',
-          width: 512, height: 512, steps: 4, count: 1, cfg: 1.0, seed: 4242
-        }
-      }
+      body: turboTask('a small red cube on a white table, product photo')
     });
     check('task queued', created.body.task.status === TASK_STATE.QUEUED, created.body.task);
+    checkEqual('it is queued for Turbo', created.body.task.model_id, 'qwen-image-2.1-turbo');
     const taskId = created.body.task.id;
     const quoted = created.body.pricing.creditCost;
   check('the user was quoted up front, and the quote is free',
@@ -141,6 +137,7 @@ try {
     check('progress was reported while running', sawProgress || reported,
       { sawProgress, states: events.map((e) => e.to_status) });
     check('task completed', completed.status === TASK_STATE.COMPLETED, completed.status);
+    check('ComfyUI got the Turbo graph', comfy.prompts.some(({ graph }) => graph?.['1']?.inputs?.unet_name === 'Qwen-Image-2.1-Turbo-BF16.gguf'), comfy.prompts.length);
     check('output manifest lists a file',
       (completed.output_manifest.files || []).length > 0, completed.output_manifest);
     check('a real image came back',
@@ -245,14 +242,7 @@ try {
       // The image from section 5 is a real PNG, so this is a real 图生图.
       const editTask = await call(BASE, 'POST', '/api/web/tasks', {
         token,
-        body: {
-          task_type: 'qwen2511_edit',
-          parameters: {
-            prompt: 'make the cube blue',
-            width: 512, height: 512, steps: 4, count: 1, cfg: 1.0, seed: 77,
-            references: [{ name: 'ref.png', bytes: bytes.length, kind: 'image' }]
-          }
-        }
+        body: turboTask('make the cube blue', { references: [{ name: 'ref.png', bytes: bytes.length, kind: 'image' }] })
       });
       check('an edit task with a reference is accepted',
         editTask.status === 200 && editTask.body.task.status === TASK_STATE.QUEUED,

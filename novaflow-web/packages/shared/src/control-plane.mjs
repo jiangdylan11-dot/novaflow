@@ -69,9 +69,9 @@ import {
   sha256Hex
 } from './tokens.mjs';
 
-import { priceTask } from './pricing.mjs';
+import { IMAGE_PRICE_KEY, priceTask } from './pricing.mjs';
 import { isAllowedWorkflowCall, workflowModule, workflowModelId, QWEN21_EDIT_LORA_CAPABILITY, QWEN21_EDIT_LORA_NAME, QWEN21_UC_LORA_NAME } from './workflow-modules.mjs';
-import { MODEL_MANIFEST, QWEN21_MODEL_ID, findModel } from './model-manifest.mjs';
+import { MODEL_MANIFEST, QWEN21_MODEL_ID, RETIRED_MODEL_IDS, findModel } from './model-manifest.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -302,17 +302,7 @@ export function validateTaskParameters(taskType, raw) {
     return parameters;
   }
 
-  return {
-    prompt,
-    negative_prompt: negative,
-    seed,
-    width: clampInt(input.width, 256, 4096, 1024),
-    height: clampInt(input.height, 256, 4096, 1024),
-    steps: clampInt(input.steps, 1, 100, 20),
-    count: clampInt(input.count, 1, 10, 1),
-    cfg: Math.min(20, Math.max(0, Number(input.cfg) || 1.2)),
-    references: cleanRefs
-  };
+  throw bad('unsupported task type: ' + String(taskType));
 }
 
 
@@ -1473,7 +1463,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
         }
       }
       req = { modelId: workflowModelId(moduleName, parameters, method), minVramMb: entry.minVramMb, kind: entry.kind };
-      pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : 'qwen_t2i', pricingViewOf(parameters));
+      pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : IMAGE_PRICE_KEY, pricingViewOf(parameters));
       inputWorkflow = { module: moduleName, method };
     } else {
       if (!isKnownTaskType(taskType)) throw bad('unsupported task type: ' + taskType);
@@ -1488,6 +1478,9 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
         req = { ...req, modelId: parameters.assistant_tool_scope===QWEN_IMAGE_EDIT_SCOPE?QWEN_IMAGE_EDIT_CAPABILITY:QWEN_PLAN_CAPABILITY, minVramMb: 0 };
       pricing = priceTask(taskType, parameters);
     }
+
+    if (!req.modelId || RETIRED_MODEL_IDS.includes(req.modelId))
+      throw new HttpError(409, ERROR_CODE.NOT_FOUND, '所选模型已下线或不存在，任务未提交。');
 
     // A task that costs nothing is not gated on a balance. Reading credits at
     // all would only create a way for a zero-credit account to be refused work
@@ -2117,7 +2110,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
       ok: true,
       protocol: PROTOCOL_VERSION,
       taskTypes,
-      available_workers: Math.max(0, ...counts),
+      available_workers: Math.max(0, ...counts, qwen21, qwen21Turbo),
       features: { qwenImage21: qwen21 > 0, qwenImage21Workers: qwen21, qwenImage21Turbo: qwen21Turbo > 0, qwenImage21TurboWorkers: qwen21Turbo, qwen35CpuTrial: qwen35CpuTrial > 0, qwen35BusinessTrial: qwen35BusinessTrial > 0,qwen21NativeRewriteV3,
         qwen35FoartPlan:qwenPlanReady,qwen35FoartPlanOwnerBound:qwenPlanReady,
         qwen21LocalImageEdit:qwenImageEditReady,qwen21LocalImageEditOwnerLeaseBound:qwenImageEditReady,
@@ -2141,7 +2134,8 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
     if (kind === 'h3' && (!['t2v','i2v','fl2v','r2v'].includes(mode) || !Number.isInteger(steps) || steps < 1 || steps > 100)) throw bad('invalid LoRA context');
     // A 2.1 run takes the LoRAs every 2.1 node can load, checked against its own 2.1 model.
     const engine = kind === 'qwen' && query.engine === 'qwen-2.1' ? 'qwen-2.1' : '';
-    const modelId = kind === 'h3' ? 'minimax-h3' : engine ? (query.variant === 'turbo' ? 'qwen-image-2.1-turbo' : QWEN21_MODEL_ID) : 'qwen-image-2511';
+    if (kind === 'qwen' && !engine) throw bad('invalid LoRA context');
+    const modelId = kind === 'h3' ? 'minimax-h3' : query.variant === 'turbo' ? 'qwen-image-2.1-turbo' : QWEN21_MODEL_ID;
     const rows = await store.listCapableModelDetails(modelId, kind === 'h3' ? 15000 : 16000, HEARTBEAT_TIMEOUT_SECONDS, user.id, canUsePremiumNodes(user.plan), canUseSharedCompute(user.plan));
     let items;
     try { items = commonLoraCatalog(rows, { kind, mode, steps, engine, nsfw: query.nsfw === 'true' || query.nsfw === true }); }

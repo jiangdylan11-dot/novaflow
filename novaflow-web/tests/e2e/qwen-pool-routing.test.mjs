@@ -27,8 +27,8 @@ test('only the explicit Qwen chat selector is admitted as a new scheduler model'
 });
 
 test('other task types retain their model fields without selecting a retired brain', () => {
-  const image={prompt:'fixture',width:512,height:512,modelId:'unrelated-image-model'};
-  assert.deepEqual(validateTaskParameters('qwen_t2i',image),validateTaskParameters('qwen_t2i',{...image,modelId:undefined}));
+  const video={prompt:'fixture',width:512,height:512,modelId:'unrelated-video-model',references:[{name:'ref.png',bytes:1,kind:'image'}]};
+  assert.deepEqual(validateTaskParameters('h3_i2v',video),validateTaskParameters('h3_i2v',{...video,modelId:undefined}));
   const task={model_id:'prompt-assistant',parameters:{action:'optimize-prompt',model_id:'unrelated-model'}};
   assert.throws(()=>validatePromptAssistantModelRoute(task,{modelId:'unrelated-model'}));
   assert.throws(()=>validatePromptAssistantModelRoute({...task,model_id:QWEN},{modelId:QWEN}));

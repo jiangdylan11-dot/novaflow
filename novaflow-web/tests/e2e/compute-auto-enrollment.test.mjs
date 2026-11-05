@@ -19,13 +19,13 @@ test('public compute enrollment is pending, bounded and cannot overwrite adminis
     assert.equal(first.body.worker.pending_approval,true);
     assert.deepEqual(first.body.worker.policy,{pending_approval:true,enabled:false,owner_enabled:false,sharing_enabled:false,sharing_scope:'selected',allowed_user_ids:[]});
     const workerToken=first.body.workerToken;
-    await call(ctx.url,'POST','/api/worker/models',{token:workerToken,body:{models:[{model_id:'qwen-image-2511',status:'ready'}]}});
+    await call(ctx.url,'POST','/api/worker/models',{token:workerToken,body:{models:[{model_id:'qwen-image-2.1-turbo',status:'ready'}]}});
     const heartbeat=await call(ctx.url,'POST','/api/worker/heartbeat',{token:workerToken,body:{status:'idle'}});
     assert.equal(heartbeat.body.worker.pending_approval,true);
     assert.equal((await call(ctx.url,'POST','/api/worker/claim',{token:workerToken})).body.task,null);
     assert.equal((await call(ctx.url,'GET','/api/web/nodes',{token:owner.session.token})).body.nodes.length,0);
     assert.equal((await call(ctx.url,'GET','/api/web/capabilities')).body.available_workers,0);
-    const task={task_type:'qwen_t2i',target_worker_id:id,parameters:{prompt:'approval test',width:512,height:512,count:1}};
+    const task={task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' },target_worker_id:id,parameters:{prompt:'approval test',width:512,height:512,count:1}};
     assert.equal((await call(ctx.url,'POST','/api/web/tasks',{token:owner.session.token,body:task})).status,403);
     const retry=await call(ctx.url,'POST','/api/worker/register',{body});
     assert.equal(retry.status,200,JSON.stringify(retry.body));
@@ -85,10 +85,10 @@ test('sessions, legacy profiles and user-minted codes cannot approve new machine
       assert.equal(row.body.worker.policy.enabled,false);
       assert.equal(row.body.worker.policy.owner_enabled,false);
       assert.equal(row.body.worker.policy.sharing_enabled,false);
-      await call(ctx.url,'POST','/api/worker/models',{token:row.body.workerToken,body:{models:[{model_id:'qwen-image-2511',status:'ready'}]}});
+      await call(ctx.url,'POST','/api/worker/models',{token:row.body.workerToken,body:{models:[{model_id:'qwen-image-2.1-turbo',status:'ready'}]}});
       await call(ctx.url,'POST','/api/worker/heartbeat',{token:row.body.workerToken,body:{status:'idle',enabled:true}});
       assert.equal((await call(ctx.url,'POST','/api/worker/claim',{token:row.body.workerToken})).body.task,null);
-      const denied=await call(ctx.url,'POST','/api/web/tasks',{token,body:{task_type:'qwen_t2i',target_worker_id:row.body.worker.id,parameters:{prompt:'x',width:512,height:512,count:1}}});
+      const denied=await call(ctx.url,'POST','/api/web/tasks',{token,body:{task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' },target_worker_id:row.body.worker.id,parameters:{prompt:'x',width:512,height:512,count:1}}});
       assert.equal(denied.status,403,JSON.stringify(denied.body));
     }
     assert.equal((await call(ctx.url,'GET','/api/web/nodes',{token})).body.nodes.length,0);

@@ -40,7 +40,7 @@ export async function createLocalTasks(dataDir) {
       const t = tasks.get(id);
       if (!t || t.status !== 'queued') return null;
       const all = [...tasks.values()];
-      const queuedAhead = all.filter(x => x.status === 'queued' && x.created_at < t.created_at).length;
+      const queuedAhead = all.filter(x => x.status === 'queued').indexOf(t); // the order next() takes them in
       const running = all.filter(x => ['assigned', 'uploading', 'processing'].includes(x.status));
       const kind = x => (x.workflow ? x.workflow.module + '.' + x.workflow.method : x.task_type);
       const seconds = list => list.slice(-10).map(x => (Date.parse(x.completed_at) - Date.parse(x.started_at)) / 1000).filter(v => v > 0 && v < 3600);

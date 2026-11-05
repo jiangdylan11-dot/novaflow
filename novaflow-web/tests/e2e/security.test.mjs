@@ -44,7 +44,7 @@ const grantKey = reg.body.grantKey;
 
 await call(BASE, 'POST', '/api/worker/models', {
   token: workerToken,
-  body: { models: [{ model_id: 'qwen-image-2511', status: 'ready' }] }
+  body: { models: [{ model_id: 'qwen-image-2.1-turbo', status: 'ready' }] }
 });
 await call(BASE, 'POST', '/api/worker/heartbeat', { token: workerToken, body: { status: 'idle' } });
 
@@ -57,7 +57,7 @@ const GW = 'http://127.0.0.1:' + gwPort;
 // A task with a real output file on disk.
 const created = await call(BASE, 'POST', '/api/web/tasks', {
   token: alice.token,
-  body: { task_type: 'qwen_t2i', parameters: { prompt: 'sec', width: 512, height: 512 } }
+  body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'sec', width: 512, height: 512 } }
 });
 const taskId = created.body.task.id;
 await call(BASE, 'POST', '/api/worker/claim', { token: workerToken });
@@ -241,7 +241,7 @@ try {
 
     // A worker must not be able to touch a task it does not hold.
     const otherTask = await call(BASE, 'POST', '/api/web/tasks', {
-      token: alice.token, body: { task_type: 'qwen_t2i', parameters: { prompt: 'other' } }
+      token: alice.token, body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'other' } }
     });
     const meddle = await call(BASE, 'POST', '/api/worker/tasks/' + otherTask.body.task.id + '/progress', {
       token: workerToken, body: { status: 'processing', progress: 50 }

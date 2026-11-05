@@ -27,13 +27,13 @@ const VIDEO_SIZES = [
 ];
 
 export function GeneratePanel({ taskType, busy, uploadPct, onGenerate }: {
-  taskType: 'qwen_t2i' | 'qwen2511_edit' | 'h3_i2v';
+  taskType: 'h3_i2v';
   busy: boolean;
   uploadPct: number | null;
   onGenerate: (params: GenerateParams, reference: File | null) => void;
 }) {
   const isVideo = taskType === 'h3_i2v';
-  const needsReference = isVideo || taskType === 'qwen2511_edit';
+  const needsReference = isVideo;
   const sizes = isVideo ? VIDEO_SIZES : IMAGE_SIZES;
 
   const [prompt, setPrompt] = useState('');
@@ -86,7 +86,7 @@ export function GeneratePanel({ taskType, busy, uploadPct, onGenerate }: {
             prompt: prompt.trim(),
             negative_prompt: negative.trim(),
             width: size.w, height: size.h,
-            steps, count, cfg: taskType === 'qwen2511_edit' ? 1.2 : 1.0, seed
+            steps, count, cfg: 1.0, seed
           },
       reference
     );

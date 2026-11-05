@@ -29,34 +29,15 @@ import { createWorker } from '../../worker/src/worker-core.mjs';
 import { check, checkEqual, call, section, finish, uuid, waitFor } from '../helpers.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
 import { MODEL_MANIFEST } from '../../packages/shared/src/model-manifest.mjs';
+import { startComfyStub } from '../helpers/comfy-stub.mjs';
 import { TASK_STATE } from '../../packages/shared/src/protocol.mjs';
 
 const WORKFLOW_DIR = new URL('../../worker/workflows/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const RENDERER_DIR = new URL('../../worker-renderer/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 
-// ---------------------------------------------------------------------------
-// A stand-in ComfyUI that can load every weight in the manifest. The worker's
-// detection reads exactly these two endpoints.
-const WEIGHTS = MODEL_MANIFEST.flatMap((m) => m.required_files.map((f) => f.path.split('/').pop()));
-
-const comfy = createServer((req, res) => {
-  const path = String(req.url || '').split('?')[0];
-  const send = (body) => {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(body));
-  };
-  if (path === '/system_stats') {
-    return send({ system: { comfyui_version: '0.31.1-test', os: 'test' }, devices: [] });
-  }
-  const node = /^\/object_info\/(.+)$/.exec(path);
-  if (node) {
-    const name = decodeURIComponent(node[1]);
-    return send({ [name]: { input: { required: { model_name: [WEIGHTS] } } } });
-  }
-  res.writeHead(404, { 'content-type': 'application/json' });
-  res.end('{}');
-});
-await new Promise((resolve) => comfy.listen(0, '127.0.0.1', resolve));
-const COMFY_URL = 'http://127.0.0.1:' + comfy.address().port;
+// A stand-in ComfyUI that serves Turbo and every other weight in the manifest.
+const comfy = await startComfyStub();
+const COMFY_URL = comfy.url;
 
 const ctx = await startLocalControlPlane({ port: 0 });
 const BASE = ctx.url;
@@ -71,6 +52,7 @@ async function newMachine({ name, code, expectFailure = false }) {
     controlUrl: BASE,
     dataDir,
     workflowDir: WORKFLOW_DIR,
+    rendererDir: RENDERER_DIR,
     configPath: join(dataDir, 'identity.json'),
     comfyImageUrl: COMFY_URL,
     comfyVideoUrl: COMFY_URL,
@@ -91,7 +73,7 @@ async function newMachine({ name, code, expectFailure = false }) {
 async function cleanup() {
   for (const w of workers) { try { await w.stop(); } catch { /* already down */ } }
   try { ctx.server.close(); } catch { /* already closed */ }
-  try { comfy.close(); } catch { /* already closed */ }
+  try { await comfy.close(); } catch { /* already closed */ }
   for (const dir of tempDirs) { try { await rm(dir, { recursive: true, force: true }); } catch { /* left behind */ } }
 }
 
@@ -146,9 +128,10 @@ try {
   check('it detected ComfyUI', state.comfy.image === true, state.comfy);
   check('it discovered its own endpoint rather than being told one',
     /^http:\/\/[\d.]+:\d+$/.test(state.endpointUrl), state.endpointUrl);
-  check('it reported model capability', state.models.length === MODEL_MANIFEST.length, state.models.length);
+  check('it reported model capability', state.models.some(m => m.model_id === 'minimax-h3'), state.models.length);
+  check('and nothing retired', !state.models.some(m => ['qwen-image-2511', 'prompt-assistant'].includes(m.model_id)), state.models);
   check('the stubbed ComfyUI image and video models read ready',
-    ['qwen-image-2511','minimax-h3'].every(id => state.models.some(m => m.model_id === id && m.status === 'ready')),
+    ['qwen-image-2.1-turbo','minimax-h3','audio-music','audio-sfx'].every(id => state.models.some(m => m.model_id === id && m.status === 'ready')),
     state.models.map((m) => m.model_id + ':' + m.status));
 
   const pool = await call(BASE, 'GET', '/api/web/workers', { token: owner });
@@ -166,7 +149,7 @@ try {
   section('4. the scheduler starts giving it work, unprompted');
   const created = await call(BASE, 'POST', '/api/web/tasks', {
     token: owner,
-    body: { task_type: 'qwen_t2i', parameters: { prompt: 'onboarding', width: 512, height: 512, steps: 4 } }
+    body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'onboarding', width: 512, height: 512, steps: 4 } }
   });
   check('a task can be created now that a node exists', created.status === 200, created.body);
 

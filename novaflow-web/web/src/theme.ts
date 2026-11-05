@@ -76,7 +76,7 @@ export const leftColumnBackground =
 // shape is recognisable and the gap is explicit rather than hidden.
 export type SecondaryEntry = {
   label: string;
-  taskType?: 'qwen_t2i' | 'qwen2511_edit' | 'h3_i2v';
+  taskType?: 'h3_i2v';
   enabled: boolean;
   reason?: string;
 };
@@ -108,7 +108,7 @@ export const SECTIONS: PrimarySection[] = [
     label: '美工',
     icon: 'fa-palette',
     entries: [
-      { label: '绘图', taskType: 'qwen_t2i', enabled: true },
+      { label: '绘图', enabled: false, reason: '请在 Foart 编辑器中使用' },
       { label: 'UI', enabled: false, reason: '后续版本接入' }
     ]
   },
@@ -116,7 +116,7 @@ export const SECTIONS: PrimarySection[] = [
     label: '工具',
     icon: 'fa-screwdriver-wrench',
     entries: [
-      { label: '图生图', taskType: 'qwen2511_edit', enabled: true },
+      { label: '图生图', enabled: false, reason: '请在 Foart 编辑器中使用' },
       { label: '实用工具', enabled: false, reason: '本地编辑器功能，Web 版暂不提供' }
     ]
   }

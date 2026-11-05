@@ -35,7 +35,7 @@ const sandbox = createDomSandbox({
   NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test' },
   fetch: async (input, init = {}) => {
     const url = String(input);
-    if (url.endsWith('/api/web/capabilities')) return response({ taskTypes: ['qwen_t2i', 'h3_i2v'].map(task_type => ({ task_type, available_workers: 1 })), features: { qwenImage21: true } });
+    if (url.endsWith('/api/web/capabilities')) return response({ taskTypes: [{ task_type: 'h3_i2v', available_workers: 1 }], features: { qwenImage21: true, qwenImage21Workers: 1, qwenImage21TurboWorkers: 1 } });
     if (url.endsWith('/api/web/tasks') && init.method === 'POST') {
       const body = JSON.parse(init.body);
       assert.ok(isAllowedWorkflowCall(body.workflow.module, body.workflow.method), JSON.stringify(body.workflow));

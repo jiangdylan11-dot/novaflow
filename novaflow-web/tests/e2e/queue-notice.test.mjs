@@ -15,7 +15,7 @@ import { QUEUE_NOTE_RE, TASK_STATE, WORKER_MODEL_STATUS, estimateQueueWait, with
 import { createLocalTasks } from '../../worker/src/local-tasks.mjs';
 import { createComfyClient } from '../../worker/src/comfy/comfy-client.mjs';
 
-const T2I = { task_type: 'qwen_t2i', parameters: { prompt: 'a knight', width: 1024, height: 1024, steps: 20, count: 1 } };
+const T2I = { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'a knight', width: 1024, height: 1024, steps: 20, count: 1 } };
 
 // ---------------------------------------------------------------------------
 section('protocol: the note marker and the estimate');
@@ -70,7 +70,7 @@ try {
   });
   await approveComputeWorker(ctx.db,workerId);
   const node = reg.body.workerToken;
-  await call(BASE, 'POST', '/api/worker/models', { token: node, body: { models: [{ model_id: 'qwen-image-2511', model_version: '1', status: WORKER_MODEL_STATUS.READY }] } });
+  await call(BASE, 'POST', '/api/worker/models', { token: node, body: { models: [{ model_id: 'qwen-image-2.1-turbo', model_version: '1', status: WORKER_MODEL_STATUS.READY }] } });
   await call(BASE, 'POST', '/api/worker/heartbeat', { token: node, body: { status: 'idle' } });
   const claim = await call(BASE, 'POST', '/api/worker/claim', { token: node });
   checkEqual('the node takes the oldest task', claim.body.task?.id, first);

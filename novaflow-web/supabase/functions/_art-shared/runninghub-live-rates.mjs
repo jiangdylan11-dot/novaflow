@@ -1,3 +1,4 @@
+// GENERATED COPY - source: packages/shared/src/runninghub-live-rates.mjs
 // Online credit prices follow RunningHub's public price list. A price that cannot
 // be read, or that moved past the limits, keeps the built-in one: a bad reading
 // must never reach a user's bill. DeepSeek stays out on purpose: the list shows the

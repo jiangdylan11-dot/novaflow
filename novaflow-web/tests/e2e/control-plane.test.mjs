@@ -19,7 +19,7 @@ async function devLogin(email, balance) {
   return { token: res.body.session.token, user: res.body.user, credits: res.body.credits };
 }
 
-async function registerWorker({ ownerToken, code, name, vram = 32768, models = ['qwen-image-2511', 'minimax-h3'], endpoint }) {
+async function registerWorker({ ownerToken, code, name, vram = 32768, models = ['qwen-image-2.1-turbo', 'minimax-h3'], endpoint }) {
   const workerId = uuid();
   const secret = generateWorkerSecret();
   const res = await call(BASE, 'POST', '/api/worker/register', {
@@ -126,7 +126,7 @@ let taskId = '';
   const created = await call(BASE, 'POST', '/api/web/tasks', {
     token: alice.token,
     body: {
-      task_type: 'qwen_t2i',
+      task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' },
       parameters: { prompt: 'a knight', width: 1024, height: 1024, steps: 20, count: 1 }
     }
   });
@@ -141,7 +141,7 @@ let taskId = '';
   const cheeky = await call(BASE, 'POST', '/api/web/tasks', {
     token: alice.token,
     body: {
-      task_type: 'qwen_t2i',
+      task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' },
       credit_cost: 0, chargeAmount: 0, estimatedCreditCost: 0,
       parameters: { prompt: 'x', width: 4096, height: 4096, steps: 100, count: 10 }
     }
@@ -168,7 +168,7 @@ let taskId = '';
   const poor = await devLogin('poor@novaflow.local', 0);
   const allowed = await call(BASE, 'POST', '/api/web/tasks', {
     token: poor.token,
-    body: { task_type: 'qwen_t2i', parameters: { prompt: 'x' } }
+    body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'x' } }
   });
   check('a zero-credit account can still use its own GPU', allowed.status === 200, allowed.body);
   checkEqual('at no cost', allowed.body.pricing.creditCost, 0);
@@ -254,7 +254,7 @@ section('failure never charges');
 {
   const created = await call(BASE, 'POST', '/api/web/tasks', {
     token: alice.token,
-    body: { task_type: 'qwen_t2i', parameters: { prompt: 'will fail', width: 1024, height: 1024 } }
+    body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'will fail', width: 1024, height: 1024 } }
   });
   const failTaskId = created.body.task.id;
 
@@ -282,7 +282,7 @@ section('restarted idle worker releases its abandoned task before claiming');
 {
   const old = await call(BASE, 'POST', '/api/web/tasks', {
     token: alice.token,
-    body: { task_type: 'qwen_t2i', parameters: { prompt: 'before restart' } }
+    body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'before restart' } }
   });
   const firstClaim = await call(BASE, 'POST', '/api/worker/claim', { token: w1.workerToken });
   check('worker claimed task before restart', firstClaim.body.task?.id === old.body.task.id, firstClaim.body);
@@ -302,7 +302,7 @@ section('restarted idle worker releases its abandoned task before claiming');
 
   const next = await call(BASE, 'POST', '/api/web/tasks', {
     token: alice.token,
-    body: { task_type: 'qwen_t2i', parameters: { prompt: 'after restart' } }
+    body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'after restart' } }
   });
   const claim = await call(BASE, 'POST', '/api/worker/claim', { token: w1.workerToken });
   check('new task is claimed in the same poll', claim.body.task?.id === next.body.task.id, claim.body);
@@ -321,7 +321,7 @@ section('state machine refuses illegal transitions');
 {
   const created = await call(BASE, 'POST', '/api/web/tasks', {
     token: alice.token,
-    body: { task_type: 'qwen_t2i', parameters: { prompt: 'sm' } }
+    body: { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'sm' } }
   });
   const id = created.body.task.id;
 
@@ -346,7 +346,7 @@ section('state machine refuses illegal transitions');
 section('scheduler respects capability');
 {
   const weak = await registerWorker({
-    ownerToken: bob.token, name: 'laptop-3060', vram: 12288, models: ['qwen-image-2511']
+    ownerToken: bob.token, name: 'laptop-3060', vram: 12288, models: ['qwen-image-2.1-turbo']
   });
 
   const videoTask = await call(BASE, 'POST', '/api/web/tasks', {
@@ -369,7 +369,7 @@ section('scheduler respects capability');
 // ---------------------------------------------------------------------------
 section('account tiers: other people\'s nodes need a 高级账户');
 {
-  const body = { task_type: 'qwen_t2i', parameters: { prompt: 'a knight', width: 1024, height: 1024, steps: 20, count: 1 } };
+  const body = { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'a knight', width: 1024, height: 1024, steps: 20, count: 1 } };
   const basic = await call(BASE, 'POST', '/dev/login', { body: { email: 'basic@novaflow.local', balance: 5000, plan: 'trial' } });
   const basicToken = basic.body.session.token;
   const me = await call(BASE, 'GET', '/api/web/me', { token: basicToken });
@@ -412,9 +412,17 @@ section('算力源 picker: the pool is listed, and a pinned task waits for its n
   const anon = await call(BASE, 'GET', '/api/web/nodes');
   check('but not without a session', anon.status === 401, anon.status);
 
-  const first = await registerWorker({ ownerToken: alice.token, name: 'pin-first', models: ['qwen-image-2511'] });
-  const second = await registerWorker({ ownerToken: bob.token, name: 'pin-second', models: ['qwen-image-2511'] });
-  const body = { task_type: 'qwen_t2i', parameters: { prompt: 'pinned', width: 1024, height: 1024, steps: 20, count: 1 }, target_worker_id: second.workerId };
+  for (const task_type of ['qwen_t2i', 'qwen2511_edit']) {
+    const retired = await call(BASE, 'POST', '/api/web/tasks', { token: alice.token, body: { task_type, parameters: { prompt: 'x' } } });
+    check(task_type + ' is refused, not queued', retired.status === 400, retired.body);
+  }
+  const legacyPrompt = await call(BASE, 'POST', '/api/web/tasks', { token: alice.token, body: { task_type: 'prompt_assistant',
+    parameters: { action: 'reverse-image-prompt' }, references: [{ name: 'request.json', kind: 'json', bytes: 2 }] } });
+  check('a task for a retired model is refused, not queued', legacyPrompt.status === 409, legacyPrompt.body);
+
+  const first = await registerWorker({ ownerToken: alice.token, name: 'pin-first', models: ['qwen-image-2.1-turbo'] });
+  const second = await registerWorker({ ownerToken: bob.token, name: 'pin-second', models: ['qwen-image-2.1-turbo'] });
+  const body = { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'pinned', width: 1024, height: 1024, steps: 20, count: 1 }, target_worker_id: second.workerId };
   const pinned = await call(BASE, 'POST', '/api/web/tasks', { token: alice.token, body });
   check('a pinned task is created and counts its node alone',
     pinned.status === 200 && pinned.body.capableWorkers === 1 && pinned.body.target.id === second.workerId, pinned.body);
@@ -424,6 +432,7 @@ section('算力源 picker: the pool is listed, and a pinned task waits for its n
   check('the pinned node claims it', !!(right.body.task && right.body.task.id === pinned.body.task.id), right.body);
   const narrowed = await call(BASE, 'GET', '/api/web/capabilities?worker=' + first.workerId);
   check('capabilities can be asked about one node', narrowed.status === 200 && narrowed.body.available_workers === 1, narrowed.body.available_workers);
+  check('a Turbo-only node counts as a drawing node', narrowed.body.features.qwenImage21TurboWorkers === 1, narrowed.body.features);
   const busyNode = await call(BASE, 'GET', '/api/web/capabilities?worker=' + second.workerId);
   check('a node that is busy still counts as compute', busyNode.body.available_workers === 1, busyNode.body.available_workers);
   const missing = await call(BASE, 'POST', '/api/web/tasks', { token: alice.token, body: { ...body, target_worker_id: uuid() } });
@@ -436,7 +445,7 @@ section('算力源 picker: the pool is listed, and a pinned task waits for its n
 // ---------------------------------------------------------------------------
 section('node tiers: a 中级账户 keeps to 普通 nodes, a 高级账户 uses every node');
 {
-  const body = { task_type: 'qwen_t2i', parameters: { prompt: 'tiers', width: 1024, height: 1024, steps: 20, count: 1 } };
+  const body = { task_type: 'renderer_workflow', workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' }, parameters: { prompt: 'tiers', width: 1024, height: 1024, steps: 20, count: 1 } };
   const mid = (await call(BASE, 'POST', '/dev/login', { body: { email: 'mid@novaflow.local', balance: 5000, plan: 'standard' } })).body.session.token;
   // Nothing else may be queued, so the claims below can only pick up what
   // this section creates.
@@ -450,8 +459,8 @@ section('node tiers: a 中级账户 keeps to 普通 nodes, a 高级账户 uses e
   check('a registration code can admit 高级 nodes', premiumCode.status === 200 && premiumCode.body.tier === 'premium', premiumCode.body);
   const standardCode = await call(BASE, 'POST', '/api/web/workers/codes', { token: alice.token, body: { label: 'home-4090' } });
   check('and admits 普通 nodes unless told otherwise', standardCode.body.tier === 'standard', standardCode.body);
-  const premium = await registerWorker({ code: premiumCode.body.registration_code, name: 'tier-premium', models: ['qwen-image-2511'] });
-  const standard = await registerWorker({ code: standardCode.body.registration_code, name: 'tier-standard', models: ['qwen-image-2511'] });
+  const premium = await registerWorker({ code: premiumCode.body.registration_code, name: 'tier-premium', models: ['qwen-image-2.1-turbo'] });
+  const standard = await registerWorker({ code: standardCode.body.registration_code, name: 'tier-standard', models: ['qwen-image-2.1-turbo'] });
   check('a machine joins with the tier of its code',
     premium.res.body.worker.tier === 'premium' && standard.res.body.worker.tier === 'standard',
     [premium.res.body.worker.tier, standard.res.body.worker.tier]);

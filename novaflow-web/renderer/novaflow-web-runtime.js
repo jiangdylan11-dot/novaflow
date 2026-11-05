@@ -2849,9 +2849,7 @@
   // e.g. { qwenImage21: true }: the local assistant, or on the website the
   // shared pool (true while a node that can build 2.1 is online). The website
   // draws on 2.1, so its panel starts from that layout (steps, CFG, ten
-  // references, the 2.1 LoRA list) and keeps it while nobody is online: an
-  // empty pool says nothing about the node that will take the run. Only a
-  // drawing node that lacks 2.1 switches it to the 2511 layout.
+  // references, the 2.1 LoRA list) whatever the pool reports at the moment.
   let runtimeFeatureCache = taskMode() === 'shared' ? { qwenImage21: true } : {};
   let runtimeFeatureSequence = 0, qwenBusinessVerified = false, qwenNativeV3Binding = null, qwenImageEditBinding = null;
   function qwenBusinessAvailable(){return CONFIG.xiaotaoQwenBusinessEnabled===true && qwenBusinessVerified;}
@@ -2866,10 +2864,6 @@
   function setRuntimeFeatureCache(next){
     const changed=JSON.stringify(next)!==JSON.stringify(runtimeFeatureCache);runtimeFeatureCache=next;
     if(changed && typeof root.dispatchEvent==='function' && typeof root.CustomEvent==='function')root.dispatchEvent(new root.CustomEvent('novaflow:runtime-features',{detail:{...next}}));
-  }
-  function drawingNodeOnline(caps) {
-    const types = caps && Array.isArray(caps.taskTypes) ? caps.taskTypes : [];
-    return types.some((t) => t && t.kind === 'image' && Number(t.available_workers) > 0);
   }
   // The answer can be missing on the first try (a page opened while the assistant restarts, a model
   // probe that timed out at start): until the node reports 2.1, ask again every 15 s for a while and
@@ -3252,8 +3246,8 @@
         // Existing capability fields retain their previous response semantics.
         delete next.qwen35BusinessTrial;
         if(qwenBusinessVerified || hasBusiness)next.qwen35BusinessTrial=qwenBusinessVerified;
-        if (taskMode() === 'shared' && next.qwenImage21 !== true && !drawingNodeOnline(caps)) next.qwenImage21 = true;
-        else answered = true;
+        if (taskMode() === 'shared') next.qwenImage21 = true;
+        answered = true;
         setRuntimeFeatureCache(next);
       } catch (_) {
         if(current()){
@@ -3385,7 +3379,7 @@
     },
 
     async qwenLoraCatalog(payload = {}) {
-      try { return await control('GET', '/api/web/loras/qwen?nsfw=' + (payload.nsfw === true) + (payload.engine === 'qwen-2.1' ? '&engine=qwen-2.1' : '') + (payload.variant === 'turbo' ? '&variant=turbo' : '')); }
+      try { return await control('GET', '/api/web/loras/qwen?nsfw=' + (payload.nsfw === true) + '&engine=qwen-2.1' + (payload.variant === 'turbo' ? '&variant=turbo' : '')); }
       catch (error) { return { ok: false, error: String(error.message || error), items: [] }; }
     },
     async minimaxH3LoraCatalog(payload = {}) {
@@ -3443,16 +3437,11 @@
   // with. Only the two runtime ports are intercepted; the worker gateway on
   // 8790 and everything else goes through untouched.
   const LOCAL_RUNTIME = /^https?:\/\/(?:127\.0\.0\.1|localhost):(8188|8189)(\/|$)/i;
-  const PORT_TASK_TYPE = { 8188: 'qwen_t2i', 8189: 'h3_i2v' };
+  const IMAGE_PROBE = 'image';
+  const PORT_TASK_TYPE = { 8188: IMAGE_PROBE, 8189: 'h3_i2v' };
 
   function selectedImageProbeType() {
-    const state=root.__NovaFlowArtGenerate?.state;
-    if(!state?.active)return state?.localQwen21Variant==='turbo' ? 'qwen21-turbo' : 'qwen21-standard';
-    if(state.provider!=='local')return 'qwen_t2i';
-    let engine='';
-    try {engine=root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider,state.mode,state)?.engine || state.localDrawEngine || '';} catch {return 'qwen_t2i';}
-    if(engine!=='qwen-2.1')return 'qwen_t2i';
-    return state.localQwen21Variant==='turbo' ? 'qwen21-turbo' : 'qwen21-standard';
+    return root.__NovaFlowArtGenerate?.state?.localQwen21Variant==='standard' ? 'qwen21-standard' : 'qwen21-turbo';
   }
   let capsCache = { at: 0, byTaskType: {} };
   async function poolHas(taskType) {
@@ -3528,9 +3517,9 @@
     }
 
     if (path === '/system_stats' || path === '/') {
-      const probeType = taskType==='qwen_t2i' ? selectedImageProbeType() : taskType;
+      const probeType = taskType===IMAGE_PROBE ? selectedImageProbeType() : taskType;
       const workers = await poolHas(probeType);
-      if(taskType==='qwen_t2i' && probeType!==selectedImageProbeType()) return new Response(JSON.stringify({ok:false,error:'绘图模型已变化，请重试'}),{status:409,headers:{'content-type':'application/json'}});
+      if(taskType===IMAGE_PROBE && probeType!==selectedImageProbeType()) return new Response(JSON.stringify({ok:false,error:'绘图模型已变化，请重试'}),{status:409,headers:{'content-type':'application/json'}});
       if (!workers) {
         // Fail the probe, so the panel does not offer to generate on compute
         // that is not there. The wording the panel shows is rewritten for the

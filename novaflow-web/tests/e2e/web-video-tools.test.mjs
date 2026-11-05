@@ -297,7 +297,7 @@ ok(/^web-file:\/\//.test(clipToken), 'a dropped file gets a web-file token: ' + 
   execs.length = 0; outputBytes = 1000; probeAudio = 'aac';
   const result = await api.compressMp4({ jobId: 'mp4_1', inputPath: clipToken, fileName: 'clip.mp4', strength: 60 });
   equal(result.ok, true, 'a clip compresses: ' + result.error);
-  equal([result.keptOriginal, result.fileName, result.bytesIn, result.bytesOut], [false, 'clip-compressed.mp4', 5000, 1000], 'the desktop result shape, named like the desktop names it');
+  equal([result.keptOriginal, result.fileName, result.bytesIn, result.bytesOut], [false, 'clip.mp4', 5000, 1000], 'the desktop result shape, keeping the original name');
   ok(/^web-video:\/\//.test(result.outPath), 'the result is a web-video token: ' + result.outPath);
   equal(execs.length, 2, 'one probe pass, one encode');
   const plan = desktopCompress.mp4CompressionPlan(60);
