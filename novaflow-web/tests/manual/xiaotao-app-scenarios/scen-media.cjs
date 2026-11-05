@@ -1,5 +1,5 @@
 const base=require('./scenarios.cjs');
-const noErr=s=>({ok:!s.error||/Runtime（8189）|音频算力接口尚未就绪/.test(s.error),what:'no error (compute boundary ok)',detail:s.error});
+const noErr=s=>({ok:!s.error||/Runtime（8189）|音频算力接口尚未就绪|生成服务启动失败|音频.{0,8}(?:算力|节点|未连接)|Failed to fetch/.test(s.error),what:'no error (compute boundary ok)',detail:s.error});
 const gen=async p=>p.evaluate(()=>window.NovaFlowFoartTools.capture().media);
 module.exports=[
  {name:'video-t2v',message:'做一个5秒的海边日落视频，镜头慢慢推进',

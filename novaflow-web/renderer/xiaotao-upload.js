@@ -150,12 +150,14 @@
   // Route from the requested deliverable, independently of the currently open page.
   // Unassigned attachments remain conversation inputs; slot names are never a user decision.
   function positiveTaskText(message){return String(message||'').replace(/(?:不要|不用|无需|不需要|(?<![分识区类告差鉴])别|先不|暂不|不(?:再|重新|额外)?(?:生成|生图|制作|导出|保存|新建|修改|改动|改变|合并|隐藏|删除|切换|引用|合成|重绘|执行|处理)|不AI改绘)[^，。；;！？!?\n]*/g,'');}
+  // Words that ask to cut or retime an existing clip; these go to the 音视 edit resources, not a generation slot.
+  const VIDEO_EDIT_WORDS='剪辑|裁切|裁剪|分割|截取|(?:只|仅)?保留(?:前|后|中间|最后)?.{0,4}\\d+(?:\\.\\d+)?\\s*(?:秒|s\\b)|剪(?:掉|成|短|一下)|截(?:成|短)|去掉(?:前|后|开头|结尾)|删掉(?:前|后|开头|结尾)|缩短|拼接|静音|变速|倍速|加速播放|慢放|倒放|镜像';
   function inferTask(message, files = [], previous = null) {
     const text = String(message || '').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1).trim();
     const kinds = Array.from(files || []).map(file => file.kind),positive=positiveTaskText(text),previousSurface=previous?.surface || previous?.kind;
     let discussion = question(text) || /怎么|如何|为什么|是什么|能不能|可不可以|能否|是否|(?:只|仅).{0,8}(?:分析|看看|提示词|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,8}(?:生成|执行|制作|修改)/.test(text);
     const promptEdit=/(?:提示词.{0,6}(?:优化|修改|调整|改|写入|填入)|(?:优化|修改|调整|写入|填入).{0,6}提示词)/.test(text);
-    const editing=/剪辑|裁切|裁剪|分割|截取|音量|淡入|淡出|循环\s*\d+\s*次|导出|变速|时间轴|帧编辑|倒放|镜像/.test(positiveTaskText(text));
+    const editing=new RegExp(VIDEO_EDIT_WORDS+'|音量|淡入|淡出|循环\\s*\\d+\\s*次|导出|时间轴|帧编辑','i').test(positiveTaskText(text));
     if(editing&&!question(text)&&!/(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,6}(?:执行|制作|修改|处理)/.test(text))discussion=false;
     if(promptEdit && !question(text) && !/怎么|如何|为什么|能不能|可不可以|能否|是否|(?:不要|不用|别|先不|暂不).{0,6}(?:优化|修改|写入|填入)|(?:只|仅).{0,6}(?:分析|讨论|解释)/.test(text))discussion=false;
     const animationExport=/导出/.test(positive)&&(/骨骼动画|Spine|(?:当前|现有|这个|idle).{0,8}动画/i.test(positive)||previousSurface==='animation'&&!/美工|图层|画布|图片|UI设计|PNG压缩|JPG压缩|工具版块|音视|视频(?:版块|编辑|剪辑)|首尾帧|多参|图生视频|文生视频/.test(positive));
@@ -212,7 +214,7 @@
     let pairIndex = 0;
     for (const file of list) {
       if(!task.discussion&&task.surface==='audio'&&['audio','video'].includes(file.kind)){place.push(carried(file,AUDIO_RESOURCE));continue;}
-      if(!task.discussion&&task.surface==='video'&&!named.length&&/剪辑|裁切|裁剪|分割|截取|导出|变速|时间轴|视频编辑|帧编辑|抠图|色键|颜色校正/.test(text)){place.push(carried(file,VIDEO_EDIT_RESOURCE));continue;}
+      if(!task.discussion&&task.surface==='video'&&!named.length&&new RegExp(VIDEO_EDIT_WORDS+'|导出|时间轴|视频编辑|帧编辑|抠图|色键|颜色校正','i').test(text)){place.push(carried(file,VIDEO_EDIT_RESOURCE));continue;}
       if (file?.kind === 'video' || file?.kind === 'audio') {
         if (task.discussion || task.surface === 'chat') continue;
         const blocked = named.filter(id => id !== 'multi_reference' && id !== 'first_last_pair' && id !== 'first_last_unspecified' && !acceptsKind(destinationById(id), file.kind));

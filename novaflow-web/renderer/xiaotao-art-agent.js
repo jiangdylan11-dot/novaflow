@@ -1590,7 +1590,7 @@
           const pending=await tools.settlePending({signal,onStatus});if(pending)receipts.push(pending);
           // The planner cannot see the picture, so a mask tool stops here and hands the brush to the user.
           if(['returned','opened'].includes(pending?.phase)&&/遮罩|涂抹|涂满|框选/.test(pending.message||'')){
-            if(!maskPainted&&await paintTarget()){maskPainted=true;finishedOps.clear();pending.message='已按看图结果涂好目标区域，不要再绘制。局部编辑先写好修改说明，然后再次执行同一个工具。';}
+            if(!maskPainted&&await paintTarget()){maskPainted=true;finishedOps.clear();const selection=root.NovaFlowSpineSplitBridge?.getState?.()?.selectionTool;if(['inpaintEdit','inpaintCompletion'].includes(pending.name)&&selection&&!String(selection.inpaintPrompt||'').trim())selection.inpaintPrompt=String(message).trim().slice(0,300);pending.message='已按看图结果涂好目标区域，不要再绘制。局部编辑先写好修改说明，然后再次执行同一个工具。';}
             else{pending.plannerPrompt=true;pending.message='已打开'+({cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体'}[pending.name]||'工具')+'。请在画板上涂出要处理的区域，再点一次工具按钮执行。';}}
           if(signal.aborted||operation!==serial||billing&&(state.provider!=='api'||state.modelId!==billing.modelId))return false;
           // Reading the current video frame can finish native metadata loading
@@ -1949,7 +1949,7 @@
       const operationVision=operationTextOnly && selectedPricingPayload().operationVisionBillingV3===true;
       const visionUploads=operationVision && invocationUploads.length>0 && invocationUploads.every(item=>item?.kind==='image');
       const operationNeedsTools=!reverseImage&&(includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
-        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|改|换|抠|去掉|去除|擦|放大|扩|拆|补|裁|压缩|画|加上|加个|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
+        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|设计|新建|创建|建立|添加|增加|做(?:一|个|张|段|套)|来(?:一|个|张|段)|配乐|配音|转成|转换|合成|渲染|改|换|抠|去掉|去除|擦|放大|扩|拆|补|裁|压缩|画|加上|加个|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
       const operationGeneral=state.provider==='api'&&!capabilityOnly&&!!operationNeedsTools;
       if (!(await ensureStaged())) return false;
       if(operationGeneral){if(!root.NovaFlowFoartTools){state.error='工具尚未就绪，本次未提交。';notify();return false;}
@@ -2426,7 +2426,14 @@
         const prompt=String(op.prompt||'').trim()||info.pagePrompt.trim()||message;
         await prepareSelectedUiDraft(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,requirements:message,...uiWorkspace}});state.pending=true;
         if(state.error)throw Error(state.error);
-        return {action:op.action,phase:'applied',plannerPrompt:true,message:'UI 提示词草稿已准备好，请在面板确认。'};
+        if(op.action!=='image_generate')return {action:op.action,phase:'applied',plannerPrompt:true,message:'UI 提示词已优化并写入输入框。'};
+        // "设计一个界面" asks for the picture, not only its prompt: run the same generation the 生成 button runs.
+        state.status='UI 提示词已写入，正在生成…';notify();
+        const earlier=new Set(Array.from(rt.state.results||[],item=>item?.id));
+        await rt.run();
+        if(rt.state.error)throw Error('UI 提示词已写入，但生成没有完成：'+rt.state.error);
+        const fresh=Array.from(rt.state.results||[]).filter(item=>item&&!earlier.has(item.id)).reverse();
+        return {action:op.action,phase:'completed',plannerPrompt:true,surface:'ui',provider:rt.state.provider,modelLabel:rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen',outputs:fresh.map((item,index)=>({id:item.id,name:item.name||item.fileName||'UI成图'+(index+1)})),message:'已写入 UI 提示词并完成生成。'};
       }
       if(!info||info.surface!=='drawing')throw Error('请先打开绘图页面，再优化提示词');
       // "改上一张": the previous picture becomes the 图生图 reference before the brief is written, so the edit is made on it and not on a fresh picture.

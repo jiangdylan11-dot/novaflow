@@ -5381,12 +5381,12 @@
       await cacheTempSplitPackage()
       state.viewMode = activeOwn && state.parts.length ? 'parts' : 'source'
       resetSplitCanvasViewport()
-      setMessage(`已无限扩图至 ${nextSize.width} x ${nextSize.height}`)
+      setMessage(`已扩展画布至 ${nextSize.width} x ${nextSize.height}`)
       render()
       updatePreviewOverlay()
       syncSplitWorkspace()
     } catch (error) {
-      setMessage(String(error && error.message || error || '无限扩图失败'), true)
+      setMessage(String(error && error.message || error || '画布扩展失败'), true)
       render()
       syncSplitWorkspace()
     }

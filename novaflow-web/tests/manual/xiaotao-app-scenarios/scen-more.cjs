@@ -1,0 +1,52 @@
+const fs=require('fs');
+const PNG='data:image/png;base64,'+fs.readFileSync(__dirname+'/cat.png').toString('base64');
+const noErr=s=>({ok:!s.error,what:'no error',detail:s.error});
+const last=s=>s.messages.filter(m=>m.role==='assistant').at(-1)?.content||'';
+const cap=(p,k)=>p.evaluate(k=>window.NovaFlowFoartTools.capture()[k],k);
+async function stage(p,name='cat.png',data=PNG,type='image/png'){await p.evaluate(async ([d,name,type])=>{const b=await (await fetch(d)).blob();await window.__xt.c.stageUploads([new File([b],name,{type})]);},[data,name,type]);}
+const seq=steps=>(info,i)=>{const s=steps[i];if(!s)return H.done('完成。');return typeof s==='function'?s(info):s;};
+module.exports=[
+ {name:'anim-wave',message:'新建一个动画工程，加一根手臂骨骼，做一个挥手动画',
+  plan:seq([H.act('新建工程。',{action:'animation',operation:'new_project',name:'挥手'}),
+   H.act('加骨骼并建动画。',{action:'animation',operation:'create_bone',name:'arm',parentBoneName:'root',values:{length:80,rotation:30}}),
+   H.act('建动画。',{action:'animation',operation:'create_animation',name:'wave'}),
+   H.act('打关键帧。',{action:'animation',operation:'key_bones',name:'wave',keys:[{boneName:'arm',frame:0,values:{rotation:30}},{boneName:'arm',frame:15,values:{rotation:80}},{boneName:'arm',frame:30,values:{rotation:30}}]}),
+   H.done('已新建工程并做好挥手动画。')]),
+  check:async(p,s)=>{const a=await cap(p,'animation');return [noErr(s),{ok:a?.animations?.includes('wave')&&a.bones.some(b=>b.name==='arm'),what:'project, bone, animation exist',detail:JSON.stringify(a).slice(0,300)},{ok:/挥手|wave/.test(last(s)),what:'reply',detail:last(s)}];}},
+ {name:'anim-export-json',message:['新建一个动画工程','导出成json'],
+  plan:seq([H.act('新建。',{action:'animation',operation:'new_project',name:'导出测试'}),H.done('已新建。'),
+   H.act('导出。',{action:'animation',operation:'export_project',format:'json'}),H.done('已导出。')]),
+  check:async(p,s)=>[noErr(s),{ok:/导出|下载/.test(last(s)),what:'export receipt',detail:last(s)}]},
+ {name:'anim-ik',message:'新建工程，做两节手臂骨骼，再加一个IK约束',
+  plan:seq([H.act('新建。',{action:'animation',operation:'new_project',name:'IK'}),
+   H.act('骨骼1。',{action:'animation',operation:'create_bone',name:'upper',parentBoneName:'root',values:{length:60}}),
+   H.act('骨骼2。',{action:'animation',operation:'create_bone',name:'lower',parentBoneName:'upper',values:{length:60,x:60}}),
+   H.act('目标。',{action:'animation',operation:'create_bone',name:'target',parentBoneName:'root',values:{x:120}}),
+   H.act('IK。',{action:'animation',operation:'create_constraint',constraintKind:'ik',boneNames:['upper','lower'],targetName:'target',name:'arm_ik'}),
+   H.done('完成。')]),
+  check:async(p,s)=>{const a=await cap(p,'animation');return [noErr(s),{ok:(a?.constraints||[]).length===1,what:'ik constraint exists',detail:JSON.stringify(a?.constraints)}];}},
+ {name:'ui-layout',setup:async p=>{await p.evaluate(()=>{const rt=window.__NovaFlowArtGenerate;window.__runs=[];rt.run=async()=>{rt.state.results.unshift({id:'u'+Date.now(),name:'UI成图.png'});window.__runs.push({prompt:rt.state.prompt,mode:rt.state.mode});};});},message:'帮我设计一个手机游戏登录界面，上面logo，中间账号密码输入框，下面登录按钮',
+  plan:seq([H.act('打开UI。',{action:'open',surface:'ui'}),
+   H.act('建布局。',{action:'ui_layout',width:1080,height:1920,blocks:[{name:'logo',x:340,y:200,width:400,height:300},{name:'账号输入框',x:140,y:800,width:800,height:120},{name:'密码输入框',x:140,y:960,width:800,height:120},{name:'登录按钮',x:240,y:1300,width:600,height:160}]}),
+   H.act('生成。',{action:'image_generate',prompt:'手机游戏登录界面，顶部游戏logo，中间账号和密码输入框，底部醒目的登录按钮，奇幻风格',generationMode:'img2img',useResult:false}),
+   H.done('完成。')]),
+  check:async(p,s,r)=>{const u=await cap(p,'uiLayout');const runs=await p.evaluate(()=>window.__runs);return [noErr(s),{ok:(u?.blocks||[]).length===4,what:'layout with 4 blocks',detail:JSON.stringify(u).slice(0,300)},{ok:runs?.length===1&&/UI/.test(runs[0].prompt),what:'UI generated with draft prompt',detail:JSON.stringify(runs)},{ok:/UI成图/.test(last(s)),what:'reply names real file',detail:last(s)}];}},
+ {name:'art-canvas-resize',message:[async p=>stage(p),'把这张图的画布扩到1024x768，不要AI填充'],
+  plan:seq([info=>H.act('扩画布。',{action:'art_action',name:'canvasResize',uploadId:info.context.uploads?.[0]?.id,width:1024,height:768,anchor:'center'}),H.done('完成。')]),
+  check:async(p,s)=>{const a=await p.evaluate(async()=>{const st=window.NovaFlowSpineSplitBridge?.getState?.();if(!st?.source?.dataUrl)return {keys:Object.keys(st?.source||{})};const img=new Image();img.src=st.source.dataUrl;await img.decode();return {w:img.naturalWidth,h:img.naturalHeight,name:st.source.fileName};});return [noErr(s),{ok:a?.w===1024&&a?.h===768,what:'source is 1024x768',detail:JSON.stringify(a)}];}},
+ {name:'art-export-png',message:[async p=>stage(p),'把这张图导出成PNG'],
+  plan:seq([info=>H.act('载入。',{action:'art_action',name:'export',uploadId:info.context.uploads?.[0]?.id,format:'png'}),H.done('已导出。')]),
+  check:async(p,s)=>[noErr(s),{ok:/下载|导出/.test(last(s)),what:'export receipt',detail:last(s)}]},
+ {name:'art-upscale',message:[async p=>stage(p),'把这张图高清放大'],
+  plan:seq([info=>H.act('放大。',{action:'art_action',name:'imageUpscale',uploadId:info.context.uploads?.[0]?.id}),H.done('完成。')]),
+  check:async(p,s)=>[{ok:!s.error||/Runtime|算力|未连接|AI Runtime/.test(s.error),what:'reached native upscale',detail:s.error}]},
+ {name:'particle-export',message:'把当前粒子导出成配置文件',
+  plan:seq([H.act('打开粒子。',{action:'open',surface:'particle'}),H.act('导出。',{action:'particle',operation:'export_config'}),H.done('已导出。')]),
+  check:async(p,s)=>[noErr(s),{ok:/下载|导出/.test(last(s)),what:'export receipt',detail:last(s)}]},
+ {name:'tools-jpg',message:[async p=>stage(p,'photo.png'),'把这张图压缩成JPG'],
+  plan:seq([H.act('打开工具。',{action:'open',surface:'tools'}),
+   info=>{const c=info.context.controls.find(x=>/^JPG 压缩/.test(x.label));return H.act('切到JPG。',{action:'activate_control',controlId:c.id});},
+   info=>{const f=info.context.controls.find(x=>x.kind==='file');return H.act('放图。',{action:'assign_upload',controlId:f.id,uploadId:info.context.uploads[0].id});},
+   H.act('压缩。',{action:'tool',name:'jpg_compress',operation:'run'}),H.done('完成。')]),
+  check:async(p,s)=>[noErr(s),{ok:/jpg|JPG|保留/.test(last(s)),what:'jpg result',detail:last(s)}]},
+];

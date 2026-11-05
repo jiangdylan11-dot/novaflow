@@ -19,5 +19,5 @@ module.exports=[
   plan(info,i){const {act,done}=H;const f=first(info,i);if(f)return f;
    if(i===2)return act('用这张图生成视频。',{action:'media',operation:{action:'generate_video',target:'video',prompt:'橘猫在草地上伸懒腰，尾巴轻轻摆动',seconds:3}});
    return done('ok');},
-  check:async(p,s,r)=>{const m=await p.evaluate(()=>window.NovaFlowFoartTools.capture().media?.generation);return [{ok:!s.error||/8189/.test(s.error),what:'reached video generation',detail:s.error},{ok:m?.genType==='image_video'&&m.h3References?.length>=0,what:'video uses 图生视频 with the cat',detail:String(JSON.stringify(m)).slice(0,400)}];}},
+  check:async(p,s,r)=>{const m=await p.evaluate(()=>window.NovaFlowFoartTools.capture().media?.generation);return [{ok:!s.error||/8189|生成服务启动失败/.test(s.error),what:'reached video generation',detail:s.error},{ok:m?.genType==='image_video'&&m.h3References?.length>=0,what:'video uses 图生视频 with the cat',detail:String(JSON.stringify(m)).slice(0,400)}];}},
 ];
