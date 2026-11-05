@@ -92,8 +92,7 @@ section('2. no graph template reaches the browser');
 
     check('the bundle lost most of its node references (' + nodes(original) + ' -> ' + nodes(shipped) + ')',
       nodes(shipped) < nodes(original) / 3, { before: nodes(original), after: nodes(shipped) });
-    check('the bundle lost most of its weight filenames (' + weights(original) + ' -> ' + weights(shipped) + ')',
-      weights(shipped) < weights(original) / 2, { before: weights(original), after: weights(shipped) });
+    checkEqual('the bundle names no weight file (' + weights(original) + ' -> ' + weights(shipped) + ')', weights(shipped), 0);
 
     // A template holding a whole graph is the thing that must be gone.
     const graphTemplates = [...shipped.matchAll(/`[^`]{2000,}`/g)]
@@ -173,7 +172,7 @@ section('4. the shims load last and only override transport');
   const moved = writeConfig(html, { controlUrl: 'https://example.test/functions/v1/novaflow-web' });
   checkEqual('repointing changes only the control URL',
     readConfig(moved),
-    { controlUrl: 'https://example.test/functions/v1/novaflow-web', authUrl: built.authUrl });
+    { ...built, controlUrl: 'https://example.test/functions/v1/novaflow-web' });
   check('and rewrites nothing else', moved.length - html.length === ('https://example.test/functions/v1/novaflow-web'.length - built.controlUrl.length),
     { before: html.length, after: moved.length });
   check('and freeing memory does not claim to have freed any',
@@ -202,7 +201,7 @@ section('4b. browser-only files stay out of the compute node');
     workerFiles.filter((f) => f.startsWith('novaflow-web-')), []);
   checkEqual('the build says which files it held back',
     (report.browserOnly || []).slice().sort(),
-    ['novaflow-web-account.js', 'novaflow-web-capabilities.js', 'novaflow-web-compute-node.js', 'novaflow-web-runtime.js', 'novaflow-web-templates.js', 'novaflow-web-warehouse.js']);
+    ['home-frame-bridge.js', 'home-shell.js', 'novaflow-web-account.js', 'novaflow-web-capabilities.js', 'novaflow-web-compute-node.js', 'novaflow-web-runtime.js', 'novaflow-web-templates.js', 'novaflow-web-warehouse.js']);
   for (const file of report.browserOnly || []) {
     check(file + ' did ship to the browser', webFiles.includes(file), webFiles.length);
   }
@@ -333,7 +332,7 @@ section('a logged-out visitor is told to log in, and can');
 
   check('the account control ships', account.length > 1000, account.length);
   check('and is loaded by the page',
-    (html.match(/novaflow-web-account\.js/g) || []).length === 1, null);
+    (html.match(/<script src="\.\/novaflow-web-account\.js/g) || []).length === 1, null);
   check('it puts the account in the header after the version',
     /nf-brand-version/.test(account) && /novaflow-web-account-header/.test(account), null);
   // The old dialog id is only looked up so a leftover node can be removed.
@@ -443,7 +442,7 @@ section('the Web line answers every method the renderer can call, and they run')
   const payload = {
     baseUrl: 'http://127.0.0.1:8188', path: '/x', init: {}, url: 'http://127.0.0.1:8188/x',
     filename: 'a.png', subfolder: '', type: 'output', name: 'a.png', text: 'x',
-    prompt: 'x', taskType: 'qwen_t2i', module: 'M', method: 'm', options: {},
+    prompt: 'x', taskType: 'h3_i2v', module: 'M', method: 'm', options: {},
     buffer: new Uint8Array(1), data: {}, account: 'a', password: 'b'
   };
 

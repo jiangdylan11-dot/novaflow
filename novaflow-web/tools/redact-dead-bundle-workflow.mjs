@@ -17,10 +17,12 @@
 
 import { writeFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { findMarkers } from './redact-workflow-module.mjs';
+import { findMarkers, PLACEHOLDER_STRING } from './redact-workflow-module.mjs';
 
 // A template holding this many nodes is a workflow, not a mention.
 const MIN_NODES_FOR_A_GRAPH = 3;
+// A named weight file is never page data, whatever is left of the code around it.
+const NAMED_WEIGHT_FILE = /[\w.-]+\.(?:safetensors|ckpt|gguf|pth|onnx)\b/g;
 
 /**
  * Every backtick template literal in `source`, as [start, end] inclusive of
@@ -86,6 +88,7 @@ export function redactDeadBundleWorkflow(source) {
     out = out.slice(0, start) + '`{}`' + out.slice(end + 1);
   }
 
+  out = out.replace(NAMED_WEIGHT_FILE, PLACEHOLDER_STRING);
   return { code: out, replaced: targets.length };
 }
 

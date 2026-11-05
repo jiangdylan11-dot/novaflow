@@ -16,28 +16,6 @@
 
 export const MODEL_MANIFEST = Object.freeze([
   {
-    model_id: 'qwen-image-2511',
-    display_name: 'Qwen Image (Rapid AIO)',
-    version: '2511.1',
-    runtime: 'image',
-    min_vram_mb: 16000,
-    compatible_workflows: ['qwen_t2i.json', 'qwen2511_edit.json'],
-    required_files: [
-      {
-        path: 'checkpoints/Qwen-Rapid-AIO-NSFW-v20.safetensors',
-        min_bytes: 4_000_000_000,
-        sha256: null
-      }
-    ],
-    download: {
-      // These weights are licensed per user, so this project does not
-      // redistribute them. The Model Manager imports them from an existing
-      // ComfyUI models folder or a URL the operator configures.
-      mode: 'import_or_configured_url',
-      hint: 'Point the worker at an existing ComfyUI models folder, or set a download URL in worker settings.'
-    }
-  },
-  {
     model_id: 'minimax-h3',
     display_name: 'MiniMax H3 (image to video)',
     version: '0.31.1',
@@ -183,6 +161,8 @@ export const MODEL_MANIFEST = Object.freeze([
 ]);
 
 export const QWEN21_MODEL_ID = 'qwen-image-2.1';
+// No node advertises these, so a task queued for one would wait forever.
+export const RETIRED_MODEL_IDS = Object.freeze(['qwen-image-2511', 'prompt-assistant']);
 
 export function findModel(modelId) {
   return MODEL_MANIFEST.find((m) => m.model_id === String(modelId || '')) || null;

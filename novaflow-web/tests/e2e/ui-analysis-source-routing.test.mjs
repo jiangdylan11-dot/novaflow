@@ -158,9 +158,9 @@ test('analysis failure exits loading; duplicate clicks and cancellation cannot s
   installAnalysis(e,()=>new Promise(r=>{release=r;}));
   Object.assign(e.context,{ART_GENERATE_STATE:e.state,artGenerateReferences:()=>e.refs,artGenerateReferenceLimit:()=>10,captureArtGeneratePromptSnapshot(){},setArtGenerateProgress(){},setArtGenerateStatus:(text,error)=>{e.state.status=text;e.state.error=error?text:'';},resetArtGenerateProgress:(text,pct)=>{e.state.progressLabel=text;e.state.progressPct=pct;},artRequestJson:()=>{throw new Error('sampling must not be submitted');}});
   const s=source('novaflow-brand-runtime.js'),a=s.indexOf('  async function runArtGenerate(options'),z=s.indexOf('  function createArtGenerateExecutionBridge()',a);
-  // The extracted production function shares this revision counter with the
-  // enclosing runtime; provide the same initial value in this isolated VM.
-  e.context.pendingArtAgentPreparation=null;e.context.pendingArtAgentRevision=0n;vm.runInContext(s.slice(a,z),e.context);
+  // The extracted production function shares these counters with the
+  // enclosing runtime; provide the same initial values in this isolated VM.
+  e.context.artOwnerPreparationEpoch=0;e.context.pendingArtAgentPreparation=null;e.context.pendingArtAgentRevision=0n;vm.runInContext(s.slice(a,z),e.context);
   const first=e.context.runArtGenerate();await tick();await e.context.runArtGenerate();assert.equal(e.calls.length,1);
   assert.equal(e.input().engine,'local');release({ok:false,error:'Qwen 2.1 UI 设计规划JSON无效，本次未提交生成'});await first;
   assert.equal(e.state.running,false);assert.equal(e.state.progressLabel,'分析失败，未提交生成');assert.match(e.state.error,/JSON无效/);
@@ -188,10 +188,10 @@ test('LoRA catalogue failures stay off the sidebar, are not stored, and clear af
 });
 
 test('pool connection and image-node availability report different facts without a false image green light',async()=>{
-  const e=environment();e.context.api={};e.context.root=e.context;e.context.runtime={control:async()=>({available_workers:1,taskTypes:[{task_type:'prompt_assistant',available_workers:1},{task_type:'qwen_t2i',available_workers:0}]})};
+  const e=environment();e.context.api={};e.context.root=e.context;e.context.runtime={control:async()=>({available_workers:1,taskTypes:[{task_type:'prompt_assistant',available_workers:1}],features:{qwenImage21Workers:0,qwenImage21TurboWorkers:0}})};
   let s=source('novaflow-web-capabilities.js');vm.runInContext(s.slice(s.indexOf('  let lastCaps ='),s.indexOf('  // A browser cannot start')),e.context);
-  const status=await e.context.api.runtimeGetStatus();assert.equal(status.connected,true);assert.match(status.detail,/生图节点 0/);
+  const status=await e.context.api.runtimeGetStatus();assert.equal(status.connected,true);assert.match(status.detail,/生图节点 0/);assert.doesNotMatch(status.detail,/本地分析节点/);
   s=source('novaflow-brand-runtime.js');vm.runInContext(s.slice(s.indexOf('  function isTopbarAiRuntimeConnected'),s.indexOf('  function noteTopbarAiRuntimeStatus')),e.context);assert.equal(e.context.topbarAiRuntimeStatusPresentation(status).label,'算力池在线');
-  e.context.poolHas=async()=>0;s=source('novaflow-web-runtime.js');const a=s.indexOf('    async runtimeGetSystemStats(payload)'),z=s.indexOf('    async runtimeRequestJson',a);vm.runInContext('var stats = ({'+s.slice(a,z)+'});',e.context);
+  e.context.poolHas=async()=>0;e.context.selectedImageProbeType=()=>'qwen21-turbo';s=source('novaflow-web-runtime.js');const a=s.indexOf('    async runtimeGetSystemStats(payload)'),z=s.indexOf('    async runtimeRequestJson',a);vm.runInContext('var stats = ({'+s.slice(a,z)+'});',e.context);
   const image=await e.context.stats.runtimeGetSystemStats({});assert.equal(image.ok,false);assert.match(image.error,/无可用生图节点/);e.mounted.destroy();
 });

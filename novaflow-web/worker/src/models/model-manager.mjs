@@ -19,7 +19,7 @@ import { WORKER_MODEL_STATUS } from '../../../packages/shared/src/protocol.mjs';
 // Keep retired definitions in the shared catalogue for historical records,
 // but never inspect or advertise their files from a compute node.
 export const WORKER_MODEL_MANIFEST = MODEL_MANIFEST.filter(({ model_id }) =>
-  model_id !== 'prompt-assistant' && model_id !== 'qwen-image-2511');
+  model_id !== 'prompt-assistant');
 
 async function sha256File(path) {
   return await new Promise((resolve, reject) => {

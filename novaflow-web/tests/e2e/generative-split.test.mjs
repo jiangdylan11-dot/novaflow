@@ -110,7 +110,7 @@ test('worker replays integrated builder with its own catalogue and correct sched
   assert(isAllowedWorkflowCall('spine-split-runtime', 'buildGenerativeSplitWorkflow'));
   assert.equal(workflowModelId('spine-split-runtime', { __args: [{}, options] }, 'buildGenerativeSplitWorkflow'), 'qwen-image-2.1-turbo');
   assert.equal(workflowModelId('spine-split-runtime', { __args: [{}, { ...options, profile: 'standard' }] }, 'buildGenerativeSplitWorkflow'), 'qwen-image-2.1');
-  assert.equal(workflowModelId('spine-split-runtime', { __args: [{}, {}] }), 'qwen-image-2511');
+  assert.equal(workflowModelId('spine-split-runtime', { __args: [{}, {}] }), 'qwen-image-2.1-turbo');
   const graph = await host.buildGraph({ module: 'spine-split-runtime', method: 'buildGenerativeSplitWorkflow', options: { __args: [{ poisonedCatalogue: true }, options] } });
   assert.deepEqual(JSON.parse(JSON.stringify(graph)), api.buildWorkflow({ ...options, objectInfo: info }));
   const browser = await readFile(new URL('../../web-dist/generative-split.workflow.js', import.meta.url), 'utf8');

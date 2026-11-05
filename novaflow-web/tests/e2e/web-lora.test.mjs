@@ -9,11 +9,11 @@ import { commonLoraCatalog } from '../../packages/shared/src/lora-catalog.mjs';
 let checks = 0;
 function equal(a,b) { assert.deepEqual(a,b); checks++; }
 const item = { name: 'minimax_h3/motion.safetensors', fingerprint: 's10-m123-h' + 'a'.repeat(64), modelFamily: 'fl2va', kind: 'standard', supportedSteps: null, strengthRange: { min: 0, max: 2 } };
-const catalog = { version: 1, updated_at: new Date().toISOString(), h3: { ok:true, items:[item] }, qwen: {ok:true,items:[{name:'qwen/style.safetensors'}]}, qwen_nsfw:{ok:true,items:[]} };
+const catalog = { version: 1, updated_at: new Date().toISOString(), h3: { ok:true, items:[item] }, qwen21: {ok:true,items:[{name:'qwen/style.safetensors'}]} };
 equal(commonLoraCatalog([{detail:{lora_catalog:catalog}}],{kind:'h3',mode:'t2v'}).length,1);
 equal(commonLoraCatalog([{detail:{lora_catalog:catalog}}, {detail:{lora_catalog:{...catalog,h3:{ok:true,items:[]}}}}],{kind:'h3'}).length,0);
-assert.throws(()=>commonLoraCatalog([{detail:{}}],{kind:'qwen'}),/0.4.4/);checks++;
-assert.throws(()=>commonLoraCatalog([{detail:{lora_catalog:{...catalog,updated_at:'invalid'}}}],{kind:'qwen'}),/过期/);checks++;
+assert.throws(()=>commonLoraCatalog([{detail:{}}],{kind:'qwen',engine:'qwen-2.1'}),/0.4.4/);checks++;
+assert.throws(()=>commonLoraCatalog([{detail:{lora_catalog:{...catalog,updated_at:'invalid'}}}],{kind:'qwen',engine:'qwen-2.1'}),/过期/);checks++;
 const ctx = await startLocalControlPlane({ port: 0 });
 async function request(path, method='GET', body, token) {
   const res=await fetch(ctx.url+path,{method,headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});
@@ -25,12 +25,12 @@ try {
   const worker=await request('/api/worker/register','POST',{worker_id:crypto.randomUUID(),worker_name:'lora-fixture',worker_secret:generateWorkerSecret(),hardware:{vram_mb:32000}},token);
   await approveComputeWorker(ctx.db,worker.body.worker.id);
   const wt=worker.body.workerToken;
-  await request('/api/worker/models','POST',{models:['qwen-image-2511','minimax-h3'].map(model_id=>({model_id,status:'ready',detail:{lora_catalog:catalog,private_path:'C:/private'}}))},wt);
+  await request('/api/worker/models','POST',{models:['qwen-image-2.1','minimax-h3'].map(model_id=>({model_id,status:'ready',detail:{lora_catalog:catalog,private_path:'C:/private'}}))},wt);
   equal((await request('/api/web/loras/qwen')).status,401);
-  const qwen=await request('/api/web/loras/qwen?nsfw=false','GET',undefined,token);
+  equal((await request('/api/web/loras/qwen?nsfw=false','GET',undefined,token)).status,400);
+  const qwen=await request('/api/web/loras/qwen?nsfw=false&engine=qwen-2.1','GET',undefined,token);
   equal(qwen.status,200);equal(qwen.body.items[0].name,'qwen/style.safetensors');
   equal(JSON.stringify(qwen).includes('C:/private'),false);
-  equal((await request('/api/web/loras/qwen?nsfw=true','GET',undefined,token)).body.items.length,0);
   equal((await request('/api/web/loras/h3?mode=t2v&steps=4','GET',undefined,token)).body.items[0].fingerprint,item.fingerprint);
   equal((await request('/api/web/loras/h3/validate','POST',{...item,mode:'t2v',steps:4,strength:0.6},token)).status,200);
   equal((await request('/api/web/loras/h3/validate','POST',{...item,fingerprint:'stale',mode:'t2v',strength:0.6},token)).status,400);

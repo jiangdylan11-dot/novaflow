@@ -104,6 +104,11 @@ await db.query(
   "insert into public.system_settings (key, value) values ('provider_budget_comfyui', '{\"balance\": 777}'::jsonb)"
 );
 
+// Everything the Web migrations own, for the additions check and the rollback.
+const WEB_TABLES = ['gpu_workers', 'worker_models', 'web_ai_tasks', 'web_task_events', 'web_worker_registration_codes',
+  'web_compute_enrollment_limits', 'web_compute_usage', 'web_compute_usage_deleted'];
+const WEB_FUNCTION = /^(?:novaflow_web_|web_|admin_(?:compute_usage_summary|delete_compute_usage)$)/;
+
 const before = await snapshot(db);
 const beforeCredits = (await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0];
 const beforeUsers = (await db.query('select count(*)::int as n from public.users')).rows[0].n;
@@ -180,7 +185,7 @@ section('no existing data was touched');
 // ---------------------------------------------------------------------------
 section('what it added is exactly what it claims');
 {
-  const NEW_TABLES = ['gpu_workers', 'worker_models', 'web_ai_tasks', 'web_task_events', 'web_worker_registration_codes'];
+  const NEW_TABLES = WEB_TABLES;
   const beforeTables = new Set(before.columns.map((c) => c.table_name));
   const afterTables = new Set(after.columns.map((c) => c.table_name));
   const added = [...afterTables].filter((t) => !beforeTables.has(t)).sort();
@@ -192,8 +197,8 @@ section('what it added is exactly what it claims');
   const newFunctions = after.functions
     .filter((f) => !before.functions.some((b) => b.name === f.name && b.args === f.args))
     .map((f) => f.name).sort();
-  check('all new functions are namespaced novaflow_web_*',
-    newFunctions.every((n) => n.startsWith('novaflow_web_')), newFunctions);
+  check('all new functions carry a Web prefix',
+    newFunctions.every((n) => WEB_FUNCTION.test(n)), newFunctions);
 
   // ai_tasks must be left alone entirely - the brief asked for columns on it,
   // and we deliberately did not add them without a live audit.
@@ -205,18 +210,18 @@ section('what it added is exactly what it claims');
 // ---------------------------------------------------------------------------
 section('new tables are locked to service_role');
 {
-  const NEW_TABLES = ['gpu_workers', 'worker_models', 'web_ai_tasks', 'web_task_events', 'web_worker_registration_codes'];
-  for (const table of NEW_TABLES) {
+  for (const table of WEB_TABLES) {
     const rls = await db.query(
       "select relrowsecurity, relforcerowsecurity from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname='public' and c.relname=$1",
       [table]
     );
-    check(table + ' has RLS enabled and forced',
-      rls.rows[0]?.relrowsecurity === true && rls.rows[0]?.relforcerowsecurity === true, rls.rows[0]);
-
-    const policies = after.policies.filter((p) => p.table_name === table);
-    check(table + ' denies anon/authenticated',
-      policies.some((p) => String(p.qual).includes('false')), policies);
+    check(table + ' has RLS enabled', rls.rows[0]?.relrowsecurity === true, rls.rows[0]);
+    if (!table.startsWith('web_compute_')) {
+      check(table + ' forces RLS', rls.rows[0]?.relforcerowsecurity === true, rls.rows[0]);
+      const policies = after.policies.filter((p) => p.table_name === table);
+      check(table + ' denies anon/authenticated',
+        policies.some((p) => String(p.qual).includes('false')), policies);
+    }
 
     const grants = await db.query(
       "select grantee, privilege_type from information_schema.role_table_grants where table_schema='public' and table_name=$1 and grantee in ('anon','authenticated')",
@@ -280,11 +285,11 @@ section('rollback removes only what was added');
     checkEqual('protected columns survive the rollback',
       only(rolled.columns, PROTECTED_TABLES), only(before.columns, PROTECTED_TABLES));
 
-    const stillThere = ['gpu_workers', 'worker_models', 'web_ai_tasks', 'web_task_events', 'web_worker_registration_codes']
+    const stillThere = WEB_TABLES
       .filter((t) => rolled.columns.some((c) => c.table_name === t));
     checkEqual('every Web table is gone after rollback', stillThere, []);
 
-    const leftoverFns = rolled.functions.filter((f) => f.name.startsWith('novaflow_web_')).map((f) => f.name);
+    const leftoverFns = rolled.functions.filter((f) => WEB_FUNCTION.test(f.name)).map((f) => f.name);
     checkEqual('every Web function is gone after rollback', leftoverFns, []);
 
     const credits = (await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0];

@@ -21,8 +21,8 @@ try {
     const r = await fetch(origin + path, { method, headers: { 'content-type': 'application/json', 'x-novaflow-local': key }, body: body === undefined ? undefined : JSON.stringify(body) });
     const value = await r.json(); assert.ok(r.ok, JSON.stringify(value)); return value;
   };
-  const { task } = await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {
-    prompt: 'A small turquoise ceramic teapot on a plain cream background, studio product photograph', width: 512, height: 512, steps: 4, cfg: 1, seed: 123456, count: 1
+  const { task } = await call('POST', '/api/web/tasks', { task_type: 'renderer_workflow', workflow: { module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow' }, parameters: {
+    __args: ['local', 'txt2img', [], 'Foart_live', 'A small turquoise ceramic teapot on a plain cream background, studio product photograph', '', 'live', [], { localDrawEngine: 'qwen-2.1', localQwen21Variant: 'turbo', width: 512, height: 512, seed: 123456 }, null, {}]
   } });
   const deadline = Date.now() + 240000;
   let final;

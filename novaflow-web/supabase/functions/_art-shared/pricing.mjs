@@ -22,15 +22,12 @@ import { TASK_TYPE, isMetered } from './protocol.mjs';
 
 // Base rates. Deliberately simple and auditable: a rate card, not a formula
 // nobody can reproduce by hand.
+export const IMAGE_PRICE_KEY = 'image';
 export const PRICE_TABLE = Object.freeze({
-  [TASK_TYPE.QWEN_T2I]: {
+  [IMAGE_PRICE_KEY]: {
     // per megapixel of output, per 20 sampling steps
     perMegapixelPer20Steps: 1.2,
     minimum: 0.6
-  },
-  [TASK_TYPE.QWEN_EDIT]: {
-    perMegapixelPer20Steps: 1.5,
-    minimum: 0.8
   },
   [TASK_TYPE.H3_I2V]: {
     // per second of generated video at 720p-equivalent
@@ -80,7 +77,7 @@ export function priceFromRateCard(taskType, parameters = {}) {
   const type = String(taskType || '');
   const params = parameters && typeof parameters === 'object' ? parameters : {};
 
-  if (type === TASK_TYPE.QWEN_T2I || type === TASK_TYPE.QWEN_EDIT) {
+  if (type === IMAGE_PRICE_KEY) {
     const rate = PRICE_TABLE[type];
     const width = clampInt(params.width, 256, 4096, 1024);
     const height = clampInt(params.height, 256, 4096, 1024);

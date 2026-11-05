@@ -24,13 +24,13 @@ import { WORKFLOW_MODULES, isAllowedWorkflowCall } from '../../packages/shared/s
 import { allWorkflowEntryMethods } from '../../packages/shared/src/workflow-modules.mjs';
 import { check, checkEqual, call, section, finish, waitFor } from '../helpers.mjs';
 import { readFile } from 'node:fs/promises';
+import { startComfyStub } from '../helpers/comfy-stub.mjs';
 import { createContext, runInContext } from 'node:vm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const RENDERER = join(ROOT, 'renderer');
 const WORKER_RENDERER = join(ROOT, 'worker-renderer');
-const COMFY_IMAGE = process.env.NOVAFLOW_COMFY_IMAGE_URL || 'http://127.0.0.1:8188';
 
 const ctx = await startLocalControlPlane({ port: 0 });
 const BASE = ctx.url;
@@ -38,12 +38,7 @@ const dataDir = await mkdtemp(join(tmpdir(), 'nfweb-rw-'));
 let worker = null;
 let token = '';
 
-async function comfyUp() {
-  try {
-    const res = await fetch(COMFY_IMAGE + '/system_stats', { signal: AbortSignal.timeout(6000) });
-    return res.ok;
-  } catch { return false; }
-}
+const comfy = await startComfyStub();
 
 try {
   // -------------------------------------------------------------------------
@@ -163,7 +158,7 @@ try {
   // -------------------------------------------------------------------------
   section('the worker builds with NovaFlow\'s own builder');
   {
-    const host = await createWorkflowHost({ rendererDir: RENDERER });
+    const host = await createWorkflowHost({ rendererDir: WORKER_RENDERER });
     const graph = await host.buildGraph({
       module: recordedIntent.module,
       method: recordedIntent.method,
@@ -185,7 +180,7 @@ try {
       LoadImage: node, ImageToMask: node, TextEncodeQwenImageEditPlus: node, TextEncodeQwenImageEdit: node,
       InpaintModelConditioning: node, KSampler: node, VAEDecode: node, SaveImage: node
     };
-    const host = await createWorkflowHost({ rendererDir: RENDERER, objectInfo });
+    const host = await createWorkflowHost({ rendererDir: WORKER_RENDERER, objectInfo });
     // What the browser sends: its own /object_info, which is empty on the Web.
     const graph = await host.buildGraph({
       module: 'NovaFlowSplitInpaintNsfwWorkflow',
@@ -198,11 +193,8 @@ try {
   }
 
   // -------------------------------------------------------------------------
-  section('end to end on real ComfyUI');
-  const comfyReady = await comfyUp();
-  check('local ComfyUI reachable', comfyReady, { COMFY_IMAGE });
-
-  if (comfyReady) {
+  section('end to end on Turbo, through a stand-in ComfyUI');
+  {
     const code = await call(BASE, 'POST', '/dev/registration-code', { body: { email: 'rw@novaflow.local' } });
     worker = createWorker({
     tunnel: false,   // see verify:tunnel for the real one
@@ -211,8 +203,8 @@ try {
       workflowDir: join(ROOT, 'worker/workflows'),
       rendererDir: WORKER_RENDERER,
       configPath: join(dataDir, 'identity.json'),
-      comfyImageUrl: COMFY_IMAGE,
-      comfyVideoUrl: process.env.NOVAFLOW_COMFY_VIDEO_URL || 'http://127.0.0.1:8189',
+      comfyImageUrl: comfy.url,
+      comfyVideoUrl: comfy.url,
       gatewayPort: 0,
       gatewayHost: '127.0.0.1',
       workerName: 'renderer-workflow-node',
@@ -224,20 +216,21 @@ try {
   await approveComputeWorker(ctx.db,worker.getState().workerId);
     check('worker online with the renderer host', Boolean(worker.getState().workerId));
 
-    // Use the art provider builder: it runs on the image ComfyUI this machine
-    // actually has, unlike H3 which needs the video runtime and much longer.
+    // The art provider builder carries a local Turbo graph through unchanged.
     const created = await call(BASE, 'POST', '/api/web/tasks', {
       token,
       body: {
         task_type: 'renderer_workflow',
-        workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' },
+        workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildRunWorkflow' },
         parameters: {
-          // This module builds CLOUD provider graphs; it accepts gpt and
-          // google, not a local runtime. Its own validation says so.
           mode: 'txt2img',
-          provider: 'gpt',
+          provider: 'local',
           prompt: 'a small blue cube on a white table, product photo',
-          width: 512, height: 512, steps: 4, count: 1
+          width: 512, height: 512, steps: 4, count: 1,
+          localWorkflow: {
+            1: { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: 'Qwen-Image-2.1-Turbo-BF16.gguf' } },
+            9: { class_type: 'SaveImage', inputs: { images: [1, 0], filename_prefix: 'e2e' } }
+          }
         }
       }
     });
@@ -255,19 +248,11 @@ try {
         return null;
       }, { label: 'the renderer workflow task to settle', timeoutMs: 240000, intervalMs: 900 });
 
-      // Whether it renders depends on the builder matching this machine's
-      // ComfyUI. Either way the CONTRACT holds: the browser sent no graph, and
-      // a failure is reported honestly rather than silently swallowed.
-      check('the task reached a terminal state', ['completed', 'failed'].includes(settled.status), settled.status);
-      check('the state machine recorded a timestamp for it',
-        Boolean(settled.completed_at || settled.failed_at), settled);
-      if (settled.status === 'completed') {
-        check('it produced a file',
-          (settled.output_manifest.files || []).length > 0, settled.output_manifest);
-      } else {
-        console.log('  note: the builder did not run here -> ' + (settled.error_message || settled.error_code));
-        check('a failure costs the user nothing', settled.charged_credit_cost === 0, settled);
-      }
+      check('the task completed', settled.status === 'completed', settled);
+      check('the state machine recorded a timestamp for it', Boolean(settled.completed_at), settled);
+      check('it produced a file', (settled.output_manifest.files || []).length > 0, settled.output_manifest);
+      check('it ran on Turbo', settled.model_id === 'qwen-image-2.1-turbo', settled.model_id);
+      check('and the graph reached ComfyUI', comfy.prompts.length === 1, comfy.prompts.length);
     }
   }
   // ---------------------------------------------------------------------------
@@ -305,6 +290,7 @@ try {
 } finally {
   try { if (worker) await worker.stop(); } catch { /* already down */ }
   try { ctx.server.close(); } catch { /* already closed */ }
+  await comfy.close().catch(() => {});
   await rm(dataDir, { recursive: true, force: true }).catch(() => {});
 }
 

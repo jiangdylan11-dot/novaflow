@@ -37,10 +37,10 @@ function ready(expected) {
 }
 try {
   await worker.start();
-  ready(['qwen-image-2511']); // Image catalogue also lists H3 weights, but video is offline.
+  ready(['audio-music', 'audio-sfx']); // Image catalogue also lists H3 weights, but video is offline.
   runtimeUp.video = true;
   await worker.heartbeat();
-  ready(['qwen-image-2511', 'minimax-h3']);
+  ready(['audio-music', 'audio-sfx', 'minimax-h3']);
   runtimeUp.image = false;
   await worker.heartbeat();
   ready(['minimax-h3']);
@@ -49,7 +49,7 @@ try {
   ready([]);
   runtimeUp.image = true;
   await worker.heartbeat();
-  ready(['qwen-image-2511']);
+  ready(['audio-music', 'audio-sfx']);
   const count = reports.length;
   await worker.heartbeat();
   assert.equal(reports.length, count); checks++;

@@ -56,7 +56,7 @@ const studio = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 cloud.NovaFlowWebRuntime.setComputeNode({ id: studio, name: 'studio-5090' });
 check(cloud.NovaFlowWebRuntime.computeNode.id, studio);
 check(cloud.NovaFlowWebRuntime.computeNode.name, 'studio-5090');
-await cloud.NovaFlowWebRuntime.control('POST', '/api/web/tasks', { task_type: 'qwen_t2i' });
+await cloud.NovaFlowWebRuntime.control('POST', '/api/web/tasks', { task_type: 'h3_i2v' });
 check(JSON.parse(requests.at(-1).init.body).target_worker_id, studio);
 await cloud.NovaFlowWebRuntime.control('GET', '/api/web/capabilities');
 check(requests.at(-1).url, 'https://control.test/api/web/capabilities?worker=' + studio);
@@ -81,7 +81,7 @@ check(requests.at(-1).url, 'http://127.0.0.1:4784/api/web/tasks');
 // A prompt-assistant request that cannot reach its assigned worker must be
 // cancelled so it cannot be claimed later without its request.json upload.
 const promptRequests = [];
-const promptPage = createDomSandbox({ Response, Request, Blob, FormData, AbortSignal, Event, TextEncoder, TextDecoder,
+const promptPage = createDomSandbox({ setTimeout, clearTimeout, Response, Request, Blob, FormData, AbortSignal, Event, TextEncoder, TextDecoder,
   NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test' },
   fetch: async (url, init) => {
     const path = String(url);
