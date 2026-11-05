@@ -160,7 +160,9 @@ await test('staging an upload does not send a message or touch 绘图, and remov
   assert.equal(controller.removeStaged(controller.state.staged[0].id), true);
   assert.equal(JSON.stringify(controller.state.staged.map(item => item.name)), JSON.stringify(['clip.mp4']));
   assert.equal(await controller.send(''), false);
-  assert.match(controller.state.error, /用途/);
+  // The local model says this as an ordinary reply, never as an error box.
+  assert.equal(controller.state.error, '');
+  assert.match(controller.state.messages.at(-1).content, /用途/);
   assert.equal(env.placed.length, 0);
   assert.equal(controller.state.staged.length, 1);
 });
