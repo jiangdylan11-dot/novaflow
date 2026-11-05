@@ -2322,3 +2322,16 @@ html body .nf-tool-upload-plus {
 html body :is(.nf-mp4-upload, .nf-prb-upload, .nf-vfc-upload, .nf-saw-upload) > span {
   color: #B9B9B9 !important;
 }
+html body .novaflow-art-generate-reference-number {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  z-index: 3;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #161616d9;
+  color: #ddd;
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+}

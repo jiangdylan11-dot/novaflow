@@ -82790,7 +82790,6 @@
   async function cancelArtGenerateRun() {
     if(artBoundAbort)artBoundAbort.abort();
     if (window.NovaFlowUiDesignDrawing?.cancelPreparation?.()) return;
-    if (window.NovaFlowArtDirection?.cancelPreparation?.()) return;
     if (!ART_GENERATE_STATE.running) return;
     const confirmed=pendingConfirmedCloudRun?.token===ART_GENERATE_STATE.runToken?pendingConfirmedCloudRun:null;
     if(confirmed)confirmed.controller.abort();
@@ -82975,8 +82974,8 @@
   function artGenerateSamplingOptions() {
     if (window.NovaFlowUiDesignDrawing?.isActive?.()) return {};
     // A reviewed draft runs with its own roles, so the panel shows what that run will use.
-    const direction = window.NovaFlowArtDirection, draft = pendingArtAgentPreparation;
-    return (draft?.referenceRolePlan ? direction?.generationOptions?.(draft) : direction?.samplingOptions?.({ state: ART_GENERATE_STATE, references: artGenerateReferences() })) || {};
+    const prepare = window.NovaFlowArtPrepare, draft = pendingArtAgentPreparation;
+    return (draft?.referenceRolePlan ? prepare?.generationOptions?.(draft) : prepare?.samplingOptions?.({ state: ART_GENERATE_STATE, references: artGenerateReferences() })) || {};
   }
 
   function artGenerateSurfaceRenderKey() {
@@ -83080,10 +83079,6 @@
       if (textarea.value !== value) textarea.value = value;
       // Mounts or drops the @ mention editor for the current mode, and redraws it.
       if (key === "prompt") mountArtGenerateResourceMentionTextarea(textarea);
-      if (key === "prompt" && !window.NovaFlowUiDesignDrawing?.isActive?.()) {
-        const old = from.querySelector('.nf-art-direction-controls');
-        if (old) old.replaceWith(window.NovaFlowArtDirection.controls(createArtEl, ART_GENERATE_STATE, () => renderArtGenerateSurfaces({ forceBottom: true })));
-      }
     });
     return () => {
       if (!focus || !focus.node.isConnected || document.activeElement === focus.node) return;
@@ -83104,9 +83099,7 @@
     if (!(from instanceof HTMLElement) || !(to instanceof HTMLElement)) return;
     Array.from(from.children).forEach((child) => {
       if (!(child instanceof HTMLElement) || child.getAttribute("data-novaflow-smart-ai-button") !== "1") return;
-      if ((window.NovaFlowUiDesignDrawing?.isActive?.() || window.NovaFlowArtDirection) && child.getAttribute("data-novaflow-ai-prompt-expand-button") !== "1") return;
       if (child.getAttribute("data-novaflow-ai-prompt-expand-button") === "1") to.appendChild(child);
-      else to.insertBefore(child, to.firstChild);
     });
   }
 
@@ -83596,7 +83589,6 @@
           style: { display: creditView ? "" : "none" }
         }),
         promptText ? createArtEl("div", { className: "novaflow-art-generate-progress-prompt", text: promptText }) : null,
-        !window.NovaFlowUiDesignDrawing?.isActive?.() ? window.NovaFlowArtDirection?.analysisControl?.(createArtEl, ART_GENERATE_STATE) : null,
         state.running ? createArtEl("button", {
           type: "button",
           className: "novaflow-art-generate-progress-cancel",
@@ -84068,11 +84060,7 @@
           }
         }, "\u00d7"),
         renderArtGenerateReferenceSizeBadge(index, current),
-        !window.NovaFlowUiDesignDrawing?.isActive?.() && window.NovaFlowArtDirection?.referenceControl?.(createArtEl, current, index + 1, role => {
-          ART_GENERATE_REFERENCE_REVISION += 1;
-          current.drawingRole = role;
-          renderArtGenerateSurfaces({ forceBottom: true });
-        })
+        !window.NovaFlowUiDesignDrawing?.isActive?.() && createArtEl("span", { className: "novaflow-art-generate-reference-number", text: `图${index + 1}` })
       ]
       : [
         createArtEl("span", { className: "nf-upload-dropzone__icon", text: "+" }),
@@ -84577,8 +84565,7 @@
     return createArtEl("div", { className: "novaflow-art-generate-prompt-history" }, [
       createArtEl("div", { className: "novaflow-art-generate-history-main" }, [
         label,
-        ...(ui && key === "prompt" ? [window.NovaFlowUiDesignDrawing?.renderAnalysisSelector?.(document)].filter(Boolean) : []),
-        ...(!ui && key === "prompt" ? [window.NovaFlowArtDirection?.controls?.(createArtEl, ART_GENERATE_STATE, () => renderArtGenerateSurfaces({ forceBottom: true }))].filter(Boolean) : [])
+        ...(ui && key === "prompt" ? [window.NovaFlowUiDesignDrawing?.renderAnalysisSelector?.(document)].filter(Boolean) : [])
       ]),
       key === "prompt" ? renderArtGeneratePromptAssistantActions() : createArtEl("div", {
         className: "novaflow-art-generate-editor-actions"
@@ -85316,31 +85303,7 @@
   }
 
   function renderArtGeneratePromptAssistantActions() {
-    if (window.NovaFlowUiDesignDrawing?.isActive?.() || window.NovaFlowArtDirection) return createArtEl("div", { className: "novaflow-art-generate-assistant-actions" });
-    const running = String(ART_GENERATE_STATE.promptAssistantRunning || "");
-    const disabled = running || ART_GENERATE_STATE.running ? "disabled" : null;
-    return createArtEl("div", { className: "novaflow-art-generate-assistant-actions" }, [
-      createArtEl("button", {
-        type: "button",
-        className: "novaflow-art-generate-assistant-button",
-        disabled,
-        [NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR]: "1",
-        "data-running": running === "optimize" ? "1" : "0",
-        onclick: (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          runArtGeneratePromptOptimize();
-        }
-      }, running === "optimize" ? "\u4f18\u5316\u4e2d..." : "AI\u4f18\u5316"),
-      createArtEl("button", {
-        type: "button",
-        className: "novaflow-art-generate-assistant-button",
-        disabled,
-        [NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR]: "1",
-        "data-running": running === "reverse" ? "1" : "0",
-        onclick: handleArtGenerateReverseButton
-      }, running === "reverse" ? "\u53cd\u63a8\u4e2d..." : "AI\u53cd\u63a8")
-    ]);
+    return createArtEl("div", { className: "novaflow-art-generate-assistant-actions" });
   }
 
   function withArtGenerateTimeout(task, timeoutMs, message) {
@@ -86646,20 +86609,17 @@
       }
     }
     if (!options.uiPrepared && !options.drawingPrepared && getCurrentContext().generationSurface === 'drawing') {
-      const direction = window.NovaFlowArtDirection;
       try {
-        if (!direction?.selectManual) throw new Error('绘图组件未加载，请刷新页面');
-        await direction.selectManual(ART_GENERATE_STATE);
+        const cancelled = await cancelArtGeneratePromptAnalysis();
+        if (cancelled?.ok === false) throw new Error(cancelled.error || '提示词分析尚未确认中止');
         if (!ownerCurrent()) return;
       } catch (error) { if (ownerCurrent()) setArtGenerateStatus(String(error?.message || error), true); return; }
       captureArtGeneratePromptSnapshot();
       ART_GENERATE_STATE.running = true;
       try {
-        if (!window.NovaFlowArtDirection?.prepare) throw new Error('绘图分析组件未加载，请刷新页面');
-        const drawingPrepared = await window.NovaFlowArtDirection.prepare({ ...getCurrentContext(), getCurrentContext, isOwnerCurrent: ownerCurrent,
-          onProgress: message => { if (ownerCurrent() && ownerPreparationEpoch === artOwnerPreparationEpoch) { setArtGenerateProgress(message, 0); setArtGenerateStatus(message); } } });
+        if (!window.NovaFlowArtPrepare?.prepare) throw new Error('绘图组件未加载，请刷新页面');
+        const drawingPrepared = await window.NovaFlowArtPrepare.prepare({ ...getCurrentContext(), isOwnerCurrent: ownerCurrent });
         if (!ownerCurrent()) { releaseStalePreparation(); return; }
-        if (drawingPrepared.applyPromptToState?.()) renderArtGenerateSurfaces({ forceBottom: true });
         ART_GENERATE_STATE.running = false;
         return await runArtGenerate({ drawingPrepared, ownerGuard });
       } catch (error) {
@@ -86891,12 +86851,9 @@
       ART_GENERATE_STATE.batchIndex = 0;
       ART_GENERATE_STATE.batchTotal = batchCount > 1 ? batchCount : 0;
       let lastPromptId = "";
-      let drawingCorrection = 0;
-      let drawingRepair = "";
-      let drawingNeedsAttention = false;
       for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
         ART_GENERATE_STATE.batchIndex = batchIndex;
-        if ((batchIndex > 0 || drawingCorrection > 0) && runMode === "img2img" && window.NovaFlowWebRuntime) {
+        if (batchIndex > 0 && runMode === "img2img" && window.NovaFlowWebRuntime) {
           uploadedNames = await uploadReferences(batchIndex);
           if (!uploadedNames) return;
         }
@@ -86905,10 +86862,10 @@
         const prefix = `Foart_Generate_${runProvider}_${runMode}_${Date.now()}`;
         const workflowRun = buildArtGenerateWorkflowWithSeed(
           fixedSeed ? baseSeed + batchIndex : null,
-          () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, drawingRepair ? `${compiledPrompt.text}\n\n本次纠正：${drawingRepair}` : compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
+          () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
             prepared ? { ...settingsSnapshot, ...(fixedSeed ? { seed: baseSeed + batchIndex, randomSeed: false } : {}) } : ART_GENERATE_STATE,
             prepared ? referenceLimit : undefined,
-            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : options.drawingPrepared ? { ...window.NovaFlowArtDirection.generationOptions(options.drawingPrepared), ...(bindArt?{taskProfile:'art-direction',referenceRoles:scopedReferences.map(ref=>ref.role)}:{}) } : {})
+            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : options.drawingPrepared ? { ...window.NovaFlowArtPrepare.generationOptions(options.drawingPrepared), ...(bindArt?{taskProfile:'art-direction',referenceRoles:scopedReferences.map(ref=>ref.role)}:{}) } : {})
         );
         const workflow = workflowRun.workflow;
         const controlNetResult = runMode === "img2img" ? applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) : { applied: 0 };
@@ -87017,28 +86974,6 @@
         const imageUrl = await artBlobToDataUrl(blob);
         if (!isArtGenerateRunCurrent(runToken)) return;
         prepared?.assertCurrent?.();
-        let drawingReview = null;
-        if (options.drawingPrepared) {
-          try {
-            drawingReview = await window.NovaFlowArtDirection.review(options.drawingPrepared, imageUrl,
-              message => { setArtGenerateProgress(message, .97, { promptId }); setArtGenerateStatus(message); });
-          } catch (error) {
-            prepared.assertCurrent();
-            if (error?.name === 'AbortError') throw error;
-            drawingReview = { schema: 'nf.art.review.v1', pass: null, issues: [String(error?.message || '检查未完成')], repair: '' };
-            options.drawingPrepared.recordReview?.(drawingReview);
-          }
-          if (!isArtGenerateRunCurrent(runToken)) return;
-          prepared.assertCurrent();
-          if (!bindArt && drawingReview.pass === false && drawingCorrection < 1 && runProvider === 'local') {
-            drawingCorrection += 1;
-            drawingRepair = drawingReview.repair;
-            setArtGenerateStatus('成图与需求存在偏差，正在自动纠正（最多一次）');
-            batchIndex -= 1;
-            continue;
-          }
-          drawingNeedsAttention ||= !drawingReview.skipped && drawingReview.pass !== true;
-        }
         const result = {
           id: `artgen_${Date.now().toString(36)}`,
           kind: "original",
@@ -87054,9 +86989,6 @@
           workflow: runProvider === "local" ? artWorkflowKey() : `${runProvider}:${workflowRun.modelKey}`
         };
         artImageStartedAt = Date.now();
-        if (options.drawingPrepared) result.artDirection = { schema: options.drawingPrepared.plan.schema, originalPrompt: options.drawingPrepared.originalPrompt, plan: options.drawingPrepared.plan, review: drawingReview, corrections: drawingCorrection, references: options.drawingPrepared.references.map(ref => ({ sourceNumber: ref.sourceNumber, role: ref.role, treatment: ref.treatment, target: ref.target })) };
-        drawingCorrection = 0;
-        drawingRepair = "";
         ART_GENERATE_STATE.results.unshift(result);
         if (options.uiPrepared) ui?.recordResult?.(result, options.uiPrepared);
         ART_GENERATE_STATE.selectedResultId = result.id;
@@ -87067,11 +86999,7 @@
       }
       clearArtGenerateBatch();
       ART_GENERATE_STATE.running = false;
-      if (options.drawingPrepared && !options.drawingPrepared.direct && !options.drawingPrepared.agentRun) {
-        ART_GENERATE_STATE.drawingAnalysisEngine = 'direct';
-        try { window.localStorage.setItem('novaflow.drawing.analysis.v2', 'direct'); } catch {}
-      }
-      const completeMessage = drawingNeedsAttention ? '已生成，自动检查发现偏差，请检查成图后调整提示词' : batchCount > 1
+      const completeMessage = batchCount > 1
         ? (runProvider === "local" ? `已生成 ${batchCount} 张` : `已生成 ${batchCount} 张，计费后台处理中`)
         : (runProvider === "local" ? "\u751f\u6210\u5b8c\u6210" : "\u751f\u6210\u5b8c\u6210\uff0c\u8ba1\u8d39\u540e\u53f0\u5904\u7406\u4e2d");
       setArtGenerateProgress(completeMessage, 1, { promptId: lastPromptId });
@@ -87278,17 +87206,6 @@
         remaining: balanceAfter,
         billing: payload.billing || null
       };
-      if (ctx.options?.drawingPrepared && window.NovaFlowArtDirection?.review) {
-        const review = await window.NovaFlowArtDirection.review(ctx.options.drawingPrepared, imageUrl, () => {});
-        result.artDirection = {
-          schema: ctx.options.drawingPrepared.plan?.schema,
-          originalPrompt: ctx.options.drawingPrepared.originalPrompt,
-          plan: ctx.options.drawingPrepared.plan,
-          review,
-          corrections: 0,
-          references: (ctx.options.drawingPrepared.references || []).map((ref) => ({ sourceNumber: ref.sourceNumber, role: ref.role, treatment: ref.treatment, target: ref.target }))
-        };
-      }
       artImageStartedAt = Date.now();
       const placementCurrent = () => {
         try { return ctx.ownerGuard() === true && (ctx.prepared?.assertCurrent?.(), true); }

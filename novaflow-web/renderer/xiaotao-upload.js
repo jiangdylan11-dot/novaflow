@@ -2,7 +2,7 @@
   'use strict';
   // Formats the reference slots and the local pipelines actually accept.
   // Images: art file inputs and the Flash image pipeline take PNG/JPEG/WebP,
-  // each at most 24MB (worker/src/flash-art-agent.mjs, flash-art-direction.mjs).
+  // each at most 24MB (worker/src/flash-art-agent.mjs).
   // Video and audio: the animation picker (getAiSequenceFilePickerTypes) intersected
   // with MiniMax H3 slot extensions. Bytes stop at the worker upload cap
   // (worker/src/gateway/gateway.mjs MAX_UPLOAD_BYTES). Audio is only valid on 多参.

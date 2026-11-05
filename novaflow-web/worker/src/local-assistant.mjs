@@ -8,9 +8,6 @@ import { createRuntimeServices, videoRuntimeUrl } from './runtime-services.mjs';
 import { createPromptAssistant } from './prompt-assistant.mjs';
 import { createBorrowedRuntimeServices } from './borrowed-runtime-services.mjs';
 import { ensureFlashBrainConfiguration } from './flash-brain-configuration.mjs';
-import { createArtLearning } from './art-learning.mjs';
-import { createArtKnowledgeCache } from './art-knowledge-cache.mjs';
-import { createArtTaskIdentity } from './art-task-identity.mjs';
 import { foartRuntimeJsonPath } from './runtime-location.mjs';
 
 export async function createLocalAssistant(options) {
@@ -28,14 +25,6 @@ export async function createLocalAssistant(options) {
     stateFile: options.dataDir ? join(options.dataDir, 'owned-runtimes.json') : '' });
   let promptAssistant = null;
   const worker = createWorker({ ...options, localTasks: tasks, promptAssistant: () => promptAssistant });
-  const artActor = createArtTaskIdentity({identifyUser:token=>worker.identifyArtUser(token),
-    fallbackOwner:()=>worker.getState().boundAccount?.id||`local-device:${worker.identity.workerId}`,
-    onSession:()=>{if(options.artKnowledge?.enabled===true)void knowledgeCache.sync();}});
-  const knowledgeCache = createArtKnowledgeCache({directory:join(options.dataDir,'art-knowledge-cache'),
-    fetchPacket:scope=>worker.readArtKnowledge({...scope,sessionToken:artActor.session()?.token})});
-  const artLearning = createArtLearning({ directory: join(options.dataDir, 'art-learning'),
-    getOwner: artActor.owner,
-    getKnowledge:scope=>knowledgeCache.read(scope)});
   const requestedBackend = String(options.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata').trim().toLowerCase() || 'strata';
   const legacyDiagnostics = process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT === '1' && requestedBackend !== 'strata';
   if (requestedBackend !== 'strata' && !legacyDiagnostics) {
@@ -52,7 +41,7 @@ export async function createLocalAssistant(options) {
   // to ask for the memory back before it loads its own model.
   const comfyUrls = [...new Set([options.comfyImageUrl || 'http://127.0.0.1:8188', videoRuntimeUrl(options.comfyVideoUrl, options.comfyImageUrl || 'http://127.0.0.1:8188')].map(url => String(url).replace(/\/+$/, '')))];
   promptAssistant = createPromptAssistant({
-    worker, logger: options.logger, comfyUrls, artLearning,
+    worker, logger: options.logger, comfyUrls,
     ...(options.promptAssistant || {})
   });
   // A runtime started on another port (its own was held by somebody else's ComfyUI): the worker
@@ -106,11 +95,10 @@ export async function createLocalAssistant(options) {
         await ensureServices();
         await worker.startLocal({ onProgress: progress });
         progress(90, '正在启动本地网页服务');
-        server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir, promptAssistant, artLearning, artActor, artKnowledgeEnabled: options.artKnowledge?.enabled === true, artKnowledgeUrl: options.artKnowledge?.baseUrl || options.controlUrl,
+        server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir, promptAssistant, 
           webRoot: options.webRoot, port: options.localPort ?? 4784, controlUrl: options.controlUrl });
         // Deliberately off until the new cloud service passes deployment gates.
         // Startup never waits for Supabase and every task reads local files only.
-        if(options.artKnowledge?.enabled===true)knowledgeCache.start();
         emit();
         return snapshot();
       } catch (error) {
@@ -120,7 +108,6 @@ export async function createLocalAssistant(options) {
       }
     }),
     stopLocal: () => serial(async () => {
-      knowledgeCache.stop();
       await worker.stopLocal();
       if (server) await server.close();
       server = null;
@@ -146,7 +133,6 @@ export async function createLocalAssistant(options) {
       return snapshot();
     }),
     stop: () => serial(async () => {
-      knowledgeCache.stop();
       await worker.stop();
       if (server) await server.close();
       server = null;

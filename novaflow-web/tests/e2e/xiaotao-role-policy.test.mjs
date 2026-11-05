@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {XIAOTAO_FOART_ROLE_SYSTEM,withXiaotaoFoartRole} from '../../packages/shared/src/xiaotao-role-policy.mjs';
 import {XIAOTAO_TEXT_SYSTEM,XIAOTAO_VISION_SYSTEM,xiaotaoOnlineSystemPrompt} from '../../packages/shared/src/feature-credits.mjs';
 import {companionInput} from '../../packages/shared/src/companion-chat.mjs';
-import {FLASH_CHAT_AGENT_SYSTEM,FLASH_CREATION_AGENT_SYSTEM,FLASH_ART_AGENT_SYSTEM,createFlashArtAgent} from '../../worker/src/flash-art-agent.mjs';
+import {FLASH_CHAT_AGENT_SYSTEM,FLASH_CREATION_AGENT_SYSTEM,createFlashArtAgent} from '../../worker/src/flash-art-agent.mjs';
 import {FLASH_MEDIA_AGENT_SYSTEM} from '../../worker/src/flash-media-agent.mjs';
 
 test('local ordinary chat sends the product role without granting execution tools',async()=>{

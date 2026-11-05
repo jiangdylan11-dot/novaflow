@@ -44,7 +44,7 @@
     const reverse=new RegExp(subject+'.{0,18}'+ability+'.{0,16}'+target+'.{0,12}'+action,'i');
     return String(text||'').split(/[，,。；;！？!?\n]+/).some(clause=>forward.test(clause)||reverse.test(clause));
   }
-  const SETTINGS = ['provider','mode','prompt','negativePrompt','width','height','seed','randomSeed','count','nsfw','samplingOverrides','loras','localDrawEngine','localQwen21Variant','drawingTask','drawingAnalysisEngine'];
+  const SETTINGS = ['provider','mode','prompt','negativePrompt','width','height','seed','randomSeed','count','nsfw','samplingOverrides','loras','localDrawEngine','localQwen21Variant','drawingTask'];
   const copy = value => JSON.parse(JSON.stringify(value));
   const hasDecimalCreditsFields = online => !!online && ['credit_amount_policy','credit_precision','credit_rounding'].some(key=>Object.hasOwn(online,key));
   const decimalCreditsPolicy = online => online?.billing_scope==='operation' && online.credit_amount_policy==='decimal-v1' && online.credit_precision===6 && online.credit_rounding==='ceil' && online.minimum_positive_credits===0;
@@ -511,48 +511,15 @@
   }
   function createBridge(options = {}) {
     const runtime = () => options.runtime || root.__NovaFlowArtGenerate;
-    const direction = () => options.direction || root.NovaFlowArtDirection;
-    let applied = null, fixedRoles = null;
+    let applied = null;
     const snapshotOwners = new WeakMap(), creationSettings = new WeakMap(), optimizedCreations = new WeakMap();
     function context() {
-      const rt = runtime(); if (!rt?.captureContext || !direction()) fail('绘图页面尚未就绪，请稍后再试');
+      const rt = runtime(); if (!rt?.captureContext) fail('绘图页面尚未就绪，请稍后再试');
       rt.capturePrompt?.(); const value = rt.captureContext();
       if (value.generationSurface !== 'drawing' || !value.state.active) fail('请回到绘图页面使用小桃AI');
       return value;
     }
-    function capture({includeResult = false} = {}) {
-      const ctx = context(), s = ctx.state;
-      if ((s.provider || 'local') !== 'local' || s.nsfw) fail('小桃AI当前支持本地绘图的主体与风格双图');
-      if (s.mode !== 'img2img') fail('请切换到图生图，并添加一张主体和至少一张风格参考图');
-      const selectedEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.('local', s.mode, s)?.engine || s.localDrawEngine;
-      if (!['qwen-2.1', 'qwen-2.1-turbo'].includes(selectedEngine)) fail('小桃AI当前支持 Qwen 2.1 绘图模型，请先切换模型');
-      const filled = ctx.references.map((ref, i) => ref?.dataUrl ? {...ref, source:i + 1, referenceIdentity:referenceIdentity(ref)} : null).filter(Boolean);
-      if (filled.length < 2) fail('请保留一张主体和至少一张画风参考图');
-      const observed = direction().input({...ctx, state:{...s, drawingAnalysisEngine:'local'}}).references;
-      let images = filled.map((ref, i) => {
-        const seen = observed.find(r => r.source === ref.source), explicit = ref.drawingRole;
-        const roles = explicit && explicit !== 'auto' ? [explicit] : seen?.roles || [];
-        const completeContent = roles.includes('subject') && roles.every(r => ['subject','background','composition'].includes(r));
-        let role = roles.includes('style') && !roles.includes('subject') ? 'style' : completeContent ? 'subject' : '';
-        if (explicit === 'none' || seen?.excludedRoles?.length || roles.includes('subject') && roles.includes('style') || !completeContent && roles.some(r => ['pose','background','object','composition'].includes(r))) fail('这一版小桃AI只处理主体与画风参考，请先调整参考图用途');
-        if (!role) role = i === 0 ? 'subject' : 'style';
-        return {dataUrl:ref.dataUrl, referenceIdentity:ref.referenceIdentity, file:ref.file, mimeType:ref.mimeType, name:ref.name || `参考图${ref.source}`, role, source:ref.source};
-      });
-      if (fixedRoles && s.prompt === fixedRoles.prompt && images.every((img, i) => img.dataUrl === fixedRoles.original[i].dataUrl && img.source === fixedRoles.original[i].source)) images = images.map((img, i) => ({...img, role:fixedRoles.original[i].role}));
-      if (images.filter(i => i.role === 'subject').length !== 1 || images.filter(i => i.role === 'style').length < 1) fail('请明确一张主体和至少一张画风参考');
-      images.sort((a, b) => Number(b.role === 'subject') - Number(a.role === 'subject'));
-      const sampling = root.NovaFlowArtGenerateModels?.localSamplingFor?.(s, s.mode, s.negativePrompt, 'qwen-2.1', 'drawing') || {};
-      const artContext = copy(Object.fromEntries(SETTINGS.filter(k => s[k] !== undefined).map(k => [k, s[k]])));
-      Object.assign(artContext, {surface:'drawing', engine:'qwen-2.1', nsfw:s.nsfw === true, localDrawEngine:s.localDrawEngine || selectedEngine, localQwen21Variant:'turbo', cfg:sampling.cfg ?? 1, steps:sampling.steps ?? 8, referenceRoles:images.map(({source, role}) => ({source, role})), task:s.drawingTask || 'style'});
-      if (ctx.projectId !== undefined) artContext.projectId = ctx.projectId;
-      const lastResult = runtime().selectedResult?.() || null;
-      if (includeResult) {
-        if (!lastResult?.imageUrl) fail('还没有实际成图，请先生成一张再评价');
-        images.push({dataUrl:lastResult.imageUrl, referenceIdentity:referenceIdentity(lastResult), name:lastResult.name || '实际成图', role:'output', source:0});
-      }
-      const snapshot = {artContext, images, lastResult}; snapshotOwners.set(snapshot, s); return publish(snapshot);
-    }
-    function clearPrepared() {applied = null; fixedRoles = null; runtime()?.clearAgentPrepared?.();}
+    function clearPrepared() {applied = null; runtime()?.clearAgentPrepared?.();}
     function captureCreation({includeResult = false} = {}) {
       const rt=runtime(), ctx=rt?.captureContext?.();
       if (!ctx?.state) fail('绘图组件尚未就绪，请稍后再试');
@@ -572,10 +539,6 @@
         localQwen21Variant:'turbo',steps:sampling.steps,cfg:sampling.cfg,
         mode:refs.length || s.mode==='img2img' && lastResult ? 'img2img' : 'txt2img',prompt:s.prompt || '',negativePrompt:s.negativePrompt || '',referenceRoles:refs.map(r=>({source:r.source,role:'subject'}))});
       const snapshot={artContext,images,lastResult}; snapshotOwners.set(snapshot,s); creationSettings.set(snapshot,copy(Object.fromEntries(SETTINGS.filter(k=>s[k]!==undefined).map(k=>[k,s[k]])))); return publish(snapshot);
-    }
-    function captureAny(options) {
-      const ctx=runtime()?.captureContext?.();
-      return ctx?.generationSurface === 'drawing' && ctx.state.mode === 'img2img' && ctx.references.filter(r=>r?.dataUrl).length>=2 ? capture(options) : captureCreation(options);
     }
     async function openDrawing(mode) {
       const doc=root.document;
@@ -725,33 +688,7 @@
           assertCurrent:()=>{if(context().state!==state || !sameSnapshot(expected,captureCreation({includeResult:withResult}))) fail('绘图内容已变化，旧方案已失效');},recordReview:()=>{}};
         applied={prepared,snapshot:expected}; rt.stageAgentPrepared?.(prepared); return {snapshot:expected};
       }
-      if (snapshotOwners.has(snapshot) && snapshotOwners.get(snapshot) !== context().state) fail('绘图工作区已变化，请重新发送当前内容');
-      const current = capture({includeResult:snapshot.images.length === 3});
-      if (!sameSnapshot(snapshot, current) || proposal.contextFingerprint !== await fingerprint(current)) fail('绘图内容已变化，请让小桃根据当前内容重新建议');
-      if (typeof proposal.prompt !== 'string' || !proposal.prompt.trim() || proposal.negativePrompt !== current.artContext.negativePrompt) fail('建议未保留当前负向内容，请重新分析');
-      const ctx = context(), rt = runtime(), state = ctx.state, api = direction();
-      const source = api.input({...ctx, state:{...state, drawingAnalysisEngine:'local'}});
-      source.references = current.images.slice(0, 2).map(img => ({...source.references.find(ref => ref.source === img.source), source:img.source, role:img.role, roles:[img.role]}));
-      const order = proposal.sourceOrder;
-      if (!Array.isArray(order) || order.join(',') !== '1,2') fail('参考图顺序不完整，请重新分析');
-      const enhancer = {...copy(proposal), sourceOrder:order.map(n => current.images[n - 1].source)};
-      const raw = {schema:api.schema, prompt:proposal.prompt, summary:'小桃AI绘图建议', preserve:[], exclude:[], clarification:'', editEnhancer:enhancer,
-        references:source.references.map(ref => ({source:ref.source, uses:[{role:ref.role, detail:ref.role === 'subject' ? '完整主体原图' : '完整画风原图', box:[0,0,1000,1000], samples:[]}], omit:[]}))};
-      const plan = api.validate(raw, source);
-      const checkBeforeWrite = () => {if (!sameSnapshot(current, capture({includeResult:current.images.length === 3}))) fail('绘图内容已变化，旧建议未应用');};
-      const compiled = await api.compile(plan, source, () => {}, checkBeforeWrite, ctx.referenceLimit || 10); checkBeforeWrite();
-      state.prompt = compiled.promptSnapshot.prompt.replace(/<image(\d+)>/g, (tag, n) => `@参考图${compiled.references[Number(n) - 1]?.sourceNumber || n}`);
-      fixedRoles = {prompt:state.prompt, original:ctx.references.map((ref, i) => ref?.dataUrl ? {dataUrl:ref.dataUrl, source:i + 1, role:current.images.find(img => img.source === i + 1)?.role} : null).filter(Boolean)};
-      api.registerAgentWriteback?.({...ctx,state},compiled);
-      rt.render?.({forceBottom:true});
-      const expected = capture({includeResult:current.images.length === 3});
-      const runState = copy(Object.fromEntries(SETTINGS.filter(k => state[k] !== undefined).map(k => [k, state[k]])));
-      Object.assign(runState, {count:1, mode:'img2img', localDrawEngine:'qwen-2.1', uiPreserveLayout:false});
-      const prepared = {...compiled, state:runState, plan, analysisInput:source, originalPrompt:current.artContext.prompt, direct:false, agentRun:true,
-        agentContextFingerprint:proposal.contextFingerprint, agentInputFingerprint:await fingerprint(expected),
-        assertCurrent:() => {if (context().state !== state || !sameSnapshot(expected, capture({includeResult:expected.images.length === 3}))) fail('绘图内容已变化，旧建议已失效');}, recordReview:() => {}};
-      applied = {prepared, snapshot:expected}; rt.stageAgentPrepared?.(prepared);
-      return {snapshot:expected};
+      fail('当前方案已失效，请重新发送需求');
     }
     async function generateApplied() {
       if (!applied) fail('请先应用当前建议');
@@ -762,7 +699,7 @@
       if (result?.id && result.id !== previous && result.imageUrl) return copy(result);
       fail(rt.state.error || rt.state.status || '未取得新的实际成图');
     }
-    return Object.freeze({capture, captureAny, captureCreation, captureChat, openDrawing, readSampling, setSampling, optimizeProposal, currentResult:()=>runtime()?.selectedResult?.(), hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
+    return Object.freeze({captureCreation, captureChat, openDrawing, readSampling, setSampling, optimizeProposal, currentResult:()=>runtime()?.selectedResult?.(), hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
   }
   function roundedCredits(value) {return displayCredits(value);}
   function creditReceipt(quota) {
@@ -942,35 +879,10 @@
     }
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', activeChatHasImages = false, stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
     let mediaAbort = null, promptAbort = null, foartAbort = null, activeFoartBilling=null, activeChatBilling=null;
-    const recapture = snapshot => snapshot.artContext.task === 'creation' ? bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')}) : bridge.capture({includeResult:snapshot.images.length===3});
+    const recapture = snapshot => bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')});
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
     const modelSessions = Object.create(null), transientSessions = Object.create(null);
     const cancelledPromptSourceModels = new Set();
-    state.learningTask = null; state.learningWarning = '';
-    async function learningCommand(command) {
-      if (typeof api()?.artLearning !== 'function') throw new Error('请更新 Foart后使用任务反馈');
-      const response = await api().artLearning(command);
-      if (!response?.ok) throw new Error(response?.error || '任务反馈操作失败');
-      return response.data;
-    }
-    async function recordReceipt(execution, result, proposal = state.proposal) {
-      if (!state.learningTask || !proposal?.proposalId) return;
-      try {await learningCommand({action:'receipt',taskId:state.learningTask.taskId,proposalId:proposal.proposalId,execution,
-        ...(proposal.promptOptimization && execution==='applied' ? {executedPrompt:proposal.modelPrompt,displayPrompt:proposal.prompt,executedNegativePrompt:proposal.negativePrompt,promptFramework:proposal.promptOptimization.framework} : {}),
-        ...(result ? {resultId:result.id,resultSHA256:await sha256(imageBytes(result.imageUrl))} : {})});}
-      catch (error) {state.learningWarning = '本次结果未写入任务记录：' + String(error.message || error);}
-    }
-    async function recordFeedback(message, {feedback} = {}) {
-      const current = bridge.currentResult?.();
-      if (!current?.id || !current.imageUrl) {return false;}
-      try {
-        const digest = await sha256(imageBytes(current.imageUrl)), data = await learningCommand({action:'list'});
-        const task = data.tasks.find(item => item.resultId === current.id && item.resultSHA256 === digest && item.execution === 'succeeded');
-        if (!task) throw new Error('当前成图没有关联的小桃执行记录；不会把反馈记到其他图片');
-        const receipt = await learningCommand({action:'feedback',taskId:task.id,resultId:current.id,message,feedback});
-        return Boolean(receipt);
-      } catch {return false;}
-    }
     state.staged = []; state.pendingUploads = []; state.pendingUploadId = '';
     let stagedSeq = 0, carryAttachments = null, carryAsk = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
@@ -1951,11 +1863,9 @@
       if (!communityChatOnly && (purePositive || pureNegative) && (bridge.hasResult?.()||state.activeTask)) {
         if (!(await ensureStaged())) return false;
         pushUser(message);
-        if (typeof api()?.artLearning === 'function') void recordFeedback(message);
         if(pureNegative&&state.provider==='api')pendingIntent={surface:'foart',mode:'',foart:true,message:requestMessage};
         state.messages.push({role:'assistant',content:purePositive ? '好，这一版的效果就按你的评价保留。' : '明白，这一版还没达到要求。告诉我主要想改哪里，我接着改。'}); notify(); return true;
       }
-      if (!communityChatOnly && !purePositive && bridge.hasResult?.() && positiveEvaluation.test(message.split(/[。！!]/)[0]) && typeof api()?.artLearning === 'function') void recordFeedback(message);
       if (/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message)) {reset(); return true;}
       const operationTextOnly=state.provider==='api' && selectedPricingPayload().operationBillingV3===true;
       const operationVision=operationTextOnly && selectedPricingPayload().operationVisionBillingV3===true;
@@ -2053,7 +1963,6 @@
             if (next && next !== metering) {metering = {...next,...(currentPricingPolicy()?{pricingVersion:currentPricingPolicy().version}:{}),updatedAt:Date.now()}; try {root.localStorage?.setItem(pricingKey,JSON.stringify(metering));} catch {}}
           }
         }
-        state.learningTask = data.learning || null; state.learningWarning = response.learningWarning || '';
         if (state.provider === 'local') {state.localSession = null; updateLocalSession(data.chatSession);}
         const reply=data.reply;
         const settled=billingReceipt(billing),receipt=settled?creditReceipt({...settled,...(prediction?.credits!=null?{expected_credits:prediction.credits}:{})}):'';
@@ -2652,7 +2561,7 @@
       stopStatusPolling(); releaseStagedMedia();
       return true;
     }
-    function reset() {if (CHAT_MODELS[state.modelId]?.retired || state.pending || state.generating || state.applying || state.uploading || state.staging || state.staged.some(item=>item.status==='reading')) return false;  if(pendingFoartImageReview)root.NovaFlowFoartTools?.cancelImageReview?.(pendingFoartImageReview.id);pendingFoartImageReview=null;foartImageReviewUndo=null;state.foartImageReviewCanUndo=false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; lastUploads=[];lastPreparedTask='';pendingIntent=null;pendingPromptSource=null;state.promptSourceCancelledNotice='';clearMediaPromptReview();bridge.clearPrepared(); releaseCurrentStagedMedia(); sessions[state.provider]={messages:[],history:[],conversationId:''}; delete modelSessions[state.modelId];delete transientSessions[state.modelId]; Object.assign(state, {activeTask:null,messages:[], history:[],historyOriginUnknown:false, conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', learningTask:null, learningWarning:'', status:state.mode === 'drawing' ? '当前模型的新对话，将使用当前绘图内容' : '当前模型的新对话，可以直接聊天'}); notify(); return true;}
+    function reset() {if (CHAT_MODELS[state.modelId]?.retired || state.pending || state.generating || state.applying || state.uploading || state.staging || state.staged.some(item=>item.status==='reading')) return false;  if(pendingFoartImageReview)root.NovaFlowFoartTools?.cancelImageReview?.(pendingFoartImageReview.id);pendingFoartImageReview=null;foartImageReviewUndo=null;state.foartImageReviewCanUndo=false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; lastUploads=[];lastPreparedTask='';pendingIntent=null;pendingPromptSource=null;state.promptSourceCancelledNotice='';clearMediaPromptReview();bridge.clearPrepared(); releaseCurrentStagedMedia(); sessions[state.provider]={messages:[],history:[],conversationId:''}; delete modelSessions[state.modelId];delete transientSessions[state.modelId]; Object.assign(state, {activeTask:null,messages:[], history:[],historyOriginUnknown:false, conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', status:state.mode === 'drawing' ? '当前模型的新对话，将使用当前绘图内容' : '当前模型的新对话，可以直接聊天'}); notify(); return true;}
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying || state.uploading) return false;
       return setModel(provider === 'local' ? 'qwen3.5-9b-heretic' : 'xai/grok-4.7');
@@ -2668,18 +2577,18 @@
       businessModelEpoch++;
       for(const listener of businessModelListeners){try{listener();}catch{}}
       ++serial; notify();
-      transientSessions[state.modelId]={staged:state.staged,pendingUploads:state.pendingUploads,pendingUploadId:state.pendingUploadId,carryAttachments,carryAsk,lastUploads,lastPreparedTask,pendingIntent,lastRequestMessage,learningTask:state.learningTask,learningWarning:state.learningWarning};
+      transientSessions[state.modelId]={staged:state.staged,pendingUploads:state.pendingUploads,pendingUploadId:state.pendingUploadId,carryAttachments,carryAsk,lastUploads,lastPreparedTask,pendingIntent,lastRequestMessage};
       bridge.clearPrepared(); activeSnapshot = null; activeMode='chat';
       const saved=modelSessions[modelId] || {}, transient=transientSessions[modelId] || {};
       carryAttachments=transient.carryAttachments || null;carryAsk=transient.carryAsk || null;lastUploads=transient.lastUploads || [];lastPreparedTask=transient.lastPreparedTask || '';pendingIntent=transient.pendingIntent || null;lastRequestMessage=transient.lastRequestMessage || '';
-      Object.assign(state, {provider:model.provider,modelId,messages:saved.messages || [],history:saved.history || [],historyOriginUnknown:saved.historyOriginUnknown===true,activeTask:saved.activeTask || null,conversationId:'',staged:transient.staged || [],pendingUploads:transient.pendingUploads || [],pendingUploadId:transient.pendingUploadId || '',learningTask:transient.learningTask || null,learningWarning:transient.learningWarning || '',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:model.label,localSession:null,localModelStatus:null,qwenExecutionDevice:null,status:model.provider==='api'?(currentPricingPolicy()?(modelAvailable(modelId)?'':model.detail):'正在获取在线模型状态…'):model.detail});
+      Object.assign(state, {provider:model.provider,modelId,messages:saved.messages || [],history:saved.history || [],historyOriginUnknown:saved.historyOriginUnknown===true,activeTask:saved.activeTask || null,conversationId:'',staged:transient.staged || [],pendingUploads:transient.pendingUploads || [],pendingUploadId:transient.pendingUploadId || '',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:model.label,localSession:null,localModelStatus:null,qwenExecutionDevice:null,status:model.provider==='api'?(currentPricingPolicy()?(modelAvailable(modelId)?'':model.detail):'正在获取在线模型状态…'):model.detail});
       const showCancelledPromptSource=wasPendingPromptSource || cancelledPromptSourceModels.has(modelId);
       cancelledPromptSourceModels.delete(modelId);
       state.promptSourceCancelledNotice=showCancelledPromptSource?'先前的提示词来源选择已因切换模型取消，请重新发送需要优化的内容；未提交或扣费。':'';
       if(state.promptSourceCancelledNotice)state.status=[state.status,state.promptSourceCancelledNotice].filter(Boolean).join(' ');
       notify(); if(model.provider==='api')void refreshPricingPolicy(); return true;
     }
-    return Object.freeze({state, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, operationEstimate, styleReadAvailable, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
+    return Object.freeze({state, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, operationEstimate, styleReadAvailable, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
   }
   // The one model picker. The 小桃 panel and the 特效 material reader both build
   // it here, so the list, its notes, its look and its keys cannot drift apart.

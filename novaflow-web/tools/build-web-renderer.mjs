@@ -363,7 +363,7 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   // ------------------------------------------------------------- index.html
   const appPackage = JSON.parse(await readFile(join(ROOT, 'worker/package.json'), 'utf8'));
   if (appPackage.version !== BASE_RELEASE_VERSION) throw new Error('Application release version mismatch');
-  await writeFile(join(WEB_OUT, 'release.json'), JSON.stringify({ version: RELEASE_VERSION, product: 'Foart', art: { skillVersion: JSON.parse(await readFile(join(ROOT,'worker/src/art-skills/style-transfer.v1.json'),'utf8')).version, parentSystemSHA256: (await import('../worker/src/flash-art-agent.mjs')).FLASH_ART_AGENT_PARENT_SYSTEM_SHA256, systemSHA256: (await import('../worker/src/flash-art-agent.mjs')).FLASH_ART_AGENT_SYSTEM_SHA256 } }, null, 2) + '\n');
+  await writeFile(join(WEB_OUT, 'release.json'), JSON.stringify({ version: RELEASE_VERSION, product: 'Foart' }, null, 2) + '\n');
   const html = await readFile(join(SRC, 'index.html'), 'utf8');
   const markUiOnly = value => {
     if (!ISOLATED_PLAN) return value;

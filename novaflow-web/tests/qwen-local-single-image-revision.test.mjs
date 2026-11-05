@@ -5,5 +5,5 @@ test('actual reference setter increments revision when an image is switched and 
  const ctx={ART_GENERATE_STATE:s,ART_GENERATE_BASE_REFERENCE_SLOTS:3,ART_GENERATE_MAX_REFERENCES:10,artGenerateImg2imgCapability:()=>({engine:'qwen-2.1'}),URL};createContext(ctx);
  runInContext(src.slice(start,end)+'\nglobalThis.change=setArtGenerateReference;globalThis.revision=()=>ART_GENERATE_REFERENCE_REVISION;',ctx);
  assert.equal(ctx.revision(),0);ctx.change(0,{dataUrl:'data:image/png;base64,BBBB'});ctx.change(0,original);assert.equal(ctx.revision(),2);assert.equal(s.references[0],original);
- assert.match(src,/ART_GENERATE_REFERENCE_REVISION \+= 1;\s*current\.drawingRole = role/);assert.match(src,/referenceRevision: ART_GENERATE_REFERENCE_REVISION/);
+ assert.match(src,/referenceRevision: ART_GENERATE_REFERENCE_REVISION/);
 });

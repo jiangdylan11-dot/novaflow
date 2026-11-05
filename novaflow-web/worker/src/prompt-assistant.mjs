@@ -15,7 +15,6 @@
 // script, then stop it again so the next 绘图 has its memory back.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { ART_EDIT_MODEL, isArtEditRequest, planArtEdit, peekArtStyleCache } from './art-edit-planner.mjs';
 import { planNaturalUiDraft } from './complete-ui-draft.mjs';
 import { planNativeUiDraft } from './native-ui-draft.mjs';
 import { planUiCatalog, cpuCatalog, probeUiCatalogCpu } from './ui-catalog-planner.mjs';
@@ -292,11 +291,10 @@ function keepSupplement(text, cap) {
   return tail && tail.length < cap ? text.slice(0, cap - tail.length) + tail : text.slice(0, cap);
 }
 
+const PE_MODEL_FILE = 'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors';
 export function normalizeReverseRequest(payload = {}) {
   const surface = String(payload.surface || '').trim().slice(0, 80);
   const purpose = String(payload.purpose || '').trim().slice(0, 80);
-  const usesArtReview = purpose === 'art-director-review' && surface === 'art';
-  const usesArtDirection = (purpose === 'art-director' || usesArtReview) && surface === 'art';
   const normalizedPurpose = purpose.toLowerCase().replace(/_/g, '-');
   const usesUiQwen = surface === 'ui-design' && payload.targetEngine === 'qwen-2.1';
   const usesH3 = H3_REVERSE_PURPOSES.includes(normalizedPurpose);
@@ -313,18 +311,6 @@ export function normalizeReverseRequest(payload = {}) {
     dataUrl: String(item?.dataUrl || '')
   })).filter(item => item.dataUrl) : [];
   if (Array.isArray(payload.images) && images.length !== payload.images.length) throw new Error('参考图数据无效，本次未截断提交');
-  let artContext;
-  if (usesArtDirection) {
-    if (payload.visualSchema !== (usesArtReview ? 'nf.art.review.v1' : 'nf.art.direction.v1') || !Array.isArray(payload.artContext?.references) || payload.artContext.references.length !== images.length) throw new Error('绘图分析协议或参考图编号无效');
-    const seen = new Set();
-    artContext = { task: String(payload.artContext.task || 'auto').slice(0, 40), width: Number(payload.artContext.width) || 1024, height: Number(payload.artContext.height) || 1024,...(payload.artContext.editEnhancer==='qwen21-pe-i2i'?{editEnhancer:'qwen21-pe-i2i'}:{}),...(['anime','painterly'].includes(payload.artContext.peStyleClass)?{peStyleClass:payload.artContext.peStyleClass}:{}),...(['reference-only-v1','routing-first-v1','scoped-style-v1'].includes(payload.artContext.styleObservation)?{styleObservation:payload.artContext.styleObservation}:{}),
-      references: payload.artContext.references.map(item => {
-        if (!Number.isInteger(item.source) || item.source < (usesArtReview ? 0 : 1) || item.source > 16 || seen.has(item.source)) throw new Error('绘图参考图编号无效');
-        seen.add(item.source);
-        return { source: item.source, role: String(item.role || 'auto').slice(0, 40), ...(Array.isArray(item.roles) ? { roles: item.roles.map(role => String(role).slice(0,40)).slice(0,10) } : {}), ...(Array.isArray(item.excludedRoles) ? {excludedRoles:item.excludedRoles.map(role=>String(role).slice(0,40)).slice(0,10)} : {}) };
-      }) };
-    if (usesArtReview) artContext.plan = JSON.parse(JSON.stringify(payload.artContext.plan || {}));
-  }
   const visualSchema = String(payload.visualSchema || '').trim().slice(0, 80);
   if (usesH3 && visualSchema !== 'nf.h3.visual.v1') throw new Error('MiniMax H3 reverse requires visualSchema nf.h3.visual.v1');
   if (usesH3 && (typeof payload.userPrompt !== 'string' || typeof payload.userRequirements !== 'string')) throw new Error('MiniMax H3 reverse requires explicit userPrompt and userRequirements fields');
@@ -334,10 +320,9 @@ export function normalizeReverseRequest(payload = {}) {
   const usesVisualV2 = purpose === 'static-image-reverse' && images.length === 1 && visualSchema === 'nf.visual.v2';
   return {
     usesVisualV2,
-    timeoutMs: usesH3 ? 180000 * Math.max(1, images.length) : usesArtDirection ? 600000 : 300000,
+    timeoutMs: usesH3 ? 180000 * Math.max(1, images.length) : 300000,
     request: {
       images, requirements, surface, purpose, provider: 'local', currentPrompt,
-      ...(usesArtDirection ? { visualSchema: usesArtReview ? 'nf.art.review.v1' : 'nf.art.direction.v1', artContext, negativePrompt: String(payload.negativePrompt || '').slice(0, 12000), nsfw: payload.nsfw === true } : {}),
       ...(usesUiQwen ? { targetEngine:'qwen-2.1', supportsNegativePrompt:payload.supportsNegativePrompt !== false, uiDesignIntent:payload.uiDesignIntent, uiPreserveLayout:payload.uiPreserveLayout } : {}),
       ...(usesH3 ? { userPrompt: payload.userPrompt.trim().slice(0, 20000), userRequirements: payload.userRequirements.trim().slice(0, 12000), h3Mode: payload.h3Mode, durationSeconds: payload.durationSeconds } : {}),
       ...(preferredOutputLanguage ? { preferredOutputLanguage } : {}),
@@ -398,7 +383,7 @@ export function qwenBusinessPythonEnvironment(source = {}, overrides = {}) {
   return result;
 }
 
-export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend, strataConfigPath: suppliedStrataConfigPath, artLearning = null, communityCpuTrialForDevelopment = false, qwenBusinessBridge = false, qwenBusinessTextOnly = false, qwenRotationCandidateEnabled = false, qwenPlanEnabled = false, qwenPlanVerificationEnabled = false, qwenImageEditEnabled = false, qwenSession = undefined, qwenBusinessReady: suppliedQwenBusinessReady = null } = {}) {
+export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend, strataConfigPath: suppliedStrataConfigPath, communityCpuTrialForDevelopment = false, qwenBusinessBridge = false, qwenBusinessTextOnly = false, qwenRotationCandidateEnabled = false, qwenPlanEnabled = false, qwenPlanVerificationEnabled = false, qwenImageEditEnabled = false, qwenSession = undefined, qwenBusinessReady: suppliedQwenBusinessReady = null } = {}) {
   const candidateConfigPath = suppliedStrataConfigPath || defaultStrataConfigPath(runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON);
   const candidateConfig = readStrataConfig(candidateConfigPath);
   const log = logger || (() => {});
@@ -447,9 +432,9 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         error:!serviceExists?'Prompt Assistant 服务脚本不存在':modelExists?lastError:'Flash 本地模型尚未安装完整' };
     }
     if(analysisBackend==='pe'){
-      const file=modelPath||join(runtime.modelsPath||'', 'text_encoders', ART_EDIT_MODEL);
+      const file=modelPath||join(runtime.modelsPath||'', 'text_encoders', PE_MODEL_FILE);
       const modelExists=isFile(file),serviceExists=isFile(script);
-      return {modelType:'qwen35_pe_i2i',modelPath:file,modelFolderReady:modelExists,cachePath:'',cacheReady:false,modelExists,serviceScript:script,serviceExists,pythonPath:python,comfyRoot:process.env.NOVAFLOW_COMFY_ROOT||join(runtime.installPath,'engine','ComfyUI'),runtimeJsonPath:runtimeJson,enabled:modelExists&&serviceExists,runtimeStatus:lease?'推理中':modelExists?'模型可用':'未配置模型',error:!serviceExists?'Prompt Assistant 服务脚本不存在':modelExists?lastError:'缺少绘图/UI 共用的本地 PE 模型：'+ART_EDIT_MODEL};
+      return {modelType:'qwen35_pe_i2i',modelPath:file,modelFolderReady:modelExists,cachePath:'',cacheReady:false,modelExists,serviceScript:script,serviceExists,pythonPath:python,comfyRoot:process.env.NOVAFLOW_COMFY_ROOT||join(runtime.installPath,'engine','ComfyUI'),runtimeJsonPath:runtimeJson,enabled:modelExists&&serviceExists,runtimeStatus:lease?'推理中':modelExists?'模型可用':'未配置模型',error:!serviceExists?'Prompt Assistant 服务脚本不存在':modelExists?lastError:'缺少绘图/UI 共用的本地 PE 模型：'+PE_MODEL_FILE};
     }
     // Retained for explicit legacy diagnostics, never an automatic fallback.
     const folders = [modelPath, process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH,
@@ -759,32 +744,6 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       } catch(error) {return {ok:false,error:String(error?.message||error),errorCode:'ui-design-cpu-failed'};}
     },
     async reverseImagePrompt(payload) {
-      if(analysisBackend!=='strata'&&payload?.surface==='art'&&payload.purpose==='art-director'&&payload.artContext?.editEnhancer==='qwen21-pe-i2i'){
-        let normalized;try{normalized=normalizeReverseRequest(payload);}catch(error){return invalid(error);}
-        if(isArtEditRequest(normalized.request)){
-          try{const cached=peekArtStyleCache(normalized.request);if(cached)return {ok:true,data:cached};}catch(error){return invalid(error);}
-          if(lease)return {ok:false,error:'本地分析正在执行另一项任务，请等待完成',errorCode:'prompt-assistant-busy'};
-          lease={command:'artEditPe',startedAt:Date.now()};
-          try{
-            const base=String(comfyUrls[0]||'').replace(/\/+$/,'');if(!base)throw Error('未配置本地绘图运行时');
-            const r=await fetch(base+'/object_info/CLIPLoader',{signal:AbortSignal.timeout(30000)});if(!r.ok)throw Error('无法核对本地 PE 模型');const info=await r.json();
-            if(info.CLIPLoader?.input?.required?.clip_name?.[0]?.includes(ART_EDIT_MODEL)){
-              await stop();
-              if(['reference-only-v1','routing-first-v1','scoped-style-v1'].includes(normalized.request.artContext.styleObservation)){
-                const before=await releaseRuntimes();if(!before.ok)throw Error(before.error);
-              }
-              const data=await planArtEdit({baseUrl:base,payload:normalized.request,isCancelled:()=>taskIsCancelled()});
-              // PE is the only analysis checkpoint. Do not load a second observer
-              // for donor isolation; the paired edit contract already owns that boundary.
-              if(!data.analysisCacheHit){const handoff=await releaseRuntimes();if(!handoff.ok)throw Error(handoff.error);}
-              return {ok:true,data};
-            }
-            throw Error('缺少本地 PE 模型，本次未提交分析；不会回退到其他模型');
-          }catch(error){return {ok:false,error:String(error.message||error),errorCode:'art-edit-pe-failed'};}
-          finally{lease=null;}
-          // Missing PE is an explicit failure; no other checkpoint is substituted.
-        }
-      }
       if(payload?.uiPlanner==='grok-vision-cpu-v1') {
         if(payload.surface!=='ui-design')return invalid(new Error('UI CPU 请求范围无效'));
         if(payload.action==='capabilities')return {ok:true,data:{protocol:'nf.ui.grok-cpu.v1',cpuOnly:true,localCompletePlanner:'native-catalog-v3',nativeCatalogProtocol:'flat-native-v3',sourceContract:'observed-rows-v2'}};
@@ -881,7 +840,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   };
   const qwenImageReady=()=>{try{return qwenNativeReady()===true && fileDigest(join(dirname(config().serviceScript),'prompt_assistant','qwen21_image_edit.py'))==='15df47b615b92c00e99bbd65ba3891556ae0602d6798200a70212efbdd5713e8';}catch{return false;}};
   return selectedBackend === 'strata' ? createStrataPromptAssistant({ worker, comfyUrls, configPath: candidateConfigPath,
-    normalizeOptimizeRequest, normalizeReverseRequest, legacyApi: api, logger, artLearning, qwenBusinessBridge, qwenBusinessTextOnly, qwenSession, qwenBusinessReady, qwenNativeReady,qwenImageReady,
+    normalizeOptimizeRequest, normalizeReverseRequest, legacyApi: api, logger, qwenBusinessBridge, qwenBusinessTextOnly, qwenSession, qwenBusinessReady, qwenNativeReady,qwenImageReady,
     communityCpuTrialForDevelopment: communityCpuTrialForDevelopment===true,
     qwenRotationCandidateEnabled: qwenRotationCandidateEnabled===true,
     qwenPlanEnabled: qwenPlanEnabled===true, qwenPlanVerificationEnabled: qwenPlanVerificationEnabled===true,qwenImageEditEnabled:qwenImageEditEnabled===true }) : api;

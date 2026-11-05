@@ -16,9 +16,8 @@ test('unselected chat and shared business cannot load Next or release Comfy',asy
     comfyUrls:['http://127.0.0.1:8188'],config:{expectedModel:{ids:['next']}},
     lifecycle:{load:async()=>touched.push('load'),unload:async()=>touched.push('unload')},
     sessionFactory:()=>({withSession:async()=>touched.push('session')}),
-    fetchImpl:async()=>{touched.push('comfy');throw Error('unexpected');},
-    artLearning:{begin:async()=>touched.push('learning')}});
-  const chat=await assistant.artAgentChat({mode:'drawing',message:'fixture'});
+    fetchImpl:async()=>{touched.push('comfy');throw Error('unexpected');}});
+  const chat=await assistant.artAgentChat({mode:'chat',message:'fixture'});
   assert.equal(chat.errorCode,'local-model-selection-required');
   assert.equal((await assistant.runForTask('task-1','artAgentChat',{mode:'chat',message:'fixture'})).errorCode,'local-model-selection-required');
   for(const method of ['optimizePrompt','reverseImagePrompt','describeArtStyle','rewriteAudioPrompt']) {
@@ -42,9 +41,8 @@ test('unavailable selection is rejected before learning or model acquisition on 
     config: {expectedModel:{ids:['next']}},
     lifecycle: {load:async()=>{ touched=true; }, unload:async()=>{ touched=true; }},
     sessionFactory:()=>({withSession:async()=>{ touched=true; }}),
-    artLearning:{begin:async()=>{ touched=true; }},
   });
-  const payload={modelId:'gemma-4-12b-it',mode:'drawing'};
+  const payload={modelId:'gemma-4-12b-it',mode:'chat'};
   assert.equal((await assistant.artAgentChat(payload)).errorCode,'local-model-unavailable');
   assert.equal((await assistant.runForTask('task','artAgentChat',payload)).errorCode,'local-model-unavailable');
   assert.equal(touched,false);

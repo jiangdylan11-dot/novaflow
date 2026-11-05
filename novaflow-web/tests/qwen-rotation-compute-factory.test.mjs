@@ -24,10 +24,9 @@ test('only two explicit top-level trusted true switches enable candidate in actu
 test('nested config cannot turn candidate on, and ordinary trusted settings are preserved',async()=>{
   const logger=()=>{},otherWorker={getState:()=>({})};
   const options=computePromptAssistantOptions({logger,enableQwenBusinessBridge:true,qwenBusinessTextOnly:true,
-    promptAssistant:{strataConfigPath:impossibleConfig,qwenRotationCandidateEnabled:true,qwenRotationVerificationEnabled:true,artLearning:{fixture:true}}},otherWorker,urls);
+    promptAssistant:{strataConfigPath:impossibleConfig,qwenRotationCandidateEnabled:true,qwenRotationVerificationEnabled:true}},otherWorker,urls);
   assert.equal(options.qwenRotationCandidateEnabled,false);assert.equal(options.worker,otherWorker);assert.equal(options.logger,logger);
   assert.equal(options.comfyUrls,urls);assert.equal(options.qwenBusinessBridge,true);assert.equal(options.qwenBusinessTextOnly,true);
-  assert.deepEqual(options.artLearning,{fixture:true});
   const assistant=createPromptAssistant(options);try{assert.equal(assistant.status().qwenRotationCandidateEnabled,false);}finally{await assistant.stop();}
 });
 test('request payload cannot enable candidate or supply trusted verifier',async()=>{

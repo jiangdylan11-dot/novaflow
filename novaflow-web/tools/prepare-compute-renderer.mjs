@@ -15,7 +15,7 @@ export const COMPUTE_RENDERER_FILES = Object.freeze([
   'qwen21-turbo.workflow.js', 'comfyui-workflow-credit-cost.js',
   'art-quality-profile.workflow.js', 'art-reference-compiler.workflow.js',
   'art-generate-model.resource.js', 'art-generate-lora.js',
-  'art-direction.workflow.js', 'generative-split.workflow.js',
+  'generative-split.workflow.js',
   'art-generate-provider.workflow.js', 'ai-sequence-minimax-h3.workflow.js',
   'ai-sequence-video-merge-export.workflow.js', 'aifx-restyle.workflow.js',
   'split-inpaint-nsfw.workflow.js', 'novaflow-brand-runtime.js', 'spine-split-runtime.js'

@@ -1,9 +1,14 @@
-import test from 'node:test';
+// Style redraw: the online brain writes the style words, the local generator runs them at CFG 3.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
 import {buildQwen21NativeRewrite,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
 
+let passed=0,failed=0;
+async function test(name,fn){
+  try{await fn();passed++;console.log('ok  '+name);}
+  catch(error){failed++;console.error('FAIL '+name+'\n'+error.stack);}
+}
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 const input={promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',currentPrompt:'把人物转成这个风格',requirements:'',negativePrompt:'',supportsNegativePrompt:true};
 const system=prepared=>prepared.body.input[0].content[0].text;
@@ -12,7 +17,7 @@ const redraw=`Redraw <image1> entirely as an illustration in this style: ${descr
 const answer=(text=redraw,style=description)=>({output_text:JSON.stringify({style_description:style,rewritten_prompt:text})});
 const compile=(overrides={},response=answer(),roles=['subject','style'])=>compileQwen21NativeRewrite(response,buildQwen21NativeRewrite({...input,...overrides},'model',roles));
 
-test('style mode is chosen only for one subject first followed by style references',()=>{
+await test('style mode is chosen only for one subject first followed by style references',()=>{
   for(const roles of [['subject','style'],['subject','style','style']]){
     const prepared=buildQwen21NativeRewrite(input,'model',roles);
     assert.equal(prepared.styleRedraw,true,roles.join());assert.equal(prepared.referenceCount,roles.length);assert.equal(prepared.body.temperature,0);
@@ -24,7 +29,7 @@ test('style mode is chosen only for one subject first followed by style referenc
   assert.equal(isStyleRedrawRoles(['subject','style']),true);
 });
 
-test('the style system asks for concrete rendering words and drops the preserve-medium clause',()=>{
+await test('the style system asks for concrete rendering words and drops the preserve-medium clause',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
   for(const needle of ['25-60 words','medium','line art','shading','colour temperature','palette','eye drawing style','skin treatment','hair rendering','detail level','never highly saturated','iris colours',"Keep the source's natural skin tone.",'Redraw <image1> entirely as an illustration in this style: {style_description}.','<image2> shows this style; match its rendering, not its content.','Do not copy any character, clothing, objects, text or scenery from <image2>.','<image3>'])
     assert.ok(text.includes(needle),needle);
@@ -32,7 +37,7 @@ test('the style system asks for concrete rendering words and drops the preserve-
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');
 });
 
-test('the compiled result carries the policy, the one prompt and a program-owned negative',()=>{
+await test('the compiled result carries the policy, the one prompt and a program-owned negative',()=>{
   const result=compile();
   assert.equal(result.modelPromptPolicy,QWEN21_STYLE_REDRAW_POLICY);assert.equal(result.promptContract,QWEN21_NATIVE_REWRITE);
   assert.equal(result.displayPrompt,redraw);assert.equal(result.modelPrompt,redraw);assert.equal(result.styleDescription,description);
@@ -43,7 +48,7 @@ test('the compiled result carries the policy, the one prompt and a program-owned
   assert.equal(compile({supportsNegativePrompt:false}).negativePrompt,undefined);
 });
 
-test('an incomplete style answer is rejected before it can be applied',()=>{
+await test('an incomplete style answer is rejected before it can be applied',()=>{
   assert.throws(()=>compile({},answer(redraw,' ')),/style description missing/);
   assert.throws(()=>compile({},answer(redraw.replaceAll('<image2>','the reference'))),/lost an image role/);
   assert.throws(()=>compile({},answer(),['subject','style','style']),/lost an image role/);
@@ -51,7 +56,7 @@ test('an incomplete style answer is rejected before it can be applied',()=>{
   assert.throws(()=>compile({},answer(redraw+' 人物微笑')),/not English/);
 });
 
-test('the browser checks accept exactly the policy the server exports',()=>{
+await test('the browser checks accept exactly the policy the server exports',()=>{
   for(const file of ['../../renderer/novaflow-smart-ai.js','../../renderer/novaflow-web-runtime.js'])assert.ok(read(file).includes(`'${QWEN21_STYLE_REDRAW_POLICY}'`),file);
 });
 
@@ -60,7 +65,7 @@ runInContext(read('../../renderer/art-generate-model.resource.js'),createContext
 const models=modelSandbox.module.exports;
 const styleRun={taskProfile:'art-direction',referenceRoles:['subject','style']};
 
-test('one role rule sets CFG 3 on both 2.1 routes unless the user typed a value',()=>{
+await test('one role rule sets CFG 3 on both 2.1 routes unless the user typed a value',()=>{
   const turbo={provider:'local',localDrawEngine:'qwen-2.1',localQwen21Variant:'turbo'},full={provider:'local',localDrawEngine:'qwen-2.1'};
   assert.equal(models.localSamplingFor(turbo,'img2img','',undefined,'drawing',styleRun).cfg,3);
   assert.equal(models.localSamplingFor(full,'img2img','',undefined,'drawing',styleRun).cfg,3);
@@ -86,7 +91,7 @@ function build(options,{state={},sizes=[{width:2000,height:1500},{width:2000,hei
 }
 const sampler=graph=>Object.values(graph).find(node=>node.class_type==='SamplerCustom');
 
-test('the style run keeps content at the working size, samples its latent and runs CFG 3',()=>{
+await test('the style run keeps content at the working size, samples its latent and runs CFG 3',()=>{
   const graph=build(styleRun);
   assert.equal(sampler(graph).inputs.cfg,3);assert.equal(graph['5'].inputs.negative_prompt,STYLE_NEGATIVE);
   assert.equal(graph['200'].inputs.width,1280);assert.equal(graph['200'].inputs.height,960);
@@ -95,7 +100,7 @@ test('the style run keeps content at the working size, samples its latent and ru
   assert.equal(graph['5'].inputs.prompt,'prompt');
 });
 
-test('several style images share the 1.5 MP total and an ordinary edit stays as it was',()=>{
+await test('several style images share the 1.5 MP total and an ordinary edit stays as it was',()=>{
   const graph=build({...styleRun,referenceRoles:['subject','style','style']},{sizes:[{width:2000,height:1500},{width:2000,height:3000},{width:3000,height:2000}],names:['a.png','b.png','c.png']});
   const pixels=id=>graph[id].inputs.width*graph[id].inputs.height;
   assert.ok(pixels('201')+pixels('202')<=1500000);assert.equal(sampler(graph).inputs.cfg,3);
@@ -103,15 +108,15 @@ test('several style images share the 1.5 MP total and an ordinary edit stays as 
   assert.equal(sampler(edit).inputs.cfg,1);assert.ok(edit['201'].inputs.width*edit['201'].inputs.height<=500000);
 });
 
-test('a reviewed draft reports the roles it will run with, and the draft prompt owns the role text',()=>{
-  const box={localStorage:{getItem:()=>null},NovaFlowArtGenerateModels:models};box.window=box;
-  runInContext(read('../../renderer/art-direction.workflow.js'),createContext(box));
+await test('a reviewed draft reports the roles it will run with, and the draft prompt owns the role text',()=>{
+  const box={NovaFlowArtGenerateModels:models};box.window=box;
+  runInContext(read('../../renderer/art-prepare.workflow.js'),createContext(box));
   const draft={references:[{dataUrl:'x'},{dataUrl:'y'}],referenceRolePlan:{roles:['subject','style']}};
-  assert.deepEqual(JSON.parse(JSON.stringify(box.NovaFlowArtDirection.generationOptions(draft))),{taskProfile:'art-direction',referenceRoles:['subject','style'],styleRedraw:true});
+  assert.deepEqual(JSON.parse(JSON.stringify(box.NovaFlowArtPrepare.generationOptions(draft))),{taskProfile:'art-direction',referenceRoles:['subject','style'],styleRedraw:true});
   assert.match(source,/prepared\?\.promptOwnsReferenceRoles===true \? qualityCompiled\.prompt/);
 });
 
-test('a style image in slot 1 still runs subject first, while the page keeps its own slot numbers',async()=>{
+await test('a style image in slot 1 still runs subject first, while the page keeps its own slot numbers',async()=>{
   const png=c=>'data:image/png;base64,'+c,refs=[{drawingRole:'style',dataUrl:png('AA=='),name:'style.png'},{drawingRole:'subject',dataUrl:png('BB=='),name:'photo.png'}];
   let prepared=null,request=null;
   const rt={state:{active:true,provider:'local',mode:'img2img',prompt:'用<image1>的风格重绘<image2>',negativePrompt:'',width:512,height:512,count:1,running:false,localQwen21Variant:'turbo'},references:()=>refs,selectedResult:()=>null,
@@ -128,3 +133,5 @@ test('a style image in slot 1 still runs subject first, while the page keeps its
   assert.deepEqual(Array.from(prepared.references,ref=>ref.name),['photo.png','style.png']);assert.deepEqual(Array.from(prepared.referenceRolePlan.roles),['subject','style']);
   assert.equal(prepared.promptSnapshot.prompt,redraw);assert.equal(prepared.promptOwnsReferenceRoles,true);assert.equal(rt.state.negativePrompt,STYLE_NEGATIVE);
 });
+console.log(`${passed} passed, ${failed} failed`);
+if(failed)process.exit(1);

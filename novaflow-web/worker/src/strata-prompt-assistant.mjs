@@ -8,8 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createFlashBrainSession } from './flash-brain-session.mjs';
 import { isFlashBrainConfigured } from './flash-brain-configuration.mjs';
 import { audioFlashMessages, cleanAudioCaption } from './comfy/audio-reprompt.mjs';
-import { isFlashArtDirectionRequest, planFlashArtDirection, FLASH_ART_SYSTEM_SHA256 } from './flash-art-direction.mjs';
-import { createFlashArtAgent, runQwenRotationCandidatePreview, FLASH_ART_AGENT_TOOLS, FLASH_ART_AGENT_STYLE_VERSION, FLASH_ART_AGENT_PARENT_SYSTEM_SHA256, FLASH_ART_AGENT_SYSTEM_SHA256 } from './flash-art-agent.mjs';
+import { createFlashArtAgent, runQwenRotationCandidatePreview, FLASH_ART_AGENT_TOOLS, } from './flash-art-agent.mjs';
 import { createFlashChatResidency } from './flash-chat-residency.mjs';
 import { FLASH_MEDIA_AGENT_TOOLS } from './flash-media-agent.mjs';
 import { localModelSelectionFailure, communityTrialCapabilityFailure, communityTrialResponseFailure, businessAssistantSelection, qwenTextBusinessFailure } from './local-model-selection.mjs';
@@ -26,24 +25,6 @@ export function strataConfigPath(runtimeJsonPath) {
 }
 export function readStrataConfig(path) {
   try { return JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; }
-}
-// The drawing UI may assign the whole source photograph both subject and
-// background/composition duties. They still belong to that ONE content image;
-// this is not a separate background/pose donor. Keep the frozen v1 producer
-// unchanged and canonicalize only that exact whole-source + style pair.
-function wholeSourceArtPair(payload) {
-  if (isFlashArtDirectionRequest(payload)) return payload;
-  const refs = payload?.artContext?.references;
-  if (!Array.isArray(refs) || refs.length !== 2) return payload;
-  const roles = ref => Array.isArray(ref?.roles) ? ref.roles : [ref?.role];
-  const source = refs.find(ref => roles(ref).includes('subject')
-    && roles(ref).every(role => ['subject', 'background', 'composition'].includes(role))
-    && !ref.excludedRoles?.some(role => roles(ref).includes(role)));
-  const style = refs.find(ref => roles(ref).length === 1 && roles(ref)[0] === 'style');
-  if (!source || !style || source === style) return payload;
-  const normalized = { ...payload, artContext: { ...payload.artContext,
-    references: refs.map(ref => ref === source ? { ...ref, role: 'subject', roles: ['subject'] } : ref) } };
-  return isFlashArtDirectionRequest(normalized) ? normalized : payload;
 }
 function controlCommand(config, configPath, command, { signal, ownerToken } = {}) {
   const helper = fileURLToPath(new URL('./strata-runtime-control.py', import.meta.url));
@@ -65,7 +46,7 @@ function controlCommand(config, configPath, command, { signal, ownerToken } = {}
 
 export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,config:suppliedConfig,
   sessionFactory=createFlashBrainSession,lifecycle:suppliedLifecycle,resourceProbe,qwenGpuMemoryProbe,
-  fetchImpl=fetch,logger=()=>{},legacyApi=null,chatIdleTimeoutMs=120000,artLearning=null,gemmaConfig:suppliedGemmaConfig,gemmaSession:suppliedGemmaSession,
+  fetchImpl=fetch,logger=()=>{},legacyApi=null,chatIdleTimeoutMs=120000,gemmaConfig:suppliedGemmaConfig,gemmaSession:suppliedGemmaSession,
   qwenConfig:suppliedQwenConfig,qwenSession:suppliedQwenSession,isolatedCommunityRuntimeForTest=false,communityCpuTrialForDevelopment=false,qwenBusinessBridge=false,qwenBusinessTextOnly=false,qwenBusinessReady=()=>false,qwenNativeReady=()=>false,qwenImageReady=()=>false,qwenRotationCandidateEnabled=false,qwenPlanEnabled=false,qwenPlanVerificationEnabled=false,qwenImageEditEnabled=false}={}) {
   const path=configPath || strataConfigPath(), config=suppliedConfig || readStrataConfig(path);
   const gemmaConfig=suppliedGemmaConfig || readStrataConfig(process.env.NOVAFLOW_GEMMA_CPU_CONFIG || join(dirname(path),'gemma-cpu.json'));
@@ -219,9 +200,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       communityStatus('qwen3.5-9b-heretic',qwenAvailable(),qwenResidency)],
     analysisBackend:'strata',drawingBackend:'strata',otherBackend:'strata',supportsOriginalImages:true,supportsStructuredPromptIR:true,
     supportedSurfaces:['art','animation','video','ui-design','audio','aifx'],modelType:'swift15_qwen38_flash_next_iq2_xs',
-    artDirectionProtocol:{version:'art-direction-v1',systemSHA256:FLASH_ART_SYSTEM_SHA256},
-    artAgent:{version:'xiaotao-foart-tools-v1',localOnly:false,maxModelRounds:3,modes:['chat','drawing','creation','media','foart'],tools:[...FLASH_ART_AGENT_TOOLS,...FLASH_MEDIA_AGENT_TOOLS].map(tool=>tool.function.name),supportsFeedbackImages:true,
-      styleProtocol:{version:FLASH_ART_AGENT_STYLE_VERSION,parentSystemSHA256:FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,systemSHA256:FLASH_ART_AGENT_SYSTEM_SHA256}},
+    artAgent:{version:'xiaotao-foart-tools-v1',localOnly:false,maxModelRounds:3,modes:['chat','creation','media','foart'],tools:[...FLASH_ART_AGENT_TOOLS,...FLASH_MEDIA_AGENT_TOOLS].map(tool=>tool.function.name),supportsFeedbackImages:true},
     chatSession,modelLoaded:chatSession.modelLoaded,operation:operation?{...operation}:null,
     modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping || operation?.phase==='releasing' || chatSession.state==='releasing'?'释放中':operation?.phase==='loading'?'加载中':operation?.phase==='analyzing'?'分析中':lease?'推理中':chatSession.state==='warm'?'聊天模型已加载，待机中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
   const blocked=()=>({ok:false,errorCode:cleanupFault?'strata-release-unconfirmed':'prompt-assistant-stopping',error:cleanupFault?'Flash 资源尚未确认释放，请先释放显存后重试':'本地 AI 正在释放资源'});
@@ -478,14 +457,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
           // Native drawing owns a separate session from warm ordinary chat. Its
           // progress follows this request's real inference and owned cleanup,
           // without inventing token-level progress or another model request.
-          return {ok:true,data:await artAgent.run({payload,flash:trackedFlash,signal:abort.signal,knowledge:context.knowledge})};
-        }
-        const nativeArtPayload=method==='reverseImagePrompt' ? wholeSourceArtPair(payload) : payload;
-        if(method==='reverseImagePrompt' && isFlashArtDirectionRequest(nativeArtPayload)) {
-          const data=await planFlashArtDirection({payload:nativeArtPayload,flash});
-          if(nativeArtPayload!==payload)data.nativeAnalysis.inputRoleNormalization={
-            kind:'whole-source-scene-roles',references:payload.artContext.references.map(ref=>({source:ref.source,roles:ref.roles || [ref.role]}))};
-          return {ok:true,data};
+          return {ok:true,data:await artAgent.run({payload,flash:trackedFlash,signal:abort.signal})};
         }
         if(method==='rewriteAudioPrompt') {
           const input=String(payload.input || '').trim();if(!input)throw Error('请先输入音频描述');
@@ -525,12 +497,9 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       // proved the owned model processes exited. The producer cannot grant them.
       const released={analysisBackend:backendFor(model),modelIdentity:answer.identity,resourcesReleased:true,generationReady:!rotation && result?.ok===true && (method!=='artAgentChat' || Boolean(result.data?.proposal || result.data?.mediaPlan || result.data?.toolPlan))};
       const data=result?.data ? {...result.data,...released,timing:lastTiming} : undefined;
-      if(data?.artDirection?.editEnhancer?.kind==='qwen21-strata-native') {
-        data.artDirection={...data.artDirection,editEnhancer:{...data.artDirection.editEnhancer,...released}};
-      }
       if(method==='artAgentChat' && data?.proposal)data.proposal={...data.proposal,...released};
       return {...result,...released,...(executionDevice?{executionDevice}:{}),...(data ? {data} : {}),timing:lastTiming,
-        ...(migrateBusiness?{learningWarning:'此业务暂未接入账号经验上下文，本次未读写经验记录。'}:{})};
+};
     }catch(error){lastError=String(error.message || error);const code=error.errorCode || error.code || 'strata-analysis-failed';
       if(['strata-release-unconfirmed','strata-unload-failed'].includes(code))cleanupFault=true;
       return {ok:false,error:lastError,errorCode:code,analysisBackend:backendFor(model)};
@@ -574,41 +543,10 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
   const api={get running(){return Boolean(lease) || allResidencies().some(item=>item.getStatus().state==='releasing');},get busy(){return Boolean(lease) || allResidencies().some(item=>item.getStatus().state==='releasing');},status,
     optimizePrompt:payload=>execute('optimizePrompt',payload),reverseImagePrompt:payload=>execute('reverseImagePrompt',payload),
     describeArtStyle:payload=>execute('describeArtStyle',payload),rewriteAudioPrompt:payload=>execute('rewriteAudioPrompt',payload),
-    async artAgentChat(payload,{learningAllowed=true}={}) {
+    async artAgentChat(payload) {
       const failure=selectionFailure(payload);
       if(failure)return failure;
-      if (!artLearning || !learningAllowed || !['drawing','creation'].includes(payload?.mode || 'drawing')) return execute('artAgentChat',payload);
-      // Community sessions must not read or write knowledge under Next's
-      // identity. Their learned scope stays disabled until it can be tied to
-      // an independently verified model identity.
-      if (selectedModel(payload)!=='next') {
-        const response=await execute('artAgentChat',payload);
-        if(response?.ok)response.learningWarning='当前模型暂不使用绘图学习记录';
-        return response;
-      }
-      // Validate on CPU before touching persistence or acquiring model ownership.
-      try { artAgent.preflight(payload); }
-      catch (error) { return {ok:false,error:String(error.message || error),errorCode:error.errorCode || error.code || 'flash-agent-invalid-input'}; }
-      let knowledge, warning;
-      const learningStarted = Date.now();
-      try { knowledge = await artLearning.begin(payload,config?.expectedModel?.ids?.[0] || 'local'); }
-      catch { warning = '任务反馈暂不可用，本次使用原有稳定流程；本地文件已保留'; }
-      const learningReadMs = Date.now() - learningStarted;
-      const response = await execute('artAgentChat',payload,{knowledge});
-      const learningWriteStarted = Date.now();
-      if (knowledge) {
-        try {
-          const learning = await artLearning.planned(knowledge,response);
-          if (response?.data) response.data.learning = learning;
-        } catch { warning = '本次任务记录未完成，生成结果与原有流程不受影响'; }
-      }
-      if (response.timing) {
-        response.timing = {...response.timing,learningReadMs,learningWriteMs:Date.now()-learningWriteStarted,
-          endToEndMs:Date.now()-learningStarted};
-        if (response.data) response.data.timing = response.timing;
-      }
-      if (warning) response.learningWarning = warning;
-      return response;
+      return execute('artAgentChat',payload);
     },
     cancelRequest(payload={}) {
       const requestId=promptRequestId(payload);

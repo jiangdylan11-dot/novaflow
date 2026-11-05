@@ -3,27 +3,22 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { createFlashBrainSession } from '../../worker/src/flash-brain-session.mjs';
 import { createFlashArtAgent, computeArtAgentFingerprint, canonicalArtAgentJSON, prepareFlashArtAgentPayload,
-  FLASH_ART_AGENT_TOOLS, FLASH_CREATION_AGENT_TOOLS, FLASH_ART_AGENT_SYSTEM } from '../../worker/src/flash-art-agent.mjs';
+  FLASH_ART_AGENT_TOOLS, FLASH_CREATION_AGENT_TOOLS, FLASH_CHAT_AGENT_SYSTEM, FLASH_CREATION_AGENT_SYSTEM } from '../../worker/src/flash-art-agent.mjs';
 
 // Native transport, model identity and ownership are mocked; no GPU/server starts.
 const MODEL = 'swift-agent-fixture', WEIGHT = 'E:/models/swift-fixture.gguf';
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
-const rawPrompt = '  Use <image1> for the airport subject and <image2> for its drawn form language.\nDesign cool environmental light and layered painted shadows.  ';
-const sourceContent = 'The source subject remains in the original recognizable scene.';
+const rawPrompt = '  Use <image1> for the airport subject.\nDesign cool environmental light and layered painted shadows.  ';
 function payload(extra = {}) {
-  const value = { requestId: randomUUID(), message: '头发太写实，请按参考的发束和画法重绘', history: [],
-    artContext: { provider: 'local', engine: 'qwen-2.1', nsfw: false, mode: 'img2img', prompt: 'original prompt', negativePrompt: '  keep my negative\nexactly  ',
-      width: 1280, height: 960, cfg: 1, steps: 8, seed: 54792256, referenceRoles: ['subject', 'style'] },
-    images: [{ dataUrl: PNG, role: 'subject' }, { dataUrl: PNG, role: 'style' }], ...extra };
+  const value = { requestId: randomUUID(), mode: 'creation', message: '头发太写实，请按参考的发束和画法重绘', history: [],
+    artContext: { task: 'creation', provider: 'local', engine: 'qwen-2.1', nsfw: false, mode: 'img2img', prompt: 'original prompt', negativePrompt: '  keep my negative\nexactly  ',
+      width: 1280, height: 960, cfg: 1, steps: 8, seed: 54792256 },
+    images: [{ dataUrl: PNG, role: 'subject' }], ...extra };
   value.contextFingerprint = computeArtAgentFingerprint(value);
   return value;
 }
 const chatPayload = (extra = {}) => ({ requestId: randomUUID(), mode: 'chat', message: '你好，可以帮我讨论一下配色吗？', history: [], ...extra });
 function tool(name, args, id = 'call_1') {
-  // Default valid style evidence for legacy two-round fixtures; creation tools
-  // retain their previous schema and raw strings bypass these fixture defaults.
-  if (typeof args !== 'string' && args?.prompt !== undefined && args.generationMode === undefined)
-    args = {sourceContent,renderingClass:'anime',...args};
   return { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) } }] };
 }
 function fixture(answers, { unload = async () => ({ ok: true, released: true }), audit } = {}) {
@@ -48,6 +43,11 @@ const invoke = async (agent, f, request) => {
   const prepared = agent.preflight(request);
   return f.session.withSession(flash => agent.run({ payload: prepared, flash }));
 };
+test('chat and creation system text stays byte-identical',()=>{
+  const sha=value=>createHash('sha256').update(value).digest('hex');
+  assert.equal(sha(FLASH_CHAT_AGENT_SYSTEM),'66af68d3c3aebe8efb0abec824fe52f9d3b95da3211c9327876cb10fefc33f86');
+  assert.equal(sha(FLASH_CREATION_AGENT_SYSTEM),'fbad9f88081d7ce264b5a98f494dd195a4612cf790dc289a205a5709453ee084');
+});
 test('native write and generation tools return bounded application actions while prompt-only stays separate',async()=>{
   for(const [name,action] of [['propose_art_direction','prompt'],['apply_art_direction','apply'],['generate_art_image','generate']]) {
     const request=payload(), f=fixture([tool('get_art_context',{}),tool(name,{contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'交由应用执行'},'call_2')]);
@@ -58,22 +58,6 @@ test('uncertain drawing intent asks one semantic question and returns no executa
   const request=payload(),f=fixture([tool('ask_art_question',{question:'你希望保留原来的构图，还是重新设计构图？'})]);
   const result=await invoke(createFlashArtAgent(),f,request);
   assert.equal(result.value.needsInput,true);assert.equal(result.value.proposal,undefined);assert.match(result.value.reply,/构图/);assert.equal(f.calls.length,1);
-});
-
-test('an invalid learning method is discarded without failing a valid drawing or retrying inference',async()=>{
-  const request=payload(),f=fixture([tool('get_art_context',{}),tool('propose_art_direction',{contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'完整方案',learningMethod:'https://private.invalid/source'},'call_2')]);
-  const result=await invoke(createFlashArtAgent(),f,request);
-  assert.equal(result.value.proposal.prompt,rawPrompt);assert.equal(result.value.proposal.learningMethod,undefined);
-  assert.equal(f.calls.length,2);assert.deepEqual(f.events,['load','unload']);
-});
-
-test('bundled quality strategy survives unavailable journals or cloud knowledge',async()=>{
-  const request=payload(),agent=createFlashArtAgent();let count=0;
-  const flash={identity:{id:'swift-1.5-qwen38-iq2-xs'},inferConversation:async options=>{
-    count++;assert.equal(options.reasoningEffort,'low');assert.equal(options.reasoningBudgetTokens,1024);
-    return {model:'swift-1.5-qwen38-iq2-xs',requestId:'fallback-base',finishReason:'tool_calls',message:tool('propose_art_direction',{contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'使用稳定的基础技能'})};
-  }};
-  const result=await agent.run({payload:agent.preflight(request),flash});assert.equal(result.proposal.prompt,rawPrompt);assert.equal(count,1);
 });
 
 test('creation without references and correction from current result use native tools and bind actual pixels',async()=>{
@@ -114,23 +98,6 @@ test('ordinary chat accepts optional page context and full current image without
   const content = f.calls[0].messages.at(-1).content;
   assert.deepEqual(JSON.parse(content[0].text).optionalPageContext, context);
   assert.equal(content.find(part => part.type === 'image_url').image_url.url, PNG);
-});
-
-test('chat and drawing share bounded text history while only verified drawing may propose', async () => {
-  const agent = createFlashArtAgent();
-  const first = (await invoke(agent, fixture([{ role: 'assistant', content: '我们可以先讨论画面光感。' }]), chatPayload())).value;
-  const drawing = payload({ mode: 'drawing', conversationId: first.conversationId, history: first.history });
-  const direction = (await invoke(agent, fixture([tool('get_art_context', {}), tool('propose_art_direction', {
-    contextFingerprint: drawing.contextFingerprint, prompt: rawPrompt, explanation: '这次按实际双图准备建议。' }, 'call_2')]), drawing)).value;
-  assert.equal(direction.mode, 'drawing');
-  assert.equal(direction.proposal.prompt, rawPrompt);
-  const request = chatPayload({ conversationId: direction.conversationId, history: direction.history, message: '先不生成，解释一下原因。' });
-  const f = fixture([{ role: 'assistant', content: '这里先讨论原因，没有执行生成。' }]);
-  const final = (await invoke(agent, f, request)).value;
-  assert.equal(final.history.length, 6);
-  assert.equal(final.proposal, undefined);
-  assert.deepEqual(f.calls[0].messages.slice(1, 5), direction.history);
-  assert.equal(f.calls[0].tools, undefined);
 });
 
 test('ordinary chat cannot execute a model-returned tool call and always releases', async () => {
@@ -178,18 +145,17 @@ test('native tool loop reads actual snapshot then preserves transparent proposal
   assert.deepEqual(data.toolTrace[0].result.artContext, request.artContext);
   assert.equal(data.proposal.prompt, rawPrompt);
   assert.equal(data.proposal.negativePrompt, request.artContext.negativePrompt);
-  assert.equal(data.proposal.cfg, 3);
-  assert.equal(data.proposal.kind, 'qwen21-strata-native');
-  assert.equal(data.proposal.version, 'flash-native-v1');
-  assert.deepEqual(data.proposal.sourceOrder, [1, 2]);
-  assert.deepEqual(data.proposal.providerPolicy, { schema: 'nf.qwen21-native-provider.v1', cfg: 3 });
+  assert.equal(data.proposal.cfg, request.artContext.cfg);
+  assert.equal(data.proposal.kind, 'qwen21-agent-direct');
+  assert.equal(data.proposal.version, 'agent-direct-v1');
+  assert.deepEqual(data.proposal.sourceOrder, [1]);
   assert.equal(data.proposal.resourcesReleased, undefined);
   assert.equal(data.proposal.generationReady, undefined);
   assert.deepEqual(f.calls[1].messages.map(item => item.role), ['system', 'user', 'assistant', 'tool']);
-  assert.equal(JSON.parse(f.calls[1].messages.at(-1).content).contextFingerprint, 'current-art-task');
+  assert.equal(JSON.parse(f.calls[1].messages.at(-1).content).contextFingerprint, request.contextFingerprint);
   assert.equal(data.proposal.contextFingerprint,request.contextFingerprint);
-  assert.deepEqual(f.calls[0].tools, FLASH_ART_AGENT_TOOLS);
-  assert.deepEqual(f.calls[0].messages[1].content.filter(item => item.type === 'image_url').map(item => item.image_url.url), [PNG, PNG]);
+  assert.deepEqual(f.calls[0].tools, FLASH_CREATION_AGENT_TOOLS);
+  assert.deepEqual(f.calls[0].messages[1].content.filter(item => item.type === 'image_url').map(item => item.image_url.url), [PNG]);
   assert.equal(f.calls[0].response_format, undefined);
 });
 
@@ -202,8 +168,8 @@ test('plain JSON text cannot masquerade as a native proposal tool call', async (
 });
 
 test('exact UI reference aliases keep all visual words and native audit without another model round', async () => {
-  const request = payload(), original = '  Redraw @参考图1 in the anime form language of @参考图2.\nKeep cool light and bold hair masses.  ';
-  const expected = original.replace('@参考图1', '<image1>').replace('@参考图2', '<image2>');
+  const request = payload(), original = '  Redraw @参考图1 in an anime form language.\nKeep cool light and bold hair masses.  ';
+  const expected = original.replace('@参考图1', '<image1>');
   const f = fixture([tool('get_art_context', {}), tool('propose_art_direction', {
     contextFingerprint: request.contextFingerprint, prompt: original, explanation: '按参考重画造型。' }, 'call_2')]);
   const result = (await invoke(createFlashArtAgent(), f, request)).value;
@@ -220,8 +186,8 @@ test('exact UI reference aliases keep all visual words and native audit without 
 });
 
 test('explicit HTML-escaped image slots normalize once while unrelated entities and all wording stay exact',async()=>{
-  const request=payload(),original='  Redraw &lt;image1&gt; using &lt;image2&gt;.\nKeep specular &amp; diffuse layers, not &lt;script&gt;.  ';
-  const expected=original.replace('&lt;image1&gt;','<image1>').replace('&lt;image2&gt;','<image2>');
+  const request=payload(),original='  Redraw &lt;image1&gt; cleanly.\nKeep specular &amp; diffuse layers, not &lt;script&gt;.  ';
+  const expected=original.replace('&lt;image1&gt;','<image1>');
   const f=fixture([tool('propose_art_direction',{contextFingerprint:request.contextFingerprint,prompt:original,explanation:'完整画法。'})]);
   const result=(await invoke(createFlashArtAgent(),f,request)).value;
   assert.equal(f.calls.length,1);assert.equal(result.proposal.prompt,expected);
@@ -240,19 +206,6 @@ test('unknown, ambiguous or missing reference markers still reject instead of gu
     assert.equal(f.calls.length, 2);
     assert.deepEqual(f.events, ['load', 'unload']);
   }
-});
-
-test('general scene proposal keeps its real content and does not inject an airport setting', async () => {
-  const request = payload({ message: '把茶具静物画成参考的水彩风格', artContext: { ...payload().artContext,
-    prompt: 'A ceramic tea set on a wooden table beside a garden window.' } });
-  const scenePrompt = 'Redraw the ceramic tea set, wooden table and garden window in <image1> using the watercolor form and light treatment of <image2>.';
-  const f = fixture([tool('get_art_context', {}), tool('propose_art_direction', {
-    contextFingerprint: request.contextFingerprint, prompt: scenePrompt, explanation: '保留茶具和庭院窗口关系，使用参考的水彩造型与光感。' }, 'call_2')]);
-  const result = (await invoke(createFlashArtAgent(), f, request)).value;
-  assert.equal(result.proposal.prompt, scenePrompt);
-  assert.equal(result.toolTrace[0].result.artContext.prompt, request.artContext.prompt);
-  assert.equal(f.calls[0].messages[0].content, FLASH_ART_AGENT_SYSTEM);
-  assert.equal(/airport|机场/i.test(JSON.stringify(f.calls)), false);
 });
 
 test('stale snapshot, malformed or excess arguments and duplicate calls fail and release', async () => {
@@ -290,7 +243,7 @@ test('fingerprint covers all state fields and decoded full bytes, independent of
   }
   const changed = structuredClone(request);
   const bytes = Buffer.from(PNG.split(',')[1], 'base64'); bytes[bytes.length - 1] ^= 1;
-  changed.images[1].dataUrl = 'data:image/png;base64,' + bytes.toString('base64');
+  changed.images[0].dataUrl = 'data:image/png;base64,' + bytes.toString('base64');
   assert.notEqual(computeArtAgentFingerprint(changed), request.contextFingerprint);
   assert.equal(canonicalArtAgentJSON({ z: [2, 1], a: { y: 'x', b: 1 } }), '{"a":{"b":1,"y":"x"},"z":[2,1]}');
 });
@@ -306,20 +259,6 @@ test('invalid or stale snapshot, wrong provider and unsupported roles make no mo
   }
 });
 
-test('restricted multi-turn memory validates exact history and rejects stale replay', async () => {
-  const agent = createFlashArtAgent(), request = payload();
-  const first = await invoke(agent, fixture([{ role: 'assistant', content: '可以先观察参考中的脸部概括与发束。' }]), request);
-  const next = payload({ conversationId: first.value.conversationId, history: first.value.history, message: '继续说说画法' });
-  const f = fixture([{ role: 'assistant', content: '参考的发束更整体，阴影分组更明确。' }]);
-  const second = await invoke(agent, f, next);
-  assert.deepEqual(f.calls[0].messages.slice(1, -1), first.value.history.filter(item => item.role === 'user'));
-  assert.equal(f.calls[0].messages.some(item => item.content === first.value.reply), false,
-    'The visible assistant history is validated but not repeated as another style brief');
-  assert.equal(second.value.history.length, 4);
-  await assert.rejects(agent.run({ payload: next, flash: { identity: { id: MODEL }, inferConversation() { assert.fail('No inference for stale history'); } } }),
-    code('flash-agent-stale-history'));
-});
-
 test('CPU preflight rejects invalid context, bytes, request IDs and history before loading Flash', async () => {
   const mutations = [
     request => { request.requestId = 'short'; },
@@ -328,7 +267,7 @@ test('CPU preflight rejects invalid context, bytes, request IDs and history befo
     request => { request.artContext.nsfw = true; },
     request => { delete request.artContext.nsfw; },
     request => { request.artContext.mode = 'txt2img'; },
-    request => { request.images[1].dataUrl = 'data:image/png;base64,dGVzdA=='; },
+    request => { request.images[0].dataUrl = 'data:image/png;base64,dGVzdA=='; },
     request => { request.history = [{ role: 'tool', content: 'pretend-executed' }]; },
     request => { request.contextFingerprint = '0'.repeat(64); },
     request => { request.conversationId = 'unknown-conversation'; }
@@ -357,42 +296,12 @@ test('creation execution confirmation requires the effective sampling snapshot a
   assert.throws(()=>prepareFlashArtAgentPayload(chat),code('flash-agent-invalid-approval'));
 });
 
-test('missing conversation ID can restore bounded text history but never restores tool authority', async () => {
-  const history = [{ role: 'user', content: '上一轮我希望保留机场。' }, { role: 'assistant', content: '之前曾讨论脸和头发。' }];
-  const request = payload({ history }), agent = createFlashArtAgent();
-  // CPU preflight is idempotent and must not reserve or consume a valid request.
-  assert.deepEqual(agent.preflight(request), agent.preflight(request));
-  const f = fixture([{ role: 'assistant', content: '我会重新查看这次完整参考图，历史仅作为文本。' }]);
-  const result = (await invoke(agent, f, request)).value;
-  assert.equal(result.historyRestored, 'text-only');
-  assert.equal(f.calls[0].messages.length, 2, 'Unverified restored history cannot override the current reference');
-  assert.equal(JSON.parse(f.calls[0].messages[1].content[0].text).referencesUnverified, true);
-  assert.equal(f.calls[0].messages[1].content.filter(item => item.type === 'image_url').length, 2);
-  assert.deepEqual(result.history.slice(0, 2), history, 'Visible history remains available');
-  assert.equal(result.history.length, 4);
-  assert.throws(() => agent.preflight(request), code('flash-agent-replayed-request'));
-  const stale = payload({ conversationId: result.conversationId, history: [] });
-  assert.throws(() => agent.preflight(stale), code('flash-agent-stale-history'));
-  const fakePriorTool = fixture([tool('propose_art_direction', {
-    contextFingerprint: '0'.repeat(64), prompt: rawPrompt, explanation: 'x' })]);
-  await assert.rejects(invoke(createFlashArtAgent(), fakePriorTool, payload({ history })), code('flash-agent-stale-context'));
-});
-
-test('object role mapping and optional output image retain full bytes and independent image identity', async () => {
-  const request = payload({ artContext: { ...payload().artContext,
-    referenceRoles: [{ source: 2, role: 'subject' }, { source: 1, role: 'style' }] },
-    images: [{ dataUrl: PNG }, { dataUrl: PNG }, { dataUrl: PNG, role: 'output' }] });
-  const f = fixture([{ role: 'assistant', content: '我会把第三张当作当前结果来比较。' }]);
-  await invoke(createFlashArtAgent(), f, request);
-  assert.equal(f.calls[0].messages[1].content.filter(item => item.type === 'image_url').length, 3);
-});
-
 test('conversation audit redacts all full-image data and release failure never becomes a successful result', async () => {
   const records = [];
   const f = fixture([{ role: 'assistant', content: '收到。' }], { audit: record => records.push(record), unload: async () => ({ released: false }) });
   await assert.rejects(invoke(createFlashArtAgent(), f, payload()), code('strata-release-unconfirmed'));
   assert.equal(JSON.stringify(records).includes('base64,'), false);
   const hashes = records[0].request.messages[1].content.filter(item => item.type === 'image_audit').map(item => item.sha256);
-  assert.deepEqual(hashes, [0, 1].map(() => createHash('sha256').update(Buffer.from(PNG.split(',')[1], 'base64')).digest('hex')));
+  assert.deepEqual(hashes, [0].map(() => createHash('sha256').update(Buffer.from(PNG.split(',')[1], 'base64')).digest('hex')));
   assert.equal(f.session.getStatus().generationReady, false);
 });

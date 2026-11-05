@@ -3,7 +3,7 @@
   const fail=message=>{throw new Error(message);},copy=v=>JSON.parse(JSON.stringify(v)),sleep=ms=>new Promise(r=>root.setTimeout(r,ms));
   const reviewUncertain=message=>{throw Object.assign(new Error(message),{code:'foart-review-state-uncertain'});};
   let pendingImageReview=null,imageReviewUndo=null;
-  const ART_SETTINGS=['provider','mode','prompt','negativePrompt','width','height','steps','cfg','seed','randomSeed','count','nsfw','samplingOverrides','loras','localDrawEngine','localQwen21Variant','drawingTask','drawingAnalysisEngine','localTextQuality','localEditStrength','localUiEngine','gptQualityTxt2img','gptQualityImg2img','gptSize','gptCustomWidth','gptCustomHeight','uiRunIntent','uiPreserveLayout','uiLayoutMode','uiNativeEditPrompt','iterationReferenceCount'];
+  const ART_SETTINGS=['provider','mode','prompt','negativePrompt','width','height','steps','cfg','seed','randomSeed','count','nsfw','samplingOverrides','loras','localDrawEngine','localQwen21Variant','drawingTask','localTextQuality','localEditStrength','localUiEngine','gptQualityTxt2img','gptQualityImg2img','gptSize','gptCustomWidth','gptCustomHeight','uiRunIntent','uiPreserveLayout','uiLayoutMode','uiNativeEditPrompt','iterationReferenceCount'];
   const artSettings=state=>Object.fromEntries(ART_SETTINGS.filter(key=>state[key]!==undefined).map(key=>[key,state[key]]));
   const contract=()=>root.NovaFlowFoartToolContract;
   const SCOPE='[data-novaflow-art-drawing-host="1"],[data-novaflow-art-ui-host="1"],#novaflow-art-generate-workspace,#novaflow-spine-split-workspace-overlay,#novaflow-spine-split-right-workspace,[data-novaflow-spine-split],#novaflow-audio-studio,[data-novaflow-ai-main-stage="1"],[data-novaflow-ai-resource-card="1"],[data-novaflow-ai-bottom-workspace="1"],[data-nf-color-correction-panel],[data-novaflow-ai-cutout-detail],[data-novaflow-ai-cutout-edit-canvas],[data-novaflow-ai-settings-fields],[data-novaflow-ai-top-mode-tabs],[data-novaflow-ai-generation-panel],[data-nf-ve-shell],.nf-ve-shell,[data-novaflow-ai-tool-heading],[data-novaflow-ai-mode-section="1"],[data-novaflow-ai-prompt-dock],[data-novaflow-ai-mode-controls],[data-novaflow-pose-reference="1"],#novaflow-video-frame-edit-overlay,[data-novaflow-video-frame-edit-panel],[data-novaflow-ai-post-section="1"],[data-novaflow-ui-design-inspector="1"],[data-novaflow-ui-layer-properties="1"],[data-novaflow-ui-design-workspace="1"],.nf-panel,[data-novaflow-spine-split-control-category]';
@@ -464,7 +464,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
     const localReferenceSlots=Array.from(rt.references?.()||[]),localReferences=localReferenceSlots.filter(Boolean);
     if(scopedText&&localReferences.length)fail('参考图状态已变化，未提交或扣费。');
     // 风格转换要由在线模型看图写风格词；本地模型只说明并建议切换，不报错、不扣费。
-    if(selectedLocalArt&&op.generationMode==='img2img'&&(localReferences.some(ref=>ref.drawingRole==='style'||ref.role==='style')||localReferences.length&&root.NovaFlowArtDirection?.input?.({state:{...rt.state,prompt:op.prompt},references:localReferenceSlots}).references.some(ref=>ref.roles?.includes('style'))))
+    if(selectedLocalArt&&op.generationMode==='img2img'&&(localReferences.some(ref=>ref.drawingRole==='style'||ref.role==='style')||localReferences.length&&root.NovaFlowArtPrepare?.input?.({state:{...rt.state,prompt:op.prompt},references:localReferenceSlots}).references.some(ref=>ref.roles?.includes('style'))))
       fail('风格转换需要在线模型看图来写风格，可以在小桃的模型选择里切换到在线模型后再试；这次没有提交或扣费。');
     const localImageEdit=selectedLocalArt&&op.generationMode==='img2img'&&localReferences.length>=1&&localReferences.length<=3&&root.electronAPI?.qwen21LocalImageEditAvailableSync?.()===true;
     if(localImageEdit){
@@ -1014,9 +1014,9 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       let binding='';
       review.uploadTransaction.apply({prompt:review.prompt,negativePrompt:review.negativePrompt,createPrepared({references}){
         binding=imageBinding(rt);
-        return {...(attachGenerationProof?review.generationBinding:{}),state:copy({...artSettings(rt.state),running:false,count:review.count}),promptSnapshot:{prompt:review.modelPrompt,negativePrompt:review.negativePrompt},references:reviewReferences(review,references.filter(Boolean)),direct:true,agentRun:true,promptOnlyOptimization:!attachGenerationProof,promptOwnsReferenceRoles:review.promptOwnsReferenceRoles===true,
-          referenceRolePlan:{roles:review.referenceRoles.slice(),conditioning:[],allowMultipleSubjects:true},plan:{schema:'nf.foart.native-image.v1'},originalPrompt:review.op.prompt,
-          assertCurrent:()=>{if(!review.selectionStillCurrent()||!review.sessionStillCurrent()||imageBinding(rt)!==binding)fail('绘图内容或模型选择已变化，草稿失效。');},recordReview:()=>{}};
+        return {...(attachGenerationProof?review.generationBinding:{}),state:copy({...artSettings(rt.state),running:false,count:review.count}),promptSnapshot:{prompt:review.modelPrompt,negativePrompt:review.negativePrompt},references:reviewReferences(review,references.filter(Boolean)),agentRun:true,promptOnlyOptimization:!attachGenerationProof,promptOwnsReferenceRoles:review.promptOwnsReferenceRoles===true,
+          referenceRolePlan:{roles:review.referenceRoles.slice(),conditioning:[],allowMultipleSubjects:true},originalPrompt:review.op.prompt,
+          assertCurrent:()=>{if(!review.selectionStillCurrent()||!review.sessionStillCurrent()||imageBinding(rt)!==binding)fail('绘图内容或模型选择已变化，草稿失效。');}};
       }});
       review.markUploadCommitted();imageReviewUndo={reviewId,rt,binding,transaction:review.uploadTransaction,selectionStillCurrent:review.selectionStillCurrent,sessionStillCurrent:review.sessionStillCurrent};pendingImageReview=null;
       try{rt.render?.({forceBottom:true});if(!review.uploadTransaction.isCurrent()||imageBinding(rt)!==binding)throw Error('drawing changed');}
@@ -1028,10 +1028,10 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       rt.state.prompt=review.prompt;rt.state.negativePrompt=review.negativePrompt;
       const binding=imageBinding(rt),refs=review.op.generationMode==='txt2img'?[]:(rt.references?.()||[]).filter(Boolean);writtenBinding=binding;
       const prepared={...(attachGenerationProof?review.generationBinding:{}),state:copy({...artSettings(rt.state),running:false,count:review.count}),
-        promptSnapshot:{prompt:review.modelPrompt,negativePrompt:review.negativePrompt},references:reviewReferences(review,refs),direct:true,agentRun:true,promptOnlyOptimization:!attachGenerationProof,promptOwnsReferenceRoles:review.promptOwnsReferenceRoles===true,
+        promptSnapshot:{prompt:review.modelPrompt,negativePrompt:review.negativePrompt},references:reviewReferences(review,refs),agentRun:true,promptOnlyOptimization:!attachGenerationProof,promptOwnsReferenceRoles:review.promptOwnsReferenceRoles===true,
         ...(review.referenceRoles&&review.op.generationMode==='img2img'?{referenceRolePlan:{roles:review.referenceRoles.slice(),conditioning:[],allowMultipleSubjects:true}}:{}),
-        plan:{schema:'nf.foart.native-image.v1'},originalPrompt:review.op.prompt,
-        assertCurrent:()=>{if(!review.selectionStillCurrent()||!review.sessionStillCurrent()||imageBinding(rt)!==binding)fail('绘图内容或模型选择已变化，审核稿失效。');},recordReview:()=>{}};
+        originalPrompt:review.op.prompt,
+        assertCurrent:()=>{if(!review.selectionStillCurrent()||!review.sessionStillCurrent()||imageBinding(rt)!==binding)fail('绘图内容或模型选择已变化，审核稿失效。');}};
       undoToken=rt.replaceAgentPrepared(review.preparedSnapshot,prepared);
       imageReviewUndo={reviewId,rt,binding,undoToken,previous,selectionStillCurrent:review.selectionStillCurrent,sessionStillCurrent:review.sessionStillCurrent};pendingImageReview=null;
     }catch(error){

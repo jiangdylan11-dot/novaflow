@@ -4,7 +4,6 @@ import {readFile,mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {startLocalControlPlane} from '../../control-local/src/server.mjs';
-import {createArtKnowledgeCache} from '../../worker/src/art-knowledge-cache.mjs';
 import {artKnowledgeRelease} from '../../tools/art-knowledge-release.mjs';
 import {createArtKnowledgeRoutes} from '../../packages/shared/src/art-knowledge.mjs';
 
@@ -106,25 +105,6 @@ test('shared methods require consent, separate admin capability, exact review an
     finally{await ctx.db.exec('reset role');}
     await call(user,root+'/consent',{allow:false});assert.equal((await call(user,root+'/candidates',candidate())).status,403);
   });
-});
-
-test('cache reads never wait for sync; offline restart, rollback and immutability retain good data',async t=>{
-  const directory=await mkdtemp(join(tmpdir(),'nf-art-cache-'));t.after(()=>rm(directory,{recursive:true,force:true}));
-  const method={id:'approved',text:'分别组织明暗块面。',status:'stable',scope:{skillId:'style-transfer',generationModel:'qwen-2.1',variant:'standard',brain:'*'}};
-  let packet={version:'1.0.1',methods:[method]},calls=0;
-  const cache=createArtKnowledgeCache({directory,fetchPacket:async({skillId})=>{calls++;return skillId==='style-transfer'?packet:{version:'0',methods:[]};}});
-  assert.equal((await cache.read({skillId:'style-transfer'})).version,'0');assert.equal(calls,0);
-  await cache.sync();assert.equal((await cache.read({skillId:'style-transfer'})).version,'1.0.1');
-  packet={version:'1.0.2',methods:[{...method,id:'second'}]};await cache.sync();
-  packet={version:'1.0.1',methods:[method]};await cache.sync();assert.equal((await cache.read({skillId:'style-transfer'})).version,'1.0.1','server rollback switches cached pointer');
-  packet={version:'1.0.1',methods:[{...method,text:'silently changed'}]};assert((await cache.sync())[0].unavailable);assert.equal((await cache.read({skillId:'style-transfer'})).methods[0].text,method.text);
-  packet={version:'1.0.3',methods:[{...method,status:'candidate'}]};assert((await cache.sync())[0].unavailable);
-  const offline=createArtKnowledgeCache({directory,fetchPacket:async()=>{throw Error('offline');}});await offline.sync();assert.equal((await offline.read({skillId:'style-transfer'})).version,'1.0.1');
-  let unblock;const pending=new Promise(r=>{unblock=r;});
-  const slow=createArtKnowledgeCache({directory,fetchPacket:async()=>{await pending;throw Error('timeout');}});
-  const running=slow.sync();
-  assert.equal((await Promise.race([slow.read({skillId:'style-transfer'}),new Promise((_,reject)=>setTimeout(()=>reject(Error('read blocked on network')),200))])).version,'1.0.1');
-  unblock();await running;
 });
 
 test('release preparation writes a readable report and cannot publish without exact explicit approval',async t=>{

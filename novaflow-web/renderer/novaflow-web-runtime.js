@@ -1665,46 +1665,6 @@
   }
   // Background, opt-in, method-only upload. The rollout flag stays false until
   // cloud acceptance; no feedback or generation call waits for this network work.
-  const artKnowledgeRequest=(method,path,body)=>api(CONFIG.artKnowledgeUrl||CONFIG.controlUrl,method,'/api/web/art-knowledge'+path,body);
-  let artUploadRunning = false;
-  async function flushArtCandidates() {
-    if (CONFIG.artKnowledgeEnabled !== true || computeMode !== 'local' || artUploadRunning) return;
-    const active = currentSession(), token = active?.token, accountId = active?.user?.id;
-    if (!token || !accountId) return;
-    artUploadRunning = true;
-    try {
-      const pending = await localControl('POST', '/local/prompt-assistant/art-learning', {action:'pending',accountId,accountToken:token}, 10000);
-      if(!pending?.data?.candidates?.length||currentSession()?.token!==token)return;
-      const consent = await artKnowledgeRequest('GET','/consent');
-      if (!consent.allowed || currentSession()?.token !== token) return;
-      for (const candidate of pending?.data?.candidates || []) {
-        if (currentSession()?.token !== token) return;
-        const sent = await artKnowledgeRequest('POST',candidate.schema==='nf.art.method-outcome.v1'?'/outcomes':'/candidates',candidate);
-        if (sent.accepted && currentSession()?.token === token) {
-          const bytes = new TextEncoder().encode(JSON.stringify(candidate.evidence));
-          const hash = Array.from(new Uint8Array(await root.crypto.subtle.digest('SHA-256', bytes)), n => n.toString(16).padStart(2,'0')).join('');
-          await localControl('POST', '/local/prompt-assistant/art-learning', {action:'ack',key:candidate.key,evidenceSHA256:hash,accountId,accountToken:token}, 10000);
-        }
-      }
-    } catch (_) { /* Keep the outbox for a later retry; never interrupt creation. */ }
-    finally {artUploadRunning = false;}
-  }
-  if (CONFIG.artKnowledgeEnabled === true && computeMode === 'local') {
-    root.setTimeout(() => void flushArtCandidates(), 1000);
-    root.setInterval(() => void flushArtCandidates(), 60000);
-  }
-  if (computeMode === 'local') root.setTimeout(() => {
-    const active=currentSession();if(active?.user?.id&&active.token)void localControl('POST','/local/prompt-assistant/art-learning',
-      {action:'identify',accountId:active.user.id,accountToken:active.token},10000).catch(()=>{});
-  }, 500);
-  async function artLearningCommand(payload) {
-    if (computeMode !== 'local') return {ok:false,error:'当前官网尚未接入这项任务反馈接口'};
-    try {
-      const result = await localControl('POST', '/local/prompt-assistant/art-learning', {...payload,accountId:currentSession()?.user?.id || '',accountToken:currentSession()?.token || ''}, 10000);
-      if (payload?.action === 'feedback' && result?.ok) void flushArtCandidates();
-      return result;
-    } catch (error) {return {ok:false,error:String(error.message || error)};}
-  }
   const auth = (method, path, body, timeoutMs) => api(CONFIG.authUrl, method, path, body, timeoutMs);
   // Grok reads reference frames for 反推 and 多参 compiles; the 20 s that suits a credit read is what
   // used to end those with "signal timed out".
@@ -3201,7 +3161,6 @@
     },
 
     async clientAuthLogout() {
-      const previous=currentSession();if(computeMode==='local'&&previous?.token)void localControl('POST','/local/prompt-assistant/art-learning',{action:'forget-session',accountId:previous.user?.id||'',accountToken:previous.token},10000).catch(()=>{});
       saveSession(null);
       try { root.localStorage.removeItem(CLIENT_AUTH_KEY); } catch (_) {}
       return { ok: true, result: { authenticated: false } };
@@ -3325,9 +3284,6 @@
     },
     promptAssistantReverseImagePrompt: async (payload) => selectedBusinessPrompt('reverse-image-prompt', payload),
     promptAssistantCancelRequest: async (payload) => cancelPromptAssistantRequest(payload),
-    async artKnowledgeState(){if(CONFIG.artKnowledgeEnabled!==true)return {ok:true,enabled:false};try{const consent=await artKnowledgeRequest('GET','/consent');return {ok:true,enabled:true,allowed:consent.allowed,publisher:false};}catch(error){return {ok:false,enabled:true,error:String(error.message||error)};}},
-    artKnowledgeConsent:allow=>artKnowledgeRequest('POST','/consent',{allow}),
-    artLearning: artLearningCommand,
     companionPricing,
     foartOperationStart,
     foartOperationResume,
