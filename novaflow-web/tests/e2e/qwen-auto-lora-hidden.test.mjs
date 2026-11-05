@@ -78,12 +78,11 @@ test('redacted website preserves metadata-based filtering without exposing a mod
   assert.deepEqual(h.optionValues(),[other]);
   assert.equal(h.api.verifiedNsfwName({ok:true,features,items:[]}),token);
   assert.throws(()=>h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true},items:[]}),/缺少/);
+  // A control plane that marks only one adapter is incomplete: the switch refuses rather than guess,
+  // and the public page cannot name the unmarked one (the control plane must mark both).
   const legacyItems = [{name:target,autoManaged:token},{name:uc.replaceAll('/', '\\')},{name:other}];
-  assert.equal(h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true},items:legacyItems}),token);
+  assert.throws(()=>h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true},items:legacyItems}),/缺少/);
   assert.throws(()=>h.api.verifiedNsfwName({ok:true,features:{qwen21_nsfw_lora:true,qwen21_uc_lora:false},items:legacyItems}),/缺少/);
-  h.setResponse({ok:true,features:{qwen21_nsfw_lora:true},items:legacyItems});
-  h.api.setConnection(true,'legacy-control'); await flush();
-  assert.deepEqual(h.optionValues(),[other]);
 });
 
 for (const mode of ['txt2img','img2img']) test(`${mode}: only ordinary choices hide target; legacy selected item and switch behavior remain`, async () => {

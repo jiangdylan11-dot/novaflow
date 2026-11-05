@@ -82,6 +82,11 @@
 
   // Keep the verified catalogue intact: the switch and existing projects use
   // it even though the switch-managed adapter is not offered in the picker.
+  // The switch's own adapters, by name; only an unredacted (node/local) build knows them.
+  function knownManaged(names) {
+    return NSFW_LORA === '<server-side>' ? [] : names.filter(name => [key(NSFW_LORA), key(UC_LORA)].includes(key(name)))
+  }
+
   function managedCatalogFromInfo(info, requiresMetadata) {
     const names = catalogFromInfo(info)
     if (!requiresMetadata) return { names, managedNames: [], metadataReady: true }
@@ -96,7 +101,7 @@
     }
     // The unredacted node/local catalogue can identify its own fixed adapter.
     // Public web builds use a placeholder and wait for trusted node metadata.
-    if (NSFW_LORA !== '<server-side>') return { names, managedNames: names.filter(name => [key(NSFW_LORA), key(UC_LORA)].includes(key(name))), metadataReady: true }
+    if (NSFW_LORA !== '<server-side>') return { names, managedNames: knownManaged(names), metadataReady: true }
     return { names, managedNames: [], metadataReady: false }
   }
 
@@ -213,7 +218,7 @@
       record.context = context; record.loadedKey = ''; record.signature = ''
       const cached = catalogCache.get(context) || readStore()[context]
       record.names = cached && Array.isArray(cached.names) ? cached.names.slice() : []
-      record.managedNames = cached && Array.isArray(cached.managedNames) ? cached.managedNames.slice() : []
+      record.managedNames = [...new Set([...(cached && Array.isArray(cached.managedNames) ? cached.managedNames : []), ...knownManaged(record.names)])]
       record.metadataReady = cached?.metadataReady === true
       record.quiet = Boolean(cached)
     }
