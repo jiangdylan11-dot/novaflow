@@ -50,7 +50,9 @@
   const RESTYLE = () => window.NovaFlowAifxRestyleWorkflow || null
   const CLIENT = () => window.NovaFlowAifxRestyleClient || null
   // As many look references as the workflow takes (aifx-restyle.workflow.js MAX_REFERENCE_IMAGES).
-  const MAX_REFERENCES = 4
+  // 风格库 picks and uploads are one list (Dylan, 2026-11-05: 风格库应该能多样添加); four in all,
+  // the most parts a source is split into.
+  const MAX_MATERIALS = 4
 
   const UI_TRACE_FILE = 'particle-editor-desktop/dist/win-unpacked/resources/app/renderer/aifx-repaint-runtime.js'
   const UI_TRACE_SEEN = new Set()
@@ -87,13 +89,13 @@
     // workflow refers to, and the decoded frames the preview scrubs through.
     source: null,
     sourceFrames: [],
-    // The look references, in the order they came in (up to MAX_REFERENCES). H3 reads material,
+    // The look references, in the order they came in (up to MAX_MATERIALS with the 风格库 picks). H3 reads material,
     // colour and surface off them, which is why the slot is wired rather than decorative; several
     // are blended into one material.
     references: [],
-    // Nothing is picked until the artist picks it: the card under 风格库 says
-    // so, and 生成 waits for a style or a reference image.
-    attribute: '',
+    // The 风格库 picks, in the order they were picked. Nothing is picked until the artist picks
+    // it, and 生成 waits for a style or a reference image.
+    presets: [],
     libraryKind: '',
     strength: null,
     supplement: '',
@@ -1830,7 +1832,7 @@
       share /= total
       if (share < PART_MIN_SHARE) continue
       parts.push({ hue, share, word: hueWord(hue) })
-      if (parts.length >= MAX_REFERENCES) break
+      if (parts.length >= MAX_MATERIALS) break
     }
     source.parts = parts
     return parts
@@ -2299,16 +2301,16 @@
   // Each picture added joins the others; the same picture twice is kept once.
   const adoptReference = (blob, fileName) => new Promise((resolve, reject) => {
     if (state.references.some((entry) => entry.blob === blob)) { resolve(); return }
-    if (state.references.length >= MAX_REFERENCES) {
-      reject(new Error('AI 特效：参考图最多 ' + MAX_REFERENCES + ' 张，先移除一张再加'))
+    if (materialCount() >= MAX_MATERIALS) {
+      reject(new Error('AI 特效：风格和参考图最多 ' + MAX_MATERIALS + ' 个，先移除一个再加'))
       return
     }
     const objectUrl = URL.createObjectURL(blob)
     const image = new Image()
     image.onload = () => {
-      if (state.references.length >= MAX_REFERENCES) {
+      if (materialCount() >= MAX_MATERIALS) {
         URL.revokeObjectURL(objectUrl)
-        reject(new Error('AI 特效：参考图最多 ' + MAX_REFERENCES + ' 张，先移除一张再加'))
+        reject(new Error('AI 特效：风格和参考图最多 ' + MAX_MATERIALS + ' 个，先移除一个再加'))
         return
       }
       const entry = {
@@ -2333,10 +2335,10 @@
   const adoptReferences = async (files) => {
     const images = Array.from(files || []).filter((file) => /image\//.test(file.type) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name || ''))
     if (!images.length) throw new Error('AI 特效：请选择图片')
-    const room = MAX_REFERENCES - state.references.length
-    if (room <= 0) throw new Error('AI 特效：参考图最多 ' + MAX_REFERENCES + ' 张，先移除一张再加')
+    const room = MAX_MATERIALS - materialCount()
+    if (room <= 0) throw new Error('AI 特效：风格和参考图最多 ' + MAX_MATERIALS + ' 个，先移除一个再加')
     for (const file of images.slice(0, room)) await adoptReference(file, file.name)
-    if (images.length > room) throw new Error('AI 特效：参考图最多 ' + MAX_REFERENCES + ' 张，多出的 ' + (images.length - room) + ' 张没有加入')
+    if (images.length > room) throw new Error('AI 特效：风格和参考图最多 ' + MAX_MATERIALS + ' 个，多出的 ' + (images.length - room) + ' 张没有加入')
   }
 
   // A reference image now decides the material, so each one needs its own way out (the × on its
@@ -2381,6 +2383,23 @@
     drawPreview()
   }
 
+  const pickedPresets = () => {
+    const restyle = RESTYLE()
+    return restyle ? state.presets.map((id) => restyle.getPreset(id)).filter(Boolean) : []
+  }
+  // One 风格库 pick alone keeps the tuned style path (its own words, strength and break-up);
+  // anything more is a list of materials.
+  const soloPreset = () => {
+    const presets = pickedPresets()
+    return presets.length === 1 && !state.references.length ? presets[0] : null
+  }
+  const materialCount = () => pickedPresets().length + state.references.length
+  const togglePreset = (id) => {
+    if (state.presets.includes(id)) state.presets = state.presets.filter((other) => other !== id)
+    else if (materialCount() >= MAX_MATERIALS) throw new Error('AI 特效：风格和参考图最多 ' + MAX_MATERIALS + ' 个，先移除一个再加')
+    else state.presets = [...state.presets, id]
+  }
+
   const currentStrength = () => {
     // An explicit drag wins; otherwise each attribute brings its own default,
     // because they do not all rebuild at the same denoise - and typing in
@@ -2393,7 +2412,7 @@
     // greyed-out preset still choose the denoise would be a hidden setting -
     // 雷电 and 冰霜 would give different results from the same picture. The
     // reference tests were all run at the plain default.
-    const attribute = state.references.length ? '' : state.attribute
+    const attribute = soloPreset() ? soloPreset().id : ''
     return restyle.defaultStrengthFor(attribute, state.lifecycle,
       Boolean(String(state.supplement || '').trim()))
   }
@@ -2418,7 +2437,7 @@
     // Clearing the style and writing 提示词补充 instead is the prompt-only
     // case: the words become the material description. What is not allowed is
     // having neither.
-    if (!state.references.length && !restyle.getPreset(state.attribute) && !String(state.supplement || '').trim()) {
+    if (!materialCount() && !String(state.supplement || '').trim()) {
       throw new Error('AI 特效：选个风格，或放参考图，或在提示词补充里写材质')
     }
     state.isGenerating = true
@@ -2469,7 +2488,8 @@
       // 提示词补充 wins where it conflicts: its spread and colour asks replace the defaults (see
       // splitSupplement), and only what is left is translated and said. With no style and no
       // picture the words are the material itself and go through whole.
-      const promptOnly = !references.length && !restyle.getPreset(state.attribute)
+      const presets = pickedPresets()
+      const promptOnly = !references.length && !presets.length
       // Each @参考图N goes through the split and the translation as a placeholder the translator
       // leaves alone, and only then becomes the words for that source.
       const phraseFor = (n) => {
@@ -2495,23 +2515,30 @@
       const supplementText = unmark(marked)
       const recolour = controls && controls.colour
       const overrides = { shape: currentShape(), spread: controls ? controls.spread : '', colour: recolour }
-      const preset = restyle.getPreset(state.attribute)
+      // One 风格库 pick alone is the style path; otherwise every source is a material.
+      const preset = presets.length === 1 && !references.length ? presets[0] : null
+      const several = !preset && presets.length + references.length > 0 && !promptOnly
       // The first source on the board paints the init (see referenceColour), unless the words
       // recolour it.
-      const accent = references.length
-        ? (recolour && recolour.tint) || (preset ? preset.accent : references[0].accent)
+      const accent = several
+        ? (recolour && recolour.tint) || (presets.length ? presets[0].accent : references[0].accent)
         : undefined
-      // The 风格库 pick is one more material read, first in line, blended with the pictures.
-      const blended = referenceReads
-        ? [...(preset ? [{ name: preset.name, elements: preset.material, colours: '', breakup: preset.breakup || '' }] : []), ...referenceReads]
+      // Each 风格库 pick is a material read already, first in line, blended with the pictures.
+      const presetReads = new Map(presets.map((entry) => [entry.id, { name: entry.name, elements: entry.material, colours: '', breakup: entry.breakup || '' }]))
+      const blended = several && (!references.length || referenceReads)
+        ? [...presetReads.values(), ...(referenceReads || [])]
         : null
       // Two or more materials on a source with two or more coloured parts: each part gets its own
       // material instead of a blend (a whole-effect recolour asked for in words keeps the blend).
       const assignment = recolour ? null : materialAssignment(items, state.supplement)
       const parts = assignment && assignment.parts.length >= 2 ? assignment.parts : null
-      const presetRead = preset ? { name: preset.name, elements: preset.material, colours: '', breakup: preset.breakup || '' } : null
-      const readOf = (item) => item.kind === 'preset' ? presetRead : referenceReads && referenceReads[item.picture - 1]
-      const attribute = parts && referenceReads
+      const readOf = (item) => item.kind === 'preset' ? presetReads.get(item.preset.id) : referenceReads && referenceReads[item.picture - 1]
+      // Sent as pictures, the 风格库 picks still go in words, blended into the same material.
+      const presetWords = presets.length
+        ? { id: 'reference', name: presets.map((entry) => entry.name).join(' AND '), breakup: '', accent: presets[0].accent,
+            material: restyle.referenceMaterial([...presetReads.values()], overrides) }
+        : ''
+      const attribute = parts && blended
         ? {
             id: 'reference',
             name: parts.map((entry) => readOf(items[entry.item]).name).filter(Boolean).join(' AND ') || 'REFERENCE',
@@ -2527,12 +2554,13 @@
             material: restyle.referenceMaterial(blended, overrides),
             accent,
           }
-        : preset && (overrides.spread || recolour) ? restyle.presetWithOverrides(preset, overrides) : state.attribute
+        : preset ? (overrides.spread || recolour ? restyle.presetWithOverrides(preset, overrides) : preset.id)
+        : presetWords
       const referenceParts = parts && referencePicture
         ? parts.map((entry) => {
             const item = items[entry.item]
             return item.kind === 'preset'
-              ? { colour: entry.colour, picture: 0, words: preset.material }
+              ? { colour: entry.colour, picture: 0, words: item.preset.material }
               : { colour: entry.colour, picture: item.picture }
           })
         : []
@@ -2565,7 +2593,7 @@
       // A repainted clip is uploaded on every run; the plain source's name is kept for the next.
       if (web || partsClip || state.source.uploadedParts || !state.source.uploadedName || (referencePicture && references.some((entry) => !entry.uploadedName))) await uploadInputs()
 
-      const label = restyle.getPreset(state.attribute)?.label || ''
+      const label = presets.map((entry) => entry.label).join('+')
       const total = Math.max(1, Math.min(4, Math.round(state.candidateCount) || 1))
       // Earlier runs stay on the strip while the template stays: a rerun with
       // another style or wording adds to the row, and each candidate carries
@@ -2680,7 +2708,7 @@
   // travel as their blobs: removing one revokes its object URL, so the entries
   // themselves cannot be kept.
   const snapshotRecipe = () => ({
-    attribute: state.attribute,
+    presets: state.presets.slice(),
     supplement: state.supplement,
     strength: state.strength,
     references: state.references.map((entry) => ({ blob: entry.blob, fileName: entry.fileName })),
@@ -2692,7 +2720,7 @@
 
   const restoreRecipe = async (recipe) => {
     if (!recipe) return
-    state.attribute = recipe.attribute
+    state.presets = Array.isArray(recipe.presets) ? recipe.presets.slice() : []
     state.supplement = recipe.supplement
     state.strength = recipe.strength
     state.shapeArchetype = recipe.shapeArchetype
@@ -2719,9 +2747,9 @@
       : String(state.source && state.source.fileName || 'template').replace(/\.[^.]+$/, '')
     const recipe = candidate.recipe || {}
     const referenceCount = (recipe.references || []).length
-    const preset = restyle && !referenceCount ? restyle.getPreset(recipe.attribute) : null
-    const material = referenceCount ? '参考图' + (referenceCount > 1 ? referenceCount + '张' : '')
-      : preset ? preset.label
+    const labels = restyle ? (recipe.presets || []).map((id) => restyle.getPreset(id)?.label).filter(Boolean) : []
+    const material = referenceCount ? [...labels, '参考图' + (referenceCount > 1 ? referenceCount + '张' : '')].join('+')
+      : labels.length ? labels.join('+')
         : String(recipe.supplement || '').trim().slice(0, 20) || '自定义'
     const clean = (value) => String(value || '').replace(/[\\/<>:"|?*\u0000-\u001f\s·]+/g, '_').replace(/^_+|_+$/g, '')
     return ['AI特效', clean(template), clean(material), candidate.seed].filter(Boolean).join('_') + '.mp4'
@@ -3329,10 +3357,10 @@
         for (const preset of presets) {
           grid.appendChild(libraryCard({
             id: preset.id, label: preset.label, url: STYLE_PREVIEW_URL(preset.id),
-            active: preset.id === state.attribute,
+            active: state.presets.includes(preset.id),
             onPick: guard(() => {
               closeLibrary()
-              state.attribute = preset.id
+              togglePreset(preset.id)
               refreshUi()
             }),
           }))
@@ -3422,9 +3450,8 @@
   // The material sources in board order: the 风格库 pick first, then the uploaded pictures. The
   // same order numbers them for 提示词补充's @参考图N.
   const materialItems = () => {
-    const preset = RESTYLE()?.getPreset(state.attribute) || null
     return [
-      ...(preset ? [{ kind: 'preset', preset }] : []),
+      ...pickedPresets().map((preset) => ({ kind: 'preset', preset })),
       ...state.references.map((entry, index) => ({ kind: 'upload', entry, picture: index + 1 })),
     ]
   }
@@ -3552,14 +3579,14 @@
           event.preventDefault()
           event.stopPropagation()
           if (state.isGenerating) return
-          if (item.kind === 'preset') { state.attribute = ''; refreshUi() } else removeReference(item.entry)
+          if (item.kind === 'preset') { state.presets = state.presets.filter((id) => id !== item.preset.id); refreshUi() } else removeReference(item.entry)
         })
         tile.appendChild(remove)
         host.appendChild(tile)
       })
     }
     put(state.refs.materialStatus, 'textContent', materialStatusText() || assignmentText(materialAssignment()))
-    put(state.refs.styleZone, 'hidden', state.references.length >= MAX_REFERENCES)
+    put(state.refs.styleZone, 'hidden', materialCount() >= MAX_MATERIALS)
   }
 
   const guard = (handler) => async (event) => {
@@ -3977,7 +4004,7 @@
       put(refs.playButton, 'disabled', total < 2)
     }
     if (refs.generate) {
-      const chosen = state.references.length > 0 || Boolean(restyle && restyle.getPreset(state.attribute))
+      const chosen = materialCount() > 0
         || Boolean(String(state.supplement || '').trim())
       put(refs.generate, 'disabled', state.isGenerating || !state.source || !restyle || !chosen)
       put(refs.generate, 'textContent', state.isGenerating ? '生成中…' : '生成特效')
@@ -4056,8 +4083,8 @@
       // The style card above already says where the material comes from, so
       // this line only carries what it cannot: that the picked style has not
       // been render-checked.
-      const preset = restyle.getPreset(state.attribute)
-      put(refs.effectType, 'textContent', !state.references.length && preset && !preset.verified
+      const preset = soloPreset()
+      put(refs.effectType, 'textContent', preset && !preset.verified
         ? preset.label + ' 尚未逐条验证，可多出几个候选'
         : '')
     }
@@ -4529,7 +4556,7 @@
     isOpen: isAifxAppOpen,
     // Debug and smoke-test surface: the preview server can drive the whole
     // panel through these without synthesising pointer events.
-    setAttribute: (id) => { state.attribute = String(id || ''); refreshUi() },
+    setPresets: (ids) => { state.presets = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean).slice(0, MAX_MATERIALS); refreshUi() },
     setStrength: (value) => { state.strength = Number(value); refreshUi() },
     setSupplement: (value) => { state.supplement = String(value || ''); refreshUi() },
     setShape: (value) => { state.shapeArchetype = String(value || ''); refreshUi() },

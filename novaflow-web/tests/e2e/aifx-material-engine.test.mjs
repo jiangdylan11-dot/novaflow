@@ -329,7 +329,7 @@ async function runTwoReferences(localReply, { preset = null, supplement = '' } =
   Object.assign(p.context.__aifxState, {
     source: { blob: {}, fileName: 'clip.mp4', width: 512, height: 512, duration: 1 },
     references: [{ blob: {}, image, fileName: 'a.png', accent: '#ff0000' }, { blob: {}, image, fileName: 'b.png', accent: '#00ff00' }],
-    attribute: preset ? preset.id : '',
+    presets: preset ? [preset.id] : [],
     supplement,
   });
   await assert.rejects(p.api.runProductionPipeline(), /stop here/);
@@ -394,4 +394,31 @@ test('one material board: 风格库 pick and uploads side by side, no note, rena
   assert.doesNotMatch(runtimeSource, /风格让位|已让位给参考图|data-action="clear-style"|aifx-current-card/);
   assert.match(runtimeSource, /nf-upload-dropzone__hint">黑底特效动画 MP4 \/ WebM \/ GIF，或一组 PNG 序列帧</);
   assert.doesNotMatch(runtimeSource, /data-template-help/);
+});
+
+// Dylan, 2026-11-05: 风格库应该能多样添加 - a second pick joins the first instead of replacing it.
+test('several 风格库 picks are all materials: nothing read, nothing sent as a picture', async () => {
+  const p = page({ withState: true });
+  const ICE = { id: 'ice', label: '冰霜', name: 'ICE', material: 'made of cracked ice.', breakup: '', accent: '#9fe3f5' };
+  const presets = { fire: FIRE, ice: ICE };
+  const captured = {};
+  p.context.NovaFlowAifxRestyleWorkflow = {
+    getPreset: (id) => presets[id] || null,
+    splitSupplement: (text) => ({ additions: text, spread: '', colour: null }),
+    referenceMaterial: (reads) => { captured.reads = reads; return 'blended'; },
+    defaultStrengthFor: (id) => { captured.strengthFor = id; return 20; },
+    buildWorkflow: (options) => { captured.options = options; throw new Error('stop here'); },
+  };
+  Object.assign(p.context, { addEventListener() {}, removeEventListener() {} });
+  p.context.NovaFlowAifxRestyleClient = { ensureRuntime: async () => true, uploadFile: async (blob, name) => 'up-' + name };
+  Object.assign(p.context.__aifxState, { source: { blob: {}, fileName: 'clip.mp4', width: 512, height: 512, duration: 1 }, presets: ['fire', 'ice'] });
+  await assert.rejects(p.api.runProductionPipeline(), /stop here/);
+  assert.equal(p.calls.local.length, 0);
+  assert.deepEqual([...captured.reads].map((read) => read.name), ['FIRE', 'ICE']);
+  assert.equal(captured.options.attribute.name, 'FIRE AND ICE');
+  assert.equal(captured.options.tint, '#ff6600');
+  assert.deepEqual([...captured.options.referenceImages], []);
+  assert.equal(captured.strengthFor, '');
+  assert.match(runtimeSource, /togglePreset\(preset\.id\)/);
+  assert.doesNotMatch(runtimeSource, /state\.attribute\b/);
 });
