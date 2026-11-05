@@ -41,3 +41,15 @@ test('one trusted native phase binds, validates and settles once without English
  assert.equal(quote.maxOutputTokens,4096);const result=await phases.submit({actor,quoteToken:quote.quoteToken});assert.equal(result.ok,true);
  assert.deepEqual(events,['structure','infer','settle']);assert.equal(result.stageToken,undefined);assert.equal(result.modelPromptPolicy,QWEN21_NATIVE_REWRITE);
 });
+test('豆包-style answers: fenced JSON and "做一张图" requests are not rejected',()=>{
+ const source={...input,currentPrompt:'小女孩走在海边',requirements:'做一张图小女孩走在海边',supportsNegativePrompt:false,negativePrompt:''};
+ const value={display_prompt:'写实风格摄影：小女孩走在海边，身穿浅色连衣裙，赤脚踩着湿润的沙子，海浪在脚边泛起白色泡沫。远处海天相接，天空染成橙粉色，暖色逆光勾勒出她的轮廓。',
+  model_prompt:'A realistic photograph of a little girl walking along the seaside in a light dress, barefoot on wet sand while waves foam around her feet. Sea and sky meet far away under an orange pink sky, and warm backlight outlines her silhouette.'};
+ const prepared=buildQwen21NativeRewrite(source,'bytedance/doubao-seed-2.1-lite');
+ for(const text of [JSON.stringify(value),'```json\n'+JSON.stringify(value,null,2)+'\n```','以下是结果：\n'+JSON.stringify(value)])
+  assert.equal(compileQwen21NativeRewrite({output_text:text},prepared,compiler.validateQwen21NativePreservation).displayPrompt,value.display_prompt);
+ // The picture count is not an object count, but a real object count still is.
+ const two={...source,requirements:'做一张图，两只小狗在海边'};
+ assert.throws(()=>compileQwen21NativeRewrite({output_text:JSON.stringify(value)},buildQwen21NativeRewrite(two,'x'),()=>true),/quantity/);
+ assert.match(buildQwen21NativeRewrite(source,'x').body.input[0].content[0].text,/keep the user's own words/);
+});

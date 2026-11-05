@@ -5,7 +5,7 @@ export const QWEN21_NATIVE_REWRITE='qwen21-native-rewrite-v3';
 export const QWEN21_NATIVE_CONTRACTS=Object.freeze(['qwen21-native-rewrite-v2',QWEN21_NATIVE_REWRITE]);
 const fail=message=>{throw Object.assign(new Error(message),{code:'qwen21-rewrite-invalid'});};
 const SYSTEM=`Rewrite an image prompt for Qwen Image 2.1. Return matching Chinese display_prompt and English model_prompt in one JSON object. Both describe exactly the same final image or edit; the two fields are editor/model copies, never bilingual lettering inside the image.
-For text-to-image, write fluent observer prose: anchor the medium, style, subject and background first. Walk the frame in a coherent spatial order, locating each meaningful element relative to the frame and to other subjects; distinguish foreground, middle distance and background when relevant. Describe the actual material and its response to light, specific color tones, one coherent light source/direction and matching shadows/reflections. Close once on composition and mood. Develop an ordinary scene to roughly 300-500 English words when that adds useful visual decisions, without imposing that length on a deliberately minimal image. Dense posters, charts or multiple panels must spell out all user content and its placement. No section labels, field inventories, checklists, analysis, vague quality boosters or repeated summary. Preserve intentional simplicity and empty space; do not invent extra subjects, readable text, logos or narrative props.
+For text-to-image, write fluent observer prose: anchor the medium, style, subject and background first. Walk the frame in a coherent spatial order, locating each meaningful element relative to the frame and to other subjects; distinguish foreground, middle distance and background when relevant. Describe the actual material and its response to light, specific color tones, one coherent light source/direction and matching shadows/reflections. Close once on composition and mood. In display_prompt keep the user's own words for each subject, action and place (for example keep 走在海边 instead of a synonym), then add detail around them. Develop an ordinary scene to roughly 300-500 English words when that adds useful visual decisions, without imposing that length on a deliberately minimal image. Dense posters, charts or multiple panels must spell out all user content and its placement. No section labels, field inventories, checklists, analysis, vague quality boosters or repeated summary. Preserve intentional simplicity and empty space; do not invent extra subjects, readable text, logos or narrative props.
 For image editing, lead with the requested operation. Describe only the targeted changes; use one concise clause to preserve the remaining content, identity, layout and medium. Do not repaint unchanged details or infer unseen features. Keep input reference tokens and their assigned roles. User-given readable text stays verbatim in its original script, including punctuation; translate descriptive prose only. Preserve the user's explicit subjects, counts, colors, positions and constraints. Apply requested changes to the final state instead of retaining conflicting old attributes.
 Canvas dimensions, aspect ratio, sampling and negative prompt are owned by the application: do not change them or insert them as picture content. Return only the two complete strings; do not generate an image.`;
 const EDIT_SYSTEM=`Rewrite the user's image-editing instruction for Qwen Image 2.1 using the supplied real images. Return only rewritten_prompt in JSON, as one continuous instruction paragraph. If the user instruction is Chinese, write the instruction in Chinese; otherwise use English. Text to appear inside the image is a separate language decision: exact user text first, otherwise retain the image's dominant language, otherwise the user's language. Quote only actual readable artwork text, verbatim, never bilingual glosses or descriptive attributes.
@@ -25,6 +25,19 @@ export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
   return {kind:'qwen21-native',input:{...input},body:{model,store:false,temperature:0,max_output_tokens:4096,
     input:[{role:'system',content:[{type:'input_text',text:SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:input.qwenPromptMode==='img2img'?'image-editing':'text-to-image',current_prompt:input.currentPrompt,requested_changes:input.requirements||''})}]}],
     text:{format:{type:'json_schema',name:'qwen21_native_rewrite',strict:true,schema:{type:'object',properties:{display_prompt:{type:'string'},model_prompt:{type:'string'}},required:['display_prompt','model_prompt'],additionalProperties:false}}}}};
+}
+// "做一张图…" / "画一幅…的画" counts the picture being requested, not an object inside it.
+const PICTURE='(?:图片|图像|图|画作|画|插画|照片|海报|壁纸)';
+const REQUESTED_PICTURE=new RegExp('(?:一|1)\\s*(?:张|幅|个)\\s*'+PICTURE+'|(?:做|画|生成|出|来|创作|绘制|制作)\\s*(?:一|1)\\s*(?:张|幅)(?=[^，。,.\\n]{0,40}的'+PICTURE+')','gu');
+export function withoutPictureRequest(text){return String(text??'').replace(REQUESTED_PICTURE,'');}
+// Some providers wrap the JSON object in a Markdown fence or a short preface
+// even with a JSON schema. Accept one complete object; fields are checked below.
+function rewriteJson(text){
+  const raw=String(text??'').trim(),candidates=[raw];
+  const fenced=/^```[A-Za-z]*\s*([\s\S]*?)\s*```$/.exec(raw);if(fenced)candidates.push(fenced[1]);
+  const start=raw.indexOf('{'),end=raw.lastIndexOf('}');if(start>=0&&end>start)candidates.push(raw.slice(start,end+1));
+  for(const candidate of candidates){try{return JSON.parse(candidate);}catch{}}
+  fail('Qwen 2.1 rewrite must be complete JSON');
 }
 function literals(text){return [...String(text).matchAll(/(?:“([^”\r\n]+)”|‘([^’\r\n]+)’|「([^」\r\n]+)」|『([^』\r\n]+)』|"([^"\r\n]+)"|(?<![A-Za-z0-9])'([^'\r\n]+)'(?![A-Za-z0-9]))/gu)].map(m=>m.slice(1).find(Boolean));}
 function refs(text){return String(text).match(/<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/g)||[];}
@@ -57,11 +70,11 @@ function editedSide(text){
 
 function explicitFacts(input,display,model){
   const changes=input.requirements||'',replace=/(?:改成|改为|替换|换成|删除|去掉|移除|change|replace|remove)/i.test(changes);
-  const source=replace?changes:input.currentPrompt+'\n'+changes;
+  const source=withoutPictureRequest(replace?changes:input.currentPrompt+'\n'+changes);
   const numbers={'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10};
   const english=['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
   const quantities=text=>[...text.matchAll(/(\d+|[一二两三四五六七八九十])\s*(?:只|个|位|名|辆|座|张|件|本|朵|棵|把|艘|枚)/gu)].map(m=>numbers[m[1]]??Number(m[1])).concat(/一对/.test(text)?[2]:[]);
-  const present=new Set(quantities(display));for(const n of quantities(source)){
+  const present=new Set(quantities(withoutPictureRequest(display)));for(const n of quantities(source)){
     const alternatives=n===1?'|a|an':n===2?'|a pair of':'';
     if(!present.has(n)||!new RegExp('\\b(?:'+n+(english[n]?'|'+english[n]:'')+alternatives+')\\b','i').test(model))fail('Qwen 2.1 rewrite lost an explicit quantity');
   }
@@ -73,7 +86,7 @@ function explicitFacts(input,display,model){
   }
 }
 export function compileQwen21NativeRewrite(response,prepared,preserve){
-  let value;try{value=JSON.parse(response.output_text);}catch{fail('Qwen 2.1 rewrite must be complete JSON');}
+  const value=rewriteJson(response.output_text);
   const nativeEdit=prepared.nativeEdit===true,expected=nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
   if(!value||Array.isArray(value)||Object.keys(value).sort().join(',')!==expected)fail('Qwen 2.1 rewrite fields invalid');
   const display=typeof (nativeEdit?value.rewritten_prompt:value.display_prompt)==='string'?(nativeEdit?value.rewritten_prompt:value.display_prompt).trim():'',model=nativeEdit?display:typeof value.model_prompt==='string'?value.model_prompt.trim():'';
@@ -83,7 +96,7 @@ export function compileQwen21NativeRewrite(response,prepared,preserve){
   // Lexical overlap rejects equivalent image edits and cannot establish
   // semantic safety. Keep it for text-to-image; edit instructions still reach
   // the model verbatim, with exact lettering and references checked below.
-  if(!nativeEdit && (typeof preserve!=='function'||preserve(input.currentPrompt,display,requirements)!==true))fail('Qwen 2.1 rewrite lost source constraints');
+  if(!nativeEdit && (typeof preserve!=='function'||preserve(withoutPictureRequest(input.currentPrompt),display,requirements)!==true))fail('Qwen 2.1 rewrite lost source constraints');
   if(!nativeEdit)explicitFacts(input,display,model);
   // Literal equality is a useful deterministic check, not a semantic proof.
   // Every quoted image string in the Chinese display must survive in English.
