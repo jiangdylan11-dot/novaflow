@@ -39,3 +39,31 @@ test('every picture goes to H3 in order and the prompt names each one', () => {
   assert.match(one[5].inputs.prompt, /<Picture 1> supplies the material/);
   assert.throws(() => api.buildWorkflow({ sourceVideo: 'clip.mp4', referenceImages: ['1', '2', '3', '4', '5'] }), /at most 4/);
 });
+
+// Dylan, 2026-11-05: two rings of different colours must not collapse into one material
+// ("能多变。能指定变化的内容。而不是被一个材质卡死了") - each coloured part keeps its own.
+test('parts keep their own material: words per part, nothing blended', () => {
+  const text = api.partsMaterial([
+    { colour: '#f2c230', read: { elements: 'made of shiny gold coins.', colours: 'gold' } },
+    { colour: '#5fd7f0', read: { elements: 'made of cracked ice shards', colours: '' } },
+    { colour: '#ff0000' },
+  ], { shape: 'ring' });
+  assert.match(text, /NOT blended into one material/);
+  assert.match(text, /The yellow parts are made of shiny gold coins \(gold\)\./);
+  assert.match(text, /The cyan parts are made of cracked ice shards\./);
+  assert.doesNotMatch(text, /red parts/);
+  assert.equal(api.partsMaterial([], {}), '');
+});
+
+test('in picture mode each part points at its own picture', () => {
+  const workflow = api.buildWorkflow({
+    sourceVideo: 'parts.webm', referenceImages: ['a.png', 'b.png'], durationSec: 1, desaturate: 0,
+    referenceParts: [{ colour: '#f2c230', picture: 1 }, { colour: '#5fd7f0', picture: 2 }],
+  });
+  const prompt = workflow[5].inputs.prompt;
+  assert.match(prompt, /The yellow parts are made of exactly the material shown in <Picture 1>/);
+  assert.match(prompt, /The cyan parts are made of exactly the material shown in <Picture 2>/);
+  assert.match(prompt, /Each coloured part of the effect takes the material of its own source/);
+  assert.doesNotMatch(prompt, /blended into one material;/);
+  assert.ok(api.validateWorkflow(workflow));
+});

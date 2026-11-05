@@ -1606,7 +1606,7 @@
     try { video.currentTime = 1e101 } catch (_) { finish() }
   })
 
-  const decodeClipFrames = (url) => new Promise((resolve, reject) => {
+  const decodeClipFrames = (url, { fps = PREVIEW_FPS, max = MAX_PREVIEW_FRAMES } = {}) => new Promise((resolve, reject) => {
     const video = document.createElement('video')
     video.muted = true
     video.playsInline = true
@@ -1618,7 +1618,7 @@
     video.onloadedmetadata = async () => {
       const duration = await resolveClipDuration(video)
       if (!Number.isFinite(duration) || duration <= 0) return fail()
-      const count = Math.max(1, Math.min(MAX_PREVIEW_FRAMES, Math.round(duration * PREVIEW_FPS)))
+      const count = Math.max(1, Math.min(max, Math.round(duration * fps)))
       const canvasWidth = video.videoWidth || 512
       const canvasHeight = video.videoHeight || 512
       let index = 0
@@ -1761,6 +1761,151 @@
   // the source's own luma. A picture with next to no colour in it has none to
   // give and keeps the grey init. `hues` is the same colour in 36 ten-degree hue bins (summing to 1),
   // which tells a read's colour words from colours the picture does not have (pictureRead).
+  // ---- Materials by part (Dylan, 2026-11-05) ----
+  // One material on a clip of two differently coloured rings painted both rings one colour. With two
+  // or more materials the source's coloured parts are found, each part gets one material, the init
+  // is repainted part by part in that material's colour, and the prompt names each part's material.
+  const HUE_WORDS = [[15, '红'], [45, '橙'], [70, '黄'], [165, '绿'], [200, '青'], [255, '蓝'], [290, '紫'], [345, '粉'], [360, '红']]
+  const hueWord = (hue) => HUE_WORDS.find(([limit]) => hue < limit)[1]
+  const hueDistance = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d }
+  const hsv = (r, g, b) => {
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const span = max - min
+    if (!span) return { h: 0, s: 0, v: max / 255 }
+    const sector = max === r ? ((g - b) / span + 6) % 6 : max === g ? (b - r) / span + 2 : (r - g) / span + 4
+    return { h: sector * 60, s: span / max, v: max / 255 }
+  }
+  const hexRgb = (hex) => {
+    const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''))
+    if (!match) return null
+    const value = parseInt(match[1], 16)
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
+  }
+  const hueHex = (hue) => {
+    const k = (n) => (n + hue / 60) % 6
+    const f = (n) => 1 - Math.max(0, Math.min(k(n), 4 - k(n), 1))
+    return '#' + [f(5), f(3), f(1)].map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('')
+  }
+  const PART_MIN_SHARE = 0.12
+  const PART_MIN_GAP = 40
+  // The source's coloured parts: peaks of its hue histogram, at least 40 degrees apart and each at
+  // least 12% of the coloured light, biggest first. White cores and grey haze are not parts.
+  const sourceParts = () => {
+    const source = state.source
+    if (!source || !state.sourceFrames.length) return []
+    if (source.parts) return source.parts
+    const bins = new Array(36).fill(0)
+    try {
+      const size = 64
+      const probe = document.createElement('canvas')
+      probe.width = size
+      probe.height = size
+      const context = probe.getContext('2d', { willReadFrequently: true })
+      const step = Math.max(1, Math.floor(state.sourceFrames.length / 24))
+      for (let index = 0; index < state.sourceFrames.length; index += step) {
+        context.clearRect(0, 0, size, size)
+        context.drawImage(state.sourceFrames[index], 0, 0, size, size)
+        const { data } = context.getImageData(0, 0, size, size)
+        for (let at = 0; at < data.length; at += 4) {
+          const { h, s, v } = hsv(data[at], data[at + 1], data[at + 2])
+          if (s < 0.3 || v < 0.2) continue
+          bins[Math.floor(h / 10) % 36] += s * v
+        }
+      }
+    } catch { return [] }
+    const total = bins.reduce((sum, value) => sum + value, 0)
+    if (!total) { source.parts = []; return source.parts }
+    const smooth = bins.map((value, index) => value + 0.5 * (bins[(index + 35) % 36] + bins[(index + 1) % 36]))
+    const peaks = smooth.map((value, index) => ({ index, value }))
+      .filter(({ index, value }) => value > 0 && value >= smooth[(index + 35) % 36] && value >= smooth[(index + 1) % 36])
+      .sort((a, b) => b.value - a.value)
+    const parts = []
+    for (const peak of peaks) {
+      const hue = peak.index * 10 + 5
+      if (parts.some((part) => hueDistance(part.hue, hue) < PART_MIN_GAP)) continue
+      // A part's share is the light within 20 degrees of its peak.
+      let share = 0
+      for (let offset = -2; offset <= 2; offset += 1) share += bins[(peak.index + offset + 36) % 36]
+      share /= total
+      if (share < PART_MIN_SHARE) continue
+      parts.push({ hue, share, word: hueWord(hue) })
+      if (parts.length >= MAX_REFERENCES) break
+    }
+    source.parts = parts
+    return parts
+  }
+
+  // Which material goes on which part. In order by default (the biggest part takes @参考图1);
+  // 提示词补充 can say otherwise, "红色部分用@参考图2" or "@参考图1 给蓝色", one clause at a time.
+  const COLOUR_WORD = /(红|橙|黄|绿|青|蓝|紫|粉)/
+  const materialAssignment = (items = materialItems(), supplement = state.supplement) => {
+    if (items.length < 2) return null
+    const parts = sourceParts()
+    if (parts.length < 2) return { parts: [], reason: state.source ? '素材只有一种颜色，多种材质混合使用' : '' }
+    const chosen = parts.map((part, index) => index % items.length)
+    for (const clause of String(supplement || '').split(/[，,。；;\n]/)) {
+      const mention = /@参考图([1-9][0-9]*)/.exec(clause)
+      const colour = COLOUR_WORD.exec(clause)
+      if (!mention || !colour) continue
+      const item = Number(mention[1]) - 1
+      const part = parts.findIndex((entry) => entry.word === colour[1])
+      if (part >= 0 && item < items.length) chosen[part] = item
+    }
+    // Each part is repainted in its material's own colour; two parts never share a colour name, or
+    // the prompt could not tell them apart.
+    const names = new Set()
+    const assigned = parts.map((part, index) => {
+      const item = items[chosen[index]]
+      const own = item.kind === 'preset' ? item.preset.accent : item.entry.accent
+      const rgb = hexRgb(own)
+      let hue = rgb ? hsv(rgb[0], rgb[1], rgb[2]).h : part.hue
+      let colour = rgb && hsv(rgb[0], rgb[1], rgb[2]).s > 0.25 ? own : hueHex(hue)
+      for (let turn = 0; names.has(hueWord(hue)) && turn < 6; turn += 1) {
+        hue = (hue + 60) % 360
+        colour = hueHex(hue)
+      }
+      names.add(hueWord(hue))
+      return { part, item: chosen[index], colour, word: hueWord(hue) }
+    })
+    return { parts: assigned, reason: '' }
+  }
+  const assignmentText = (assignment) => !assignment ? ''
+    : assignment.parts.length
+      ? '按部分分配：' + assignment.parts.map((entry) => '原' + entry.part.word + '色部分 → @参考图' + (entry.item + 1)).join('，')
+      : assignment.reason
+
+  // Repaints the source, part by part, in each part's material colour and records it as the clip
+  // the init is made from. Pixels outside every part (white cores, grey haze) stay as they are.
+  const recolouredSource = async (assignment) => {
+    const fps = SEQUENCE_FPS
+    const frames = await decodeClipFrames(state.source.objectUrl, { fps, max: 120 })
+    const targets = assignment.parts.map((entry) => ({ hue: entry.part.hue, rgb: hexRgb(entry.colour) }))
+    for (const canvas of frames.frames) {
+      const context = canvas.getContext('2d', { willReadFrequently: true })
+      const image = context.getImageData(0, 0, canvas.width, canvas.height)
+      const { data } = image
+      for (let at = 0; at < data.length; at += 4) {
+        const { h, s, v } = hsv(data[at], data[at + 1], data[at + 2])
+        if (s < 0.2 || v < 0.06) continue
+        let best = null
+        for (const target of targets) {
+          const distance = hueDistance(h, target.hue)
+          if (distance <= PART_MIN_GAP && (!best || distance < best.distance)) best = { target, distance }
+        }
+        if (!best) continue
+        // Brightness kept, colour replaced; the brightest pixels wash towards white as in the node.
+        const wash = v * v * v
+        for (let channel = 0; channel < 3; channel += 1) {
+          const c = best.target.rgb[channel] / 255
+          data[at + channel] = Math.round(255 * v * (c + (1 - c) * wash * (1 - s)))
+        }
+      }
+      context.putImageData(image, 0, 0)
+    }
+    return recordClip(frames.frames, frames.width, frames.height, fps)
+  }
+
   const referenceColour = (image) => {
     try {
       const size = 64
@@ -2360,7 +2505,21 @@
       const blended = referenceReads
         ? [...(preset ? [{ name: preset.name, elements: preset.material, colours: '', breakup: preset.breakup || '' }] : []), ...referenceReads]
         : null
-      const attribute = blended
+      // Two or more materials on a source with two or more coloured parts: each part gets its own
+      // material instead of a blend (a whole-effect recolour asked for in words keeps the blend).
+      const assignment = recolour ? null : materialAssignment(items, state.supplement)
+      const parts = assignment && assignment.parts.length >= 2 ? assignment.parts : null
+      const presetRead = preset ? { name: preset.name, elements: preset.material, colours: '', breakup: preset.breakup || '' } : null
+      const readOf = (item) => item.kind === 'preset' ? presetRead : referenceReads && referenceReads[item.picture - 1]
+      const attribute = parts && referenceReads
+        ? {
+            id: 'reference',
+            name: parts.map((entry) => readOf(items[entry.item]).name).filter(Boolean).join(' AND ') || 'REFERENCE',
+            breakup: blended.map((read) => read.breakup).filter(Boolean).join(' '),
+            material: restyle.partsMaterial(parts.map((entry) => ({ colour: entry.colour, read: readOf(items[entry.item]) })), overrides),
+            accent: parts[0].colour,
+          }
+        : blended
         ? {
             id: 'reference',
             name: blended.map((read) => read.name).filter(Boolean).join(' AND ') || 'REFERENCE',
@@ -2369,7 +2528,21 @@
             accent,
           }
         : preset && (overrides.spread || recolour) ? restyle.presetWithOverrides(preset, overrides) : state.attribute
-      const tint = accent
+      const referenceParts = parts && referencePicture
+        ? parts.map((entry) => {
+            const item = items[entry.item]
+            return item.kind === 'preset'
+              ? { colour: entry.colour, picture: 0, words: preset.material }
+              : { colour: entry.colour, picture: item.picture }
+          })
+        : []
+      // In parts mode the init is the repainted clip itself: no grey-out, no single tint.
+      const tint = parts ? '' : accent
+      let partsClip = null
+      if (parts) {
+        setStatus('按部分上色素材', assignmentText(assignment))
+        partsClip = await stoppable(recolouredSource(assignment))
+      }
       setStatus('准备运行时', '正在准备生成环境。')
       await stoppable(client.ensureRuntime({ reason: 'aifx-restyle' }))
 
@@ -2378,7 +2551,10 @@
       const web = !!(typeof window === 'object' && window.NovaFlowWebRuntime && window.NovaFlowWebRuntime.isWeb)
       const uploadInputs = async () => {
         setStatus('上传素材', state.source.fileName)
-        state.source.uploadedName = await stoppable(client.uploadFile(state.source.blob, state.source.fileName))
+        state.source.uploadedName = partsClip
+          ? await stoppable(client.uploadFile(partsClip, 'parts-' + state.source.fileName.replace(/\.[^.]+$/, '') + '.webm'))
+          : await stoppable(client.uploadFile(state.source.blob, state.source.fileName))
+        state.source.uploadedParts = Boolean(partsClip)
         if (referencePicture) {
           for (const entry of references) {
             setStatus('上传参考图', entry.fileName)
@@ -2386,7 +2562,8 @@
           }
         }
       }
-      if (web || !state.source.uploadedName || (referencePicture && references.some((entry) => !entry.uploadedName))) await uploadInputs()
+      // A repainted clip is uploaded on every run; the plain source's name is kept for the next.
+      if (web || partsClip || state.source.uploadedParts || !state.source.uploadedName || (referencePicture && references.some((entry) => !entry.uploadedName))) await uploadInputs()
 
       const label = restyle.getPreset(state.attribute)?.label || ''
       const total = Math.max(1, Math.min(4, Math.round(state.candidateCount) || 1))
@@ -2406,7 +2583,9 @@
         const workflow = restyle.buildWorkflow({
           sourceVideo: state.source.uploadedName,
           referenceImages: referencePicture ? references.map((entry) => entry.uploadedName) : [],
+          referenceParts,
           tint,
+          ...(parts ? { desaturate: 0 } : {}),
           attribute,
           supplement: supplementText,
           // Older compute nodes ignore these and keep using the Chinese above.
@@ -3270,7 +3449,7 @@
         materialTicker = 0
         materialNodeWait = null
       }
-      put(state.refs.materialStatus, 'textContent', materialStatusText())
+      put(state.refs.materialStatus, 'textContent', materialStatusText() || assignmentText(materialAssignment()))
     }, 1000)
   }
   const materialStatusText = () => {
@@ -3379,7 +3558,7 @@
         host.appendChild(tile)
       })
     }
-    put(state.refs.materialStatus, 'textContent', materialStatusText())
+    put(state.refs.materialStatus, 'textContent', materialStatusText() || assignmentText(materialAssignment()))
     put(state.refs.styleZone, 'hidden', state.references.length >= MAX_REFERENCES)
   }
 
@@ -3428,67 +3607,74 @@
   const sortSequence = (files) => Array.from(files).sort((a, b) => String(a.name || '')
     .localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' }))
 
-  const sequenceToBlackClip = async (files) => {
+  // Plays frames onto a black canvas and records them as a clip at `fps`.
+  const recordClip = async (frames, width, height, fps, onFrame) => {
     if (typeof window.MediaRecorder !== 'function') {
       throw new Error('AI 特效：当前环境不支持把序列帧合成视频')
     }
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d', { alpha: false })
+    const stream = canvas.captureStream ? canvas.captureStream(fps) : null
+    if (!stream) throw new Error('AI 特效：无法创建视频流')
+    const chunks = []
+    let recorder = null
+    for (const options of [{ mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 8e6 },
+      { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 8e6 }, undefined]) {
+      try {
+        recorder = new window.MediaRecorder(stream, options)
+        break
+      } catch (_) {}
+    }
+    if (!recorder) throw new Error('AI 特效：无法创建录制器')
+    recorder.ondataavailable = (event) => {
+      if (event && event.data && event.data.size > 0) chunks.push(event.data)
+    }
+    const stopped = new Promise(resolve => { recorder.onstop = () => resolve() })
+    recorder.start()
+    const hold = Math.max(1, Math.round(1000 / fps))
+    for (let index = 0; index < frames.length; index += 1) {
+      // Black first, every frame.
+      context.fillStyle = '#000000'
+      context.fillRect(0, 0, width, height)
+      context.drawImage(frames[index], 0, 0, width, height)
+      if (onFrame) onFrame(index)
+      await new Promise(resolve => window.setTimeout(resolve, hold))
+    }
+    try { recorder.requestData() } catch (_) {}
+    recorder.stop()
+    await stopped
+    try { stream.getTracks().forEach(track => { try { track.stop() } catch (_) {} }) } catch (_) {}
+    const blob = new Blob(chunks, { type: 'video/webm' })
+    if (!blob.size) throw new Error('AI 特效：视频合成失败')
+    return blob
+  }
+
+  const sequenceToBlackClip = async (files) => {
     const ordered = sortSequence(files).slice(0, SEQUENCE_MAX_FRAMES)
     if (ordered.length < 2) throw new Error('AI 特效：序列帧至少要两张')
     const revokeList = []
+    const frames = []
     try {
       setStatus('正在合成', '把 ' + ordered.length + ' 张序列帧合成黑底视频…')
       refreshUi()
-      const frames = []
       for (const file of ordered) frames.push(await decodeSequenceFrame(file, revokeList))
       const width = Math.round(Number(frames[0].width || frames[0].naturalWidth || 0))
       const height = Math.round(Number(frames[0].height || frames[0].naturalHeight || 0))
       if (!(width > 0 && height > 0)) throw new Error('AI 特效：序列帧尺寸无效')
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const context = canvas.getContext('2d', { alpha: false })
-      const stream = canvas.captureStream ? canvas.captureStream(SEQUENCE_FPS) : null
-      if (!stream) throw new Error('AI 特效：无法创建视频流')
-      const chunks = []
-      let recorder = null
-      for (const options of [{ mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 8e6 },
-        { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 8e6 }, undefined]) {
-        try {
-          recorder = new window.MediaRecorder(stream, options)
-          break
-        } catch (_) {}
-      }
-      if (!recorder) throw new Error('AI 特效：无法创建录制器')
-      recorder.ondataavailable = (event) => {
-        if (event && event.data && event.data.size > 0) chunks.push(event.data)
-      }
-      const stopped = new Promise(resolve => { recorder.onstop = () => resolve() })
-      recorder.start()
-      const hold = Math.max(1, Math.round(1000 / SEQUENCE_FPS))
-      for (let index = 0; index < frames.length; index += 1) {
-        // Black first, every frame: that is the whole point of this path.
-        context.fillStyle = '#000000'
-        context.fillRect(0, 0, width, height)
-        context.drawImage(frames[index], 0, 0, width, height)
+      return await recordClip(frames, width, height, SEQUENCE_FPS, (index) => {
         if (index % 12 === 0) {
           setStatus('正在合成', '第 ' + (index + 1) + ' / ' + frames.length + ' 帧')
           refreshUi()
         }
-        await new Promise(resolve => window.setTimeout(resolve, hold))
-      }
-      try { recorder.requestData() } catch (_) {}
-      recorder.stop()
-      await stopped
-      try { stream.getTracks().forEach(track => { try { track.stop() } catch (_) {} }) } catch (_) {}
+      })
+    } finally {
       for (const frame of frames) {
         if (frame && typeof frame.close === 'function') {
           try { frame.close() } catch (_) {}
         }
       }
-      const blob = new Blob(chunks, { type: 'video/webm' })
-      if (!blob.size) throw new Error('AI 特效：序列帧合成失败')
-      return blob
-    } finally {
       for (const url of revokeList) {
         try { URL.revokeObjectURL(url) } catch (_) {}
       }

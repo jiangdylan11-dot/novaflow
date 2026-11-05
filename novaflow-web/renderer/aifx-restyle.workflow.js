@@ -897,6 +897,23 @@
     return [body, palette, ...finished, referenceArrangement(shape || DEFAULT_SHAPE, spread)].filter(Boolean).join(' ')
   }
 
+  // Several materials on one effect, each on its own part instead of blended (Dylan, 2026-11-05:
+  // two looping rings of different colours came back as one colour). The panel has repainted each
+  // part of the source in its material's colour, so the parts are named by that colour here and
+  // each gets its own material sentence. parts: [{ colour: '#rrggbb', read }].
+  function partsMaterial(parts, { shape = '', spread = '' } = {}) {
+    const lines = (Array.isArray(parts) ? parts : []).filter(part => part && part.read).map((part) => {
+      const read = part.read
+      const elements = String(read.elements || read.material || '').trim()
+        .replace(/^made of\s+/i, '').replace(/[\s.]+$/, '')
+      const colours = String(read.colours || '').trim()
+      return `The ${colourName(part.colour) || 'coloured'} parts are made of ${elements}${colours ? ' (' + colours + ')' : ''}.`
+    })
+    if (!lines.length) return ''
+    return ['Each part keeps its own material and colour - the parts are NOT blended into one material.',
+      ...lines, referenceArrangement(shape || DEFAULT_SHAPE, spread)].join(' ')
+  }
+
   // The same overrides on a 风格库 preset, which has no arrangement of its own to replace.
   function presetWithOverrides(preset, { shape = '', spread = '', colour = null } = {}) {
     if (!preset || (!spread && !colour)) return preset
@@ -980,16 +997,28 @@
     const blend = preset
       ? `Blended into the same material as well: ${String(preset.name || '').toLowerCase()}, ${preset.material}`
       : ''
+    // With parts assigned, each coloured part takes one picture's material (or a 风格库 pick's
+    // words), and nothing is blended.
+    const parts = (Array.isArray(options.referenceParts) ? options.referenceParts : []).map((part) => {
+      const where = `The ${colourName(part.colour) || 'coloured'} parts`
+      return part.picture > 0 && part.picture <= referenceCount
+        ? `${where} are made of exactly the material shown in <Picture ${part.picture}>, with its colour, surface finish and way of breaking apart.`
+        : `${where} are made of ${String(part.words || '').replace(/^made of\s+/i, '').replace(/[\s.]+$/, '')}.`
+    })
     return [
       'subject_definitions:',
-      ...pictures.map(picture => several
+      ...pictures.map(picture => parts.length
+        ? `${picture}: a still of the material for one part of the effect.`
+        : several
         ? `${picture}: a still of the target look - one of ${pictures.length} looks blended into the same material.`
         : `${picture}: a still of the target look - its material, colour, surface finish and the way it\nbreaks apart.`),
       `<Subject 1>: a ${refShape}${extra}`,
       '',
       'summary:',
       '[reference generation] Generate a 2D game VFX element on a pure solid black background.',
-      several
+      parts.length
+        ? `Source assets: ${all}. Each coloured part of the effect takes the material of its own source;\n<Subject 1> is only its silhouette.`
+        : several
         ? `Source assets: ${all}. Together ${all} supply the material, colour and surface of the\neffect, blended into one material; <Subject 1> is only its silhouette.`
         : `Source assets: ${all}. ${all} supplies the material, colour and surface of the\neffect; <Subject 1> is only its silhouette.`,
       '',
@@ -998,10 +1027,12 @@
       '<Subject 1>: fully_preserved - the silhouette and its motion.',
       '',
       'detailed_description:',
-      several
-        ? `A single ${refShape} made of exactly the materials shown in ${all}, blended into one material\nwith their colours, surface finishes and ways of breaking apart mixed through the whole effect.`
-        : `A single ${refShape} made of exactly the material shown in ${all}, with the same\ncolour, the same surface finish and the same way of breaking apart.`,
-      ...(blend ? [blend] : []),
+      ...(parts.length
+        ? [`A single ${refShape} whose parts keep their own materials - NOT blended into one:`, ...parts]
+        : [several
+          ? `A single ${refShape} made of exactly the materials shown in ${all}, blended into one material\nwith their colours, surface finishes and ways of breaking apart mixed through the whole effect.`
+          : `A single ${refShape} made of exactly the material shown in ${all}, with the same\ncolour, the same surface finish and the same way of breaking apart.`,
+        ...(blend ? [blend] : [])]),
       shapeSentence(refShape, clause),
       SHOT_TAIL,
       '',
@@ -1201,6 +1232,7 @@
     pictureColours,
     pictureRead,
     referenceMaterial,
+    partsMaterial,
     presetWithOverrides,
     recoloured,
     composePrompt,
