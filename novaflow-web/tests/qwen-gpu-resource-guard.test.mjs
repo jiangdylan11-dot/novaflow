@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {checkQwenGpuResources, watchQwenGpuResources, QWEN_GPU_COLD_FREE_MIB, QWEN_GPU_RUNNING_FREE_MIB} from '../worker/src/qwen-gpu-resource-guard.mjs';
+import {checkQwenGpuResources, watchQwenGpuResources, admitQwenGpuWithRelease, QWEN_GPU_COLD_FREE_MIB, QWEN_GPU_RUNNING_FREE_MIB} from '../worker/src/qwen-gpu-resource-guard.mjs';
 
 const idle = () => ({currentTaskId:null});
 const empty = async () => ({ok:true,json:async()=>({queue_running:[],queue_pending:[]})});
@@ -54,4 +54,40 @@ test('a pending observation cannot cancel a model after the watch closes',async(
     setIntervalImpl:fn=>{tick=fn;return 1;},clearIntervalImpl:()=>{}});
   const pending=tick();stop();finish({ok:false,errorCode:'qwen-gpu-memory-low'});await pending;
   assert.equal(own.signal.aborted,false);
+});
+
+test('cold admission after a generation unloads idle Comfy caches and re-checks memory',async()=>{
+  let free=4000,released=0,freeCalls=0;
+  const fetchImpl=async(url,init)=>{
+    if(String(url).endsWith('/free')){freeCalls++;free=14000;return {ok:true,json:async()=>({})};}
+    return empty();
+  };
+  const check=()=>checkQwenGpuResources(options({fetchImpl,queryGpu:async()=>({freeMiB:free,totalMiB:16000})}));
+  const release=async()=>{released++;await fetchImpl('http://127.0.0.1:8188/free',{method:'POST'});return {ok:true};};
+  assert.equal((await check()).errorCode,'qwen-gpu-memory-low');
+  assert.deepEqual(await admitQwenGpuWithRelease({check,release,sleep:async()=>{}}),{ok:true});
+  assert.equal(released,1);assert.equal(freeCalls,1);
+});
+
+test('cold admission waits for the driver to return memory after the unload',async()=>{
+  let checks=0;
+  const check=async()=>(++checks>=4 ? {ok:true} : {ok:false,errorCode:'qwen-gpu-memory-low',error:'low'});
+  assert.deepEqual(await admitQwenGpuWithRelease({check,release:async()=>({ok:true}),sleep:async()=>{}}),{ok:true});
+  assert.equal(checks,4);
+});
+
+test('admission never releases for warm checks, other failures, or a busy generation service',async()=>{
+  let released=0;const release=async()=>{released++;return {ok:true};};
+  const low={ok:false,errorCode:'qwen-gpu-memory-low',error:'low'};
+  assert.deepEqual(await admitQwenGpuWithRelease({check:async()=>low,release,warm:true}),low);
+  const busy={ok:false,errorCode:'qwen-gpu-generation-busy',error:'busy'};
+  assert.deepEqual(await admitQwenGpuWithRelease({check:async()=>busy,release}),busy);
+  assert.equal(released,0);
+  const refused={ok:false,errorCode:'runtime-generation-busy',error:'busy'};
+  let checks=0;
+  assert.deepEqual(await admitQwenGpuWithRelease({check:async()=>{checks++;return low;},release:async()=>refused,sleep:async()=>{}}),low);
+  assert.equal(checks,1);
+  checks=0;
+  assert.deepEqual(await admitQwenGpuWithRelease({check:async()=>{checks++;return low;},release:async()=>({ok:true}),sleep:async()=>{},attempts:3}),low);
+  assert.equal(checks,4);
 });

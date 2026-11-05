@@ -17,7 +17,7 @@ import { createGemmaCpuSession, isGemmaCpuConfigured, probeQwenCpuOwnership } fr
 import {selectQwenConfigSource} from './qwen-auto-discovery.mjs';
 import { verifyQwenCpuFiles, qwenCpuFilesUnchanged, qwenCpuFileStamp } from './qwen-cpu-verification.mjs';
 import { resolveQwenManagedRuntime } from './qwen-managed-runtime.mjs';
-import { checkQwenGpuResources, watchQwenGpuResources, QWEN_GPU_RUNNING_FREE_MIB } from './qwen-gpu-resource-guard.mjs';
+import { checkQwenGpuResources, watchQwenGpuResources, admitQwenGpuWithRelease, QWEN_GPU_RUNNING_FREE_MIB } from './qwen-gpu-resource-guard.mjs';
 import { freemem } from 'node:os';
 import { foartRuntimeRoot } from './runtime-location.mjs';
 
@@ -174,6 +174,10 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
   const qwenUsesGpu=()=>qwenConfig?.executionMode==='gpu';
   const checkQwenGpu=(ownTaskId='',warm=false,checkWorker=true)=>checkQwenGpuResources({worker,ownTaskId,comfyUrls,fetchImpl,
     checkWorker,...(qwenGpuMemoryProbe?{queryGpu:qwenGpuMemoryProbe}:{}),...(warm?{minFreeMiB:QWEN_GPU_RUNNING_FREE_MIB}:{})});
+  // Admission before loading Qwen on the GPU: unload idle Comfy caches when
+  // they are what leaves too little VRAM (e.g. right after a generation).
+  const admitQwenGpu=(ownTaskId='',warm=false)=>admitQwenGpuWithRelease({warm,
+    check:()=>checkQwenGpu(ownTaskId,warm),release:()=>releaseRuntimes(ownTaskId)});
   const configured=()=>Boolean(config && (suppliedLifecycle || isFlashBrainConfigured(config)));
   const makeSession=()=>sessionFactory({baseUrl:config?.baseUrl || 'http://127.0.0.1:8198',expectedModel:config?.expectedModel,
     fetchImpl,lifecycle,onInference:trace,timeoutMs:config?.workflowTimeoutMs || 900000,releaseTimeoutMs:config?.releaseTimeoutMs || 75000,
@@ -269,8 +273,8 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       const timer=setInterval(()=>{try{if(freemem()<6*1024**3){lowSince ||= Date.now();if(Date.now()-lowSince>=2000)abort.abort(Object.assign(Error(`本机可用内存不足，已停止 ${label}`),{errorCode:`${prefix}-resource-floor`}));}else lowSince=0;}
         catch{abort.abort(Object.assign(Error(`本机内存检查失败，已停止 ${label}`),{errorCode:`${prefix}-resource-probe-failed`}));}},1000);
       timer.unref?.();
-      // GPU checks only observe; they never free shared models or stop another
-      // process. During handoff the existing lease waits for this owned model
+      // Running GPU checks only observe; they never free shared models or stop
+      // another process (cold admission may unload idle Comfy caches). During handoff the existing lease waits for this owned model
       // to exit before starting generation, so do not abort it merely because
       // the next worker task has been claimed.
       const stopGpu=model==='qwen' && qwenUsesGpu()
@@ -334,7 +338,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
         throw Object.assign(Error('模型正在交接，请稍后重试'),{errorCode:'prompt-assistant-busy'});
       if(context.isCancelled?.())throw Object.assign(Error('任务已取消'),{errorCode:'task-cancelled'});
       if(model==='qwen' && qwenUsesGpu()) {
-        const resources=await checkQwenGpu(String(context.taskId || ''),residency.getStatus().modelLoaded);
+        const resources=await admitQwenGpu(String(context.taskId || ''),residency.getStatus().modelLoaded);
         if(!resources.ok)throw Object.assign(Error(resources.error),{errorCode:resources.errorCode});
         if(handoffPending || generationTaskId || stopping || cleanupFault || context.isCancelled?.())
           throw Object.assign(Error('模型正在交接，请稍后重试'),{errorCode:'prompt-assistant-busy'});
@@ -453,7 +457,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       const handoff=model==='next' ? await releaseRuntimes(context.taskId) : communityRuntimeGuard(context.taskId,model);
       if(handoff && !handoff.ok)return handoff;
       if(model==='qwen' && qwenUsesGpu()) {
-        const resources=await checkQwenGpu(String(context.taskId || ''));
+        const resources=await admitQwenGpu(String(context.taskId || ''));
         if(!resources.ok)return resources;
         if(handoffPending || (generationTaskId && generationTaskId!==context.taskId) || stopping || cleanupFault || context.isCancelled?.())
           throw Object.assign(Error('模型正在交接，请稍后重试'),{errorCode:'prompt-assistant-busy'});

@@ -1,6 +1,6 @@
-// GPU admission is read-only: never unload a shared Comfy instance or stop an
-// unrelated process. The worker's existing generation lease provides the
-// hand-off for work it owns; a queue recheck also catches external activity.
+// GPU checks never stop an unrelated process. Cold admission may ask an idle
+// local Comfy to unload its cached generation models (see
+// admitQwenGpuWithRelease); a busy queue is never touched.
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -72,6 +72,25 @@ export async function checkQwenGpuResources({ worker, ownTaskId = '', comfyUrls,
   } catch { return result('qwen-gpu-memory-unverified', '无法确认显存状态，本地 GPU 模型未启动或正在安全退出。'); }
   if (checkWorker && !idleWorker()) return result('qwen-gpu-worker-busy', '计算节点正在执行其他任务，未启动本地 GPU 模型。');
   return { ok: true };
+}
+
+// Cold start after a generation: Comfy keeps its last models cached in VRAM,
+// so the first check reports low memory although nothing is running. Ask the
+// idle generation service to unload (release() checks queue and worker), then
+// re-check while the driver returns the memory. Warm checks never release.
+export async function admitQwenGpuWithRelease({check,release,warm=false,attempts=20,
+  sleep=ms=>new Promise(done=>setTimeout(done,ms)),intervalMs=500}={}) {
+  let resources=await check();
+  if(resources?.ok || warm || resources?.errorCode!=='qwen-gpu-memory-low' || typeof release!=='function')return resources;
+  let released;
+  try {released=await release();} catch {return resources;}
+  if(!released?.ok)return resources;
+  for(let attempt=0;attempt<attempts;attempt++) {
+    await sleep(intervalMs);
+    resources=await check();
+    if(resources?.ok || resources?.errorCode!=='qwen-gpu-memory-low')return resources;
+  }
+  return resources;
 }
 
 // One bounded observer per owned session, including its short idle residency.
