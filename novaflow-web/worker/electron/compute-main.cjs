@@ -1,5 +1,5 @@
 // Public compute appliance. The Foart editor is served only by foart.net.
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -96,6 +96,41 @@ async function stop() {
   paused = true; await assistant?.stop(); assistant = null; operation = null; emit();
   return { ok: true, state: state() };
 }
+// foart://warehouse/open links from the website's local warehouse ("打开 Windows 文件夹").
+const WAREHOUSE_LINK = 'foart:';
+async function handleWarehouseLink(argv = []) {
+  const link = argv.find(value => typeof value === 'string' && value.toLowerCase().startsWith(WAREHOUSE_LINK));
+  if (!link) return false;
+  try {
+    const { openWarehouseFolder } = require('./warehouse-folder.cjs');
+    const config = readConfig();
+    const candidates = [...(config.warehouseFolders || [])];
+    if (config.modelsRoot) candidates.push(path.join(path.dirname(config.modelsRoot), 'output'));
+    try {
+      const runtimeFile = path.join(process.env.ProgramData || 'C:/ProgramData', 'Foart/AI-Runtime/runtime.json');
+      const runtime = JSON.parse(fs.readFileSync(runtimeFile, 'utf8').replace(/^\uFEFF/, ''));
+      if (runtime.outputPath) candidates.push(runtime.outputPath);
+      if (runtime.modelsPath) candidates.push(path.join(path.dirname(runtime.modelsPath), 'output'));
+    } catch { /* A fresh machine may not have the AI environment yet. */ }
+    const result = await openWarehouseFolder(link, {
+      candidates,
+      pickFolder: async () => {
+        const picked = await dialog.showOpenDialog({ title: '选择网页中已连接的仓库根目录（仅首次定位）', properties: ['openDirectory'] });
+        return picked.canceled ? '' : picked.filePaths[0];
+      },
+      openPath: folder => shell.openPath(folder),
+      remember: folder => {
+        const latest = readConfig();
+        fs.writeFileSync(configFile, JSON.stringify({ ...latest, warehouseFolders: [folder, ...(latest.warehouseFolders || []).filter(value => value !== folder)].slice(0, 20) }, null, 2));
+      }
+    });
+    if (result.ok) log('已打开仓库文件夹');
+  } catch (error) {
+    log('打开仓库文件夹失败', { error: String(error.message || error) });
+    dialog.showErrorBox('打开仓库文件夹失败', String(error.message || error));
+  }
+  return true;
+}
 async function quit() { quitting = true; await serial(stop).catch(() => {}); app.quit(); }
 function show() {
   if (!win || win.isDestroyed()) {
@@ -137,9 +172,14 @@ handle('freeMemory', async () => {
 });
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', show);
+  app.on('second-instance', (_event, argv = []) => {
+    if (argv.some(value => typeof value === 'string' && value.toLowerCase().startsWith(WAREHOUSE_LINK))) void handleWarehouseLink(argv);
+    else show();
+  });
   app.whenReady().then(() => {
+    if (app.isPackaged) app.setAsDefaultProtocolClient('foart');
     show();
+    void handleWarehouseLink(process.argv);
     sampleResources();
     const resourceTimer = setInterval(sampleResources, 5000);
     resourceTimer.unref();

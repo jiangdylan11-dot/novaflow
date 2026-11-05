@@ -366,7 +366,7 @@ ipcMain.handle('worker:pickModelsFolder', async () => {
 });
 
 async function handleWarehouseLink(argv = []) {
-  const link = argv.find(value => typeof value === 'string' && value.startsWith('novaflow:'));
+  const link = argv.find(value => typeof value === 'string' && value.startsWith('foart:'));
   if (!link) return;
   try {
     const { openWarehouseFolder } = require('./warehouse-folder.cjs');
@@ -394,7 +394,7 @@ async function handleWarehouseLink(argv = []) {
   } catch (error) { dialog.showErrorBox('打开仓库文件夹失败', String(error.message || error)); }
 }
 app.whenReady().then(() => {
-  if (app.isPackaged && !IS_UI_TRIAL) app.setAsDefaultProtocolClient('novaflow');
+  if (app.isPackaged && !IS_UI_TRIAL) app.setAsDefaultProtocolClient('foart');
   createWindow(); createTray();
   void handleWarehouseLink(process.argv);
 });
@@ -413,7 +413,7 @@ if (!app.requestSingleInstanceLock()) {
   // launch (e.g. a warehouse link) must not touch a running task's folder.
   clearRunFiles();
   app.on('second-instance', (_event, argv = []) => {
-    if (argv.some(value => typeof value === 'string' && value.startsWith('novaflow:'))) void handleWarehouseLink(argv);
+    if (argv.some(value => typeof value === 'string' && value.startsWith('foart:'))) void handleWarehouseLink(argv);
     else showWindow();
   });
 }

@@ -283,22 +283,40 @@
       await refreshList(); tell();
     });
   }
+  // One fixed proof file: the helper deletes it after opening, and a newer click
+  // overwrites it, so clicks never pile up files in the user's folder.
+  const OPEN_PROOF = '.foart-open.json';
+  const OPEN_PROOF_TTL = 180000;
+  const STALE_PROOF = /^\.novaflow-open-[0-9a-f-]{36}\.json$/i;
+  let lastOpenAt = 0;
   async function openFolder() {
     if (!directory || permission !== 'granted') throw new Error('请先连接本地文件夹并恢复授权');
+    if (Date.now() - lastOpenAt < 1500) return;
+    lastOpenAt = Date.now();
     const id = root.crypto.randomUUID();
-    const name = '.novaflow-open-' + id + '.json';
     const target = directory;
-    const file = await target.getFileHandle(name, { create: true });
+    const file = await target.getFileHandle(OPEN_PROOF, { create: true });
     const stream = await file.createWritable();
     await stream.write(new Blob([JSON.stringify({ id, createdAt: Date.now() })]));
     await stream.close();
     const link = node('a', null, root.document.body);
-    link.href = 'novaflow://warehouse/open?id=' + id + '&sub=' + encodeURIComponent(folderTrail.map(folder => folder.name).join('/'));
+    link.href = 'foart://warehouse/open?id=' + id + '&sub=' + encodeURIComponent(folderTrail.map(folder => folder.name).join('/'));
     link.click(); link.remove();
-    feedback = '请允许浏览器打开 Foart；需要新版助手。首次定位其他目录时请选择仓库根目录。'; lastError = ''; tell();
-    // The native helper removes its proof after opening. Also clean up if the
-    // browser prompt was cancelled or the helper is not installed.
-    root.setTimeout(() => target.removeEntry(name).catch(() => {}), 180000);
+    feedback = '请允许浏览器打开 Foart 算力助手（需 2.0.312 及以上）。首次使用请选择仓库根目录。'; lastError = ''; tell();
+    // The helper removes the proof after opening. If the prompt was cancelled or
+    // the helper is missing, remove it later unless a newer click replaced it.
+    root.setTimeout(() => removeProof(target, id), OPEN_PROOF_TTL);
+  }
+  async function removeProof(target, id) {
+    try {
+      const data = JSON.parse(await (await (await target.getFileHandle(OPEN_PROOF)).getFile()).text());
+      if (id ? data.id === id : !(Date.now() - data.createdAt < OPEN_PROOF_TTL)) await target.removeEntry(OPEN_PROOF);
+    } catch { /* Already removed by the helper. */ }
+  }
+  // Remove proofs left by older versions, which wrote one file per click.
+  async function sweepProofs(target, names) {
+    for (const name of names) await target.removeEntry(name).catch(() => {});
+    await removeProof(target, '');
   }
   async function removeAsset(item) {
     return enqueue(async () => {
@@ -492,7 +510,9 @@
     try {
       if (directory && permission === 'granted') {
         const current = folderTrail.at(-1) || directory;
+        const stale = [];
         for await (const [name, handle] of current.entries()) {
+          if (handle.kind === 'file' && current === directory && STALE_PROOF.test(name)) { stale.push(name); continue; }
           if (handle.kind === 'directory') found.push({ name, handle, kind: 'directory' });
           else if (MEDIA.test(name)) {
             try { const file = await handle.getFile(); found.push({ name, handle, parent: current, kind: 'file', size: file.size, modified: file.lastModified }); }
@@ -500,6 +520,7 @@
           }
           if (found.length >= 1000) break;
         }
+        if (current === directory) void sweepProofs(current, stale);
       }
     } catch (error) { lastError = '读取文件夹失败：' + error.message; tell(); }
     if (version !== listingVersion) return;

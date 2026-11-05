@@ -16,6 +16,7 @@
     "electron/compute-preload.cjs",
     "electron/compute-ui.html",
     "electron/compute-ui.js",
+    "electron/warehouse-folder.cjs",
     "electron/assets/**/*",
     "src/**/*",
     "workflows/**/*",
@@ -117,6 +118,14 @@
     {
       "from": "../../particle-editor-desktop/main/minimax-h3-lora-catalog.js",
       "to": "lora-catalogs/minimax-h3-lora-catalog.cjs"
+    }
+  ],
+  "protocols": [
+    {
+      "name": "Foart",
+      "schemes": [
+        "foart"
+      ]
     }
   ],
   "asar": false,
