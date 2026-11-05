@@ -742,8 +742,8 @@
       .aifx-prompt-field > label { font-size: 12px; color: rgba(230, 230, 230, 0.72); }
       #${APP_ID} .aifx-side textarea.aifx-prompt-input {
         width: 100%;
-        min-height: 60px;
-        max-height: 140px;
+        min-height: 120px;
+        max-height: 280px;
         padding: 9px 10px;
         border: 1px solid #3a3a3a;
         border-radius: 8px;
@@ -770,10 +770,10 @@
       #${APP_ID} .aifx-material-board { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 8px; }
       #${APP_ID} .aifx-material-items { display: contents; }
       #${APP_ID} .aifx-material-tile {
-        position: relative; display: flex; align-items: center; gap: 10px; padding: 8px; min-width: 0; box-sizing: border-box;
+        position: relative; display: flex; align-items: center; gap: 10px; height: 72px; padding: 8px; min-width: 0; box-sizing: border-box;
         border-radius: 10px; background: #161616; border: 1px solid rgba(255,255,255,0.10);
       }
-      #${APP_ID} .aifx-material-tile video, #${APP_ID} .aifx-material-tile img { display: block; width: 72px; height: 72px; flex: none; border-radius: 8px; background: #000; object-fit: cover; pointer-events: none; }
+      #${APP_ID} .aifx-material-tile video, #${APP_ID} .aifx-material-tile img { display: block; width: 54px; height: 54px; flex: none; border-radius: 8px; background: #000; object-fit: cover; pointer-events: none; }
       #${APP_ID} .aifx-material-tile-label { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: #e8e8e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #${APP_ID} .aifx-material-tile-index { display: block; font-size: 11px; font-weight: 400; color: #9a9fa5; margin-bottom: 3px; }
       #${APP_ID} .aifx-material-remove {
@@ -782,7 +782,7 @@
         color: #fff; cursor: pointer; font-size: 13px; line-height: 1;
       }
       #${APP_ID} .aifx-material-remove:hover { color: #ff6b6b; }
-      .aifx-section-body .nf-upload-dropzone.aifx-reference-zone.aifx-material-add { min-height: 90px; padding: 8px; gap: 4px; box-sizing: border-box; }
+      .aifx-section-body .nf-upload-dropzone.aifx-reference-zone.aifx-material-add { height: 72px !important; min-height: 72px !important; padding: 8px !important; gap: 4px !important; box-sizing: border-box; }
       .aifx-reference-zone .nf-upload-dropzone__icon { font-size: 18px; }
       .aifx-material-status { margin-top: 6px; font-size: 11px; line-height: 1.5; color: #9a9fa5; }
       .aifx-material-status:empty { display: none; }
@@ -1376,7 +1376,7 @@
                 </div>
                 <div class="aifx-prompt-field">
                   <label for="novaflow-aifx-prompt-supplement">提示词补充</label>
-                  <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。例：下缘不断滴落融水"></textarea>
+                  <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="6" maxlength="400" placeholder="可选。例：下缘不断滴落融水"></textarea>
                 </div>
                 <button class="aifx-button" data-action="open-style-library" type="button" style="width:100%; margin-top:12px">风格库</button>
                 <div class="aifx-material-board" data-material-board>
