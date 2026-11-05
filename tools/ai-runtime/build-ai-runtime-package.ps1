@@ -4,13 +4,14 @@ param(
   [string] $SourcePythonRoot,
   [string] $SourceStrataRoot,
   [string] $SourceQwenRunnerRoot,
+  [string] $SourceQwenCudaRoot,
   [ValidateSet('none','cpu')][string] $QwenRunnerProfile = 'none',
   [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/Foart-AI-Runtime")),
   [string] $InstallPath = "C:\ProgramData\Foart\AI-Runtime",
   [string] $AssetsPath,
   [string] $ModelsPath,
   [string] $CustomNodesPath,
-  [string] $Version = "0.5.0",
+  [string] $Version = "0.5.1",
   [switch] $NoZip
 )
 
@@ -453,6 +454,20 @@ if ($SourceQwenRunnerRoot) {
   $null = Test-QwenRunnerCpuNotices -NoticesRoot (Join-Path $PSScriptRoot 'notices/qwen')
 }
 
+# A new machine must run local Qwen on its GPU without any further download, so the
+# CUDA companion ships in the engine. Every file must match the pinned inventory.
+if (-not $SourceQwenCudaRoot) {
+  $SourceQwenCudaRoot = Join-Path (Split-Path -Parent $SourceComfyRoot) "llama\ollama-v0.40.13-cuda12"
+}
+$SourceQwenCudaRoot = Convert-ToFullPath $SourceQwenCudaRoot
+$qwenCudaInventory = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'manifests/qwen-ollama-v0.40.13-cuda12.inventory.json') | ConvertFrom-Json
+foreach ($entry in $qwenCudaInventory.files) {
+  $cudaFile = Join-Path $SourceQwenCudaRoot $entry.path
+  if (-not (Test-Path -LiteralPath $cudaFile -PathType Leaf) -or (Get-FileHash -LiteralPath $cudaFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.sha256) {
+    throw "Qwen CUDA component file is missing or changed: $($entry.path)"
+  }
+}
+
 $OutputRoot = Convert-ToFullPath $OutputRoot
 $packageRoot = Join-Path $OutputRoot "package"
 $runtimePackageRoot = Join-Path $packageRoot "AI-Runtime"
@@ -560,6 +575,7 @@ if ($qwenRunnerLayout) {
     -TrustedInventorySHA256 $qwenRunnerInventorySHA256 -NoticesRoot (Join-Path $PSScriptRoot 'notices/qwen') `
     -Destination (Join-Path $engineRoot 'llama/ollama-v0.40.13') | Out-Null
 }
+Invoke-RobocopyChecked -Source $SourceQwenCudaRoot -Destination (Join-Path $engineRoot 'llama/ollama-v0.40.13-cuda12')
 
 # The two NovaFlow patches are pinned to ComfyUI 0.24.1 file hashes (and the INT8 one to
 # comfy-kitchen 0.2.11). ComfyUI 0.37 ships INT8 TensorWise itself and no longer has the lines the

@@ -1,5 +1,6 @@
 """Exercise the actual C# installer solely inside a new workspace fixture."""
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -105,6 +106,16 @@ class Probe {
       'migrate_nested': esc_target in (target / 'flash-local-brain-runtime' / 'state' / 'runtime-owner.json').read_text(encoding='utf8'),
       'migrate_logs_untouched': 'NovaFlow' in (target / 'logs' / 'kept.json').read_text(encoding='utf8')})
 
+    # Without an NVIDIA driver local Qwen starts on the CPU; a choice already made stays.
+    cpu_runtime = root / 'cpu-runtime'
+    cpu_env = dict(os.environ, FOART_SETUP_ASSUME_NO_NVIDIA='1')
+    cpu_run = subprocess.run([str(exe), '--install', '--runtime', str(cpu_runtime), '--assets', str(assets)], env=cpu_env, timeout=60)
+    cpu_preference = cpu_runtime / 'qwen35-execution.json'
+    report['cpu_preference'] = cpu_run.returncode == 0 and json.loads(cpu_preference.read_text(encoding='utf8')) == {'schema': 'nf.qwen-execution.v1', 'mode': 'cpu'}
+    cpu_preference.write_text('{"schema":"nf.qwen-execution.v1","mode":"gpu"}', encoding='utf8')
+    subprocess.run([str(exe), '--install', '--runtime', str(cpu_runtime), '--assets', str(assets)], env=cpu_env, timeout=60)
+    report['cpu_preference_kept'] = 'gpu' in cpu_preference.read_text(encoding='utf8')
+
     # A failed install puts the environment and its files back exactly as they were.
     back_base = root / 'back'
     back_legacy = legacy_fixture(back_base, 'another-engine')
@@ -156,6 +167,7 @@ for key in ('new_engine', 'previous_engine', 'earlier_backup_retained', 'qwen_co
 assert report['migrate_exit'] == 0, 'migration install failed'
 for key in [name for name in report if name.startswith('migrate_') and name != 'migrate_exit']:
     assert report[key], key
+assert report['cpu_preference'] and report['cpu_preference_kept'], 'machines without NVIDIA must start local Qwen on the CPU'
 assert report['rollback_exit'] != 0, 'rollback fixture did not fail'
 assert report['rollback_folder_back'] and report['rollback_config_back'], 'failed install did not restore the old environment'
 assert report['forced_failure_exit'] != 0, 'locked fixture did not actually fail'

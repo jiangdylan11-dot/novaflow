@@ -339,10 +339,22 @@ namespace NovaFlow.AiRuntimeSetup
                 throw;
             }
             if (migration != null) migration.Finish();
+            WriteCpuPreferenceWithoutNvidia(Path.GetFullPath(request.RuntimePath));
             // An old patch record under the former name; nothing reads it.
             try { File.Delete(Path.Combine(Path.GetFullPath(request.RuntimePath), "novaflow-runtime-int8-tensorwise-v1.json")); }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
+        }
+
+        // Local Qwen defaults to the GPU, which needs an NVIDIA driver. A choice already
+        // made on this machine is kept.
+        private static void WriteCpuPreferenceWithoutNvidia(string runtimePath)
+        {
+            string preference = Path.Combine(runtimePath, "qwen35-execution.json");
+            bool nvidia = File.Exists(Path.Combine(Environment.SystemDirectory, "nvcuda.dll")) &&
+                Environment.GetEnvironmentVariable("FOART_SETUP_ASSUME_NO_NVIDIA") != "1";
+            if (nvidia || File.Exists(preference)) return;
+            File.WriteAllText(preference, "{\"schema\":\"nf.qwen-execution.v1\",\"mode\":\"cpu\"}", new UTF8Encoding(false));
         }
 
         private static void InstallIntoRuntime(InstallRequest request, BackgroundWorker reporter)

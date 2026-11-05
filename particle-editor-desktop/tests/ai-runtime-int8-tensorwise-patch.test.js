@@ -116,12 +116,12 @@ test('unknown drift and the installed ProgramData Runtime fail closed', () => {
   }
 })
 
-test('both Runtime builders apply the INT8 patch and publish version 0.5.0', () => {
+test('both Runtime builders apply the INT8 patch and publish version 0.5.1', () => {
   const packageSource = fs.readFileSync(packageScriptPath, 'utf8')
   const installerSource = fs.readFileSync(installerScriptPath, 'utf8')
   for (const source of [packageSource, installerSource]) {
     assert.match(source, /apply-runtime-int8-tensorwise-patch\.ps1/)
-    assert.match(source, /\[string\]\s+\$Version\s*=\s*"0\.5\.0"/)
+    assert.match(source, /\[string\]\s+\$Version\s*=\s*"0\.5\.1"/)
   }
   const pythonExcludes = packageSource.match(/\$pythonExcludeDirs\s*=\s*@\(([\s\S]*?)\r?\n\)/)?.[1] || ''
   assert.match(pythonExcludes, /Join-Path\s+\$SourcePythonRoot\s+"caches"/)

@@ -18,7 +18,9 @@ Foart AI Runtime
 - Python 3.12 + PyTorch 2.10（CUDA 13）+ ComfyUI 0.37；
 - 所有需要的插件（custom_nodes），安装时自动放进运行环境，
   包括 Qwen-Image-2.1 用的 GGUF 加载器、抠图、拆图、放大、H3 视频插件等；
-- H3 视频加速依赖（SageAttention、Triton）。
+- H3 视频加速依赖（SageAttention、Triton）；
+- 本地小桃的 GPU 运行组件（engine\llama\ollama-v0.40.13-cuda12），来自 Ollama v0.40.13 官方发行包，
+  其中 NVIDIA CUDA 库和 Microsoft VC 运行库分别受各自许可约束。没有 NVIDIA 显卡的电脑自动用 CPU。
 
 模型不在安装包里，需要另外放入模型库路径下的 models 文件夹。
 需要哪些文件、放在哪个子目录、各自用于什么功能，见同目录的 MODELS.txt。
