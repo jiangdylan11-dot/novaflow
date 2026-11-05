@@ -98,8 +98,11 @@ namespace NovaFlow.AiRuntimeSetup
                 SetupForm.InstallRuntime(new InstallRequest(runtimePath, assetsPath, legacyPath), reporter);
                 return 0;
             }
-            catch
+            catch (Exception error)
             {
+                // No window in this mode, so the reason must land somewhere it can be read.
+                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "foart-runtime-setup-error.log"), error.ToString()); }
+                catch (IOException) { }
                 return 1;
             }
         }
@@ -802,13 +805,24 @@ namespace NovaFlow.AiRuntimeSetup
             }
             StopRuntime(legacy);
             Directory.CreateDirectory(Path.GetDirectoryName(runtime));
-            try { Directory.Move(legacy, runtime); }
-            catch (IOException error) { throw new IOException("Please quit Foart and stop the AI runtime, then install again. " + error.Message, error); }
-            catch (UnauthorizedAccessException error) { throw new IOException("Please quit Foart and stop the AI runtime, then install again. " + error.Message, error); }
+            MoveWhenReleased(legacy, runtime);
             var migration = new RuntimeMigration(legacy, runtime);
             try { migration.RewriteConfigurations(runtime); }
             catch (Exception error) { migration.Rollback(error); throw; }
             return migration;
+        }
+
+        // A stopped runtime can hold its folder open for a moment after the stop script returns.
+        private static void MoveWhenReleased(string legacy, string runtime)
+        {
+            const string advice = "Please quit Foart and stop the AI runtime, then install again. ";
+            for (int attempt = 1; ; attempt++)
+            {
+                try { Directory.Move(legacy, runtime); return; }
+                catch (IOException error) { if (attempt >= 15) throw new IOException(advice + error.Message, error); }
+                catch (UnauthorizedAccessException error) { if (attempt >= 15) throw new IOException(advice + error.Message, error); }
+                System.Threading.Thread.Sleep(2000);
+            }
         }
 
         private static void StopRuntime(string runtime)
