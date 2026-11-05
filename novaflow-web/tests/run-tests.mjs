@@ -45,6 +45,7 @@ const SUITES = [
   { name: 'aifx-material-engine', file: 'e2e/aifx-material-engine.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'audio-studio', file: 'e2e/audio-studio.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'xiaotao-upload', file: 'e2e/xiaotao-upload.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'qwen21-style-redraw', file: 'e2e/qwen21-style-redraw.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'xiaotao-online-billing', file: 'e2e/xiaotao-online-billing.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'prompt-box-width', file: 'e2e/prompt-box-width.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-compute-mode', file: 'e2e/web-compute-mode.test.mjs', needs: [], timeoutMs: 60000 },

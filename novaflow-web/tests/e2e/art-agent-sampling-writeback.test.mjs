@@ -22,7 +22,7 @@ function drawing(){
 test('verified Agent writeback aligns panel and actual CFG while retaining exact negative and manual overrides',()=>{
   const {api,context,state,compiled}=drawing();
   const sampled=policy=>models.localSamplingFor(state,'img2img',state.negativePrompt,'qwen-2.1','drawing',policy);
-  assert.equal(sampled(api.samplingOptions(context)).cfg,1);
+  assert.equal(sampled(api.samplingOptions(context)).cfg,3);
   const runPolicy=api.generationOptions(compiled);assert.equal(sampled(runPolicy).cfg,3);
   assert.deepEqual(plain(api.registerAgentWriteback(context,compiled)),plain(runPolicy));
   assert.equal(sampled(api.samplingOptions(context)).cfg,3);
@@ -42,13 +42,12 @@ test('Agent registration rejects changed images, negative, text, role or unverif
   ]){
     const e=drawing();change(e);
     assert.throws(()=>e.api.registerAgentWriteback(e.context,e.compiled));
-    assert.deepEqual(plain(e.api.samplingOptions(e.context)),{});
   }
 });
 
-test('later reference edits invalidate an Agent policy instead of carrying native guidance to unrelated work',()=>{
+test('the panel follows the current reference roles, not an earlier Agent writeback',()=>{
   const e=drawing();e.api.registerAgentWriteback(e.context,e.compiled);
-  assert.equal(e.api.samplingOptions(e.context).qwen21NativeGuidance.cfg,3);
-  e.references[1].dataUrl+='changed';
-  assert.deepEqual(plain(e.api.samplingOptions(e.context)),{});
+  assert.equal(e.api.samplingOptions(e.context).styleRedraw,true);
+  e.references[1].drawingRole='pose';e.state.prompt='Use @参考图1 content and @参考图2 pose.';
+  assert.equal(e.api.samplingOptions(e.context).styleRedraw,false);
 });

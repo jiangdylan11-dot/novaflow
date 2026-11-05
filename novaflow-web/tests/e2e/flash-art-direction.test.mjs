@@ -52,7 +52,7 @@ test('missing rendering class defaults metadata only while native text, exclusio
   const h=await renderer(released(answer)),c=context(),prepared=await h.api.prepare(c);
   assert.equal(prepared.promptSnapshot.prompt,canonical);
   assert.equal(prepared.promptSnapshot.negativePrompt,request.negativePrompt);
-  assert.equal(h.api.generationOptions(prepared).qwen21NativeGuidance.cfg,3);
+  assert.equal(h.api.generationOptions(prepared).styleRedraw,true);
   assert.equal(answer.artDirection.editEnhancer.resourcesReleased,undefined);
   for(const renderingClass of [null,'','invented']){
     const invalid=flash(native({renderingClass}));
@@ -133,7 +133,7 @@ async function renderer(raw,strict=true){
   class Image {set src(value){pixels++;if(strict)throw Error('Native branch must not inspect pixels');this.naturalWidth=800;this.naturalHeight=1000;queueMicrotask(()=>this.onload());}}
   const box={TextEncoder,crypto:webcrypto,AbortController,queueMicrotask,setTimeout,clearTimeout,Image,
     document:{createElement(){pixels++;if(strict)throw Error('Native branch must not use canvas');return {getContext:()=>({fillRect(){},drawImage(){},getImageData:()=>({data:[80,100,120,255]})}),toDataURL:()=>PNG};}},
-    localStorage:{getItem(){return null;}},NovaFlowArtGenerateModels:{capabilityFor:()=>({engine:'qwen-2.1'})},
+    localStorage:{getItem(){return null;}},NovaFlowArtGenerateModels:{capabilityFor:()=>({engine:'qwen-2.1'}),isStyleRedraw:(await modelApi()).isStyleRedraw},
     electronAPI:{promptAssistantGetStatus:async()=>({ok:true,analysisBackend:'strata',supportsOriginalImages:true}),promptAssistantReverseImagePrompt:async request=>{calls.push(request);return {ok:true,data:clone(raw)};}}};
   box.window=box;runInContext(await fs.readFile(join(RENDERER,'art-direction.workflow.js'),'utf8'),createContext(box));
   return {api:box.NovaFlowArtDirection,calls,get pixels(){return pixels;}};
@@ -168,15 +168,15 @@ test('native renderer rejects mismatched canonical copies, cropped references an
   }
 });
 
-test('unchanged NoAI reuse retains exact native text/provenance; changing inputs invalidates its CFG policy',async()=>{
+test('unchanged NoAI reuse retains exact native text/provenance; changing inputs keeps the role rule',async()=>{
   const h=await renderer(await produced()),c=context(),first=await h.api.prepare(c);
   first.applyPromptToState();c.state.drawingAnalysisEngine='direct';
   const again=await h.api.prepare(c);
   assert.equal(again.promptSnapshot.prompt,canonical);assert.equal(again.promptSnapshot.negativePrompt,'  user negative only\n');
-  assert.equal(h.calls.length,1);assert.equal(h.api.generationOptions(again).qwen21NativeGuidance.cfg,3);
+  assert.equal(h.calls.length,1);assert.equal(h.api.generationOptions(again).styleRedraw,true);
   assert.deepEqual(clone(again.nativeExecution.modelIdentity),identity);
   c.state.negativePrompt+='modified';const changed=await h.api.prepare(c);
-  assert.equal(h.api.generationOptions(changed).qwen21NativeGuidance,undefined);
+  assert.equal(h.api.generationOptions(changed).styleRedraw,true,'the sampling rule follows the roles, not the text');
   assert.throws(first.assertCurrent,/已变化/);
 });
 
@@ -220,14 +220,14 @@ test('panel and real CPU workflow builder keep CFG3/standard25/Turbo8 sigmas, us
       const panel=models.localSamplingFor(state,'img2img','',undefined,'drawing',policy);
       assert.equal(panel.cfg,manual??3);assert.equal(panel.steps,variant==='turbo'?8:25);assert.equal(panel.cfgManual,manual!==undefined);
       const graph=clone(await host.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:['local','img2img',['source.png','style.png'],'QA',prepared.promptSnapshot.prompt,prepared.promptSnapshot.negativePrompt,'cpu-test',[{width:1280,height:960},{width:768,height:1344}],state,10,policy]}}));
-      assert.equal(graph['5'].inputs.prompt,expectedPrompt);assert.equal(graph['5'].inputs.negative_prompt,c.state.negativePrompt);assert.equal(graph['7'].inputs.cfg,manual??3);
+      assert.equal(graph['5'].inputs.prompt,expectedPrompt);assert.equal(graph['5'].inputs.negative_prompt,c.state.negativePrompt.trim());assert.equal(graph['7'].inputs.cfg,manual??3);
       if(variant==='turbo')assert.equal(graph[graph['7'].inputs.sigmas[0]].inputs.sigmas,'1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0');
       else assert.equal(graph['7'].inputs.steps,25);
     }
   }
   const ordinary={provider:'local',localDrawEngine:'qwen-2.1',localQwen21Variant:'turbo'};
   assert.equal(models.localSamplingFor(ordinary,'img2img','').cfg,1);
-  const policy={taskProfile:'art-direction',styleReferencePriority:true,referenceRoles:['subject','style'],qwen21NativeGuidance:{kind:'qwen21-strata-native',version:'flash-native-v1',cfg:3}};
+  const policy={taskProfile:'art-direction',referenceRoles:['subject','style']};
   assert.equal(models.localSamplingFor(ordinary,'txt2img','',undefined,'drawing',policy).cfg,1);
   assert.equal(models.localSamplingFor(ordinary,'img2img','',undefined,'ui',policy).cfg,1);
 });

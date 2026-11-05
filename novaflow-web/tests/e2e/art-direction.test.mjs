@@ -13,6 +13,9 @@ const cloud=require('../../admin/admin-server/art-direction.js');
 const samples=[[0,0,180,180],[210,0,390,180],[400,0,580,180],[600,0,780,180]];
 const use=(role,extra={})=>({role,detail:`observed ${role}`,target:'衣服',box:[0,0,1000,1000],samples:role==='style'?samples:[],...extra});
 const plan=(refs=[])=>({schema:'nf.art.direction.v1',summary:'按图分别采用',prompt:'一名蓝衣女性，站在林间，精致的水彩画风。',preserve:['同一人物'],exclude:['辅助图人物'],clarification:'',references:refs});
+const modelSandbox={module:{exports:{}}};
+runInContext(readFileSync(new URL('../../renderer/art-generate-model.resource.js',import.meta.url),'utf8'),createContext(modelSandbox));
+const realModels=modelSandbox.module.exports;
 function env(answer) {
   const calls=[],draws=[],storage=new Map();
   class Image {set src(value){this.url=value;this.naturalWidth=800;this.naturalHeight=1000;queueMicrotask(()=>this.onload());}}
@@ -20,7 +23,7 @@ function env(answer) {
     c.getContext=()=>({fillRect(){},drawImage(...args){ops.push(args.slice(1));draws.push(args);},getImageData:()=>({data:[80,100,120,255]}),strokeRect(){},filter:''});
     c.toDataURL=(mime)=>`data:${mime||'image/png'};base64,${Buffer.from(JSON.stringify([c.width,c.height,ops])).toString('base64')}`;return c;}};
   const sandbox={console,Image,document,TextEncoder,crypto:webcrypto,AbortController,queueMicrotask,setTimeout,clearTimeout,
-    localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},electronAPI:{promptAssistantReverseImagePrompt:async p=>{calls.push(p);return {ok:true,data:{[p.purpose==='art-director-review'?'artReview':'artDirection']:typeof answer==='function'?await answer(p):answer}};}},NovaFlowArtGenerateModels:{capabilityFor:()=>({engine:'qwen-2.1'})}};
+    localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},electronAPI:{promptAssistantReverseImagePrompt:async p=>{calls.push(p);return {ok:true,data:{[p.purpose==='art-director-review'?'artReview':'artDirection']:typeof answer==='function'?await answer(p):answer}};}},NovaFlowArtGenerateModels:{capabilityFor:()=>({engine:'qwen-2.1'}),isStyleRedraw:realModels.isStyleRedraw}};
   sandbox.window=sandbox;const context=createContext(sandbox);runInContext(readFileSync(new URL('../../renderer/art-direction.workflow.js',import.meta.url),'utf8'),context);
   return {api:sandbox.NovaFlowArtDirection,calls,draws,sandbox};
 }
@@ -68,14 +71,14 @@ test('unchanged AI writeback retains its grounded style policy and actual slots 
   state.drawingAnalysisEngine='direct';
   const repeated=await e.api.prepare(ctx(state,refs));
   assert.equal(repeated.direct,true);assert.equal(e.calls.length,1);
-  assert.equal(e.api.generationOptions(repeated).styleReferencePriority,true);
+  assert.equal(e.api.generationOptions(repeated).styleRedraw,true);
   assert.deepEqual(Array.from(repeated.references,r=>[r.sourceNumber,r.role]),[[5,'subject'],[2,'style']]);
   assert.equal(repeated.references[0].dataUrl,refs[4].dataUrl);assert.equal(repeated.references[1].dataUrl,refs[1].dataUrl);
   assert.equal(repeated.promptSnapshot.prompt,first.promptSnapshot.prompt);
   assert.equal(repeated.renderingPolicy,undefined,'replay does not change sampling policy');
-  const again=await e.api.prepare(ctx(state,refs));assert.equal(e.api.generationOptions(again).styleReferencePriority,true);
+  const again=await e.api.prepare(ctx(state,refs));assert.equal(e.api.generationOptions(again).styleRedraw,true);
   const fresh=await e.api.prepare(ctx({...state},refs));
-  assert.equal(e.api.generationOptions(fresh).styleReferencePriority,true,'a fresh explicit style pair derives the same contract without saved AI state');
+  assert.equal(e.api.generationOptions(fresh).styleRedraw,true,'a fresh explicit style pair derives the same contract without saved AI state');
   assert.deepEqual(Array.from(fresh.references,r=>r.sourceNumber),[5,2]);
 });
 
@@ -86,9 +89,9 @@ test('current explicit style roles determine the contract after edits without re
     [(state,refs)=>{refs[1]=ref('replacement-style');},true],
     [(state)=>{state.prompt='图1用图2姿势';},false],
     [(state)=>{state.width=960;},true],
-    [(state)=>{state.provider='google';},false],
-    [(state)=>{state.nsfw=true;},false],
-    [(state)=>{state.drawingTask='preserve';},false],
+    [(state)=>{state.provider='google';},true],
+    [(state)=>{state.nsfw=true;},true],
+    [(state)=>{state.drawingTask='preserve';},true],
   ]){
     const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
     p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'将<image1>按<image2>的实际画风重绘。',sourceOrder:[1,2],renderingClass:'anime'};
@@ -97,12 +100,12 @@ test('current explicit style roles determine the contract after edits without re
     const oldPrompt=state.prompt,oldNegative=state.negativePrompt,oldRefs=[...refs],oldState={...state};
     change(state,refs);
     const changed=await e.api.prepare(ctx(state,refs));
-    assert.equal(e.api.generationOptions(changed).styleReferencePriority,stylePriority,change.toString());
+    assert.equal(e.api.generationOptions(changed).styleRedraw,stylePriority,change.toString());
     assert.equal(e.calls.length,1,'invalidation never invokes an analyzer');
     for(const k of Object.keys(state))if(!Object.hasOwn(oldState,k))delete state[k];
     Object.assign(state,oldState,{prompt:oldPrompt,negativePrompt:oldNegative});refs.splice(0,refs.length,...oldRefs);
     const restored=await e.api.prepare(ctx(state,refs));
-    assert.equal(e.api.generationOptions(restored).styleReferencePriority,true,'restored explicit roles derive the contract independently of the invalidated policy');
+    assert.equal(e.api.generationOptions(restored).styleRedraw,true,'restored explicit roles derive the contract independently of the invalidated policy');
   }
 });
 
@@ -116,8 +119,8 @@ test('formal Qwen builders retain reference budgets and sampling geometry after 
     const first=await e.api.prepare(ctx(state,refs));first.applyPromptToState();state.drawingAnalysisEngine='direct';
     const repeated=await e.api.prepare(ctx(state,refs)),graphs=[];
     assert.equal(first.state.uiPreserveLayout,false);assert.equal(repeated.state.uiPreserveLayout,false);
-    assert.equal(e.api.generationOptions(first).styleReferencePriority,true);
-    assert.equal(e.api.generationOptions(repeated).styleReferencePriority,true);
+    assert.equal(e.api.generationOptions(first).styleRedraw,true);
+    assert.equal(e.api.generationOptions(repeated).styleRedraw,true);
     assert.deepEqual(Array.from(repeated.references,r=>[r.sourceNumber,r.role]),[[5,'subject'],[2,'style']]);
     if(preserve){assert.match(first.promptSnapshot.prompt,new RegExp(preserve));assert.match(repeated.promptSnapshot.prompt,new RegExp(preserve));}
     for(const prepared of [first,repeated])graphs.push(JSON.parse(JSON.stringify(await host.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:['local','img2img',['photo.jpg','cg.jpg'],'NF_replay',prepared.promptSnapshot.prompt,prepared.promptSnapshot.negativePrompt,'test',[{width:1280,height:960},{width:768,height:1344}],prepared.state,10,e.api.generationOptions(prepared)]}}))));
@@ -464,11 +467,11 @@ test('visually compared donor contents enter only negative guidance and enable s
   const e=env(p),refs=[ref('photo'),ref('style')],r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},refs));
   assert.doesNotMatch(r.promptSnapshot.prompt,/女仆裙装|红色蝴蝶结|户外街灯/);
   assert.match(r.promptSnapshot.negativePrompt,/女仆裙装.*红色蝴蝶结.*户外街灯/);
-  assert.equal(e.api.generationOptions(r).styleReferencePriority,true);
+  assert.equal(e.api.generationOptions(r).styleRedraw,true);
   const locked=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风，保持原构图'},refs));
-  assert.equal(e.api.generationOptions(locked).styleReferencePriority,true);
+  assert.equal(e.api.generationOptions(locked).styleRedraw,true);
   const colorsLocked=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风，保留原配色'},refs));
-  assert.equal(e.api.generationOptions(colorsLocked).styleReferencePriority,true);
+  assert.equal(e.api.generationOptions(colorsLocked).styleRedraw,true);
   p.references[1].uses[0].donorExclusions=['人物'];
   assert.throws(()=>e.api.validate(p,e.api.input(ctx({provider:'local',prompt:'图1用图2画风'},refs))),/超出内容职责/);
 });
@@ -559,6 +562,7 @@ function drawingRun(answers, reviewAnswers=[{schema:'nf.art.review.v1',pass:true
     ART_GENERATE_WEB_PROMPT_TIMEOUT_MS:1,ART_GENERATE_WORKFLOW_TIMEOUT_MS:1,ART_GENERATE_PROMPT_TIMEOUT_MS:1,ART_GENERATE_HISTORY_TIMEOUT_MS:1,ART_GENERATE_DOWNLOAD_TIMEOUT_MS:1});
   e.sandbox.document.body={classList:{contains:name=>name==='novaflow-primary-target-art'}};
   const source=readFileSync(new URL('../../renderer/novaflow-brand-runtime.js',import.meta.url),'utf8');
+  runInContext('let pendingArtAgentPreparation=null;',e.sandbox);
   runInContext(source.slice(source.indexOf('  function resolveArtGenerateReferenceInputs('),source.indexOf('  async function runArtGenerate(')),e.sandbox);
   runInContext(source.slice(source.indexOf('  async function runArtGenerate('),source.indexOf('  function createArtGenerateExecutionBridge()')),e.sandbox);
   return {e,state,refs,builds,uploads,statuses,run:options=>e.sandbox.runArtGenerate(options)};
@@ -772,7 +776,7 @@ test('the actual PE Q8 anime rewrite reaches existing rendering guidance and kee
   assert.match(r.promptSnapshot.negativePrompt,/photographic skin texture/);
   assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
   assert.equal(r.state.uiPreserveLayout,false);
-  assert.equal(e.api.generationOptions(r).styleReferencePriority,true);
+  assert.equal(e.api.generationOptions(r).styleRedraw,true);
   assert.deepEqual([r.state.width,r.state.height],[1280,960]);
 });
 
@@ -930,15 +934,15 @@ test('direct style requests canonicalize reversed image slots without analyzing 
   for(const suffix of ['', '，保留原配色', '，保持原光感', '，保持原构图']){
     const e=env(()=>{throw Error('无AI不应执行分析');});
     const r=await e.api.prepare(ctx({provider:'local',drawingAnalysisEngine:'direct',prompt:'图5按图2画风'+suffix,width:1280,height:960},[null,ref('style'),null,null,ref('photo')]));
-    assert.equal(e.calls.length,0);assert.equal(e.api.generationOptions(r).styleReferencePriority,true);
+    assert.equal(e.calls.length,0);assert.equal(e.api.generationOptions(r).styleRedraw,true);
     assert.deepEqual(Array.from(r.references,x=>[x.sourceNumber,x.role]),[[5,'subject'],[2,'style']]);
     assert.equal(r.promptSnapshot.prompt,'<image1>按<image2>画风'+suffix);assert.equal(r.state.uiPreserveLayout,false);
     assert.equal(r.state.width,1280);assert.equal(r.state.height,960);
   }
-  for(const [state,prompt] of [[{},'图1用图2姿势'],[{},'图1用图2画风和姿势'],[{},'图1用图2姿势和画风'],[{},'图1用图2画风和背景'],[{},'图1的衣服款式用图2'],[{provider:'google'},'图1用图2画风'],[{nsfw:true},'图1用图2画风'],[{drawingTask:'preserve'},'图1用图2画风']]){
+  for(const [state,prompt] of [[{},'图1用图2姿势'],[{},'图1用图2画风和姿势'],[{},'图1用图2姿势和画风'],[{},'图1用图2画风和背景'],[{},'图1的衣服款式用图2']]){
     const e=env(()=>{throw Error('无AI不应执行分析');});
     const r=await e.api.prepare(ctx({provider:'local',drawingAnalysisEngine:'direct',...state,prompt},[ref('photo'),ref('control')]));
-    assert.equal(e.api.generationOptions(r).styleReferencePriority,false,JSON.stringify(state)+' '+prompt);
+    assert.equal(e.api.generationOptions(r).styleRedraw,false,JSON.stringify(state)+' '+prompt);
     assert.equal(e.calls.length,0);
   }
 });
@@ -956,7 +960,7 @@ test('formal normal and Turbo graphs keep the same complete style geometry after
     const fresh=await e.api.prepare(ctx({...state,prompt:'图5按图2画风，上衣改为红色'},refs));
     const geometry=[];
     for(const prepared of [first,unchanged,edited,fresh]){
-      assert.equal(e.api.generationOptions(prepared).styleReferencePriority,true);
+      assert.equal(e.api.generationOptions(prepared).styleRedraw,true);
       assert.deepEqual(Array.from(prepared.references,r=>[r.sourceNumber,r.role]),[[5,'subject'],[2,'style']]);
       const graph=JSON.parse(JSON.stringify(await host.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:['local','img2img',['photo.jpg','cg.jpg'],'NF_contract',prepared.promptSnapshot.prompt,prepared.promptSnapshot.negativePrompt,'test',[{width:1280,height:960},{width:768,height:1344}],prepared.state,10,e.api.generationOptions(prepared)]}})));
       // Same matching-aspect contract as the budget test above: content stays on
@@ -967,7 +971,7 @@ test('formal normal and Turbo graphs keep the same complete style geometry after
       assert.deepEqual(graph['7'].inputs.latent_image,['5',2]);assert.equal(graph['6'],undefined);
       assert.doesNotMatch(graph['5'].inputs.prompt,/主体的位置、大小和画面取景不变|必须避免/);
       assert.equal(graph['5'].inputs.negative_prompt,prepared.promptSnapshot.negativePrompt);
-      assert.equal(graph['7'].inputs.cfg,variant==='turbo'?1:2.5);
+      assert.equal(graph['7'].inputs.cfg,variant==='turbo'?3:2.5,'a typed value wins; this state keeps 2.5 for the full route');
       if(variant==='standard')assert.equal(graph['7'].inputs.steps,25);
     }
     for(const g of geometry.slice(1))assert.deepEqual(g,geometry[0],'reference processing cannot depend on AI provenance or prompt/negative edits');

@@ -132,6 +132,15 @@
     return entry && typeof entry === 'object' ? entry : {}
   }
 
+  // A style redraw is one subject first, then only style references. The prompt carries the style
+  // in words, so both 2.1 routes need real guidance and an evaluated negative prompt.
+  const STYLE_REDRAW_CFG = 3
+  function isStyleRedraw(runPolicy) {
+    const roles = runPolicy?.referenceRoles
+    return runPolicy?.taskProfile === 'art-direction' && Array.isArray(roles) && roles.length >= 2
+      && roles[0] === 'subject' && roles.slice(1).every(role => role === 'style')
+  }
+
   // What a drawing run samples with, and what the panel shows: { route, steps, cfg, lightning,
   // defaultSteps, defaultCfg, stepsManual, cfgManual }. userNegativePrompt is the text the user wrote
   // (state.negativePrompt when not given). The panel finds the route from the node's features; a run
@@ -151,20 +160,11 @@
         : (negative ? STANDARD_FULL_STEPS : STANDARD_LIGHTNING_STEPS)
     const steps = manualSteps ?? defaultSteps
     const lightning = route === 'standard' ? steps <= STANDARD_LIGHTNING_MAX_STEPS : false
-    const guidedTurbo = surface === 'drawing' && modeKey === 'img2img'
-      && runPolicy?.taskProfile === 'art-direction' && runPolicy.styleReferencePriority === true
-      && runPolicy.referenceRoles?.length === 2 && runPolicy.referenceRoles[0] === 'subject' && runPolicy.referenceRoles[1] === 'style'
-      && runPolicy.qwen21TurboGuidance?.renderingClass === 'anime' && Number(runPolicy.qwen21TurboGuidance.cfg) === 3
-      && negative.length > 0
-    const native = runPolicy?.qwen21NativeGuidance
-    const nativeCfg = surface === 'drawing' && modeKey === 'img2img' && ['qwen-2.1','qwen-2.1-turbo'].includes(route)
-      && runPolicy?.taskProfile === 'art-direction' && runPolicy.styleReferencePriority === true
-      && runPolicy.referenceRoles?.length === 2 && runPolicy.referenceRoles[0] === 'subject' && runPolicy.referenceRoles[1] === 'style'
-      && native?.kind === 'qwen21-strata-native' && native.version === 'flash-native-v1'
-      && Number.isFinite(native.cfg) && native.cfg >= 1 && native.cfg <= 10 ? native.cfg : null
-    const defaultCfg = nativeCfg ?? (route === 'qwen-2.1-turbo' && guidedTurbo ? 3 : route === 'qwen-2.1'
+    const styleRedraw = surface === 'drawing' && modeKey === 'img2img'
+      && (route === 'qwen-2.1' || route === 'qwen-2.1-turbo') && isStyleRedraw(runPolicy)
+    const defaultCfg = styleRedraw ? STYLE_REDRAW_CFG : route === 'qwen-2.1'
       ? (negative ? QWEN21_NEGATIVE_CFG : 1)
-      : route === 'standard' && !lightning ? STANDARD_FULL_CFG : 1)
+      : route === 'standard' && !lightning ? STANDARD_FULL_CFG : 1
     return Object.freeze({
       route,
       mode: modeKey,
@@ -332,6 +332,8 @@
     normalizeLocalTextQuality,
     normalizeLocalEditStrength,
     localSamplingRoute,
+    STYLE_REDRAW_CFG,
+    isStyleRedraw,
     localSamplingFor,
     setLocalSamplingValue,
     localPresetFor,

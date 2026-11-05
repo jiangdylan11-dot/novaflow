@@ -621,7 +621,7 @@
       const mimeType=referenceImageMime(ref);
       if(!mimeType)throw new Error(`图${ref.source}的图片格式不受支持，请使用 PNG、JPEG 或 WebP`);
       const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
-      return {name:`reference_${ref.source}_direct.${extension}`,mimeType,dataUrl:ref.dataUrl,...carriedReferenceFile(ref),sourceIndex:ref.source-1,sourceNumber:ref.source,role:ref.roles[0]||'auto',detail:'原始完整参考图',treatment:'direct-original'};
+      return {name:`reference_${ref.source}_direct.${extension}`,mimeType,dataUrl:ref.dataUrl,...carriedReferenceFile(ref),sourceIndex:ref.source-1,sourceNumber:ref.source,role:ref.roles[0]||'auto',roles:ref.roles,detail:'原始完整参考图',treatment:'direct-original'};
     });
     const prompt=written?.nativeExecution?written.nativeExecution.prompt.replace(/<image(\d+)>/g,(_,n)=>`<image${references.findIndex(ref=>ref.sourceNumber===written.nativeExecution.sourceOrder[Number(n)-1])+1}>`):source.references.length?source.prompt.replace(/(?:@?参考图|图片|图|image)\s*(\d+)/gi,(mention,number)=>{
       const index=references.findIndex(ref=>ref.sourceNumber===Number(number));
@@ -796,11 +796,10 @@
     return create('span',{className:'nf-art-direction-reference',text:`图${number}`});
   }
   function generationOptions(prepared){
-    const referenceRoles=prepared.references.map(r=>r.role),styleReferencePriority=prepared.referencePolicy?.stylePriority===true;
-    const guided=styleReferencePriority&&referenceRoles.length===2&&referenceRoles[0]==='subject'&&referenceRoles[1]==='style'
-      &&prepared.turboGuidance?.renderingClass==='anime'&&Number(prepared.turboGuidance.cfg)===3;
-    const native=styleReferencePriority&&referenceRoles.length===2&&referenceRoles[0]==='subject'&&referenceRoles[1]==='style'&&isNative(prepared.nativeExecution)?prepared.nativeExecution:null;
-    return {taskProfile:'art-direction',referenceRoles,styleReferencePriority,...(guided?{qwen21TurboGuidance:{renderingClass:'anime',cfg:3}}:{}),...(native?{qwen21NativeGuidance:{kind:NATIVE_KIND,version:NATIVE_VERSION,cfg:native.providerPolicy.cfg}}:{})};
+    // A reference asked to do two jobs (画风和姿势) is not a pure style reference.
+    const referenceRoles=prepared.referenceRolePlan?.roles?.slice()||prepared.references.map(r=>r.roles?.length>1?'mixed':r.role);
+    const policy={taskProfile:'art-direction',referenceRoles};
+    return {...policy,styleRedraw:root.NovaFlowArtGenerateModels?.isStyleRedraw?.(policy)===true};
   }
   // Agent writeback uses the same grounded policy as the ordinary director.
   // Register only after its prompt has actually been written to this workspace.
@@ -822,12 +821,10 @@
       uiPreserveLayout:false,order:refs.map(ref=>({sourceNumber:ref.sourceNumber,role:ref.role}))});
     return generationOptions(prepared);
   }
-  // The panel and a reused NoAI run consult the same validated writeback. A
-  // changed prompt, negative, image or role cannot inherit a stale style CFG.
+  // The panel reads the same roles an ordinary run will use.
   function samplingOptions(context){
-    const written=writtenReferencePolicies.get(context.state),source=input(context);
-    if(!written||!same({...written.source,engine:source.engine},source))return {};
-    return generationOptions({references:written.order,referencePolicy:written.policy,turboGuidance:written.turboGuidance,nativeExecution:written.nativeExecution});
+    const source=input(context),references=source.references.map(r=>({source:r.source,role:r.roles[0]||'auto',roles:r.roles}));
+    return generationOptions({references:localStylePair(source,references)?[...references].sort((a,b)=>Number(b.role==='subject')-Number(a.role==='subject')):references});
   }
   root.NovaFlowArtDirection=Object.freeze({schema:SCHEMA,roles:ROLES,prepare,review,cancelPreparation,selectManual,controls,analysisControl,referenceControl,generationOptions,registerAgentWriteback,samplingOptions,validate,compile,input,same,renderReference,roleRendering});
 })(typeof window!=='undefined'?window:globalThis);

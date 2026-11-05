@@ -2,6 +2,11 @@
 // opt-in contract; the older structured/double-stage requests remain valid.
 export const QWEN21_NATIVE_REWRITE='qwen21-native-rewrite-v3';
 export const QWEN21_NATIVE_CONTRACTS=Object.freeze(['qwen21-native-rewrite-v2',QWEN21_NATIVE_REWRITE]);
+// One subject first, then style images: Qwen ignores a style picture but follows
+// a concrete style description, so the online model writes those words.
+export const QWEN21_STYLE_REDRAW_POLICY='qwen21-style-redraw-v1';
+export const STYLE_NEGATIVE='photograph, photorealistic skin texture, realistic facial proportions, blurry, extra person, text, watermark';
+export const isStyleRedrawRoles=roles=>Array.isArray(roles)&&roles.length>=2&&roles[0]==='subject'&&roles.slice(1).every(role=>role==='style');
 const fail=message=>{throw Object.assign(new Error(message),{code:'qwen21-rewrite-invalid'});};
 const SYSTEM=`Rewrite an image prompt for Qwen Image 2.1. Return matching Chinese display_prompt and English model_prompt in one JSON object. Both describe exactly the same final image or edit; the two fields are editor/model copies, never bilingual lettering inside the image.
 For text-to-image, write fluent observer prose: anchor the medium, style, subject and background first. Walk the frame in a coherent spatial order, locating each meaningful element relative to the frame and to other subjects; distinguish foreground, middle distance and background when relevant. Describe the actual material and its response to light, specific color tones, one coherent light source/direction and matching shadows/reflections. Close once on composition and mood. In display_prompt keep the user's own words for each subject, action and place (for example keep 走在海边 instead of a synonym), then add detail around them. Develop an ordinary scene to roughly 300-500 English words when that adds useful visual decisions, without imposing that length on a deliberately minimal image. Dense posters, charts or multiple panels must spell out all user content and its placement. No section labels, field inventories, checklists, analysis, vague quality boosters or repeated summary. Preserve intentional simplicity and empty space; do not invent extra subjects, readable text, logos or narrative props.
@@ -11,8 +16,17 @@ const EDIT_SYSTEM=`Rewrite the user's image-editing instruction for Qwen Image 2
 For changing this image, lead with the requested operation and make the named change strong and unmistakable. Describe only the changed attributes; preserve the untargeted content, identity, product design/count, layout, pose, accessories and rendering medium with a concise blanket clause. Do not describe the old face, clothing, background or style in detail merely to preserve it, since that invites regeneration. Do not soften the requested edit just to preserve identity.
 For making a new scene from a reference subject, actively compose the requested scene and lighting while keeping the referenced identity; do not treat scene creation as a tiny local edit. Ground every visible claim in the supplied images and request; do not invent unseen details, lettering or extra edit operations.
 One image: refer naturally to the image, without adding numbered tags. Preserve any reference tags or protected __NF...__ resource placeholders already supplied by the application verbatim, including for one image; these are bindings, not lettering. Multiple images: use <image1>, <image2>, etc., name each image's role, identify the base canvas when there is one, and say which specific attribute transfers from each reference. A style reference supplies style, not its objects, text or composition. For compositing, preserve identity sources and integrate scale, perspective, contact shadows and illumination coherently. For removal/outpainting, describe only the revealed/extended region needed for continuity. User-selected canvas dimensions, reference order, aspect ratio and sampling remain application parameters; do not insert them into the picture or change them.`;
+const STYLE_SYSTEM=`You prepare a style redraw for Qwen Image 2.1. <image1> is the subject; every later image is a style reference. The generator cannot read style from a picture, so your words carry the style. Return only JSON with style_description and rewritten_prompt, both in English.
+style_description: 25-60 words, concrete and observable, saying only HOW the style image(s) are rendered: medium (painterly, flat cel, semi-realistic...), line art (visible thin lines or no lines), shading (soft volumetric or hard two-tone), lighting key and colour temperature, palette, eye drawing style, skin treatment, hair rendering and detail level. Describe the palette with restraint: say clean or muted, never highly saturated. Never mention objects, characters, clothing, scenery, text, or hair, eye or iris colours from the style image(s).
+rewritten_prompt: one paragraph of exactly this shape, with the description in place of {style_description}: Redraw <image1> entirely as an illustration in this style: {style_description}. <image2> shows this style; match its rendering, not its content. Keep the person and scene of <image1>: identity and facial features, expression, hairstyle, clothing, held objects, pose, framing and background, all redrawn in that style. Keep the source's natural skin tone. Do not copy any character, clothing, objects, text or scenery from <image2>.
+With several style images, name all of them (<image2>, <image3>...) as the style wherever <image2> appears. Then add the user's own extra requests from current_instruction and requested_changes in English, leaving out what only asks for this style change. Keep quoted lettering and any __NF...__ placeholder verbatim, each placeholder exactly once. Canvas size, reference order, sampling and negative prompt belong to the application.`;
 export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
   const nativeEdit=input.promptContract===QWEN21_NATIVE_REWRITE&&input.qwenPromptMode==='img2img';
+  if(nativeEdit&&isStyleRedrawRoles(referenceRoles)){
+    return {kind:'qwen21-native',input:{...input},nativeEdit:true,styleRedraw:true,referenceCount:referenceRoles.length,modelPromptLanguage:'en',body:{model,store:false,temperature:0,max_output_tokens:2048,
+      input:[{role:'system',content:[{type:'input_text',text:STYLE_SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:'style-redraw',current_instruction:input.currentPrompt,requested_changes:input.requirements||'',reference_roles:referenceRoles.map((role,index)=>({image:index+1,role}))})}]}],
+      text:{format:{type:'json_schema',name:'qwen21_style_redraw',strict:true,schema:{type:'object',properties:{style_description:{type:'string'},rewritten_prompt:{type:'string'}},required:['style_description','rewritten_prompt'],additionalProperties:false}}}}};
+  }
   if(nativeEdit){
     const instruction=input.requirements?.trim()||input.currentPrompt;
     const descriptive=instruction.replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|(?<![A-Za-z0-9])'[^'\r\n]+'(?![A-Za-z0-9])|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/gu,'');
@@ -86,10 +100,15 @@ function explicitFacts(input,display,model){
 }
 export function compileQwen21NativeRewrite(response,prepared,preserve){
   const value=rewriteJson(response.output_text);
-  const nativeEdit=prepared.nativeEdit===true,expected=nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
+  const nativeEdit=prepared.nativeEdit===true,styleRedraw=prepared.styleRedraw===true,expected=styleRedraw?'rewritten_prompt,style_description':nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
   if(!value||Array.isArray(value)||Object.keys(value).sort().join(',')!==expected)fail('Qwen 2.1 rewrite fields invalid');
   const display=typeof (nativeEdit?value.rewritten_prompt:value.display_prompt)==='string'?(nativeEdit?value.rewritten_prompt:value.display_prompt).trim():'',model=nativeEdit?display:typeof value.model_prompt==='string'?value.model_prompt.trim():'';
   const language=prepared.modelPromptLanguage||'en';
+  const styleDescription=styleRedraw&&typeof value.style_description==='string'?value.style_description.trim():'';
+  if(styleRedraw){
+    if(!styleDescription)fail('Qwen 2.1 style description missing');
+    for(let index=1;index<=prepared.referenceCount;index++)if(!model.includes('<image'+index+'>'))fail('Qwen 2.1 style redraw lost an image role');
+  }
   if(display.length<(nativeEdit?2:8)||model.length<(nativeEdit?2:8)||display.length>16000||model.length>20000||(language==='en'&&(model.match(/[A-Za-z]+/g)||[]).length<(nativeEdit?1:8)))fail('Qwen 2.1 rewrite incomplete');
   const input=prepared.input,requirements=input.requirements||'';
   // Lexical overlap rejects equivalent image edits and cannot establish
@@ -113,8 +132,11 @@ export function compileQwen21NativeRewrite(response,prepared,preserve){
   if(nativeEdit)prose=prose.replace(/<image\d+>|@参考图\s*\d+/giu,'');
   if(language==='en'&&/[\u3400-\u9fff\uf900-\ufaff]/u.test(prose))fail('Qwen 2.1 model prose is not English');
   if(/^\s*\[(?:Style|Subjects|Environment|Lighting|Camera|Requirements)\]/im.test(model))fail('Qwen 2.1 model prompt must be native prose');
-  const contract=input.promptContract||QWEN21_NATIVE_REWRITE;
+  const contract=input.promptContract||QWEN21_NATIVE_REWRITE,userNegative=input.negativePrompt||'';
+  // Rerunning a draft sends its own negative back; it must not grow each time.
+  const negativePrompt=styleRedraw&&!userNegative.includes(STYLE_NEGATIVE)?[userNegative,STYLE_NEGATIVE].filter(Boolean).join(', '):userNegative;
   return {displayPrompt:display,modelPrompt:model,modelPromptLanguage:language,targetEngine:'qwen-2.1',promptContract:contract,
-    modelPromptPolicy:contract,translationValidation:nativeEdit?'native-edit-and-literals':'paired-prose-and-literals',
-    ...(input.supportsNegativePrompt===true?{hasNegativePrompt:true,negativePrompt:input.negativePrompt||''}:{})};
+    modelPromptPolicy:styleRedraw?QWEN21_STYLE_REDRAW_POLICY:contract,translationValidation:nativeEdit?'native-edit-and-literals':'paired-prose-and-literals',
+    ...(styleRedraw?{styleDescription}:{}),
+    ...(input.supportsNegativePrompt===true?{hasNegativePrompt:true,negativePrompt}:{})};
 }

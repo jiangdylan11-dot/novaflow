@@ -1067,7 +1067,7 @@
         if(stage==='structure'){
           if(nativeQwen){
             if(result.releaseEligible!==true||result.reviewRequired!==true||result.targetEngine!=='qwen-2.1'||result.promptContract!==payload.promptContract||
-              result.modelPromptPolicy!==payload.promptContract||(nativeEdit?!['zh','en'].includes(result.modelPromptLanguage):result.modelPromptLanguage!=='en')||result.translationValidation!==(nativeEdit?'native-edit-and-literals':'paired-prose-and-literals')||
+              (result.modelPromptPolicy!==payload.promptContract&&!(nativeEdit&&result.modelPromptPolicy==='qwen21-style-redraw-v1'))||(nativeEdit?!['zh','en'].includes(result.modelPromptLanguage):result.modelPromptLanguage!=='en')||result.translationValidation!==(nativeEdit?'native-edit-and-literals':'paired-prose-and-literals')||
               typeof result.displayPrompt!=='string'||!result.displayPrompt.trim()||typeof result.modelPrompt!=='string'||!result.modelPrompt.trim())
               return no('assistant-business-invalid-result','绘图提示词未通过验证，请查看实际扣费。',{quota});
             console.info('[NovaFlow] Qwen 2.1 rewrite timing',JSON.stringify(result.timings||{}));

@@ -82971,12 +82971,16 @@
     return window.NovaFlowUiDesignDrawing?.isActive?.() ? { ...ART_GENERATE_STATE, nsfw: false } : ART_GENERATE_STATE;
   }
 
+  let pendingArtAgentPreparation = null;
   function artGenerateSamplingOptions() {
-    return window.NovaFlowUiDesignDrawing?.isActive?.() ? {} : window.NovaFlowArtDirection?.samplingOptions?.({ state: ART_GENERATE_STATE, references: artGenerateReferences() }) || {};
+    if (window.NovaFlowUiDesignDrawing?.isActive?.()) return {};
+    // A reviewed draft runs with its own roles, so the panel shows what that run will use.
+    const direction = window.NovaFlowArtDirection, draft = pendingArtAgentPreparation;
+    return (draft?.referenceRolePlan ? direction?.generationOptions?.(draft) : direction?.samplingOptions?.({ state: ART_GENERATE_STATE, references: artGenerateReferences() })) || {};
   }
 
   function artGenerateSurfaceRenderKey() {
-    return `${window.NovaFlowUiDesignDrawing?.isActive?.() ? "ui" : "drawing"}:${window.NovaFlowArtGenerateModels?.renderKey?.(artGenerateModelState()) || ""}:${artGenerateSamplingOptions().qwen21TurboGuidance?.renderingClass || ""}`;
+    return `${window.NovaFlowUiDesignDrawing?.isActive?.() ? "ui" : "drawing"}:${window.NovaFlowArtGenerateModels?.renderKey?.(artGenerateModelState()) || ""}:${artGenerateSamplingOptions().styleRedraw ? "style" : ""}`;
   }
 
   function shouldKeepArtGenerateBottomContent(bottom, forceBottomRender = false) {
@@ -85868,11 +85872,8 @@
   const QWEN21_ART_FIRST_REFERENCE_PIXELS = 1048576;
   const QWEN21_ART_REFERENCE_PIXELS = 500000;
   const QWEN21_ART_EXTRA_REFERENCE_PIXELS = 1500000;
-  // A grounded style transfer balances content cues with full style detail.
-  // Below 0.5 MP the content may collapse into the donor on some seeds.
-  // Only the analyzed two-image route enables this after isolating
-  // donor content; ordinary edits and multi-role controls retain their budgets.
-  const QWEN21_ART_STYLE_CONTENT_PIXELS = 500000;
+  // A style redraw keeps its content at the working size and gives each style image up to 1 MP,
+  // within the same 1.5 MP extra total; ordinary edits and multi-role controls retain their budgets.
   const QWEN21_ART_STYLE_REFERENCE_PIXELS = 1048576;
 
   function artQwen21WorkingSize(width, height) {
@@ -85899,15 +85900,10 @@
     if (references.length > QWEN21_ART_MAX_REFERENCES) throw new Error(`Qwen-Image 2.1 最多支持 ${QWEN21_ART_MAX_REFERENCES} 张参考图，本次未截断提交。`);
     if (mode === "img2img" && !references.length) return null;
     const scopedDrawingRoles = providerOptions?.taskProfile === 'art-direction' && Array.isArray(providerOptions.referenceRoles) ? providerOptions.referenceRoles : [];
-    const prioritizedStyle = providerOptions?.styleReferencePriority === true && scopedDrawingRoles.length === 2 && scopedDrawingRoles[0] === 'subject' && scopedDrawingRoles[1] === 'style';
-    const guidedTurbo = mode === 'img2img' && prioritizedStyle && providerOptions?.qwen21TurboGuidance?.renderingClass === 'anime'
-      && Number(providerOptions.qwen21TurboGuidance.cfg) === 3 && guidance.negative.length > 0;
-    const nativeGuidance = providerOptions?.qwen21NativeGuidance;
-    const nativeCfg = mode === 'img2img' && prioritizedStyle && providerOptions?.taskProfile === 'art-direction'
-      && nativeGuidance?.kind === 'qwen21-strata-native' && nativeGuidance.version === 'flash-native-v1'
-      && Number.isFinite(nativeGuidance.cfg) && nativeGuidance.cfg >= 1 && nativeGuidance.cfg <= 10 ? nativeGuidance.cfg : null;
-    if (nativeCfg !== null && sampling?.cfgManual !== true) cfg = nativeCfg;
-    const turboCfg = sampling?.cfgManual === true ? cfg : nativeCfg ?? (guidedTurbo ? 3 : 1);
+    const models = window.NovaFlowArtGenerateModels;
+    const styleRedraw = mode === 'img2img' && models?.isStyleRedraw?.(providerOptions) === true;
+    if (styleRedraw && sampling?.cfgManual !== true) cfg = models.STYLE_REDRAW_CFG;
+    const turboCfg = sampling?.cfgManual === true || styleRedraw ? cfg : 1;
     const runtime = artQwen21Runtime(state);
     if (!runtime) return null;
     const info = runtime.info || {};
@@ -85926,7 +85922,7 @@
     }
     // resolution 0: the encoder takes every reference at the size the graph hands it (rounded to 32),
     // so each one is budgeted here.
-    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: nativeCfg !== null ? String((sampling ? state?.negativePrompt : negativePrompt) ?? '') : guidance.negative, resolution: 0 };
+    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: guidance.negative, resolution: 0 };
     workflow["5"] = { class_type: "TextEncodeQwenImage21", inputs: encode };
     if (mode === "txt2img") {
       const round32 = (value) => Math.max(256, Math.min(2048, Math.round((Number(value) || 1024) / 32) * 32));
@@ -85953,11 +85949,11 @@
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
     const changesDrawingLayout = scopedDrawingRoles.length > 0 && (scopedDrawingRoles[0] !== 'subject' || scopedDrawingRoles.some(role => role === 'pose' || role === 'composition'));
     // Keeping the canvas size does not request photographic geometry protection.
-    const editInPlace = !prioritizedStyle && !changesDrawingLayout && (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && (state?.uiNativeEditPrompt === true || Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02);
+    const editInPlace = !styleRedraw && !changesDrawingLayout && (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && (state?.uiNativeEditPrompt === true || Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02);
     // Match the style route's spatial input to sampling at the source aspect, without
     // enabling editInPlace's photographic framing directive. Other aspect/layout
     // requests retain their separate content budget and fresh sampling canvas.
-    const alignStyleContent = prioritizedStyle && !changesDrawingLayout && firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
+    const alignStyleContent = styleRedraw && !changesDrawingLayout && firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
     // The result is laid back over the source 1:1, and the model now and then redraws the subject a
     // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
     if (state?.uiNativeEditPrompt === true) { /* UI compiler already supplies one native edit directive. */ }
@@ -85982,7 +85978,7 @@
       return scaleTo(index, image, Math.max(32, Math.floor(width * factor / 32) * 32), Math.max(32, Math.floor(height * factor / 32) * 32));
     };
     const extraBudgets = sizes.slice(1).map(({ width, height }) => (
-      width * height > 0 ? Math.min(width * height, prioritizedStyle ? QWEN21_ART_STYLE_REFERENCE_PIXELS : QWEN21_ART_REFERENCE_PIXELS) : prioritizedStyle ? QWEN21_ART_STYLE_REFERENCE_PIXELS : QWEN21_ART_REFERENCE_PIXELS
+      width * height > 0 ? Math.min(width * height, styleRedraw ? QWEN21_ART_STYLE_REFERENCE_PIXELS : QWEN21_ART_REFERENCE_PIXELS) : styleRedraw ? QWEN21_ART_STYLE_REFERENCE_PIXELS : QWEN21_ART_REFERENCE_PIXELS
     ));
     const extraTotal = extraBudgets.reduce((sum, value) => sum + value, 0);
     const share = extraTotal > QWEN21_ART_EXTRA_REFERENCE_PIXELS ? QWEN21_ART_EXTRA_REFERENCE_PIXELS / extraTotal : 1;
@@ -85993,7 +85989,7 @@
       if (index === 0 && (editInPlace || alignStyleContent)) {
         if (first.width !== working.width || first.height !== working.height) image = scaleTo(0, image, working.width, working.height);
       } else if (index === 0) {
-        image = scaleToPixels(0, image, prioritizedStyle ? QWEN21_ART_STYLE_CONTENT_PIXELS : QWEN21_ART_FIRST_REFERENCE_PIXELS);
+        image = scaleToPixels(0, image, styleRedraw ? working.width * working.height : QWEN21_ART_FIRST_REFERENCE_PIXELS);
       } else {
         image = scaleToPixels(index, image, extraBudgets[index - 1] * share);
       }
@@ -86506,7 +86502,6 @@
     return { refs, rolePlan: { ...plan, conditioning: refs } };
   }
 
-  let pendingArtAgentPreparation = null;
   let pendingArtAgentRevision = 0n;
   const pendingArtAgentSnapshots = new WeakMap();
   const pendingArtAgentUndos = new WeakMap();
@@ -86739,7 +86734,7 @@
           return `图${number}只作为${item.role || "指定"}约束。`;
         }).join("\n")
       : "";
-    const promptWithReferenceRoles = prepared?.confirmedBoundGeneration===true ? qualityCompiled.prompt : referenceRoleConstraint
+    const promptWithReferenceRoles = prepared?.confirmedBoundGeneration===true || prepared?.promptOwnsReferenceRoles===true ? qualityCompiled.prompt : referenceRoleConstraint
       ? `${qualityCompiled.prompt}\n\n参考图职责（严格执行）：\n${referenceRoleConstraint}\n禁止任何辅助约束图改变主体身份。`
       : qualityCompiled.prompt;
     const compiledPrompt = compileArtGeneratePromptMentions(refs, promptWithReferenceRoles, Boolean(prepared));

@@ -5231,7 +5231,7 @@
         typeof response.displayPrompt!=='string'||!response.displayPrompt.trim()||typeof response.modelPrompt!=='string'||!response.modelPrompt.trim())
         throw new Error('所选模型的优化回执不完整，未应用结果，请核对账单。');
       if(gpt ? response.targetEngine!=='gpt-image-2.5'||response.promptContract!=='gpt-image-semantic-fusion-v1'||response.modelPrompt!==response.displayPrompt
-        : (options.generationMode==='img2img'?!['zh','en'].includes(response.modelPromptLanguage):response.modelPromptLanguage!=='en')||response.modelPromptPolicy!=='qwen21-native-rewrite-v3'||response.translationValidation!==(options.generationMode==='img2img'?'native-edit-and-literals':'paired-prose-and-literals')||response.promptContract!=='qwen21-native-rewrite-v3')
+        : (options.generationMode==='img2img'?!['zh','en'].includes(response.modelPromptLanguage):response.modelPromptLanguage!=='en')||(response.modelPromptPolicy!=='qwen21-native-rewrite-v3'&&!(options.generationMode==='img2img'&&response.modelPromptPolicy==='qwen21-style-redraw-v1'))||response.translationValidation!==(options.generationMode==='img2img'?'native-edit-and-literals':'paired-prose-and-literals')||response.promptContract!=='qwen21-native-rewrite-v3')
         throw new Error('绘图优化合同不匹配，未应用结果，请核对账单。');
       const display=restoreSmartAiResourceMentions(response.displayPrompt,protectedPrompt),model=restoreSmartAiResourceMentions(response.modelPrompt,protectedPrompt);
       if(!display.ok||!model.ok)throw smartAiResourceMentionError(display.error||model.error);
@@ -5243,8 +5243,9 @@
         const restored=restoreSmartAiResourceMentions(String(response.negativePrompt||''),protectedNegative);
         if(!restored.ok)throw smartAiResourceMentionError(restored.error);negative=restored.text;
       }
-      // A brief the planner wrote is working text, not the user's prompt to keep word for word.
-      if(options.plannerBrief!==true){const preserved=validateSmartAiArtPromptPreservation(source.replace(/<image(\d+)>/g,'@参考图$1'),display.text,requirements,{deterministicMerge:false});
+      // A brief the planner wrote is working text, and a style redraw is a fixed English
+      // instruction: neither is the user's prompt to keep word for word.
+      if(options.plannerBrief!==true&&response.modelPromptPolicy!=='qwen21-style-redraw-v1'){const preserved=validateSmartAiArtPromptPreservation(source.replace(/<image(\d+)>/g,'@参考图$1'),display.text,requirements,{deterministicMerge:false});
       if(!preserved.ok)throw smartAiPromptPreservationError(preserved);}
       const proofExecutionPrompt=model.text.replace(/@参考图\s*(\d+)/g,(_,n)=>`<image${n}>`);
       let compilerBinding,compilerBindingInvalidReason;
@@ -5259,7 +5260,7 @@
         else compilerBinding=Object.freeze({proof:response.compilerProof,modelPrompt:response.modelPrompt,modelId:selected.modelId,epoch:selected.epoch,images:Object.freeze(proofOriginalImages)});
       }
       return {prompt:proofExecutionPrompt,...(compilerBinding?{compilerBinding}:{}),...(compilerBindingInvalidReason?{compilerBindingInvalidReason}:{}),displayPrompt:display.text.replace(/@参考图\s*(\d+)/g,(_,n)=>`<image${n}>`),negativePrompt:negative,analysisBackend:'runninghub',generationReady:true,
-        optimization:{schema:'nf.agent.prompt-optimization.v1',framework:gpt?'gpt-image-semantic-fusion':'qwen21-native-rewrite',analysisProvider:'api',modelIdentity:response.modelIdentity,reviewRequired:true,translationValidation:response.translationValidation,...(!gpt?{modelPromptLanguage:response.modelPromptLanguage}:{}),quota:response.quota}};
+        optimization:{schema:'nf.agent.prompt-optimization.v1',framework:gpt?'gpt-image-semantic-fusion':'qwen21-native-rewrite',analysisProvider:'api',modelIdentity:response.modelIdentity,reviewRequired:true,translationValidation:response.translationValidation,...(!gpt?{modelPromptLanguage:response.modelPromptLanguage,modelPromptPolicy:response.modelPromptPolicy}:{}),quota:response.quota}};
     }
     if(scoped && (!selected || selected.provider!=='local' || selected.modelId!=='qwen3.5-9b-heretic' || !Number.isSafeInteger(selected.epoch) || (options.analysisProvider && options.analysisProvider!==selected.provider)))
       throw new Error('\u5f53\u524d\u6240\u9009\u6a21\u578b\u7684\u89c6\u9891\u4f18\u5316\u5c1a\u672a\u5f00\u901a\uff1b\u672a\u5207\u6362\u6a21\u578b\u3001\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
