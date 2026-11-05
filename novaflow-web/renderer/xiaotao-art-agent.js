@@ -295,7 +295,7 @@
   // to infer a prompt from an attachment or to generate an image.
   function localOperationIntent(message) {
     const text=String(message||'');
-    return qwenExplicitWriteIntent(text)||!discussionOnly(text)&&/打开|进入|切换|关闭|换成|换掉|替换|变成|做成|迁移|放进|放到|加到|生成|生图|出图|绘制|画一张|画个|制作|压缩|去黑|转换|裁切|分割|导入|导出|播放|暂停|跳到|定位|第\s*\d+\s*帧|删(?:除|掉|去|了)?|移除|创建|新建|选中|选择|移动|旋转|缩放|修改|调整|编辑|写入|应用|设置|填充|抠图|拆图|调用工具|执行|(?:再|更).{0,8}(?:一点|一些|点)|(?:快|慢|大|小|亮|暗|飘|动)(?:一点|一些|点)/i.test(text);
+    return qwenExplicitWriteIntent(text)||!discussionOnly(text)&&/打开|进入|切换|关闭|换成|换掉|替换|变成|做成|迁移|放进|放到|加到|生成|生图|出图|绘制|画一张|画个|(?:做|来|整|弄)\s*(?:一|两|几|[0-9])?\s*(?:张|幅)|制作|压缩|去黑|转换|裁切|分割|导入|导出|播放|暂停|跳到|定位|第\s*\d+\s*帧|删(?:除|掉|去|了)?|移除|创建|新建|选中|选择|移动|旋转|缩放|修改|调整|编辑|写入|应用|设置|填充|抠图|拆图|调用工具|执行|(?:再|更).{0,8}(?:一点|一些|点)|(?:快|慢|大|小|亮|暗|飘|动)(?:一点|一些|点)/i.test(text);
   }
   function qwenCurrentDrawingPromptIntent(message) {
     return /^(?:(?:请|麻烦|劳驾)\s*)?(?:帮我\s*)?(?:优化|润色|整理|改写)(?:一下)?(?:当前|现在的|这条|这段)(?:绘图|画图|生图)?(?:的)?(?:提示词|prompt)(?:一下|吧)?[。.!！\s]*$/i.test(String(message||'').trim());
@@ -1188,8 +1188,18 @@
       note(notes.join('\n') || '没有放入文件',failed || !done.length); return done.length > 0;
       } finally {state.uploading=false;notify();}
     }
+    // The local brain never shows an error box: whatever stopped it is said
+    // as an ordinary reply. Runtime faults become a plain retry/switch hint.
+    function localErrorAsReply() {
+      if (state.provider !== 'local' || !state.error || state.pending) return;
+      const text = String(state.error);
+      const fault = /显存|内存|GPU|CPU|节点|算力|模型.{0,6}(?:未启动|不可用|退出|释放|交接|加载)|安全退出|超时|失败|无效|异常|交接|凭据|回执|资源|busy|error/i.test(text);
+      state.messages.push({role:'assistant', content: fault ? '本地模型这次没能处理，可能是本机正在切换或释放资源。请稍后再发一次；需要操作软件或生成时，可以切换到在线模型。' : text});
+      state.error = ''; state.status = '';
+    }
     function notify() {
       if (retired) return;
+      localErrorAsReply();
       sessions[state.provider] = {messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId};
       modelSessions[state.modelId]={messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId,activeTask:state.activeTask,historyOriginUnknown:state.historyOriginUnknown===true};
       onChange(state);
