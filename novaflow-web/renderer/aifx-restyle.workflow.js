@@ -904,10 +904,11 @@
   function partsMaterial(parts, { shape = '', spread = '' } = {}) {
     const lines = (Array.isArray(parts) ? parts : []).filter(part => part && part.read).map((part) => {
       const read = part.read
-      const elements = String(read.elements || read.material || '').trim()
-        .replace(/^made of\s+/i, '').replace(/[\s.]+$/, '')
+      // A preset may open with its own verb ('built ENTIRELY from', 'rendered as'); keep it.
+      const raw = String(read.elements || read.material || '').trim().replace(/[\s.]+$/, '')
+      const elements = /^(made|built|rendered|formed)\s/i.test(raw) ? raw : 'made of ' + raw
       const colours = String(read.colours || '').trim()
-      return `The ${colourName(part.colour) || 'coloured'} parts are made of ${elements}${colours ? ' (' + colours + ')' : ''}.`
+      return `The ${colourName(part.colour) || 'coloured'} parts are ${elements}${colours ? ' (' + colours + ')' : ''}.`
     })
     if (!lines.length) return ''
     return ['Each part keeps its own material and colour - the parts are NOT blended into one material.',
@@ -1003,7 +1004,7 @@
       const where = `The ${colourName(part.colour) || 'coloured'} parts`
       return part.picture > 0 && part.picture <= referenceCount
         ? `${where} are made of exactly the material shown in <Picture ${part.picture}>, with its colour, surface finish and way of breaking apart.`
-        : `${where} are made of ${String(part.words || '').replace(/^made of\s+/i, '').replace(/[\s.]+$/, '')}.`
+        : `${where} are ${/^(made|built|rendered|formed)\s/i.test(String(part.words || '').trim()) ? '' : 'made of '}${String(part.words || '').trim().replace(/[\s.]+$/, '')}.`
     })
     return [
       'subject_definitions:',
