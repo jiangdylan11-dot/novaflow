@@ -133,8 +133,12 @@
   }
 
   // A style redraw is one subject first, then only style references. The prompt carries the style
-  // in words, so both 2.1 routes need real guidance and an evaluated negative prompt.
+  // in words, so both 2.1 routes need real guidance and an evaluated negative prompt. The subject
+  // goes in small so its photographic look does not outweigh the style words, and the run samples
+  // on a larger canvas (1536 x 1152 at 4:3) for a crisper finish, delivered at W / H as usual.
   const STYLE_REDRAW_CFG = 3
+  const STYLE_REDRAW_CONTENT_PIXELS = 250000
+  const STYLE_REDRAW_WORKING_PIXELS = 1769472
   function isStyleRedraw(runPolicy) {
     const roles = runPolicy?.referenceRoles
     return runPolicy?.taskProfile === 'art-direction' && Array.isArray(roles) && roles.length >= 2
@@ -333,6 +337,8 @@
     normalizeLocalEditStrength,
     localSamplingRoute,
     STYLE_REDRAW_CFG,
+    STYLE_REDRAW_CONTENT_PIXELS,
+    STYLE_REDRAW_WORKING_PIXELS,
     isStyleRedraw,
     localSamplingFor,
     setLocalSamplingValue,

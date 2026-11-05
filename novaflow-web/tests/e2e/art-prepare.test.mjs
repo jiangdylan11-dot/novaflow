@@ -92,7 +92,7 @@ function drawingRun(){
     loadNovaflowArtExportImage:async()=>({naturalWidth:768,naturalHeight:1024}),normalizeArtGenerateCount:n=>n,buildArtGenerateWorkflowWithSeed:(_seed,build)=>build(),
     buildArtGenerateRunWorkflow:(...args)=>{builds.push(args);return {workflow:{},modelKey:'drawing'};},applyArtReferenceControlNet:()=>({applied:0}),validateArtWorkflowNodes:async()=>{},withArtGenerateTimeout:task=>task(),
     artRequestJson:async(_base,path)=>({ok:true,data:path==='/prompt'?{prompt_id:'test'}:{test:{}}}),artHistoryErrorMessage:()=>'',extractArtGenerateFiles:()=>[{filename:'result.png'}],artFetchBlob:async()=>({}),artBlobToDataUrl:async()=>ref('result').dataUrl,artWorkflowKey:()=> 'drawing',
-    placeArtGenerateResultIntoSource:async()=>true,renderArtGenerateSurfaces:noop,clearArtGenerateBatch:noop,clearArtGenerateRunIfCurrent:noop,artGenerateBatchProgress:label=>({label,pct:0}),addEventListener:noop,removeEventListener:noop,
+    artStyleToneReference:()=>'',placeArtGenerateResultIntoSource:async()=>true,renderArtGenerateSurfaces:noop,clearArtGenerateBatch:noop,clearArtGenerateRunIfCurrent:noop,artGenerateBatchProgress:label=>({label,pct:0}),addEventListener:noop,removeEventListener:noop,
     ART_GENERATE_WEB_PROMPT_TIMEOUT_MS:1,ART_GENERATE_WORKFLOW_TIMEOUT_MS:1,ART_GENERATE_PROMPT_TIMEOUT_MS:1,ART_GENERATE_HISTORY_TIMEOUT_MS:1,ART_GENERATE_DOWNLOAD_TIMEOUT_MS:1});
   e.sandbox.document.body={classList:{contains:name=>name==='novaflow-primary-target-art'}};
   const source=readFileSync(new URL('../../renderer/novaflow-brand-runtime.js',import.meta.url),'utf8');

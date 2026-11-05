@@ -1,8 +1,8 @@
-// Style redraw: the online brain writes the style words, the local generator runs them at CFG 3.
+// Style redraw: the online brain writes three short texts, the program assembles the prompt, the local generator runs it at CFG 3.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
-import {buildQwen21NativeRewrite,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
+import {buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
 
 let passed=0,failed=0;
 async function test(name,fn){
@@ -12,16 +12,18 @@ async function test(name,fn){
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 const input={promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',currentPrompt:'把人物转成这个风格',requirements:'',negativePrompt:'',supportsNegativePrompt:true};
 const system=prepared=>prepared.body.input[0].content[0].text;
-const description='flat cel illustration, visible thin dark lines, hard two-tone shading, soft high-key warm light, clean palette, large simple eyes, smooth skin, chunky hair shapes, moderate detail';
-const redraw=`Redraw <image1> entirely as an illustration in this style: ${description}. <image2> shows this style; match its rendering, not its content. Keep the person and scene of <image1>: identity and facial features, expression, hairstyle, clothing, held objects, pose, framing and background, all redrawn in that style. Keep the source's natural skin tone. Do not copy any character, clothing, objects, text or scenery from <image2>.`;
-const answer=(text=redraw,style=description)=>({output_text:JSON.stringify({style_description:style,rewritten_prompt:text})});
+const description='flat cel-shaded illustration, clean thin line art, hard two-tone shadows, warm-toned palette, flat smooth skin, hair in crisp grouped strands, moderate detail';
+const content='a young woman with long wavy auburn hair, winking with a soft smile, a small beauty mark on her cheek, wearing a striped top, holding up a plastic cup, seated in an airport terminal at night';
+const mood='warm lamp glow from the left, soft orange-pink palette, cosy atmosphere, soft but clear contrast';
+const redraw=buildStyleRedrawPrompt(description,mood,content);
+const answer=(style=description,text=content,light=mood)=>({output_text:JSON.stringify({style_description:style,mood_description:light,content_description:text})});
 const compile=(overrides={},response=answer(),roles=['subject','style'])=>compileQwen21NativeRewrite(response,buildQwen21NativeRewrite({...input,...overrides},'model',roles));
 
 await test('style mode is chosen only for one subject first followed by style references',()=>{
   for(const roles of [['subject','style'],['subject','style','style']]){
     const prepared=buildQwen21NativeRewrite(input,'model',roles);
     assert.equal(prepared.styleRedraw,true,roles.join());assert.equal(prepared.referenceCount,roles.length);assert.equal(prepared.body.temperature,0);
-    assert.deepEqual(prepared.body.text.format.schema.required,['style_description','rewritten_prompt']);
+    assert.deepEqual(prepared.body.text.format.schema.required,['style_description','mood_description','content_description']);
   }
   for(const roles of [['subject'],['style'],['style','subject'],['subject','pose'],['subject','style','pose'],['subject','subject','style'],[]])
     assert.equal(buildQwen21NativeRewrite(input,'model',roles).styleRedraw,undefined,roles.join());
@@ -29,18 +31,33 @@ await test('style mode is chosen only for one subject first followed by style re
   assert.equal(isStyleRedrawRoles(['subject','style']),true);
 });
 
-await test('the style system asks for concrete rendering words and drops the preserve-medium clause',()=>{
+await test('the style system asks only for the three texts and bans the wording that darkens the result',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
-  for(const needle of ['25-60 words','medium','line art','shading','colour temperature','palette','eye drawing style','skin treatment','hair rendering','detail level','never highly saturated','iris colours',"Keep the source's natural skin tone.",'Redraw <image1> entirely as an illustration in this style: {style_description}.','<image2> shows this style; match its rendering, not its content.','Do not copy any character, clothing, objects, text or scenery from <image2>.','<image3>'])
+  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','colour temperature','hair and skin treatment','detail level','20-40 words','lighting design','key light colour and direction','shadow colour','contrast level','sky or daylight','exact hair colour','dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','__NF...__'])
     assert.ok(text.includes(needle),needle);
-  assert.doesNotMatch(text,/rendering medium/);
+  assert.doesNotMatch(text,/rendering medium|rewritten_prompt/);
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');
 });
 
+await test('the program assembles the prompt from the three slots, then the fixed lighting and finish blocks',()=>{
+  assert.ok(redraw.startsWith('Loosely based on <image1> (use it only for the person, pose and scene;'));
+  assert.ok(redraw.includes(`An illustration in this style: ${description}. ${content}. High quality key visual`));
+  assert.ok(redraw.includes(`take only the lighting design from <image2>: ${mood}. Express it`));
+  assert.ok(redraw.includes('never yellow or orange skin'));assert.ok(redraw.includes('Never a uniform colour cast'));
+  assert.ok(redraw.endsWith(`${buildStyleRelight(mood)} ${STYLE_POLISH}`));
+  assert.doesNotMatch(redraw,/keep the real light sources/,'the photo\'s light is not kept');
+  assert.doesNotMatch(STYLE_POLISH,/beauty mark|\bcup\b|terminal/,'the finish block fits any picture');
+  assert.equal(buildStyleRedrawPrompt(description+'. ',mood+'.',content+'.'),redraw,'a closing full stop is not doubled');
+  const several=buildStyleRedrawPrompt(description,mood,content,3);
+  assert.ok(several.includes('lighting design from <image2> and <image3>:'));
+  assert.equal(compile({},answer(),['subject','style','style']).modelPrompt,several);
+});
+
 await test('the compiled result carries the policy, the one prompt and a program-owned negative',()=>{
+  assert.match(STYLE_NEGATIVE,/skin pores.*3d render.*grainy, noise.*uniform color wash.*yellow skin, orange skin$/);
   const result=compile();
   assert.equal(result.modelPromptPolicy,QWEN21_STYLE_REDRAW_POLICY);assert.equal(result.promptContract,QWEN21_NATIVE_REWRITE);
-  assert.equal(result.displayPrompt,redraw);assert.equal(result.modelPrompt,redraw);assert.equal(result.styleDescription,description);
+  assert.equal(result.displayPrompt,redraw);assert.equal(result.modelPrompt,redraw);assert.equal(result.styleDescription,description);assert.equal(result.contentDescription,content);assert.equal(result.moodDescription,mood);
   assert.equal(result.translationValidation,'native-edit-and-literals');assert.equal(result.modelPromptLanguage,'en');
   assert.equal(result.hasNegativePrompt,true);assert.equal(result.negativePrompt,STYLE_NEGATIVE);
   assert.equal(compile({negativePrompt:'水印'}).negativePrompt,'水印, '+STYLE_NEGATIVE,'the user text comes first');
@@ -49,11 +66,12 @@ await test('the compiled result carries the policy, the one prompt and a program
 });
 
 await test('an incomplete style answer is rejected before it can be applied',()=>{
-  assert.throws(()=>compile({},answer(redraw,' ')),/style description missing/);
-  assert.throws(()=>compile({},answer(redraw.replaceAll('<image2>','the reference'))),/lost an image role/);
-  assert.throws(()=>compile({},answer(),['subject','style','style']),/lost an image role/);
-  assert.throws(()=>compile({},{output_text:JSON.stringify({rewritten_prompt:redraw})}),/fields invalid/);
-  assert.throws(()=>compile({},answer(redraw+' 人物微笑')),/not English/);
+  assert.throws(()=>compile({},answer(' ')),/style description missing/);
+  assert.throws(()=>compile({},answer(description,' ')),/content description missing/);
+  assert.throws(()=>compile({},answer(description,content,' ')),/mood description missing/);
+  assert.throws(()=>compile({},{output_text:JSON.stringify({style_description:description,rewritten_prompt:redraw})}),/fields invalid/);
+  assert.throws(()=>compile({},{output_text:'not json'}),/complete JSON/);
+  assert.throws(()=>compile({},answer(description,content+' 人物微笑')),/not English/);
 });
 
 await test('the browser checks accept exactly the policy the server exports',()=>{
@@ -66,6 +84,7 @@ const models=modelSandbox.module.exports;
 const styleRun={taskProfile:'art-direction',referenceRoles:['subject','style']};
 
 await test('one role rule sets CFG 3 on both 2.1 routes unless the user typed a value',()=>{
+  assert.equal(models.STYLE_REDRAW_CONTENT_PIXELS,250000);assert.equal(models.STYLE_REDRAW_WORKING_PIXELS,1536*1152);
   const turbo={provider:'local',localDrawEngine:'qwen-2.1',localQwen21Variant:'turbo'},full={provider:'local',localDrawEngine:'qwen-2.1'};
   assert.equal(models.localSamplingFor(turbo,'img2img','',undefined,'drawing',styleRun).cfg,3);
   assert.equal(models.localSamplingFor(full,'img2img','',undefined,'drawing',styleRun).cfg,3);
@@ -91,11 +110,14 @@ function build(options,{state={},sizes=[{width:2000,height:1500},{width:2000,hei
 }
 const sampler=graph=>Object.values(graph).find(node=>node.class_type==='SamplerCustom');
 
-await test('the style run keeps content at the working size, samples its latent and runs CFG 3',()=>{
+await test('the style run takes 0.25 MP content, a 1 MP style image, a 1536 x 1152 canvas delivered at W / H and CFG 3',()=>{
   const graph=build(styleRun);
   assert.equal(sampler(graph).inputs.cfg,3);assert.equal(graph['5'].inputs.negative_prompt,STYLE_NEGATIVE);
-  assert.equal(graph['200'].inputs.width,1280);assert.equal(graph['200'].inputs.height,960);
-  assert.deepEqual(Array.from(sampler(graph).inputs.latent_image),['5',2]);assert.equal(graph['6'],undefined);
+  assert.equal(graph['200'].inputs.width,576);assert.equal(graph['200'].inputs.height,416);
+  assert.deepEqual(Array.from(sampler(graph).inputs.latent_image),['6',0]);assert.equal(graph['6'].inputs.width,1536);assert.equal(graph['6'].inputs.height,1152);
+  assert.equal(graph['9'].inputs.width,1280);assert.equal(graph['9'].inputs.height,960);
+  const tall=build(styleRun,{state:{width:960,height:1280}});assert.equal(tall['6'].inputs.width,1152);assert.equal(tall['6'].inputs.height,1536);
+  const edit=build({taskProfile:'art-direction',referenceRoles:['subject','reference']});assert.equal(edit['9'],undefined,'an ordinary edit keeps its own working size');
   assert.ok(graph['201'].inputs.width*graph['201'].inputs.height<=1048576);assert.ok(graph['201'].inputs.width*graph['201'].inputs.height>700000);
   assert.equal(graph['5'].inputs.prompt,'prompt');
 });
@@ -106,6 +128,14 @@ await test('several style images share the 1.5 MP total and an ordinary edit sta
   assert.ok(pixels('201')+pixels('202')<=1500000);assert.equal(sampler(graph).inputs.cfg,3);
   const edit=build({taskProfile:'art-direction',referenceRoles:['subject','reference']});
   assert.equal(sampler(edit).inputs.cfg,1);assert.ok(edit['201'].inputs.width*edit['201'].inputs.height<=500000);
+});
+
+await test('only a local style redraw gets the tone step, and it can be redone from the untouched picture',()=>{
+  assert.match(source,/runProvider === "local" \? artStyleToneReference\(options\.drawingPrepared\) : ""/);
+  assert.match(source,/toneSourceUrl: rawImageUrl, toneReferenceUrl: toneReference, toneStrength/);
+  assert.match(source,/gradeArtStyleResult\(result\.toneSourceUrl, result\.toneReferenceUrl, strength\)/);
+  assert.match(read('../../renderer/spine-split-runtime.js'),/replaceSourceResourceImage,/);
+  assert.match(read('../../renderer/index.html'),/art-tone-match\.js/);
 });
 
 await test('a reviewed draft reports the roles it will run with, and the draft prompt owns the role text',()=>{
@@ -128,7 +158,7 @@ await test('a style image in slot 1 still runs subject first, while the page kee
   const tools=root.NovaFlowFoartTools,roles=Array.from(tools.captureDrawingReferenceRoles());
   const review=await tools.execute({action:'image_optimize',prompt:rt.state.prompt,generationMode:'img2img'},{provider:'api',modelId:'m',onlineBusiness:{},selectionStillCurrent:()=>true,projectStillCurrent:()=>true,currentDrawingVisionOnly:true,referenceSource:'page',referenceRoles:roles});
   assert.deepEqual(Array.from(request.images,image=>image.role),['subject','style']);assert.equal(request.prompt,'用<image2>的风格重绘<image1>');
-  assert.equal(review.modelPrompt,redraw);assert.ok(review.prompt.startsWith('Redraw <image2> entirely'),'the page numbers the photo as slot 2');
+  assert.equal(review.modelPrompt,redraw);assert.ok(review.prompt.startsWith('Loosely based on <image2> (use it'),'the page numbers the photo as slot 2');
   tools.confirmImageReview(review.reviewId);
   assert.deepEqual(Array.from(prepared.references,ref=>ref.name),['photo.png','style.png']);assert.deepEqual(Array.from(prepared.referenceRolePlan.roles),['subject','style']);
   assert.equal(prepared.promptSnapshot.prompt,redraw);assert.equal(prepared.promptOwnsReferenceRoles,true);assert.equal(rt.state.negativePrompt,STYLE_NEGATIVE);

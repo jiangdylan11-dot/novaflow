@@ -5,7 +5,7 @@ export const QWEN21_NATIVE_CONTRACTS=Object.freeze(['qwen21-native-rewrite-v2',Q
 // One subject first, then style images: Qwen ignores a style picture but follows
 // a concrete style description, so the online model writes those words.
 export const QWEN21_STYLE_REDRAW_POLICY='qwen21-style-redraw-v1';
-export const STYLE_NEGATIVE='photograph, photorealistic skin texture, realistic facial proportions, blurry, extra person, text, watermark';
+export const STYLE_NEGATIVE='photograph, photo, photorealistic skin texture, skin pores, realistic facial proportions, 3d render, cgi, blurry, extra person, text, watermark, grainy, noise, color cast, monochrome tint, uniform color wash, low contrast, flat lighting, haze, washed out, yellow skin, orange skin';
 export const isStyleRedrawRoles=roles=>Array.isArray(roles)&&roles.length>=2&&roles[0]==='subject'&&roles.slice(1).every(role=>role==='style');
 const fail=message=>{throw Object.assign(new Error(message),{code:'qwen21-rewrite-invalid'});};
 const SYSTEM=`Rewrite an image prompt for Qwen Image 2.1. Return matching Chinese display_prompt and English model_prompt in one JSON object. Both describe exactly the same final image or edit; the two fields are editor/model copies, never bilingual lettering inside the image.
@@ -16,16 +16,28 @@ const EDIT_SYSTEM=`Rewrite the user's image-editing instruction for Qwen Image 2
 For changing this image, lead with the requested operation and make the named change strong and unmistakable. Describe only the changed attributes; preserve the untargeted content, identity, product design/count, layout, pose, accessories and rendering medium with a concise blanket clause. Do not describe the old face, clothing, background or style in detail merely to preserve it, since that invites regeneration. Do not soften the requested edit just to preserve identity.
 For making a new scene from a reference subject, actively compose the requested scene and lighting while keeping the referenced identity; do not treat scene creation as a tiny local edit. Ground every visible claim in the supplied images and request; do not invent unseen details, lettering or extra edit operations.
 One image: refer naturally to the image, without adding numbered tags. Preserve any reference tags or protected __NF...__ resource placeholders already supplied by the application verbatim, including for one image; these are bindings, not lettering. Multiple images: use <image1>, <image2>, etc., name each image's role, identify the base canvas when there is one, and say which specific attribute transfers from each reference. A style reference supplies style, not its objects, text or composition. For compositing, preserve identity sources and integrate scale, perspective, contact shadows and illumination coherently. For removal/outpainting, describe only the revealed/extended region needed for continuity. User-selected canvas dimensions, reference order, aspect ratio and sampling remain application parameters; do not insert them into the picture or change them.`;
-const STYLE_SYSTEM=`You prepare a style redraw for Qwen Image 2.1. <image1> is the subject; every later image is a style reference. The generator cannot read style from a picture, so your words carry the style. Return only JSON with style_description and rewritten_prompt, both in English.
-style_description: 25-60 words, concrete and observable, saying only HOW the style image(s) are rendered: medium (painterly, flat cel, semi-realistic...), line art (visible thin lines or no lines), shading (soft volumetric or hard two-tone), lighting key and colour temperature, palette, eye drawing style, skin treatment, hair rendering and detail level. Describe the palette with restraint: say clean or muted, never highly saturated. Never mention objects, characters, clothing, scenery, text, or hair, eye or iris colours from the style image(s).
-rewritten_prompt: one paragraph of exactly this shape, with the description in place of {style_description}: Redraw <image1> entirely as an illustration in this style: {style_description}. <image2> shows this style; match its rendering, not its content. Keep the person and scene of <image1>: identity and facial features, expression, hairstyle, clothing, held objects, pose, framing and background, all redrawn in that style. Keep the source's natural skin tone. Do not copy any character, clothing, objects, text or scenery from <image2>.
-With several style images, name all of them (<image2>, <image3>...) as the style wherever <image2> appears. Then add the user's own extra requests from current_instruction and requested_changes in English, leaving out what only asks for this style change. Keep quoted lettering and any __NF...__ placeholder verbatim, each placeholder exactly once. Canvas size, reference order, sampling and negative prompt belong to the application.`;
+const STYLE_SYSTEM=`You prepare a style redraw for Qwen Image 2.1. <image1> is the subject; every later image is a style reference. The application builds the final prompt around your three texts. Return only JSON with style_description, mood_description and content_description, all in English.
+style_description: 25-60 words, concrete and observable, saying only HOW the style image(s) are rendered, in concrete technique words: line weight, shading method, highlight logic, colour temperature, hair and skin treatment, and detail level. Never name the colours of objects, or any character, object or scenery from the style image(s). Never use these words: dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale. Never use eye-shape words such as half-lidded or large eyes.
+mood_description: 20-40 words on the lighting design of the style image(s): the key light colour and direction, the shadow colour, the atmosphere, the contrast level, and the sky or daylight if the reference shows it. Never name any object or character from the style image(s).
+content_description: 40-80 words describing <image1>: the person, the exact hair colour and style, expression including any wink, facial marks and where they are, clothing, held objects, pose and framing, the scene, the time of day and the lighting. Ground every claim in <image1>. Carry through any request in current_instruction and requested_changes, such as a new pose or background, by describing the requested result; leave out what only asks for this style change. Keep quoted lettering and any __NF...__ placeholder verbatim, each placeholder exactly once. Canvas size, reference order, sampling and negative prompt belong to the application.`;
+// Only the lighting design comes from the reference. Colours stay the source's own: tinting the whole
+// picture is what reads as a colour filter.
+export function buildStyleRelight(moodDescription,style='<image2>'){
+  return `Lighting: take only the lighting design from ${style}: ${styleSlot(moodDescription)}. Express it through distinct light sources, specular highlights, rim light and deep coloured shadows with strong contrast, the way a professional illustrator lights a scene. Local colours stay true to the source: natural rosy skin tone with a soft pink undertone, never yellow or orange skin; the hair keeps its own deep colour, not orange; the clothing's own colours, the scene's own materials. Never a uniform colour cast, tint or monochrome wash over the whole picture; no haze; keep clean whites and deep darks.`;
+}
+// The finish every style redraw is held to, whatever the reference.
+export const STYLE_POLISH='Finish: a polished professional key visual. Refined, attractive facial features faithful to <image1> (same face proportions and facial marks in the same places), expressive eyes with clear catchlights, hair with rich strand detail and flowing highlights, clothing folds and held objects rendered with care, the background painted with real depth and atmosphere (soft painterly distance, glowing scene lights, reflections on glossy surfaces), harmonious colour composition with one dominant mood, crisp focal detail on the face, high overall completion, no rough or unfinished areas.';
+const styleSlot=text=>String(text).trim().replace(/[.\s]+$/u,'');
+export function buildStyleRedrawPrompt(styleDescription,moodDescription,contentDescription,referenceCount=2){
+  const style=Array.from({length:Math.max(1,referenceCount-1)},(_,index)=>`<image${index+2}>`).join(' and ');
+  return `Loosely based on <image1> (use it only for the person, pose and scene; do not keep its photographic rendering). An illustration in this style: ${styleSlot(styleDescription)}. ${styleSlot(contentDescription)}. High quality key visual, beautiful composition, rich detail, clean finish. ${buildStyleRelight(moodDescription,style)} ${STYLE_POLISH}`;
+}
 export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
   const nativeEdit=input.promptContract===QWEN21_NATIVE_REWRITE&&input.qwenPromptMode==='img2img';
   if(nativeEdit&&isStyleRedrawRoles(referenceRoles)){
     return {kind:'qwen21-native',input:{...input},nativeEdit:true,styleRedraw:true,referenceCount:referenceRoles.length,modelPromptLanguage:'en',body:{model,store:false,temperature:0,max_output_tokens:2048,
       input:[{role:'system',content:[{type:'input_text',text:STYLE_SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:'style-redraw',current_instruction:input.currentPrompt,requested_changes:input.requirements||'',reference_roles:referenceRoles.map((role,index)=>({image:index+1,role}))})}]}],
-      text:{format:{type:'json_schema',name:'qwen21_style_redraw',strict:true,schema:{type:'object',properties:{style_description:{type:'string'},rewritten_prompt:{type:'string'}},required:['style_description','rewritten_prompt'],additionalProperties:false}}}}};
+      text:{format:{type:'json_schema',name:'qwen21_style_redraw',strict:true,schema:{type:'object',properties:{style_description:{type:'string'},mood_description:{type:'string'},content_description:{type:'string'}},required:['style_description','mood_description','content_description'],additionalProperties:false}}}}};
   }
   if(nativeEdit){
     const instruction=input.requirements?.trim()||input.currentPrompt;
@@ -100,15 +112,15 @@ function explicitFacts(input,display,model){
 }
 export function compileQwen21NativeRewrite(response,prepared,preserve){
   const value=rewriteJson(response.output_text);
-  const nativeEdit=prepared.nativeEdit===true,styleRedraw=prepared.styleRedraw===true,expected=styleRedraw?'rewritten_prompt,style_description':nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
+  const nativeEdit=prepared.nativeEdit===true,styleRedraw=prepared.styleRedraw===true,expected=styleRedraw?'content_description,mood_description,style_description':nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
   if(!value||Array.isArray(value)||Object.keys(value).sort().join(',')!==expected)fail('Qwen 2.1 rewrite fields invalid');
-  const display=typeof (nativeEdit?value.rewritten_prompt:value.display_prompt)==='string'?(nativeEdit?value.rewritten_prompt:value.display_prompt).trim():'',model=nativeEdit?display:typeof value.model_prompt==='string'?value.model_prompt.trim():'';
+  const styleDescription=styleRedraw&&typeof value.style_description==='string'?value.style_description.trim():'',contentDescription=styleRedraw&&typeof value.content_description==='string'?value.content_description.trim():'',moodDescription=styleRedraw&&typeof value.mood_description==='string'?value.mood_description.trim():'';
+  if(styleRedraw&&!styleDescription)fail('Qwen 2.1 style description missing');
+  if(styleRedraw&&!contentDescription)fail('Qwen 2.1 content description missing');
+  if(styleRedraw&&!moodDescription)fail('Qwen 2.1 mood description missing');
+  const written=styleRedraw?buildStyleRedrawPrompt(styleDescription,moodDescription,contentDescription,prepared.referenceCount):nativeEdit?value.rewritten_prompt:value.display_prompt;
+  const display=typeof written==='string'?written.trim():'',model=nativeEdit?display:typeof value.model_prompt==='string'?value.model_prompt.trim():'';
   const language=prepared.modelPromptLanguage||'en';
-  const styleDescription=styleRedraw&&typeof value.style_description==='string'?value.style_description.trim():'';
-  if(styleRedraw){
-    if(!styleDescription)fail('Qwen 2.1 style description missing');
-    for(let index=1;index<=prepared.referenceCount;index++)if(!model.includes('<image'+index+'>'))fail('Qwen 2.1 style redraw lost an image role');
-  }
   if(display.length<(nativeEdit?2:8)||model.length<(nativeEdit?2:8)||display.length>16000||model.length>20000||(language==='en'&&(model.match(/[A-Za-z]+/g)||[]).length<(nativeEdit?1:8)))fail('Qwen 2.1 rewrite incomplete');
   const input=prepared.input,requirements=input.requirements||'';
   // Lexical overlap rejects equivalent image edits and cannot establish
@@ -137,6 +149,6 @@ export function compileQwen21NativeRewrite(response,prepared,preserve){
   const negativePrompt=styleRedraw&&!userNegative.includes(STYLE_NEGATIVE)?[userNegative,STYLE_NEGATIVE].filter(Boolean).join(', '):userNegative;
   return {displayPrompt:display,modelPrompt:model,modelPromptLanguage:language,targetEngine:'qwen-2.1',promptContract:contract,
     modelPromptPolicy:styleRedraw?QWEN21_STYLE_REDRAW_POLICY:contract,translationValidation:nativeEdit?'native-edit-and-literals':'paired-prose-and-literals',
-    ...(styleRedraw?{styleDescription}:{}),
+    ...(styleRedraw?{styleDescription,moodDescription,contentDescription}:{}),
     ...(input.supportsNegativePrompt===true?{hasNegativePrompt:true,negativePrompt}:{})};
 }

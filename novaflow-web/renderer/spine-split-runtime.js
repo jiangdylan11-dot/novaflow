@@ -4779,6 +4779,23 @@
     return Math.max(1, splitBusyElapsedSeconds(state.busyStartedAt))
   }
 
+  // The tone slider swaps a generated picture for its regraded copy: same size, same place.
+  async function replaceSourceResourceImage(externalId, dataUrl) {
+    const key = String(externalId || '')
+    const resource = key ? sourceResourceList().find((item) => item && item.externalId === key) : null
+    if (!resource) return false
+    const img = await loadImage(dataUrl)
+    if (!updateSourceResource(resource.id, { dataUrl, objectUrl: '', thumbPending: true })) return false
+    if (String(state.activeSourceResourceId || '') === String(resource.id) && state.source) {
+      state.source = { ...state.source, dataUrl, objectUrl: '' }
+      render()
+      updatePreviewOverlay()
+    }
+    updateRightPanel()
+    scheduleSourceResourceThumbnailFinalize(resource.id, img)
+    return true
+  }
+
   async function addSourceDataUrlResource(fileName, dataUrl, options = {}) {
     const activate = options.activate !== false
     const generationElapsedSec = sourceResourceGenerationElapsedSec(options)
@@ -36221,6 +36238,7 @@
     subscribeUiLayerProjects,
     reportUiLayerProjectError(message) { setMessage(String(message || '旧图层项目恢复失败，原数据已保留'), true); syncSplitWorkspace() },
     importSourceDataUrl,
+    replaceSourceResourceImage,
     addSourceDataUrlResource,
     registerSourceDataUrlResource,
     deleteSourceResource,
