@@ -20,26 +20,23 @@ const answer=(style=description,text=content,light=mood)=>({output_text:JSON.str
 const compile=(overrides={},response=answer(),roles=['subject','style'])=>compileQwen21NativeRewrite(response,buildQwen21NativeRewrite({...input,...overrides},'model',roles));
 
 const liveR1='Golden hour outdoor setting, with warm low-angle sunlight casting soft, elongated shadows. The key light is a rich golden tone from the side, shadows carry a gentle cool undertone, contrast is moderate, and the sky glows with a bright warm amber hue';
-await test('golden hour with no sun or sky in the picture becomes midday under a blue sky',()=>{
-  const decided=decideStyleTime(liveR1,{time_of_day:'golden_hour',sun_visible:false,sky_visible:false,sky_description:''});
-  assert.equal(decided.time,'midday');assert.equal(decided.sky,'clear bright blue sky filling every window');
-  assert.equal(decided.line,'Time of day: bright midday. Sky: clear bright blue sky filling every window.');
-  assert.equal(decided.mood,'bright white-gold midday sunlight from above, shadows carry a gentle cool undertone, contrast is moderate');
-  const text=buildStyleRelight(liveR1,'<image2>',{time_of_day:'golden_hour',sun_visible:false,sky_visible:false,sky_description:''});
-  assert.ok(text.startsWith(decided.line+' Lighting: take only'));assert.doesNotMatch(text.slice(0,text.indexOf('Express it')),/golden hour|amber/iu);
+const noView={time_of_day:'golden_hour',sun_visible:false,sky_visible:false,sky_description:''};
+await test('golden hour with no sun or sky in the picture becomes midday, keeping the rest of the light',()=>{
+  const decided=decideStyleTime(liveR1,noView);
+  assert.equal(decided.time,'midday');assert.doesNotMatch(decided.line+decided.mood,/\bsky\b|golden|amber|elongated|low-angle/iu);
+  assert.equal(decided.line,'Time of day: bright midday daylight. Every existing window and opening of <image1> is filled with bright pale daylight. The layout, walls, ceiling and openings of <image1> stay exactly as they are.');
+  assert.match(decided.mood,/gentle cool undertone/u);assert.match(decided.mood,/contrast is moderate/u);assert.match(decided.mood,/white-gold tone from above/u);
+  assert.ok(buildStyleRelight(liveR1,'<image2>',noView).startsWith(decided.line+' Lighting: take only'));
 });
-await test('a visible low sun keeps golden hour, a visible moon keeps night and a visible bright sky stays',()=>{
-  const golden=decideStyleTime(liveR1,{time_of_day:'golden_hour',sun_visible:true,sky_visible:true,sky_description:'deep blue'});
-  assert.equal(golden.time,'golden_hour');assert.equal(golden.sky,'bright warm sky');
-  const night=decideStyleTime('night, cool blue moonlight, deep shadows',{time_of_day:'night',sun_visible:false,sky_visible:true,sky_description:'dark sky with a full moon'});
-  assert.equal(night.time,'night');assert.equal(night.sky,'dark sky with a full moon, with lamps as the main light');assert.ok(night.mood.includes('moonlight'));
-  const day=decideStyleTime('bright midday, bright blue summer sky with white clouds, crisp cool grey shadows',{time_of_day:'midday',sun_visible:false,sky_visible:true,sky_description:''});
-  assert.equal(day.time,'midday');assert.equal(day.sky,'bright blue summer sky with white clouds');assert.doesNotMatch(day.mood,/sky/iu);
-  assert.equal(decideStyleTime('overcast, soft grey light',{time_of_day:'overcast',sun_visible:false,sky_visible:false}).sky,'bright overcast sky filling every window');
+await test('a time that stands keeps the brain sentence',()=>{
+  const golden=decideStyleTime(liveR1,{time_of_day:'golden_hour',sun_visible:true,sky_visible:true});assert.equal(golden.time,'golden_hour');assert.equal(golden.mood,liveR1);
+  const moon='Nighttime rainy scene lit by cool pale blue moonlight, a deep dark blue sky with thin clouds';
+  const night=decideStyleTime(moon,{time_of_day:'night',sun_visible:false,sky_visible:true});assert.equal(night.time,'night');assert.equal(night.mood,moon);assert.match(night.line,/Lamps are the main light/u);
+  const day=decideStyleTime('Midday bright sunlight, vivid blue sky with white clouds, cool shadows',{time_of_day:'midday',sun_visible:true,sky_visible:true});
+  assert.equal(day.time,'midday');assert.match(day.mood,/vivid blue sky with white clouds/u);assert.doesNotMatch(day.line,/\bsky\b|pale/iu);assert.match(day.line,/Daylight enters through the existing windows/u);
 });
 await test('missing facts fall back to the mood words and never overrule it',()=>{
-  const decided=decideStyleTime(liveR1);assert.equal(decided.time,'golden_hour');assert.equal(decided.sky,'bright warm sky');
-  assert.equal(decideStyleTime('neutral key light from above'),null);
+  assert.equal(decideStyleTime(liveR1).time,'golden_hour');assert.equal(decideStyleTime('neutral key light from above'),null);
   assert.equal(decideStyleTime('dusk, soft lamps',{time_of_day:'teatime'}).time,'dusk','an unknown time is ignored');
 });
 await test('the style brain reads the request, not the last picture\'s prompt',()=>{
@@ -52,7 +49,7 @@ await test('the style brain reads the request, not the last picture\'s prompt',(
 await test('the brain facts reach the prompt through the compile step',()=>{
   const prepared=buildQwen21NativeRewrite({promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',currentPrompt:'换风格',requirements:'',negativePrompt:'',supportsNegativePrompt:true},'m',['subject','style']);
   const result=compileQwen21NativeRewrite({output_text:JSON.stringify({style_description:description,mood_description:liveR1,content_description:content,time_of_day:'golden_hour',sun_visible:false,sky_visible:false,sky_description:''})},prepared);
-  assert.ok(result.modelPrompt.includes('Time of day: bright midday. Sky: clear bright blue sky filling every window. Lighting:'));
+  assert.ok(result.modelPrompt.includes('Time of day: bright midday daylight. Every existing window and opening'));
 });
 await test('style mode is chosen only for one subject first followed by style references',()=>{
   for(const roles of [['subject','style'],['subject','style','style']]){
@@ -68,7 +65,7 @@ await test('style mode is chosen only for one subject first followed by style re
 
 await test('the style system asks only for the three texts and bans the wording that darkens the result',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
-  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','hair and skin treatment','detail level','what sets them apart from ordinary anime art','never a blend','hard two-step shapes with no gradients','painterly brush modelling','Never use these generic words: clean, modern, Japanese, refined, polished, delicate, natural','No colour, palette or colour-temperature words','25-45 words','lighting design','one explicit time of day','midday, late afternoon, golden hour, dusk, night or overcast day','hard or soft shadows','hot highlights','a visible sun or moon','whether daylight or lamps dominate','does not mean evening or night','never one colour for the whole scene','Never state its time of day, sky, lighting or what shows through its windows','key light colour and direction','shadow colour','contrast level','the sky with its colours named strongly','Short hard shadows with strong highlights on lit surfaces mean midday','Choose golden hour only if a low sun or a warm-coloured sky is actually visible','warm colour grading alone never means evening','Outdoors and unsure means daytime','in daytime with no sky visible write a clear bright blue sky','at golden hour a bright warm sky, never dark or deep blue','only dusk and night get a dark sky','exact hair colour','warm, cool, golden, palette, tone, dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','never by tags or __NF...__ placeholders'])
+  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','hair and skin treatment','detail level','what sets them apart from ordinary anime art','never a blend','hard two-step shapes with no gradients','painterly brush modelling','Never use these generic words: clean, modern, Japanese, refined, polished, delicate, natural','No colour, palette or colour-temperature words','25-45 words','lighting design','one explicit time of day','midday, late afternoon, golden hour, dusk, night or overcast day','hard or soft shadows','hot highlights','a visible sun or moon','whether daylight or lamps dominate','does not mean evening or night','never one colour for the whole scene','Never state its time of day, sky, lighting or what shows through its windows','key light colour and direction','shadow colour','contrast level','only if the style image(s) show sky, its colours named strongly','Short hard shadows with strong highlights on lit surfaces mean midday','Choose golden hour only if a low sun or a warm-coloured sky is actually visible','warm colour grading alone never means evening','Outdoors and unsure means daytime','at golden hour a bright warm sky, never dark or deep blue','only dusk and night get a dark sky','exact hair colour','warm, cool, golden, palette, tone, dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','never by tags or __NF...__ placeholders'])
     assert.ok(text.includes(needle),needle);
   assert.doesNotMatch(text,/rendering medium|rewritten_prompt/);
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');
