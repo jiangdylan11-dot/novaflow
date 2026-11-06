@@ -2683,7 +2683,7 @@
       return false;
     }
     function releaseCurrentStagedMedia() { releasePreviews(state.staged); releasePreviews(state.pendingUploads); }
-    function releaseStagedMedia() { releaseCurrentStagedMedia(); for(const session of Object.values(transientSessions)){releasePreviews(session.staged);releasePreviews(session.pendingUploads);} }
+    function releaseStagedMedia() { releaseCurrentStagedMedia(); }
     // Detach this UI session without cancelling work already submitted.
     function retire() {
       if(retired)return false;
@@ -2710,11 +2710,12 @@
       businessModelEpoch++;
       for(const listener of businessModelListeners){try{listener();}catch{}}
       ++serial; notify();
-      transientSessions[state.modelId]={staged:state.staged,pendingUploads:state.pendingUploads,pendingUploadId:state.pendingUploadId,carryAttachments,carryAsk,lastUploads,lastPreparedTask,pendingIntent,lastRequestMessage};
+      // Placed attachments belong to the message being written, not to a model: they stay when only the brain switches.
+      transientSessions[state.modelId]={carryAttachments,carryAsk,lastUploads,lastPreparedTask,pendingIntent,lastRequestMessage};
       bridge.clearPrepared(); activeSnapshot = null; activeMode='chat';
       const saved=modelSessions[modelId] || {}, transient=transientSessions[modelId] || {};
       carryAttachments=transient.carryAttachments || null;carryAsk=transient.carryAsk || null;lastUploads=transient.lastUploads || [];lastPreparedTask=transient.lastPreparedTask || '';pendingIntent=transient.pendingIntent || null;lastRequestMessage=transient.lastRequestMessage || '';
-      Object.assign(state, {provider:model.provider,modelId,messages:saved.messages || [],history:saved.history || [],historyOriginUnknown:saved.historyOriginUnknown===true,activeTask:saved.activeTask || null,conversationId:'',staged:transient.staged || [],pendingUploads:transient.pendingUploads || [],pendingUploadId:transient.pendingUploadId || '',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:model.label,localSession:null,localModelStatus:null,qwenExecutionDevice:null,status:model.provider==='api'?(currentPricingPolicy()?(modelAvailable(modelId)?'':model.detail):'正在获取在线模型状态…'):model.detail});
+      Object.assign(state, {provider:model.provider,modelId,messages:saved.messages || [],history:saved.history || [],historyOriginUnknown:saved.historyOriginUnknown===true,activeTask:saved.activeTask || null,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:model.label,localSession:null,localModelStatus:null,qwenExecutionDevice:null,status:model.provider==='api'?(currentPricingPolicy()?(modelAvailable(modelId)?'':model.detail):'正在获取在线模型状态…'):model.detail});
       const showCancelledPromptSource=wasPendingPromptSource || cancelledPromptSourceModels.has(modelId);
       cancelledPromptSourceModels.delete(modelId);
       state.promptSourceCancelledNotice=showCancelledPromptSource?'先前的提示词来源选择已因切换模型取消，请重新发送需要优化的内容；未提交或扣费。':'';
