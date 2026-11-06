@@ -951,7 +951,7 @@
     // The one picture kept across messages: the subject of the last style transfer, until a new subject or 新对话.
     let currentSubject = null;
     const styleRuns = new WeakMap();
-    let stagedSeq = 0, carryAttachments = null, carryAsk = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
+    let stagedSeq = 0, deferredDrawing = [], carryAttachments = null, carryAsk = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
     const communityUploads = () => communityAttachmentMetadata(state.modelId,state.staged,lastUploads);
     // Read only the active surface's current prompt. A source-choice question
@@ -1115,7 +1115,10 @@
       releasePreviews(gone);
       state.staged = state.staged.filter(item => item.id !== id); notify(); return true;
     }
-    async function consumeStaged(message,{place=true}={}) {
+    // deferDrawing: the online brain reads the request first. 图生图 pictures wait here until its plan uses them,
+    // so a style run places only the subject and one style per run instead of every picture at once.
+    async function consumeStaged(message,{place=true,deferDrawing=false}={}) {
+      deferredDrawing=[];
       if (retired) return false;
       if (state.staged.some(item => item.status === 'reading')) {state.error = '文件还在读取，请稍后再发送'; notify(); return false;}
       const ready = state.staged.filter(item => item.status === 'ready');
@@ -1129,7 +1132,9 @@
       const productionRequest=nativeArtRequest||uploads.effectsPanelRequest?.(message)===true||/压缩|去黑|图集|查看器|粒子|模板|(?:转换|转为|转成).{0,8}(?:MP4|GIF|WEBM|MOV|AVI|MKV|格式)/i.test(taskText)||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
       const plan = productionRequest||!place?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask);
       const notes = []; let failed = plan.reject.length > 0;
+      deferredDrawing = deferDrawing ? plan.place.filter(item => item.destination?.id === 'img2img') : [];
       for (const item of plan.place) {
+        if(deferredDrawing.includes(item))continue;
         if(retired)return false;
         try {const receipt = await host().place(item); notes.push(`已放入${item.destination.label}：${item.name}`); item.receipt = receipt;}
         catch (error) {failed = true; notes.push(String(error?.message || error));}
@@ -1387,6 +1392,13 @@
     async function sendFoart(message,{recordMessage=true,requestMessage=message,intent,animationIntent=false}={}) {
       const tools=root.NovaFlowFoartTools,contract=root.NovaFlowFoartToolContract,operation=++serial;
       let foartOperationSession=null,foartPreviousContext=null;
+      const drawingPending=deferredDrawing;deferredDrawing=[];
+      // A plain 图生图 step puts this turn's pictures on the page right before it runs, as the plan decided.
+      const placeDrawingPending=async()=>{
+        const notes=[];
+        for(const item of drawingPending.splice(0)){await host().place(item);notes.push('已放入'+item.destination.label+'：'+item.name);}
+        if(notes.length){state.messages.push({role:'status',content:notes.join('\n')});notify();}
+      };
       const preferUploads=!!carryAttachments?.some(item=>item.kind==='image'),freshPictures=(carryAttachments||[]).filter(item=>item.kind==='image'&&item.dataUrl).slice(0,3);
       const positiveRequest=uploadApi()?.positiveTaskText?.(message)??message.replace(/(?:不要|不用|无需|不需要|不生成)[^，。；,;\n]*/g,'');
       const mediaEditIntent=/剪辑|裁切|截取|分割|淡入|淡出|音量|变速|时间轴|帧编辑|倒放|静音|音轨|独奏|片段/.test(positiveRequest)&&!/(?:生成|制作|做)(?:一[段个]|[0-9.]+秒|新的?|这个)?(?:视频|动画)/.test(positiveRequest);
@@ -1770,8 +1782,9 @@
             }
             root.console?.debug?.('[Foart tools] execute',op.action,op.name||op.operation?.action||op.operation||current.controls.find(control=>control.id===op.controlId)?.label||op.resourceId||'',op.value??'');
             let receipt;
-            if(styleRuns.has(op))receipt=await runStyle(styleRuns.get(op),signal);
+            if(styleRuns.has(op)){drawingPending.length=0;receipt=await runStyle(styleRuns.get(op),signal);}
             else if(['image_optimize','image_generate'].includes(op.action)){
+              if(op.generationMode!=='txt2img'&&op.useResult!==true)await placeDrawingPending();
               receipt=await plannerDrawingPrompt(op,message);
               // "先画…然后做成视频": a finished picture is one step of the request, so the planner gets the next round.
               if(op.action==='image_generate'&&receipt?.phase==='completed'&&/然后|接着|之后|再把|再用|再做|做成|转成|导出|保存|配乐|配音|视频|动画/.test(positiveRequest))delete receipt.plannerPrompt;
@@ -1943,8 +1956,9 @@
         if (stagedReady) return true;stagedReady=true;
         if(!state.staged.length && lastUploads.length && task && task.surface!=='chat' && !(task.revision&&state.activeTask?.executor==='foart'&&state.activeTask?.surface===task.surface) && lastPreparedTask!==task.surface+':'+task.mode)
           state.staged=lastUploads.map(item=>({...item,id:'up-'+(++stagedSeq),previewUrl:item.dataUrl||'',status:'ready'}));
-        return (await consumeStaged(requestMessage,{place:!reverseImage})) && !retired;
+        return (await consumeStaged(requestMessage,{place:!reverseImage,deferDrawing})) && !retired;
       }
+      let deferDrawing=false;
       const positiveEvaluation = /^(?:这次|这张(?:图)?|这个|效果|结果)?(?:的)?(?:效果|画面)?(?:做得|做的|画得|画的)?(?:挺好(?:的)?|很好|很满意|满意|很棒|不错)(?:了)?[，,\s]*$/;
       const purePositive = positiveEvaluation.test(message.replace(/[。！!]+$/,'')) || /^(?:这次|这张|这个)?(?:就用|采用|最终采用|确认采用)(?:这张|这个|本次)?[。！!]*$/.test(message);
       const pureNegative = /^(?:这次|这张|这个)?(?:不满意|不太满意|效果不好|不行)[。！!]*$/.test(message);
@@ -1961,6 +1975,7 @@
       const operationNeedsTools=!reverseImage&&(includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
         /打开|关闭|进入|切换|操作|执行|调用|生成|制作|设计|新建|创建|建立|添加|增加|做(?:一|个|张|段|套)|来(?:一|个|张|段)|配乐|配音|转成|转换|合成|渲染|改|换|抠|去掉|去除|擦|放大|扩|拆|补|裁|压缩|画|加上|加个|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
       const operationGeneral=state.provider==='api'&&!capabilityOnly&&!!operationNeedsTools;
+      deferDrawing=operationGeneral;
       if (!(await ensureStaged())) return false;
       if(operationGeneral){if(!root.NovaFlowFoartTools){state.error='工具尚未就绪，本次未提交。';notify();return false;}
         return sendFoart(message,{recordMessage,requestMessage,intent:task,animationIntent:task?.surface==='animation'});}
@@ -2481,6 +2496,8 @@
     // A style run from planStyleRun: one full style redraw per group of style pictures, each writing its own texts and billed on its own.
     // Each run puts only the subject and that run's style pictures on the page; the page then shows what the last run used.
     async function runStyle({subjectSlot,styleSlots,perStyle,extras,pictures:turn},signal){
+      if(!root.__NovaFlowArtGenerate?.state?.active)await root.NovaFlowFoartTools?.execute?.({action:'open',surface:'drawing'},{signal});
+      if(!root.__NovaFlowArtGenerate)throw Error('绘图页面还没准备好，未生成。');
       const rt=root.__NovaFlowArtGenerate,pictures=turn||Array.from(rt.references?.()||[]).filter(Boolean).map(ref=>({...ref})),outputs=[];let last=null;
       const subject=subjectSlot>=0?pictures[subjectSlot]:currentSubject,styles=styleSlots.map(slot=>pictures[slot]),groups=perStyle?styles.map(style=>[style]):[styles];
       // Clearing a slot revokes its preview, so every placement takes a new one from the file.

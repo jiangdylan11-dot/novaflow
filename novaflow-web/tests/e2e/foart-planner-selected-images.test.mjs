@@ -152,3 +152,14 @@ test('a message\'s pictures replace the 图生图 references even when it says �
     assert.deepEqual(plain(place.map(item=>[item.name,item.replaceReferences,item.referenceIndex])),[['s1.png',true,0],['s2.webp',true,1],['s3.png',true,2]],text);
   }
 });
+
+test('the online brain reads the request before any 图生图 picture is placed',()=>{
+  const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
+  // The upload step keeps 图生图 pictures aside for a tool turn; nothing is put on the page before the plan.
+  assert.match(source,/deferredDrawing = deferDrawing \? plan\.place\.filter\(item => item\.destination\?\.id === 'img2img'\) : \[\];/);
+  assert.match(source,/if\(deferredDrawing\.includes\(item\)\)continue;/);
+  assert.match(source,/deferDrawing=operationGeneral;\n\s*if \(!\(await ensureStaged\(\)\)\) return false;/);
+  // A style run never places them all: it places subject + one style per run. A plain 图生图 step places them just before it runs.
+  assert.match(source,/if\(styleRuns\.has\(op\)\)\{drawingPending\.length=0;receipt=await runStyle/);
+  assert.match(source,/if\(op\.generationMode!=='txt2img'&&op\.useResult!==true\)await placeDrawingPending\(\);/);
+});
