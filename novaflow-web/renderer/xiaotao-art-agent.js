@@ -1779,7 +1779,7 @@
             }
             root.console?.debug?.('[Foart tools] execute',op.action,op.name||op.operation?.action||op.operation||current.controls.find(control=>control.id===op.controlId)?.label||op.resourceId||'',op.value??'');
             let receipt;
-            if(imageRunPlans.has(op)){drawingPending.length=0;receipt=await runImageRuns(imageRunPlans.get(op),signal);}
+            if(imageRunPlans.has(op)){drawingPending.length=0;receipt=await runImageRuns(imageRunPlans.get(op),signal,message);}
             else if(['image_optimize','image_generate'].includes(op.action)){
               if(op.generationMode!=='txt2img'&&op.useResult!==true)await placeDrawingPending();
               receipt=await plannerDrawingPrompt(op,message);
@@ -2493,7 +2493,8 @@
     }
     // The brain's runs for this turn's pictures: one full generation per run, each writing its own texts and billed on its own.
     // A run puts the subject and only its own pictures on the page, each in the role the brain gave it; the page then shows the last run.
-    async function runImageRuns({subjectSlot,roles,runs,prompt,pictures:turn},signal){
+    // ownWords is what the person typed: the plan's text was written with the page's last prompt in view, so it can carry that picture's lighting.
+    async function runImageRuns({subjectSlot,roles,runs,prompt,pictures:turn},signal,ownWords=''){
       if(!root.__NovaFlowArtGenerate?.state?.active)await root.NovaFlowFoartTools?.execute?.({action:'open',surface:'drawing'},{signal});
       if(!root.__NovaFlowArtGenerate)throw Error('绘图页面还没准备好，未生成。');
       const rt=root.__NovaFlowArtGenerate,pictures=turn||Array.from(rt.references?.()||[]).filter(Boolean).map(ref=>({...ref})),outputs=[];let last=null;
@@ -2509,7 +2510,7 @@
         place([{...subject,drawingRole:'subject'},...run.slots.map(slot=>({...pictures[slot],drawingRole:roles[slot]||'reference'}))]);
         const request=runRequest(run.prompt||prompt,subjectSlot,run.slots);
         state.status='正在生成第 '+(index+1)+'/'+runs.length+' 次…';notify();
-        try{last=await plannerDrawingPrompt({action:'image_generate',generationMode:'img2img',useResult:false,prompt:request},request,{rolesSet:true});outputs.push(...(last.outputs||[]));}
+        try{last=await plannerDrawingPrompt({action:'image_generate',generationMode:'img2img',useResult:false,prompt:request},ownWords||request,{rolesSet:true});outputs.push(...(last.outputs||[]));}
         catch(error){if(signal?.aborted||runs.length===1)throw error;failed.push('第 '+(index+1)+' 次：'+String(error?.message||error));}
       }
       if(!outputs.length)throw Error(failed.length>1?failed.join('；'):String(failed[0]||'未生成'));
