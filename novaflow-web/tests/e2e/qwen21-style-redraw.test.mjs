@@ -28,6 +28,12 @@ await test('golden hour with no sun or sky in the picture becomes midday, keepin
   assert.match(decided.mood,/gentle cool undertone/u);assert.match(decided.mood,/contrast is moderate/u);assert.match(decided.mood,/white-gold tone from above/u);
   assert.ok(buildStyleRelight(liveR1,'<image2>',noView).startsWith(decided.line+' Lighting: take only'));
 });
+await test('golden hour with a sky but no low sun is still midday, and its sky words go',()=>{
+  const live='Golden hour outdoor setting, with low warm golden key light coming from a side angle. Shadows are deep cool blue, contrast is strong, and the sky is a dark star-dotted night sky';
+  const decided=decideStyleTime(live,{time_of_day:'golden_hour',sun_visible:false,sky_visible:true,sky_description:'dark night sky'});
+  assert.equal(decided.time,'midday');assert.doesNotMatch(decided.line+decided.mood,/\bsky\b|night|golden hour/iu);assert.match(decided.line,/bright pale daylight/u);assert.match(decided.mood,/deep cool blue/u);
+  assert.equal(decideStyleTime('dusk, lamps on',{time_of_day:'dusk',sun_visible:false,sky_visible:true}).time,'dusk','dusk with a sky in view stands');
+});
 await test('a time that stands keeps the brain sentence',()=>{
   const golden=decideStyleTime(liveR1,{time_of_day:'golden_hour',sun_visible:true,sky_visible:true});assert.equal(golden.time,'golden_hour');assert.equal(golden.mood,liveR1);
   const moon='Nighttime rainy scene lit by cool pale blue moonlight, a deep dark blue sky with thin clouds';

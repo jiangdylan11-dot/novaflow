@@ -35,7 +35,7 @@ export function buildStyleRelight(moodDescription,style='<image2>',facts={}){
 export const STYLE_POLISH='Finish: a polished professional key visual. Refined, attractive facial features faithful to <image1> (same face proportions and facial marks in the same places), expressive eyes with clear catchlights, hair with rich strand detail and flowing highlights, clothing folds and held objects rendered with care, the background painted with real depth and atmosphere (soft painterly distance, glowing scene lights, reflections on glossy surfaces), harmonious colour composition with one dominant mood, crisp focal detail on the face, high overall completion, no rough or unfinished areas.';
 const styleSlot=text=>String(text).trim().replace(/[.\s]+$/u,'');
 // The brain reads the picture; the program decides the time. It called a midday picture with no sky in view golden hour every
-// time, however the instruction was worded, so a low sun must be seen in the picture to count.
+// time, however the instruction was worded, and once called dark corners a night sky, so only a low sun seen in the picture counts.
 // Naming sky here paints sky over walls and ceilings, so the program's line speaks only of the light and the layout.
 const STYLE_TIMES={midday:'bright midday daylight',afternoon:'afternoon daylight',golden_hour:'golden hour',dusk:'dusk',night:'night',overcast:'overcast daylight'};
 const STYLE_TIME_WORDS=[['golden_hour',/golden[- ]hour|sunset|sunrise/iu],['night',/\bnight|moonlit|moonlight/iu],['dusk',/\bdusk|twilight|evening/iu],['overcast',/overcast/iu],['afternoon',/afternoon/iu],['midday',/midday|noon|morning|daylight|sunlight/iu]];
@@ -45,7 +45,7 @@ const STYLE_LAYOUT='The layout, walls, ceiling and openings of <image1> stay exa
 export function decideStyleTime(mood,facts={}){
   const said=STYLE_TIMES[facts.time_of_day]?facts.time_of_day:STYLE_TIME_WORDS.find(([,words])=>words.test(mood))?.[0];
   if(!said)return null;
-  const noSky=facts.sky_visible===false,time=(said==='golden_hour'||said==='dusk')&&noSky&&facts.sun_visible===false?'midday':said;
+  const noSun=facts.sun_visible===false,time=said==='golden_hour'&&noSun||said==='dusk'&&noSun&&facts.sky_visible===false?'midday':said,noSky=facts.sky_visible===false||time!==said;
   const day=time==='midday'||time==='afternoon'||time==='overcast';
   let text=String(mood);
   if(day)text=text.replace(STYLE_NOT_DAY,'').replace(/^[\s,.;]+|[\s,;]+$/gu,'').replace(/^./u,letter=>letter.toUpperCase());
