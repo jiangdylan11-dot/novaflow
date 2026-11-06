@@ -42,6 +42,13 @@ await test('missing facts fall back to the mood words and never overrule it',()=
   assert.equal(decideStyleTime('neutral key light from above'),null);
   assert.equal(decideStyleTime('dusk, soft lamps',{time_of_day:'teatime'}).time,'dusk','an unknown time is ignored');
 });
+await test('the style brain reads the request, not the last picture\'s prompt',()=>{
+  const old='Time of day: bright midday. Sky: Vivid bright blue sky dotted with fluffy white cumulus clouds.';
+  const body=input=>JSON.parse(buildQwen21NativeRewrite({promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',negativePrompt:'',supportsNegativePrompt:true,...input},'m',['subject','style']).body.input[1].content[0].text);
+  const sent=body({currentPrompt:old,requirements:'换成@参考图2的风格，改成海边'});
+  assert.equal(sent.current_instruction,'换成@参考图2的风格，改成海边');assert.doesNotMatch(JSON.stringify(sent),/midday|cumulus/u);
+  assert.equal(body({currentPrompt:'换风格',requirements:''}).current_instruction,'换风格','with no request text the prompt is all there is');
+});
 await test('the brain facts reach the prompt through the compile step',()=>{
   const prepared=buildQwen21NativeRewrite({promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',currentPrompt:'换风格',requirements:'',negativePrompt:'',supportsNegativePrompt:true},'m',['subject','style']);
   const result=compileQwen21NativeRewrite({output_text:JSON.stringify({style_description:description,mood_description:liveR1,content_description:content,time_of_day:'golden_hour',sun_visible:false,sky_visible:false,sky_description:''})},prepared);

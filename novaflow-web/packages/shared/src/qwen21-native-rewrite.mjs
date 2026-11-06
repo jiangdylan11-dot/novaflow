@@ -63,8 +63,10 @@ export function buildStyleRedrawPrompt(styleDescription,moodDescription,contentD
 export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
   const nativeEdit=input.promptContract===QWEN21_NATIVE_REWRITE&&input.qwenPromptMode==='img2img';
   if(nativeEdit&&isStyleRedrawRoles(referenceRoles)){
+    // The page prompt and the planner's brief still hold the last picture's lighting, so the brain gets only the person's own words.
+    const ownWords=input.requirements?.trim()||input.currentPrompt;
     return {kind:'qwen21-native',input:{...input},nativeEdit:true,styleRedraw:true,referenceCount:referenceRoles.length,modelPromptLanguage:'en',body:{model,store:false,temperature:0,max_output_tokens:2048,
-      input:[{role:'system',content:[{type:'input_text',text:STYLE_SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:'style-redraw',current_instruction:input.currentPrompt,requested_changes:input.requirements||'',reference_roles:referenceRoles.map((role,index)=>({image:index+1,role}))})}]}],
+      input:[{role:'system',content:[{type:'input_text',text:STYLE_SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:'style-redraw',current_instruction:ownWords,requested_changes:'',reference_roles:referenceRoles.map((role,index)=>({image:index+1,role}))})}]}],
       text:{format:{type:'json_schema',name:'qwen21_style_redraw',strict:true,schema:{type:'object',properties:{style_description:{type:'string'},mood_description:{type:'string'},content_description:{type:'string'},time_of_day:{type:'string',enum:Object.keys(STYLE_TIMES)},sun_visible:{type:'boolean'},sky_visible:{type:'boolean'},sky_description:{type:'string'}},required:['style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible','sky_description'],additionalProperties:false}}}}};
   }
   if(nativeEdit){
