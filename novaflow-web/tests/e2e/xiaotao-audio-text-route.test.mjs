@@ -3,7 +3,10 @@ const agent=await readFile(new URL('../../renderer/xiaotao-art-agent.js',import.
 function fixture({reply,available=true}={}){
  const calls=[],storage={getItem:()=>null,setItem(){}};const root={console,crypto:webcrypto,AbortController,setTimeout,clearTimeout,localStorage:storage,NovaFlowAudioStudio:{agentSettings:()=>({sfx:{seconds:5},music:{seconds:20}})}};root.window=root;createContext(root);runInContext(upload,root);runInContext(agent,root);
  const api={promptAssistantGetStatus:async()=>({ok:true,result:{features:{qwen35CpuTrial:true}}}),qwenBusinessAvailableSync:()=>available,promptAssistantRewriteAudioPrompt:async p=>{calls.push(['rewrite',p]);return reply?reply(p):{ok:true,prompt:'A soft wind.',analysisBackend:'qwen-cpu',modelIdentity:{id:'qwen35-heretic',verification:'server-weight-path'},resourcesReleased:true,generationReady:true}},promptAssistantCancelRequest:async p=>{calls.push(['cancel',p]);return {ok:true}},artAgentChat:async p=>{calls.push(['chat',p]);return {ok:true,data:{reply:'chat',history:[],toolTrace:[]}}}};
- const c=root.NovaFlowXiaotaoArtAgent.createController({storage,bridge:{clearPrepared(){},captureChat(){throw Error('unexpected chat path')}},api:()=>api});return {root,c,calls,send:async message=>{await c.calibrateLocalStatus();assert.equal(c.state.qwen35CpuTrialAvailable,true);return c.send(message)}};
+ const c=root.NovaFlowXiaotaoArtAgent.createController({storage,bridge:{clearPrepared(){},captureChat(){throw Error('unexpected chat path')}},api:()=>api});
+ // 小桃 opens on 豆包 since 2.0.321; these cases are about the local brain, so pick it as a person would.
+ // The local brain never shows an error box: a refusal arrives as its plain reply.
+ c.setModel('qwen3.5-9b-heretic');return {root,c,calls,send:async message=>{await c.calibrateLocalStatus();assert.equal(c.state.qwen35CpuTrialAvailable,true);return c.send(message)}};
 }
 test('music BPM is forwarded to local text rewrite and invalid BPM never submits',async()=>{
  for(const bpm of [40,120,220]){
@@ -21,7 +24,7 @@ test('missing description, missing duration, unavailable business and attachment
  let f=fixture();assert.equal(await f.send('优化音效提示词'),false);assert.equal(f.calls.length,0);
  f=fixture();f.root.NovaFlowAudioStudio.agentSettings=()=>({});assert.equal(await f.send('优化音效提示词：风声'),false);assert.equal(f.calls.length,0);
  f=fixture({available:false});assert.equal(await f.send('优化音效提示词：风声'),false);assert.equal(f.calls.length,0);
- f=fixture();f.c.state.staged=[{kind:'image',status:'ready',name:'x.png',previewUrl:'data:image/png;base64,YQ=='}];assert.equal(await f.send('优化音效提示词：风声'),false);assert.equal(f.calls.length,0);assert.match(f.c.state.error,/只处理文字/);
+ f=fixture();f.c.state.staged=[{kind:'image',status:'ready',name:'x.png',previewUrl:'data:image/png;base64,YQ=='}];assert.equal(await f.send('优化音效提示词：风声'),false);assert.equal(f.calls.length,0);assert.equal(f.c.state.error,'');assert.match(f.c.state.messages.at(-1).content,/只处理文字/);
  f=fixture();f.c.state.staged=[{kind:'audio',status:'ready',name:'x.wav'}];assert.equal(await f.send('优化音效提示词：风声'),false);assert.equal(f.calls.length,0);
 });
 test('unverified or unreleased Qwen response is discarded and never claims audio generation',async()=>{
@@ -38,5 +41,5 @@ test('model change during text rewrite discards the result and performs no other
 });
 
 test('requests to hear or analyze source audio do not reach text rewrite',async()=>{
- for(const message of ['听这段音频并优化音效提示词','请先试听这个录音再整理声音提示词']){const f=fixture();assert.equal(await f.send(message),false);assert.equal(f.calls.length,0);assert.match(f.c.state.error,/音频|文字|附件/);}
+ for(const message of ['听这段音频并优化音效提示词','请先试听这个录音再整理声音提示词']){const f=fixture();assert.equal(await f.send(message),false);assert.equal(f.calls.length,0);assert.equal(f.c.state.error,'');assert.match(f.c.state.messages.at(-1).content,/音频|文字|附件/);}
 });

@@ -52,6 +52,8 @@ test('Xiaotao applies local H3 result without reading reference frames, or ignor
     ctx.__NovaFlowSmartAI={optimizeForAgent:async options=>{modelArgs=options;if(stale)valid=false;return {analysisBackend:'qwen-cpu',modelIdentity:{id:'qwen35-heretic'},resourcesReleased:true,generationReady:true,displayPrompt:'优化后的动作'};}};
     const api={qwenBusinessAvailableSync:()=>true,qwen21NativeRewriteV3AvailableSync:()=>true,captureFoartSessionGuard:()=>()=>true};
     const controller=ctx.NovaFlowXiaotaoArtAgent.createController({bridge:{clearPrepared(){}},storage:{getItem(){return null},setItem(){}},api:()=>api});
+    // 小桃 opens on 豆包 since 2.0.321; this case is about the local brain, so pick it as a person would.
+    controller.setModel('qwen3.5-9b-heretic');
     assert.equal(await controller.prepareSelectedH3TextDraft('优化提示词',{recordMessage:false}),!stale,controller.state.error);
     assert.equal(captureArgs.includeReferenceImages,false);assert.equal(modelArgs.assistantSelectionScope,'xiaotao');assert.equal(applied,stale?'':'优化后的动作');
   }

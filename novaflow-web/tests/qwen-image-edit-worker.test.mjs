@@ -65,7 +65,9 @@ test('image capability stays off until explicit opt-in and the exact image modul
  } finally {await off.stop();await on.stop();await rm(dir,{recursive:true,force:true});}
 });
 
-test('owned single-image session sends actual pixels through the Python bridge and revalidates before and after',async()=>{
+// This case drives the real prompt-assistant service, which needs a Python with torch (the Foart AI runtime).
+const pythonHasTorch=(()=>{try{execFileSync('python',['-c','import torch'],{stdio:'ignore'});return true;}catch{return false;}})();
+test('owned single-image session sends actual pixels through the Python bridge and revalidates before and after',{skip:!pythonHasTorch&&'python on PATH has no torch'},async()=>{
  const checks=[],inference=[],statuses=[],modelPath=execFileSync('python',['-c','import sys;print(sys.executable)'],{encoding:'utf8'}).trim();
  const flash={identity:{id:'qwen35-heretic',verification:'server-weight-path',path:modelPath},infer:async()=>{throw Error('must use private bridge');},inferConversation:async input=>{
    inference.push(input);statuses.push(assistant.status());const parts=input.messages.flatMap(m=>Array.isArray(m.content)?m.content:[]);

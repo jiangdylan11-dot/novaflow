@@ -146,6 +146,7 @@ test('four selected Qwen business methods preserve their existing output envelop
   assert.equal(style.ok,true,JSON.stringify(style));assert.equal(style.style,answer.message.content);assert.equal(style.resourcesReleased,true);
   const audio=await assistant.rewriteAudioPrompt({...selection,input:'柔和的风声',kind:'sfx',seconds:2});
   assert.equal(audio.ok,true,JSON.stringify(audio));assert.match(audio.prompt,/soft wind/);assert.equal(audio.resourcesReleased,true);
-  for(const result of [optimize,reverse,style,audio]){assert.equal(result.analysisBackend,'qwen-cpu');assert.match(result.learningWarning,/未读写经验/);}
+  // The prompt-assistant experience store is retired, so no envelope carries a learning warning any more.
+  for(const result of [optimize,reverse,style,audio]){assert.equal(result.analysisBackend,'qwen-cpu');assert.equal(Object.hasOwn(result,'learningWarning'),false);}
   await assistant.stop();
 });

@@ -79,7 +79,8 @@ test('Xiao reverse and style report the text-only limitation without calling ima
  const root={console,crypto:webcrypto,AbortController,setTimeout,clearTimeout,localStorage:storage};root.window=root;createContext(root);runInContext(src,root);
  const api={qwenBusinessAvailableSync:()=>true,promptAssistantReverseImagePrompt:async()=>{calls.push('reverse')},promptAssistantDescribeArtStyle:async()=>{calls.push('style')}};
  const c=root.NovaFlowXiaotaoArtAgent.createController({bridge:{clearPrepared(){}},storage,api:()=>api});c.state.provider='local';c.state.modelId='qwen3.5-9b-heretic';c.state.staged=[{status:'ready',kind:'image',name:'one.png',previewUrl:'data:image/png;base64,YQ=='}];
- for(const action of ['reverse','style']){assert.equal(await c.analyzeStagedImage(action),false);assert.match(c.state.error,/图片反推和画风分析尚未开放/);assert.match(c.state.error,/未提交/);assert.equal(calls.length,0);}
+ for(const action of ['reverse','style']){assert.equal(await c.analyzeStagedImage(action),false);// The local brain never shows an error box: the limitation arrives as its plain reply.
+  assert.equal(c.state.error,'');const said=c.state.messages.at(-1).content;assert.match(said,/图片反推和画风分析尚未开放/);assert.match(said,/未提交/);assert.equal(calls.length,0);}
 });
 
 test('business model switch away and back during preflight stops before posting',async()=>{

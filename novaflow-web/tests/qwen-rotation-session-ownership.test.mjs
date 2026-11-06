@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {createStrataPromptAssistant} from '../worker/src/strata-prompt-assistant.mjs';
 import {FOART_TOOL_SCHEMA} from '../packages/shared/src/foart-tool-plan.mjs';
 
+// The assistant's owner monitor and deadlines are unref'd so they never keep the worker alive; in this
+// bare test process nothing else would, so hold the event loop open while the cases wait on them.
+const keepAlive=setInterval(()=>{},1000);test.after(()=>clearInterval(keepAlive));
 let serial=0;
 const taskId='fixture-task',workerId='fixture-worker';
 const actor=()=>({taskId,workerId,scope:'qwen-foart-rotation-candidate-v1',attempt:1});

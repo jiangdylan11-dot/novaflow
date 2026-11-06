@@ -18,7 +18,10 @@ function fixture(reply='仅说明理解。') {
   runInContext(readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8'),vm);
   const bridge={clearPrepared(){},captureChat:()=>({artContext:{surface:'animation'},images:[]}),captureAny:()=>({artContext:{surface:'animation'},images:[]}),hasResult:()=>false};
   const api=()=>({promptAssistantGetStatus:async()=>({ok:true,result:{available:true,features:{qwen35CpuTrial:true}}}),artAgentChat:async payload=>{requests.push(JSON.parse(JSON.stringify(payload)));return {ok:true,data:{reply,history:[]}};}});
-  return {controller:root.NovaFlowXiaotaoArtAgent.createController({bridge,api}),requests,executed};
+  const controller=root.NovaFlowXiaotaoArtAgent.createController({bridge,api});
+  // 小桃 opens on 豆包 since 2.0.321; these cases are about the local brain, so pick it as a person would.
+  controller.setModel('qwen3.5-9b-heretic');
+  return {controller,requests,executed};
 }
 
 test('explicit no-tool explanations of quoted edits stay chat-only across turns',async()=>{
@@ -40,7 +43,7 @@ test('unperformed colloquial deletion claims are rejected, ordinary explanations
   for(const reply of ['我已经删掉身体了。','我把骨骼删了。']){
     const {controller,requests,executed}=fixture(reply);await controller.calibrateLocalStatus();
     assert.equal(await controller.send('请说明“头发再飘一点”的意思。没有工具，不要声称已经操作。'),false);
-    assert.equal(requests.length,1);assert.match(controller.state.error,/未经执行/);assert.deepEqual(executed,[]);
+    assert.equal(requests.length,1);assert.equal(controller.state.error,'');assert.match(controller.state.messages.at(-1).content,/未经执行/);assert.deepEqual(executed,[]);
   }
   const safe=fixture('可以讨论删除骨骼的意思，我没有操作作品。');await safe.controller.calibrateLocalStatus();
   assert.equal(await safe.controller.send('请解释“删除骨骼”的意思，不要使用工具，也不要实际操作。'),true);

@@ -7,7 +7,8 @@
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readdir } from 'node:fs/promises';
+import { availableParallelism } from 'node:os';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -93,10 +94,53 @@ const SUITES = [
   { name: 'full-pipeline', file: 'e2e/full-pipeline.test.mjs', needs: [], timeoutMs: 600000 }
 ];
 
+// Every other test file under tests/ and tests/e2e/ runs too, in one parallel node:test pass, so a
+// new or forgotten file can no longer drift red without anyone seeing it.
+// These e2e files were already red when the runner started collecting them (2.0.332) and are not yet
+// triaged. Each must be fixed or deleted and then taken off this list; never add to it.
+const PENDING_TRIAGE = new Set([
+  // read a built bundle (web-dist / worker-dist / hashed renderer asset) that a bare checkout does not have
+  'e2e/cutout-original-source.test.cjs', 'e2e/cutout-progress-reentry.test.cjs', 'e2e/cutout-save-frame-plan.test.cjs',
+  'e2e/cutout-save-overlay.test.cjs', 'e2e/cutout-session-reentry.test.cjs', 'e2e/cutout-timeline-bounds.test.cjs',
+  'e2e/resource-media-recovery.test.cjs', 'e2e/sequence-playable-output.test.cjs', 'e2e/h3-custom-resolution.test.cjs',
+  'e2e/foart-branding.test.mjs', 'e2e/generative-split.test.mjs', 'e2e/h3-beta6-retired.test.mjs',
+  'e2e/h3-multireference-transport.test.mjs', 'e2e/sam-point-contract.test.mjs', 'e2e/ui-design-native-mask-workflow.test.mjs',
+  'e2e/ui-natural-draft-render.test.mjs', 'e2e/ui-release-bundle.test.mjs', 'e2e/web-art-reference-payload.test.mjs',
+  'e2e/art-edge-sync-local-import.test.mjs',
+  // slice functions out of renderer sources that have since been refactored
+  'e2e/ai-sequence-board-fps.test.mjs', 'e2e/ai-sequence-board-names.test.mjs', 'e2e/spine-sequence-atlas.test.mjs',
+  'e2e/animation-export-cache.test.cjs', 'e2e/spine-project-exports.test.cjs', 'e2e/spine-attachment-selection.test.cjs',
+  'e2e/ui-design-design-language.test.mjs', 'e2e/ui-design-drawing.test.mjs', 'e2e/ui-design-entry-routing.test.mjs',
+  'e2e/ui-design-native-mask.test.mjs',
+  // wait on a timer the code unrefs, or hang
+  'e2e/flash-chat-residency.test.mjs', 'e2e/prompt-request-cancellation.test.mjs', 'e2e/strata-art-agent-progress.test.mjs',
+  'e2e/strata-prompt-handoff.test.mjs', 'e2e/aifx-template-maker.test.mjs',
+  // need a live service, Electron or a package the workspace does not install
+  'e2e/local-assistant-live.test.mjs', 'e2e/login-design.test.cjs', 'e2e/image-reverse-settle.test.mjs',
+  // expectations that predate later decided rules; check each against project rules before changing
+  'e2e/art-direction-qwen-budgets.test.mjs', 'e2e/compute-shared-dependency-closure.test.mjs', 'e2e/foart-tool-plan.test.mjs',
+  'e2e/qwen-capability-copy.test.mjs', 'e2e/ui-design-catalog-integration.test.mjs', 'e2e/ui-design-first-draft-contract.test.mjs',
+  'e2e/ui-design-qwen-transport.test.mjs', 'e2e/ui-design-surface-lifecycle.test.mjs', 'e2e/ui-native-production.test.mjs',
+  'e2e/ui-natural-draft.test.mjs', 'e2e/video-generation-preview-state.test.mjs', 'e2e/xiaotao-local-animation-routing.test.mjs',
+  'e2e/xiaotao-local-qwen-v3-policy.test.mjs', 'e2e/xiaotao-qwen-capability-ui.test.mjs'
+]);
+
+async function collectNodeTests() {
+  const listed = new Set(SUITES.map((suite) => suite.file));
+  const files = [];
+  for (const dir of ['', 'e2e/']) {
+    for (const name of (await readdir(join(HERE, dir))).sort()) {
+      const file = dir + name;
+      if (/\.test\.(mjs|cjs|js)$/.test(name) && !listed.has(file) && !PENDING_TRIAGE.has(file)) files.push(join(HERE, file));
+    }
+  }
+  return { name: 'node-tests', args: ['--test', '--test-reporter=tap', '--test-concurrency=' + Math.min(8, availableParallelism()), ...files], needs: [], timeoutMs: 1200000 };
+}
+
 function runSuite(suite) {
   return new Promise((resolve) => {
     const started = Date.now();
-    const child = spawn(process.execPath, [join(HERE, suite.file)], {
+    const child = spawn(process.execPath, suite.args || [join(HERE, suite.file)], {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env
@@ -113,7 +157,8 @@ function runSuite(suite) {
 
     child.on('close', (code) => {
       clearTimeout(timer);
-      const m = out.match(/(\d+) passed, (\d+) failed/);
+      // Custom suites print "N passed, M failed"; node:test files print TAP "# pass N" / "# fail M".
+      const m = out.match(/(\d+) passed, (\d+) failed/) || out.match(/^# pass (\d+)\n# fail (\d+)$/m);
       resolve({
         name: suite.name,
         code,
@@ -127,7 +172,8 @@ function runSuite(suite) {
 }
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('-'));
-const suites = only.length ? SUITES.filter((s) => only.includes(s.name)) : SUITES;
+const ALL_SUITES = [...SUITES, await collectNodeTests()];
+const suites = only.length ? ALL_SUITES.filter((s) => only.includes(s.name)) : ALL_SUITES;
 
 const results = [];
 for (const suite of suites) {

@@ -94,7 +94,8 @@ test('execution device is attached only to a matching supervisor ready receipt',
   assert.equal(confirmedExecutionDevice({executionMode:'cpu'},{event:'ready',executionMode:'gpu'}),null);
 });
 
-test('GPU supervisor receives only the necessary local ProgramFiles addition',()=>{
+// Windows drive paths are only absolute under Windows path rules, where the supervisor actually runs.
+test('GPU supervisor receives only the necessary local ProgramFiles addition',{skip:process.platform!=='win32'&&'Windows-only path rules'},()=>{
   const env={SystemRoot:'C:\\Windows',TEMP:'C:\\Temp',TMP:'C:\\Temp',ProgramFiles:'C:\\Program Files',
     PATH:'C:\\untrusted',HTTPS_PROXY:'http://private-proxy',AWS_SECRET_ACCESS_KEY:'not-a-real-secret'};
   const gpu=supervisorEnvironment({executionMode:'gpu'},env);

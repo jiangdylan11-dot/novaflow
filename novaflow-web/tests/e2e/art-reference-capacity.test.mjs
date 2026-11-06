@@ -60,7 +60,10 @@ test('clearing or replacing a reference revokes its blob url', () => {
     window: { NovaFlowArtGenerateModels: models },
     URL: { revokeObjectURL(url) { revoked.push(url); } }
   };
-  vm.runInNewContext(brand.slice(brand.indexOf('  const ART_GENERATE_MAX_REFERENCES ='), brand.indexOf('  function artGenerateResourceMentionSnapshot()')), context);
+  // The setter reads a placed image's known size (2.0.324); bring the real reader along.
+  const sizeReader = brand.slice(brand.indexOf('  function readArtGenerateReferenceSize('), brand.indexOf('  function measureArtGenerateReferenceSize('));
+  assert.ok(sizeReader.includes('function readArtGenerateReferenceSize('));
+  vm.runInNewContext(brand.slice(brand.indexOf('  const ART_GENERATE_MAX_REFERENCES ='), brand.indexOf('  function artGenerateResourceMentionSnapshot()')) + sizeReader, context);
   context.setArtGenerateReference(0, { dataUrl: 'blob:test/one', name: 'a.png' });
   assert.deepEqual(revoked, []);
   context.setArtGenerateReference(0, { dataUrl: 'blob:test/two', name: 'b.png' });
