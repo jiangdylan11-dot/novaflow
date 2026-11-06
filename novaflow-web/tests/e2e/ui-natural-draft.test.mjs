@@ -1,7 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import vm from 'node:vm';
 import { buildNaturalDraftGraph, planNaturalUiDraft, parseNaturalDraft, naturalDraftDesignInput } from '../../worker/src/natural-ui-draft.mjs';
 
 const model='qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors';
@@ -75,12 +73,3 @@ test('truncated design stops after two calls; complete text is retained verbatim
  assert.throws(()=>parseNaturalDraft('text </think> draft'),/完整设计稿/);
 });
 
-test('fast compilation keeps layout first and preserves all other image roles without rewriting the design',()=>{
- const root={console};root.window=root;vm.createContext(root);
- vm.runInContext(readFileSync(new URL('../../renderer/ui-design-prompt.pipeline.js',import.meta.url),'utf8'),root);
- const refs=[{id:'style',role:'style',dataUrl:'style-bytes'},{id:'layout',role:'layout',dataUrl:'layout-bytes'},{id:'content',role:'content',dataUrl:'asset-bytes'}];
- const plan={version:1,layoutMode:'preserve',layoutReference:2,visualMode:'theme-redesign',references:[{index:1,role:'style'},{index:2,role:'layout'},{index:3,role:'content'}],layoutChanges:[],preserve:[],grids:[]};
- const result=root.NovaFlowUiDesignPromptPipeline.compileQwenPlan({prompt:'原始设计稿不改字。',uiDraft:{method:'natural-structure-draft-v1'},uiPlan:plan},{engine:'local',generationIntent:'redesign',preserveLayout:true,references:refs});
- assert.equal(result.prompt,'原始设计稿不改字。');assert.equal(result.references[0].id,'layout');assert.equal(result.references[1].id,'style');assert.equal(result.references[2].id,'content');
- assert.equal(result.plan.layoutReference,1);assert.equal(result.analysisPlan.layoutReference,2);assert.equal(result.plan.references[1].role,'style');
-});

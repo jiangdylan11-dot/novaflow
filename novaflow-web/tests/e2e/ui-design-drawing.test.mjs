@@ -29,6 +29,7 @@ function environment({ ui = true, references = [{id:'default-layout',role:'layou
     placeArtGenerateResultIntoSource:async()=>true,renderArtGenerateSurfaces:noop,clearArtGenerateBatch:noop,clearArtGenerateRunIfCurrent:noop,
     artGenerateBatchProgress:label=>({label,pct:0}),addEventListener:noop,removeEventListener:noop,
     ART_GENERATE_WORKFLOW_TIMEOUT_MS:1,ART_GENERATE_PROMPT_TIMEOUT_MS:1,ART_GENERATE_HISTORY_TIMEOUT_MS:1,ART_GENERATE_DOWNLOAD_TIMEOUT_MS:1,
+    pendingArtAgentPreparation:null, // module-level in the brand runtime; runArtGenerate takes a reviewed draft from it
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
@@ -446,7 +447,8 @@ test('style changes preserve the layout and content instead of becoming a theme 
 test('gpt UI submits through RunningHub and does not post a Comfy prompt',async()=>{
   const e=environment({references:[{dataUrl:'data:image/png;base64,ref'}]});
   e.state.provider='gpt';
-  e.sandbox.electronAPI={runtimeProviderUsageSettlement:'web-control-plane-v1',runningHubGptImage:async()=>({ok:true,result:{ok:true,charged:22,remaining:8,images:[{imageDataUrl:'data:image/png;base64,result',taskId:'rh-ui'}]}})};
+  // Cloud runs are bound to the signed-in session that started them.
+  e.sandbox.electronAPI={captureFoartSessionGuard:()=>()=>true,runtimeProviderUsageSettlement:'web-control-plane-v1',runningHubGptImage:async()=>({ok:true,result:{ok:true,charged:22,remaining:8,images:[{imageDataUrl:'data:image/png;base64,result',taskId:'rh-ui'}]}})};
   await e.run();
   assert.deepEqual(e.failures,[]);
   assert.equal(e.builds.length,0);
@@ -455,7 +457,7 @@ test('gpt UI submits through RunningHub and does not post a Comfy prompt',async(
 });
 
 test('cloud UI still refuses an unknown settlement bridge before submitting a generation',async()=>{
-  const e=environment();e.state.provider='gpt';
+  const e=environment();e.state.provider='gpt';e.sandbox.electronAPI={captureFoartSessionGuard:()=>()=>true};
   await e.run();
   assert.deepEqual(e.failures,['当前网页生成接口未就绪，请刷新页面后重试']);
   assert.equal(e.builds.length,0);

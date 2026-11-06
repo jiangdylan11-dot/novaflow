@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
-const source=fs.readFileSync('novaflow-web/renderer/assets/index-BbIa-2NM.js','utf8');
+const source=fs.readFileSync(__dirname+'/../../renderer/assets/index-BbIa-2NM.js','utf8');
 const start=source.indexOf('C=async t=>{');
 const end=source.indexOf(',w=async',start);
 assert.ok(start>0&&end>start);

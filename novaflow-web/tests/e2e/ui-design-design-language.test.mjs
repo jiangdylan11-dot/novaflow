@@ -29,6 +29,7 @@ function environment({ ui = true, references = [{id:'default-layout',role:'layou
     placeArtGenerateResultIntoSource:async()=>true,renderArtGenerateSurfaces:noop,clearArtGenerateBatch:noop,clearArtGenerateRunIfCurrent:noop,
     artGenerateBatchProgress:label=>({label,pct:0}),addEventListener:noop,removeEventListener:noop,
     ART_GENERATE_WORKFLOW_TIMEOUT_MS:1,ART_GENERATE_PROMPT_TIMEOUT_MS:1,ART_GENERATE_HISTORY_TIMEOUT_MS:1,ART_GENERATE_DOWNLOAD_TIMEOUT_MS:1,
+    pendingArtAgentPreparation:null, // module-level in the brand runtime; runArtGenerate takes a reviewed draft from it
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);

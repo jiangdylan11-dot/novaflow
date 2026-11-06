@@ -144,8 +144,8 @@ async function exportAction(boards, version, packed, rawVideo = false) {
     return canvas;
   } };
   const ref = current => ({ current }), api = { pickDirectory: async () => ({ dir: 'AI' }), writeBinaryFile: async payload => { saved.set(`${payload.dir}/${payload.fileName}`.replaceAll('\\', '/'), payload.bytes); return { ok: true }; } };
-  const context = vm.createContext({ console, window: { NovaFlowSequenceAtlas: pack, NovaFlowAiSequenceBoardNames: names }, document, Blob, TextEncoder, CompressionStream, Response, HTMLImageElement: class {},
-    e: { sourceFps: 10, boards }, t: ref(media), l: 10, N: true, V: true, M: api, k: true, A: version, w: 10, E: 10, T: false, R: 'ai', ce: null,
+  const context = vm.createContext({ console, CustomEvent, setTimeout, clearTimeout, window: { dispatchEvent() {}, NovaFlowSequenceAtlas: pack, NovaFlowAiSequenceBoardNames: names }, document, Blob, TextEncoder, CompressionStream, Response, HTMLImageElement: class {},
+    e: { sourceFps: 10, boards }, nfGreenScreen: false, t: ref(media), l: 10, N: true, V: true, M: api, k: true, A: version, w: 10, E: 10, T: false, R: 'ai', ce: null,
     c: 100, o: 17, s: 25, r: 'edited.png', a: 0.2, u: false, d: 0, f: 1,
     G: ref({ fps: 10, times: [0, 0.1] }), U: ref(new Map()), En: ref(false), Sn: ref(0), ln: ref({ token: 0 }), Yn() {}, nfPauseCutoutPlayback() {},
     nfCreateCutoutExportReader: async video => ({ media: video, release() {} }), Rt: async () => {}, wt: async () => {},

@@ -20,7 +20,8 @@ test('art edge synchronization follows shared imports without treating function-
     await writeFile(join(fixture, 'supabase/functions/_art-shared/art-knowledge-edge.ts'), "import './art-knowledge.mjs';\n");
     await writeFile(join(fixture, 'supabase/functions/novaflow-companion/index.ts'),
       "import '../_art-shared/control-plane.mjs';\nimport './art-dependencies.mjs';\n");
-    for (const name of ['art-knowledge.mjs', 'control-plane.mjs', 'companion-chat.mjs']) {
+    // The sync always ships companion-chat and the static-fusion contract besides what the imports reach.
+    for (const name of ['art-knowledge.mjs', 'control-plane.mjs', 'companion-chat.mjs', 'xiaotao-static-fusion-v3.mjs']) {
       const source = `export const fixture = ${JSON.stringify(name)};\n`;
       await writeFile(join(fixture, 'packages/shared/src', name), source);
       await writeFile(join(fixture, 'supabase/functions/_art-shared', name),

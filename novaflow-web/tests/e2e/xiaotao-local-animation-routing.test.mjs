@@ -31,7 +31,8 @@ test('community models reject every non-image attachment and expose only attachm
   await controller.calibrateLocalStatus();
   for(const kind of ['video','audio','document','']){
     controller.state.staged=[{kind,name:'test.bin',dataUrl:'secret-content',file:{private:'bytes'}}];
-    assert.equal(await controller.send('你好'),false,kind);assert.match(controller.state.error,/非图片附件/);
+    // The local brain never shows an error box; it answers in plain words.
+    assert.equal(await controller.send('你好'),false,kind);assert.equal(controller.state.error,'');assert.match(controller.state.messages.at(-1).content,/非图片附件/);
   }
   assert.equal(requests.length,0);
   assert.deepEqual(JSON.parse(JSON.stringify(api.communityAttachmentMetadata('qwen3.5-9b-heretic',

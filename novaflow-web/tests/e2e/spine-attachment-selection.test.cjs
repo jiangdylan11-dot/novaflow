@@ -49,12 +49,14 @@ test('Shift keeps its anchor across successive ranges; Ctrl+Shift adds instead o
   assert.deepEqual(f.picked(), ['frame:0', 'frame1', 'frame4', 'frame3'])
 })
 
-test('range uses visible same-slot rows, supports colon names, and selection leaves displayed attachment unchanged', () => {
+test('range uses visible rows, supports colon names, spans slots, and selection leaves displayed attachment unchanged', () => {
   const f = fixture(); f.rows.splice(2, 1); f.click(0); f.click(4, { shiftKey: true })
   assert.deepEqual(f.picked(), ['frame:0', 'frame1', 'frame3', 'frame4'])
   assert.equal(f.state.json.slots[0].attachment, 'frame:0')
   f.ctx.selectAttachment({ kind: 'att', skin: 'default', slot: 'other', name: 'frame1' }, { shiftKey: true })
-  assert.equal(f.picked().length, 1); assert.equal(f.state.sel.slot, 'other')
+  // Since the skin-placeholder batch work (37e0a8cc) a Shift range runs over every visible row of the skin, across slots.
+  assert.deepEqual(plain(f.ctx.selectedAttachments()).map(a => a.slot + '/' + a.name), ['slot:frames/frame:0', 'slot:frames/frame1', 'slot:frames/frame3', 'slot:frames/frame4', 'other/frame1'])
+  assert.equal(f.state.sel.slot, 'other')
 })
 
 test('Ctrl+A selects the current visible slot group and does not take over mesh editing or picks', () => {

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const file = 'novaflow-web/renderer/ai-sequence-minimax-h3.workflow.js';
+const file = __dirname + '/../../renderer/ai-sequence-minimax-h3.workflow.js';
 const source = fs.readFileSync(file, 'utf8');
 let saved;
 function load() {

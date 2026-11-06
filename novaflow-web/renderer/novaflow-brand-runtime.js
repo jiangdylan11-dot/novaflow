@@ -86156,7 +86156,7 @@
       && ART_QWEN21_BF16.includes(runtime.unet) && ART_QWEN21_CLIPS.includes(runtime.clip)
       && runtime.vae === 'qwen_image_2.1_vae_bf16.safetensors' && sizes[0].width > 0 && sizes[0].height > 0;
     if (highNativeRequested && !safeNative) throw new Error('864×1536 原生采样当前仅支持已测模型、40步/CFG1、最多三图及受限参考像素；请使用较小尺寸或减少参考图。');
-    if (nativeEdit && requested.width * requested.height > 1048576 && !highNativeRequested) throw new Error("局部原生采样超过已验证尺寸；请使用不超过1MP的尺寸或已验证的864×1536");
+    if (nativeEdit && requested.width * requested.height > 1048576 && !highNativeRequested) throw new Error("局部原生采样超过已验证尺寸；请使用不超过1MP的尺寸");
     if (nativeEdit && (!isBase(0) || !nativeEdit.baseSourceId || nativeEdit.baseSourceId !== roleEntry(0).sourceId || !sizes[0]?.width || !sizes[0]?.height || Math.abs(sizes[0].width / sizes[0].height - requested.width / requested.height) > .001 || requested.width % 8 || requested.height % 8)) throw new Error("局部修改底图、区域或尺寸不匹配；请使用同一底图比例和8的倍数尺寸");
     const working = nativeEdit || highNativeRequested ? requested : uiQwen21WorkingSize(requested.width, requested.height);
     names.forEach((name, index) => {

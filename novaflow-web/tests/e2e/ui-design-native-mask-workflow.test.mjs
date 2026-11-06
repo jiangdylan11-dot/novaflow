@@ -4,8 +4,9 @@ import {createWorkflowHost} from '../../worker/src/comfy/workflow-host.mjs';
 const io=(...names)=>Object.fromEntries(names.map(n=>[n,['*']]));
 const info={
  LoadImage:{input:{required:{image:[['screen.png']]}}},
- UnetLoaderGGUF:{input:{required:{unet_name:[['qwen-image-2.1-UC-Q8_0.gguf']]}}},
- CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_w4a8_heretic.safetensors']],type:[['qwen_image']]},optional:{device:[['default']]}}},
+ // Every 2.1 run is Turbo INT8 since 2.0.322 (the BF16/GGUF lines were removed).
+ UNETLoader:{input:{required:{unet_name:[['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']],weight_dtype:[['default']]}}},
+ CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_bf16_heretic.safetensors']],type:[['qwen_image']]},optional:{device:[['default']]}}},
  VAELoader:{input:{required:{vae_name:[['qwen_image_2.1_vae_bf16.safetensors']]}}},
  TextEncodeQwenImage21:{input:{required:{...io('clip','prompt','negative_prompt'),resolution:['INT',{default:1024}],images:['COMFY_AUTOGROW_V3',{}]},optional:io('vae')}},
  KSampler:{input:{required:{...io('model','positive','negative','latent_image','seed','steps','cfg','denoise'),sampler_name:[['euler']],scheduler:[['simple']]}}},
@@ -31,8 +32,10 @@ test('worker builds physical mask and samples untouched base latent at requested
  assert.deepEqual(g['402'].inputs,{samples:['400',0],mask:['451',0]});assert.deepEqual(g['7'].inputs.latent_image,['402',0]);
  assert.deepEqual(g['410'].inputs,{width:720,height:1280,batch_size:1,color:0x102030});
  assert.deepEqual(g['411'].inputs.destination,g['400'].inputs.pixels);assert.deepEqual(g['5'].inputs['images.image_1'],['411',0]);
- assert.deepEqual(g['11'].inputs.images,['9',0]);assert.equal(g['10'],undefined);
- assert.equal(Object.entries(g).filter(([,n])=>/Composite|Paste|Blend/.test(n.class_type)).length,2,'one mask composite and one input-only image composite');
+ // Only the edited pixels are pasted back onto the untouched original at output.
+ assert.deepEqual(g['412'].inputs,{destination:g['400'].inputs.pixels,source:['9',0],mask:['451',0],x:0,y:0,resize_source:false});
+ assert.deepEqual(g['11'].inputs.images,['412',0]);assert.equal(g['10'],undefined);
+ assert.equal(Object.entries(g).filter(([,n])=>/Composite|Paste|Blend/.test(n.class_type)).length,3,'one mask composite, one input-only image composite and one output paste');
 });
 test('neutralization is optional and full-frame UI generation retains its existing graph',async()=>{
  const g=await build({}, {...options,uiNativeEdit:{...edit,neutralizeConditioning:false}});assert.equal(g['410'],undefined);assert.equal(g['411'],undefined);assert.deepEqual(g['5'].inputs['images.image_1'],g['400'].inputs.pixels);
@@ -45,10 +48,9 @@ test('worker rejects stale base binding, invalid bounds, full-canvas edit, aspec
  await assert.rejects(()=>build({width:728,height:1280}),/不匹配/);
  await assert.rejects(()=>build({width:1024,height:2048},options,[{width:1024,height:2048},{width:512,height:512}]),/超过已验证/);
 });
-test('measured 864x1536 uses same production mask path and fails outside its model/sampling guard',async()=>{
+test('864x1536 was measured on the removed BF16 line only, so a local edit there is refused like any size over 1MP',async()=>{
  const sizes=[{width:864,height:1536},{width:512,height:512}];
- const g=await build({width:864,height:1536},options,sizes);assert.equal(g['401'].inputs.width,864);assert.equal(g['401'].inputs.height,1536);assert.deepEqual(g['11'].inputs.images,['9',0]);
- await assert.rejects(()=>build({width:864,height:1536,samplingOverrides:{'qwen-2.1:img2img':{steps:32,cfg:3}}},options,sizes),/40步/);
+ await assert.rejects(()=>build({width:864,height:1536},options,sizes),/超过已验证尺寸/);
 });
 test('worker refuses unavailable native mask nodes before producing a graph',async()=>{
  const {SetLatentNoiseMask,...missing}=info;

@@ -18,7 +18,8 @@ function page() {
 }
 test('Qwen is enabled only by its independent capability and sends the explicit local model',async()=>{
   const p=page(),c=p.controller;assert.equal(c.state.modelId,modelId);assert.equal(c.setModel(modelId),false);assert.equal(c.modelAvailable(modelId),false);
-  assert.equal(await c.send('你好'),false);assert.equal(p.calls.length,0);assert.match(c.state.error,/设备待检测/);
+  assert.equal(await c.send('你好'),false);assert.equal(p.calls.length,0);// The local brain never shows an error box; it answers in plain words.
+  assert.equal(c.state.error,'');assert.match(c.state.messages.at(-1).content,/设备待检测/);
   await c.calibrateLocalStatus();assert.equal(c.modelAvailable(modelId),true);
   assert.equal(await c.send('你好'),true);assert.equal(p.calls.length,1);assert.equal(p.calls[0].modelId,modelId);assert.equal(p.calls[0].provider,'local');assert.equal(p.calls[0].mode,'chat');
   p.setStatus({available:true,features:{qwen35CpuTrial:false}});await c.calibrateLocalStatus();assert.equal(c.modelAvailable(modelId),false);

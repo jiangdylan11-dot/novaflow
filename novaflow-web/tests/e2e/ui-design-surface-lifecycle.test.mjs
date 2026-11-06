@@ -81,7 +81,7 @@ test('UI uses the ordinary model capacity and sampling while preserving drawing 
   const models={};vm.runInNewContext(source('art-generate-model.resource.js'),models);
   const api=models.NovaFlowArtGenerateModels;
   assert.equal(api.capabilityFor('local','img2img',e.artGenerateModelState()).referenceLimit,10);
-  assert.equal(api.localSamplingFor(e.artGenerateModelState(),'img2img').route,'qwen-2.1');
+  assert.equal(api.localSamplingFor(e.artGenerateModelState(),'img2img').route,'qwen-2.1-turbo'); // every 2.1 run is Turbo since 2.0.322
   assert.equal(state.nsfw,true);
   ui=false;
   assert.equal(e.artGenerateModelState(),state);

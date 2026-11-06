@@ -21,8 +21,15 @@ test('one role contract uses the remapped stable layout and both styles without 
  const references=[refs[1],refs[0],{id:'second-style',role:'material',dataUrl:'data:image/png;base64,material'}],r=compile('整屏重做为深海主题，图2负责布局，图1与图3提供风格',['图2余额¥250'],references);assert.match(r.prompt,/<image1>是唯一布局与业务依据/);assert.match(r.prompt,/<image3>是质感来源，只取画风材质配色，不取布局、文字或人物/);assert.doesNotMatch(r.prompt,/规划误写/);assert.equal(r.prompt.split('是唯一布局与业务依据').length-1,1);assert.equal(r.references[0].dataUrl,refs[0].dataUrl);assert.equal(r.references[1].dataUrl,refs[1].dataUrl);
 });
 test('whole-theme planner separates ordinary object identity from business inventory',async()=>{
- const c=runtime();let request;await c.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'local',targetEngine:'qwen-2.1',prompt:'整屏重做为糖果主题，图2仅供风格',references:refs,preserveLayout:true,generationIntent:'redesign',size:{width:720,height:1280},electronAPI:{promptAssistantReverseImagePrompt:async r=>{request=r;return {ok:true,prompt:r.currentPrompt};}}});assert.match(request.requirements,/普通物件的原身份和外观不写入保留事实/);assert.match(request.requirements,/业务事实只来自/);assert.doesNotMatch(request.requirements,/准确行列和逐格实例、字母牌与重复符号关系/);assert.equal(request.images[1].role,'style');
+ const c=runtime();let request;await c.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'local',targetEngine:'qwen-2.1',prompt:'整屏重做为糖果主题，图2仅供风格',references:refs,preserveLayout:true,generationIntent:'redesign',size:{width:720,height:1280},electronAPI:{promptAssistantReverseImagePrompt:async r=>{request=r;return {ok:true,prompt:r.currentPrompt};}}}).then(()=>assert.fail('a reply without a plan must not reach generation'),error=>assert.match(error.message,/规划不完整/));assert.match(request.requirements,/普通物件的原身份和外观不写入保留事实/);assert.match(request.requirements,/业务事实只来自/);assert.doesNotMatch(request.requirements,/准确行列和逐格实例、字母牌与重复符号关系/);assert.equal(request.images[1].role,'style');
 });
 test('strict reskin and local iteration keep original identities and detailed preservation',()=>{
- for(const [prompt,intent] of [['整屏纯换皮，保留造型与原角色，只改材质','style-transfer'],['只修改按钮颜色，原角色和奖励金额不变','iteration']]){const r=compile(prompt,['原角色身份保持不变','奖励金额120'],refs,intent);assert.ok(r.plan.preserve.includes('原角色身份保持不变'));assert.match(r.prompt,/每个盘的行列和逐格实例/);assert.doesNotMatch(r.prompt,/最终参考职责|旧题材的展示物与装饰须替换/);}
+ const reskin=compile('整屏纯换皮，保留造型与原角色，只改材质',['原角色身份保持不变','奖励金额120'],refs,'style-transfer');
+ assert.ok(reskin.plan.preserve.includes('原角色身份保持不变'));assert.match(reskin.prompt,/每个盘的行列和逐格实例/);
+ assert.doesNotMatch(reskin.prompt,/最终参考职责|旧题材的展示物与装饰须替换/);
+ // A local iteration is a masked edit: it names what changes and keeps every other region as it is.
+ const local=compile('只修改按钮颜色，原角色和奖励金额不变',['原角色身份保持不变','奖励金额120'],refs,'iteration');
+ assert.ok(local.plan.preserve.includes('原角色身份保持不变'));assert.equal(local.plan.visualMode,'partial');
+ assert.match(local.prompt,/只执行上述指定对象及属性的修改，其他区域的身份、布局、风格、光照与功能/);
+ assert.doesNotMatch(local.prompt,/最终参考职责|旧题材的展示物与装饰须替换|主题重设/);
 });

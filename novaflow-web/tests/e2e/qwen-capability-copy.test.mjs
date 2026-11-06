@@ -5,5 +5,7 @@ test('ordinary local chat displays only the actual answer',async()=>{
  runInContext(text,createContext(root));const api=()=>({artAgentChat:async()=>({ok:true,data:{reply:'你好',history:[],toolTrace:[]}})});
  const bridge={clearPrepared(){},captureChat:()=>({artContext:{surface:'other'},images:[]}),hasResult:()=>false};
  const c=root.NovaFlowXiaotaoArtAgent.createController({api,bridge});c.state.qwen35CpuTrialAvailable=true;
+ // 小桃 defaults to 豆包 since 2.0.321; this is the local brain's chat.
+ assert.equal(c.setModel('qwen3.5-9b-heretic'),true);
  assert.equal(await c.send('你好'),true);assert.equal(c.state.messages.at(-1).content,'你好');assert.equal(c.state.status,'已回复');
 });

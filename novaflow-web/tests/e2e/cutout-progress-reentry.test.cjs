@@ -4,8 +4,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('../../node_modules/typescript');
 
-const bundle = fs.readFileSync('novaflow-web/renderer/assets/index-BbIa-2NM.js', 'utf8');
-const runtime = fs.readFileSync('novaflow-web/renderer/novaflow-brand-runtime.js', 'utf8');
+const bundle = fs.readFileSync(__dirname+'/../../renderer/assets/index-BbIa-2NM.js', 'utf8');
+const runtime = fs.readFileSync(__dirname+'/../../renderer/novaflow-brand-runtime.js', 'utf8');
 const names = ['isNovaflowCutoutProgressSurface', 'isFullscreenModalBackdrop',
   'getNovaflowProtectedModalDialogCard', 'clearInvalidNovaflowProtectedModalBackdrop',
   'clearInvalidNovaflowExportModalRoot'];

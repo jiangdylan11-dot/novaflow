@@ -24,7 +24,10 @@ const sandbox={console,Map:TrackedMap,Uint8ClampedArray,DOMException,performance
  regionPixelsCanvas(){throw Error('unexpected per-attachment canvas fallback')},unpremultiply(){throw Error('unexpected PMA')},
  imageFromBlob(){throw Error('unexpected bitmap')},AudioAssets:{path:()=>''},fetch(){throw Error('unexpected network')}
 };
-vm.createContext(sandbox);vm.runInContext(source.slice(a,b),sandbox,{filename:'isolated-editor-export'});
+vm.createContext(sandbox);
+// exportProject keeps mesh images untrimmed (797135af); its helper sits just above exportImageNames.
+const m=source.indexOf('  function meshImageNames('),n=source.indexOf('  /** The images the attachments use',m);assert(m>=0&&n>m,'meshImageNames marker missing');
+vm.runInContext(source.slice(m,n)+source.slice(a,b),sandbox,{filename:'isolated-editor-export'});
 function project(count){const attachments={};for(let i=0;i<count;i++)attachments['image_'+i]={path:'image_'+i,width:4,height:4};return {atlasText:'synthetic',images:new Map([['atlas.png',{img:page}]]),json:{skeleton:{spine:'3.8.99'},bones:[{name:'root'}],slots:[{name:'slot',bone:'root',attachment:'image_0'}],skins:[{name:'default',attachments:{slot:attachments}}],animations:{}},audio:new Map()}}
 async function run(count,fail=false){const files=new Map(),name='p'+count;return sandbox.exportProject({project:project(count),name,packed:true,settings:{maxWidth:512,maxHeight:512,dedupe:false}},async(n,d)=>{if(fail&&n.endsWith('.png'))throw Error('synthetic disk write failure');files.set(n,d)}).then(result=>({result,files}))}
 (async()=>{

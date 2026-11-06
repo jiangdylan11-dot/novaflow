@@ -38,7 +38,10 @@ test('UI layout operations preserve native module identities and reject out-of-c
 
 test('tool plans reject invented controls, unauthorized fields and invalid native values',()=>{
   assert.equal(validateFoartPlan(plan([{action:'set_control',controlId:'control-1',value:'high'}]),context()).status,'act');
-  for(const op of [{action:'set_control',controlId:'invented',value:'high'},{action:'set_control',controlId:'control-1',value:'unlisted'},{action:'set_control',controlId:'control-2',value:8192},{action:'open',surface:'account'},{action:'art_action',name:'shell'},{action:'image_generate',prompt:'x',generationMode:'txt2img',useResult:false,url:'https://outside.test'}])assert.throws(()=>validateFoartPlan(plan([op]),context()));
+  for(const op of [{action:'set_control',controlId:'invented',value:'high'},{action:'set_control',controlId:'control-1',value:'unlisted'},{action:'set_control',controlId:'control-2',value:8192},{action:'open',surface:'account'},{action:'art_action',name:'shell'}])assert.throws(()=>validateFoartPlan(plan([op]),context()));
+  // Since bac740ae an image step does not block on a stray field: it is dropped, never forwarded.
+  const stray=validateFoartPlan(plan([{action:'image_generate',prompt:'x',generationMode:'txt2img',useResult:false,url:'https://outside.test'}]),context());
+  assert.equal(stray.status,'act');assert.equal(Object.hasOwn(stray.operations[0],'url'),false);
   assert.throws(()=>validateFoartPlan(plan([{action:'image_generate',prompt:'x',generationMode:'txt2img',useResult:false},{action:'art_action',name:'split'}]),context()));
   assert.throws(()=>validateFoartPlan(plan([{action:'set_control',controlId:'control-3',value:'自行改写'}]),{...context(),controls:[{id:'control-3',kind:'textarea',purpose:'image_prompt'}]}),/优化工具/);
   assert.equal(validateFoartPlan(plan([{action:'media',operation:{action:'volume',target:'audio',clipId:'clip-1',value:.5}},{action:'media',operation:{action:'loops',target:'audio',clipId:'clip-1',value:3}}]),context()).operations.length,2);

@@ -34,7 +34,10 @@ function roomy(effect, extra = {}) {
   p.start = { x: 320, y: 200 }
   return p
 }
-function frame(p, i) { return FX.renderFrame(FX.prepare(copy(p), SCALE), i) }
+// prepare() is pure and costs as much as a frame; reuse it per project object (projects are never
+// mutated after their first frame here — every variation is a fresh copy).
+const prepared = new WeakMap()
+function frame(p, i) { if (!prepared.has(p)) prepared.set(p, FX.prepare(copy(p), SCALE)); return FX.renderFrame(prepared.get(p), i) }
 function diff(a, b) { let s = 0; for (let i = 0; i < a.length; i += 4) s += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]); return s / (a.length / 4) / 3 }
 function mean(a) { let s = 0; for (let i = 0; i < a.length; i += 4) s += a[i] + a[i + 1] + a[i + 2]; return s / (a.length / 4) / 3 }
 

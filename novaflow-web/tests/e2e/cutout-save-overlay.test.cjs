@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync('novaflow-web/renderer/assets/index-BbIa-2NM.js', 'utf8');
+const source = fs.readFileSync(__dirname+'/../../renderer/assets/index-BbIa-2NM.js', 'utf8');
 const start = source.indexOf('Jn=(e,t,n)=>');
 const end = source.indexOf(',Yn=()=>', start);
 const render = source.slice(start + 3, end);

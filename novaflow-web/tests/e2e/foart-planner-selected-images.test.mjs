@@ -161,7 +161,7 @@ test('the online brain reads the request before any 图生图 picture is placed'
   // The upload step keeps 图生图 pictures aside for a tool turn; nothing is put on the page before the plan.
   assert.match(source,/deferredDrawing = deferDrawing \? plan\.place\.filter\(item => item\.destination\?\.id === 'img2img'\) : \[\];/);
   assert.match(source,/if\(deferredDrawing\.includes\(item\)\)continue;/);
-  assert.match(source,/deferDrawing=operationGeneral;\n\s*if \(!\(await ensureStaged\(\)\)\) return false;/);
+  assert.match(source,/deferDrawing=operationGeneral;\r?\n\s*if \(!\(await ensureStaged\(\)\)\) return false;/);
   // A style run never places them all: it places subject + one style per run. A plain 图生图 step places them just before it runs.
   assert.match(source,/if\(imageRunPlans\.has\(op\)\)\{drawingPending\.length=0;receipt=await runImageRuns/);
   assert.match(source,/if\(op\.generationMode!=='txt2img'&&op\.useResult!==true\)await placeDrawingPending\(\);/);

@@ -10,8 +10,14 @@ test('local Qwen UI keeps its planner scope and long requirements across the wor
     const {request}=normalize(payload);
     assert.equal(request.targetEngine,'qwen-2.1');assert.equal(request.requirements,payload.requirements);
     assert.equal(request.uiPreserveLayout,true);assert.equal(request.supportsNegativePrompt,false);
-    assert.equal(normalize({...payload,surface:'art'}).request.targetEngine,undefined);
+    // The UI-only fields never cross to another surface.
+    const art=normalize({...payload,surface:'art'}).request;
+    assert.equal(art.uiPreserveLayout,undefined);assert.equal(art.uiDesignIntent,undefined);
   }
+  // Drawing prompt optimization on a 2.1 node names its engine and prompt mode (reverse does not).
+  assert.equal(normalizeOptimizeRequest({...payload,surface:'art'}).request.targetEngine,'qwen-2.1');
+  assert.equal(normalizeOptimizeRequest({...payload,surface:'art'}).request.qwenPromptMode,'txt2img');
+  assert.equal(normalizeReverseRequest({...payload,surface:'art'}).request.targetEngine,undefined);
 });
 
 test('automatic editor guide takes priority over an earlier UI reference in the analysis request',async()=>{

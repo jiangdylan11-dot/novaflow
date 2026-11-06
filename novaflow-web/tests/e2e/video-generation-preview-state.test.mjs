@@ -38,7 +38,7 @@ test('a second video submit cannot replace the first run token; failed preparati
   const run = new Function('e', 'O', 'fetch', 'window', `return (${runSource})`)(e, () => {
     checks++;
     return new Promise(resolve => { resolveCheck = resolve; });
-  }, async () => ({}), { electronAPI: {} });
+  }, async () => ({}), { electronAPI: {}, NovaFlowAiSequenceBoardFps: { beginImport: () => ({}) } }); // board fps import ticket (ai-sequence-board-fps)
   const first = run();
   await new Promise(resolve => setImmediate(resolve));
   await run();

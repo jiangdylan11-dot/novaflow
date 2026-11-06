@@ -29,6 +29,8 @@ function environment({ ui = true, references = [{id:'default-layout',role:'layou
     placeArtGenerateResultIntoSource:async()=>true,renderArtGenerateSurfaces:noop,clearArtGenerateBatch:noop,clearArtGenerateRunIfCurrent:noop,
     artGenerateBatchProgress:label=>({label,pct:0}),addEventListener:noop,removeEventListener:noop,
     ART_GENERATE_WORKFLOW_TIMEOUT_MS:1,ART_GENERATE_PROMPT_TIMEOUT_MS:1,ART_GENERATE_HISTORY_TIMEOUT_MS:1,ART_GENERATE_DOWNLOAD_TIMEOUT_MS:1,
+    pendingArtAgentPreparation:null, // module-level in the brand runtime; runArtGenerate takes a reviewed draft from it
+    cancelArtGeneratePromptAnalysis:async()=>({ok:true,cancelled:false}), // a drawing run first stops any prompt analysis
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
@@ -36,6 +38,8 @@ function environment({ ui = true, references = [{id:'default-layout',role:'layou
   vm.runInContext(source('ui-design-style-reference.js'),sandbox);
   sandbox.Image = class { width=16; height=16; set src(value) { this.onload(); } };
   vm.runInContext(source('ui-design.drawing.js'),sandbox);
+  // A plain Drawing run is prepared by the drawing page's own module (roles, slot order, <imageN>).
+  vm.runInContext(source('art-prepare.workflow.js'),sandbox);
   const brand = source('novaflow-brand-runtime.js');
   vm.runInContext(brand.slice(brand.indexOf('  function resolveArtGenerateReferenceInputs('), brand.indexOf('  async function runArtGenerate(')),sandbox);
   vm.runInContext(brand.slice(brand.indexOf('  async function runArtGenerate('), brand.indexOf('  function createArtGenerateExecutionBridge()')),sandbox);
@@ -52,9 +56,9 @@ test('the real short layout/theme request in Drawing dispatches the existing UI 
  const args=e.builds[0];assert.equal(args[8].uiNativeEditPrompt,true);assert.equal(args[8].uiPreserveLayout,true);assert.equal(args[8].uiRunIntent,'redesign');assert.equal(args[10].taskProfile,'ui-design');
  assert.match(args[4],/中国风主题/);assert.match(args[4],/主题重设计只保留布局图的业务结构/);assert.match(args[4],/5列3行/);assert.equal(args[10].referenceRoles[0].role,'layout');assert.equal(e.uploads[0].dataUrl,refs[0].dataUrl);
 });
-test('plain character or scene Drawing keeps generic quality, sampling and its original dispatch',async()=>{
+test('plain character or scene Drawing stays on the drawing preparation and never enters the UI compiler',async()=>{
  for(const request of ['参考图1的布局，换一个中国风主题的角色海报','把人物衣服换成汉服，保留原构图','参考图1做一个中国山水场景']){
- const e=environment({ui:false,qwen:true,references:refs});becomeDrawing(e);e.state.prompt=request;e.state.count=1;await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.calls.includes('optimize'),false);assert.equal(e.calls.includes('drawing-quality'),true);assert.equal(e.builds[0][10]?.taskProfile,undefined);
+ const e=environment({ui:false,qwen:true,references:refs});becomeDrawing(e);e.state.prompt=request;e.state.count=1;await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.calls.includes('optimize'),false);assert.equal(e.builds.length,1);assert.equal(e.builds[0][10]?.taskProfile,'art-direction');
  }
 });
 test('Drawing style-only and negative theme requests do not expand to whole UI redesign',()=>{

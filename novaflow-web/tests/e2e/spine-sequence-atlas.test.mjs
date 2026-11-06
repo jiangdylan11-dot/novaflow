@@ -141,9 +141,9 @@ test('loaded AI cutout action exports the edited alpha frames and preserves the 
       return canvas;
     } };
     const ref = current => ({ current }), api = { pickDirectory: async () => ({ dir: 'AI' }), writeBinaryFile: async p => { saved.set(`${p.dir}/${p.fileName}`.replaceAll('\\', '/'), p.bytes); return { ok: true }; } };
-    const context = vm.createContext({ console, window: {}, document, Blob, TextEncoder, CompressionStream, Response,
+    const context = vm.createContext({ console, CustomEvent, setTimeout, clearTimeout, window: { dispatchEvent() {} }, document, Blob, TextEncoder, CompressionStream, Response,
       createImageBitmap: async blob => ({ ...png(new Uint8Array(await blob.arrayBuffer())), close() {} }), HTMLImageElement: class {},
-      e: { sourceFps: 10 }, t: ref(media), l: 10, N: true, V: true, M: api, k: true, A: '3.8', w: 10, E: 10, T: false, R: 'ai', ce: null,
+      e: { sourceFps: 10 }, t: ref(media), l: 10, N: true, V: true, M: api, k: true, A: '3.8', w: 10, E: 10, T: false, R: 'ai', ce: null, nfGreenScreen: false,
       c: 100, o: 17, s: 25, r: 'edited.png', a: 0.2, u: false, d: 0, f: 1,
       G: ref({ fps: 10, times: [0, 0.1] }), U: ref(new Map()), En: ref(false), Sn: ref(0), ln: ref({ token: 0 }), Yn() {}, nfPauseCutoutPlayback() {},
       nfCreateCutoutExportReader: async media => ({ media, release() {} }), Rt: async () => {}, wt: async () => {},

@@ -1,6 +1,6 @@
 // GENERATED COPY - source: packages/shared/src/xiaotao-ui-professional.generated.mjs
 // GENERATED: server-local wrappers around unchanged renderer UI rules.
-// Sources: {"ui-design-prompt.pipeline.js":"44b1da267fc06ccf043e3d74ac8178a1dc3e6345b2b80806747f9ac17e23a374","ui-design-assistant.workflow.js":"cfe7dcc8dc8105c8abcbb5162837150d7f6affe51a058bab8a822f216f4395ba"}
+// Sources: {"ui-design-prompt.pipeline.js":"ace305e6d9541a0c5289c4ca89a44c0c171ae1fe00293a9b6d27ab6e19a242fe","ui-design-assistant.workflow.js":"43b63d304b4d066b441e0dc8943e4b2aab3e48bc9c440f11ced12dc8ee0196ff"}
 const isolated=(()=>{const globalThis=Object.create(null);const module=undefined;
 ;(function (root, factory) {
   const api = factory()
@@ -1178,4 +1178,4 @@ const pipeline=globalThis.NovaFlowUiDesignPromptPipeline,assistant=globalThis.No
 if(!pipeline||!assistant)throw Error('ui-compiler-unavailable');
 return Object.freeze({pipeline:Object.freeze({requireLayoutReferences:pipeline.requireLayoutReferences,normalizeQwenPlan:pipeline.normalizeQwenPlan}),assistant:Object.freeze({structureSnapshot:assistant.structureSnapshot,buildRequirements:assistant.buildRequirements,buildTextOnlyRequirements:assistant.buildTextOnlyRequirements,restoreText:assistant.restoreText})});})();
 export const pipeline=isolated.pipeline;export const assistant=isolated.assistant;
-export const sourceHashes=Object.freeze({"ui-design-prompt.pipeline.js":"44b1da267fc06ccf043e3d74ac8178a1dc3e6345b2b80806747f9ac17e23a374","ui-design-assistant.workflow.js":"cfe7dcc8dc8105c8abcbb5162837150d7f6affe51a058bab8a822f216f4395ba"});
+export const sourceHashes=Object.freeze({"ui-design-prompt.pipeline.js":"ace305e6d9541a0c5289c4ca89a44c0c171ae1fe00293a9b6d27ab6e19a242fe","ui-design-assistant.workflow.js":"43b63d304b4d066b441e0dc8943e4b2aab3e48bc9c440f11ced12dc8ee0196ff"});

@@ -1,3 +1,4 @@
+// GENERATED COPY - source: packages/shared/src/model-manifest.mjs
 // NovaFlow Web - model manifest (spec 22).
 //
 // The worker checks this against what the local ComfyUI can actually load,

@@ -7,11 +7,11 @@ function project(name,color) { return { name, color, pma:false, offset:{x:color,
 function fixture() {
   const state=project('one.v1',200),other=project('two',50),projects=[{id:1,visible:false,exported:true},{id:2,snap:other,visible:true,exported:true}],files=new Map()
   const directory=(prefix='')=>({getDirectoryHandle:async n=>directory(prefix+n+'/'),getFileHandle:async n=>({createWritable:async()=>({write:async data=>files.set(prefix+n,data),close:async()=>{}})})})
-  require('../../renderer/spine-audio.js');const AudioAssets=globalThis.NovaFlowSpineAudio;
-  const c=vm.createContext({AudioAssets,state,projects,activeProject:0,Ops,window:{NovaFlowSequenceAtlas:A},status(){},renderTree(){},renderProps(){},
+  require('../../renderer/spine-audio.js');const AudioAssets=globalThis.NovaFlowSpineAudio;require('../../renderer/spine-auto-mesh-attach.js');const Attach=globalThis.NovaFlowAutoMeshAttach;
+  const c=vm.createContext({AudioAssets,Attach,performance,setTimeout,state,projects,activeProject:0,Ops,window:{NovaFlowSequenceAtlas:A},status(){},renderTree(){},renderProps(){},
     projectName:i=>i===0?state.name:projects[i].snap.name,atlasSettings:()=>A.defaults,
     imageRgba:async(_name,_file,src)=>({width:2,height:2,rgba:Uint8Array.from(Array.from({length:4},()=>[src.color,0,0,255]).flat())}) })
-  vm.runInContext(['createExportImageCache','setProjectExport','exportProjectName','selectedProjectEntries','mediaExportPlans','exportSelectedProjects','exportProject','exportImageNames'].map(fn).join('\n'),c)
+  vm.runInContext(['createExportImageCache','setProjectExport','exportProjectName','selectedProjectEntries','mediaExportPlans','exportSelectedProjects','exportProject','exportImageNames','meshImageNames'].map(fn).join('\n'),c)
   return {c,state,other,projects,files,export:()=>c.exportSelectedProjects({directory:directory(),mode:'atts',version:'3.8'})}
 }
 function firstRed(png) { const b=Buffer.from(png),parts=[];for(let i=8;i<b.length;){const n=b.readUInt32BE(i);if(b.subarray(i+4,i+8).toString()==='IDAT')parts.push(b.subarray(i+8,i+8+n));i+=n+12}const rows=zlib.inflateSync(Buffer.concat(parts)),w=b.readUInt32BE(16);for(let y=0;y<b.readUInt32BE(20);y++)for(let x=0;x<w;x++){const i=y*(w*4+1)+1+x*4;if(rows[i+3])return rows[i]} }

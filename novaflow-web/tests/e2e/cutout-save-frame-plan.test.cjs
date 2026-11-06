@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync('novaflow-web/renderer/assets/index-BbIa-2NM.js', 'utf8');
+const source = fs.readFileSync(__dirname+'/../../renderer/assets/index-BbIa-2NM.js', 'utf8');
 const save = source.slice(source.indexOf('ni=async n=>'));
 const fps = save.match(/h=(Z\(n\?\.finalAsset.*?),g=N&&V/)[1];
 const plan = save.match(/nfSavedFrameTimes=.*?(?=,N=`)/)[0];

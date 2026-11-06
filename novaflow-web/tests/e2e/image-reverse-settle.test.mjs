@@ -15,8 +15,12 @@ process.env.NOVAFLOW_ADMIN_SERVER_ENV = 'development';
 process.env.NOVAFLOW_ADMIN_SERVER_REQUEST_LOGS = '0';
 
 const require = createRequire(import.meta.url);
-const adminData = require('../../admin/license-admin-gui/admin-data.js');
-const { createAdminServer } = require('../../admin/admin-server/server.js');
+// The admin server has its own package; without its dependencies this case is skipped, not red.
+let adminMissing = false;
+try { createRequire(new URL('../../admin/package.json', import.meta.url)).resolve('@supabase/supabase-js'); }
+catch { adminMissing = 'admin dependencies are not installed (npm --prefix admin ci)'; }
+const adminData = adminMissing ? null : require('../../admin/license-admin-gui/admin-data.js');
+const { createAdminServer } = adminMissing ? {} : require('../../admin/admin-server/server.js');
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const MATERIAL = { name: 'PETAL', material: 'soft petals', elements: 'petals', colours: 'red', breakup: 'sheds' };
@@ -30,7 +34,7 @@ function sessionToken() {
   return `nfs_${encoded}.${signature}`;
 }
 
-test('AIFX cloud material reverse settles once and returns the success body', async () => {
+test('AIFX cloud material reverse settles once and returns the success body', { skip: adminMissing }, async () => {
   const rpc = [];
   adminData.callFeatureCreditRpc = async (name, args) => {
     rpc.push({ name, feature: args?.p_feature, units: args?.p_units ?? args?.p_actual_units ?? null });

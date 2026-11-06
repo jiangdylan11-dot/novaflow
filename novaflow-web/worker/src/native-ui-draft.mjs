@@ -16,11 +16,11 @@ export async function waitForOwnedUiPrompt({promptId,history,isCancelled=()=>fal
     if (!deferred && now()-start>=timeoutMs) deferred='timeout';
     let h;
     try { h=await history(promptId); } catch { await sleep(pollMs); continue; }
-    if (h?.status?.status_str==='error') throw new Error('UI analysis model failed for prompt '+promptId);
+    if (h?.status?.status_str==='error') throw new Error('UI 分析失败，任务ID：'+promptId);
     if (h?.status?.completed) {
-      if (h.status.status_str!=='success') throw new Error('UI analysis did not complete successfully for prompt '+promptId);
-      if (deferred==='cancelled') throw new Error('UI analysis was cancelled after its model task finished');
-      if (deferred==='timeout') throw new Error('UI analysis timed out; its model task has now finished');
+      if (h.status.status_str!=='success') throw new Error('UI 分析没有成功完成，任务ID：'+promptId);
+      if (deferred==='cancelled') throw new Error('UI 分析已取消；模型任务已结束，未提交生图');
+      if (deferred==='timeout') throw new Error('UI 分析超时；模型任务已结束，未提交生图');
       return h;
     }
     await sleep(pollMs);
@@ -83,7 +83,7 @@ export async function planNativeUiDraft({baseUrl,payload,cpu,infer,fetchImpl=fet
     const h=await waitForOwnedUiPrompt({promptId:sent.prompt_id,history:async id=>(await json('/history/'+id))[id],
       isCancelled:()=>Boolean(isCancelled() || payload.signal?.aborted),timeoutMs,pollMs});
     const raw=h.outputs?.['4']?.text,text=Array.isArray(raw)?raw.join(''):String(raw||'');
-    if(!text.trim())throw new Error('UI analysis produced no valid text');
+    if(!text.trim())throw new Error('UI 分析没有返回有效文字；未提交生图');
     timings.push({stage,promptId:sent.prompt_id,wallMs:Date.now()-start,rawChars:text.length});active();return text;
   };
   try {

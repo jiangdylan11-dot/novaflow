@@ -16,43 +16,41 @@ function build(options,extra=false,native=true,state={}){
   return vm.buildArtQwen21Workflow('img2img',extra?['source','style','pose']:['source','style'],'proof','prompt',{width:832,height:1216,seed:7,randomSeed:false,uiPreserveLayout:false,negativePrompt:'avoid donor',...state},extra?[{width:1280,height:960},{width:3328,height:4864},{width:1000,height:1000}]:[{width:1280,height:960},{width:3328,height:4864}],options,'avoid donor',{cfg:3,steps:40});
 }
 
-test('a portrait relayout keeps content near the working size and full style detail',()=>{
-  const options={taskProfile:'art-direction',referenceRoles:['subject','style']};
-  const ordinary=build({...options,referenceRoles:['subject','reference']}).workflow,style=build(options).workflow;
-  assert.equal(ordinary['200'].inputs.width,1152);assert.equal(ordinary['201'].inputs.width,576);
-  assert.equal(style['200'].inputs.width,1152);assert.equal(style['200'].inputs.height,864);
+// A style redraw is the single-pass recipe decided in the Nov 5-6 A/B rounds: the subject photo goes in
+// loose (STYLE_REDRAW_CONTENT_PIXELS), the style picture keeps up to 1 MP, and the picture is drawn fresh on
+// a large empty canvas of the requested aspect (STYLE_REDRAW_WORKING_PIXELS) at STYLE_REDRAW_CFG.
+const near=(value,target,tolerance)=>Math.abs(value-target)<=tolerance;
+function assertStyleRedraw(style,{width,height}){
+  const subject=style['200'].inputs,content=subject.width*subject.height;
+  assert.deepEqual(Array.from(style['5'].inputs['images.image_1']),['200',0]);
+  assert.ok(content<=realModels.STYLE_REDRAW_CONTENT_PIXELS&&content>=realModels.STYLE_REDRAW_CONTENT_PIXELS*0.75,`subject is loose: ${subject.width}x${subject.height}`);
+  assert.ok(near(subject.width/subject.height,1280/960,0.06),'the subject keeps its own aspect');
+  assert.deepEqual(Array.from(style['5'].inputs['images.image_2']),['201',0]);
   assert.equal(style['201'].inputs.width,832);assert.equal(style['201'].inputs.height,1216);
-  assert.deepEqual(Array.from(style['5'].inputs['images.image_1']),['200',0]);assert.deepEqual(Array.from(style['5'].inputs['images.image_2']),['201',0]);
-  assert.equal(style['6'].inputs.width,832);assert.equal(style['6'].inputs.height,1216);
-  assert.deepEqual(Array.from(style['7'].inputs.latent_image),['6',0]);
-  assert.equal(style['7'].inputs.cfg,3);assert.equal(style['7'].class_type,'SamplerCustom');
+  const canvas=style['6'].inputs;
+  assert.equal(style['6'].class_type,'EmptyLatentImage');assert.deepEqual(Array.from(style['7'].inputs.latent_image),['6',0]);
+  assert.ok(canvas.width%32===0&&canvas.height%32===0);
+  assert.ok(canvas.width*canvas.height<=realModels.STYLE_REDRAW_WORKING_PIXELS&&canvas.width*canvas.height>=realModels.STYLE_REDRAW_WORKING_PIXELS*0.9,`canvas ${canvas.width}x${canvas.height}`);
+  assert.ok(near(canvas.width/canvas.height,width/height,0.03),'the canvas has the requested aspect');
+  assert.equal(style['7'].class_type,'SamplerCustom');assert.equal(style['7'].inputs.cfg,realModels.STYLE_REDRAW_CFG);
+  assert.equal(style['5'].inputs.prompt,'prompt');
+}
+
+test('a portrait style redraw draws on a large requested-aspect canvas from a loose subject and the full style picture',()=>{
+  const options={taskProfile:'art-direction',referenceRoles:['subject','style']};
+  const ordinary=build({...options,referenceRoles:['subject','reference']}).workflow;
+  assert.equal(ordinary['200'].inputs.width,1152);assert.equal(ordinary['201'].inputs.width,576);
+  assertStyleRedraw(build(options).workflow,{width:832,height:1216});
 });
 
-test('source-sized grounded style uses the first reference latent without a photographic framing lock',()=>{
+test('a style redraw never samples the source latent, whatever the layout flag or the requested size',()=>{
   const options={taskProfile:'art-direction',referenceRoles:['subject','style']};
   const state={width:1280,height:960,uiPreserveLayout:undefined};
   const ordinary=build({...options,referenceRoles:['subject','reference']},false,true,state).workflow;
   assert.deepEqual(Array.from(ordinary['7'].inputs.latent_image),['5',2]);
   assert.equal(ordinary['200'],undefined);
-  for(const uiPreserveLayout of [undefined,false]){
-    const style=build(options,false,true,{...state,uiPreserveLayout}).workflow;
-    assert.equal(style['200'],undefined);
-    assert.deepEqual(Array.from(style['5'].inputs['images.image_1']),['100',0]);
-    assert.equal(style['201'].inputs.width,832);assert.equal(style['201'].inputs.height,1216);
-    assert.equal(style['6'],undefined);
-    assert.deepEqual(Array.from(style['7'].inputs.latent_image),['5',2]);
-    assert.equal(style['5'].inputs.prompt,'prompt');
-  }
-});
-
-test('same-aspect grounded style scales source to working dimensions and samples its latent',()=>{
-  const style=build({taskProfile:'art-direction',referenceRoles:['subject','style']},false,true,{width:1024,height:768,uiPreserveLayout:false}).workflow;
-  assert.equal(style['200'].inputs.width,1024);assert.equal(style['200'].inputs.height,768);
-  assert.deepEqual(Array.from(style['5'].inputs['images.image_1']),['200',0]);
-  assert.equal(style['201'].inputs.width,832);assert.equal(style['201'].inputs.height,1216);
-  assert.equal(style['6'],undefined);
-  assert.deepEqual(Array.from(style['7'].inputs.latent_image),['5',2]);
-  assert.equal(style['5'].inputs.prompt,'prompt');
+  for(const uiPreserveLayout of [undefined,false])assertStyleRedraw(build(options,false,true,{...state,uiPreserveLayout}).workflow,state);
+  assertStyleRedraw(build(options,false,true,{width:1024,height:768,uiPreserveLayout:false}).workflow,{width:1024,height:768});
 });
 
 test('source-aspect alignment stays scoped away from fresh-layout controls and ordinary edits',()=>{

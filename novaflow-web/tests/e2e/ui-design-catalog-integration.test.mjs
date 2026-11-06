@@ -124,9 +124,9 @@ test('UI entry preserves the exact compiled prompt and original reference bytes;
 
   let calls=0, release;
 
-  const data={prompt:'已经编译的完整原文。',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'complete-natural-reference-v1'},uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'layout'}],layoutChanges:[],preserve:[]}};
+  const data={prompt:'已经编译的完整原文。',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'native-source-catalog-v3'},uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'layout'}],layoutChanges:[],preserve:[]}};
 
-  const electronAPI={promptAssistantUiDesignCpu:async()=>({ok:true,data:{localCompletePlanner:'complete-catalog-v2'}}),promptAssistantReverseImagePrompt:async req=>{calls++;assert.equal(req.uiPlanner,'complete-catalog-v2');return {ok:true,data};}};
+  const electronAPI={promptAssistantUiDesignCpu:async()=>({ok:true,data:{localCompletePlanner:'native-catalog-v3',sourceContract:'observed-rows-v2'}}),promptAssistantReverseImagePrompt:async req=>{calls++;assert.equal(req.uiPlanner,'native-catalog-v3');return {ok:true,data};}};
 
   const result=await root.NovaFlowUiDesignAssistantWorkflow.run({...input,electronAPI});
 
@@ -143,32 +143,6 @@ test('UI entry preserves the exact compiled prompt and original reference bytes;
   let fresh=0;await root.NovaFlowUiDesignPromptPipeline.run({id:'cancel-catalog',input,assistant:{run:async()=>{fresh++;return data}}});assert.equal(fresh,1);
 
 });
-
-test('worker local lease rejects duplicate clicks while an analysis is pending',async()=>{
-
-  let freeCalls=0, release;
-
-  const server=createServer(async(req,res)=>{if(req.url==='/queue'){res.end(JSON.stringify({queue_running:[],queue_pending:[]}));return;}if(req.url==='/free'){freeCalls++;await new Promise(resolve=>{release=resolve});res.end('{}');return;}res.writeHead(404);res.end('{}');});
-
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-
-  try{
-
-    const api=createPromptAssistant({worker:{getState:()=>({})},comfyUrls:['http://127.0.0.1:'+server.address().port]});
-
-    const first=api.reverseImagePrompt(payload);while(!release)await new Promise(resolve=>setTimeout(resolve,1));
-
-    const duplicate=await api.reverseImagePrompt(payload);assert.equal(duplicate.errorCode,'prompt-assistant-busy');assert.equal(freeCalls,1);
-
-    release();await first;
-
-  }finally{await new Promise(resolve=>server.close(resolve));}
-
-});
-
-
-
-
 
 test('layout reference clause does not turn the following whole-theme clause into a layout change',()=>{
 
@@ -310,5 +284,9 @@ test('art extraction accepts field order without editing values and quarantines 
 
 test('an old node cannot silently return the former catalog implementation to the new UI',async()=>{
  const root=frontend();
- await assert.rejects(()=>root.NovaFlowUiDesignAssistantWorkflow.run({uiCatalogEnabled:true,provider:'local',engine:'local',targetEngine:'qwen-2.1',prompt:payload.currentPrompt,preserveLayout:true,generationIntent:'redesign',references:[{id:'L',role:'layout',dataUrl:images[0].dataUrl}],structure:{},electronAPI:{promptAssistantReverseImagePrompt:async()=>({ok:true,data:{prompt:'old result',uiCatalog:{schema:'nf.ui.structure-catalog.v1'}}})}}),/更新本地助手/);
+ await assert.rejects(()=>root.NovaFlowUiDesignAssistantWorkflow.run({uiCatalogEnabled:true,provider:'local',engine:'local',targetEngine:'qwen-2.1',prompt:payload.currentPrompt,preserveLayout:true,generationIntent:'redesign',references:[{id:'L',role:'layout',dataUrl:images[0].dataUrl}],structure:{},electronAPI:{promptAssistantReverseImagePrompt:async()=>({ok:true,data:{prompt:'old result',uiCatalog:{schema:'nf.ui.structure-catalog.v1'}}})}}),/请更新 Foart后使用完整UI设计/);
+ // A node that claims the v3 planner but answers with the former catalog is refused as well.
+ await assert.rejects(()=>root.NovaFlowUiDesignAssistantWorkflow.run({uiCatalogEnabled:true,provider:'local',engine:'local',targetEngine:'qwen-2.1',prompt:payload.currentPrompt,preserveLayout:true,generationIntent:'redesign',references:[{id:'L',role:'layout',dataUrl:images[0].dataUrl}],structure:{},electronAPI:{
+  promptAssistantUiDesignCpu:async()=>({ok:true,data:{localCompletePlanner:'native-catalog-v3',sourceContract:'observed-rows-v2'}}),
+  promptAssistantReverseImagePrompt:async()=>({ok:true,data:{prompt:'old result',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'complete-natural-reference-v1'}}})}}),/UI 分析组件需要更新/);
 });

@@ -75,8 +75,6 @@
         "art-prompt-language.mjs",
         "xiaotao-role-policy.mjs",
         "xiaotao-upload-guard.mjs",
-        "xiaotao-ui-framework-v3.mjs",
-        "xiaotao-ui-professional.generated.mjs",
         "release.mjs",
         "foart-tool-plan.mjs"
       ]

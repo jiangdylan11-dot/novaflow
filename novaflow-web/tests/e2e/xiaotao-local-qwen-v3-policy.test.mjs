@@ -20,6 +20,7 @@ function fixture(policy,backend='qwen-cpu',identity='qwen35-heretic') {
   root.window=root;vm.createContext(root);vm.runInContext(toolsSource,root);vm.runInContext(agentSource,root);
   const bridge={clearPrepared(){},capture(){throw Error('unexpected capture');},async captureChat(){return {artContext:{surface:'other'},images:[]};}};
   const controller=root.NovaFlowXiaotaoArtAgent.createController({bridge,storage,api:()=>root.electronAPI});root.NovaFlowXiaotaoArtAgent.panel={controller};
+  controller.setModel('qwen3.5-9b-heretic'); // 小桃 opens on 豆包 since 2.0.321; these are local-brain cases
   return {controller,rt,get calls(){return calls;}};
 }
 

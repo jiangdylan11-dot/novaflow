@@ -1,3 +1,4 @@
+// GENERATED COPY - source: packages/shared/src/workflow-modules.mjs
 // Renderer workflow modules the Web line will run.
 //
 // The browser sends {module, method, options}; this table says what that
