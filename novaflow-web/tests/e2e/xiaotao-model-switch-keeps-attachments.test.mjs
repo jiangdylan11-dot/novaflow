@@ -28,7 +28,7 @@ test('placed reference images survive a model switch and are not duplicated or r
   const { controller, revoked } = load();
   const { state } = controller;
   const [doubao, deepseek] = ['bytedance/doubao-seed-2.1-lite', 'deepseek/deepseek-v4.1-flash'];
-  assert.equal(controller.setModel(doubao), true);
+  assert.equal(state.modelId, doubao);
   assert.equal(await controller.stageUploads([image('subject.png'), image('style.png')]), true);
   const placed = [...state.staged].map(item => item.id);
   assert.deepEqual([...state.staged].map(item => item.name), ['subject.png', 'style.png']);
