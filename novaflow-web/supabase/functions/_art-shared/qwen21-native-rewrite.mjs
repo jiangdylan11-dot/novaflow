@@ -17,7 +17,7 @@ const EDIT_SYSTEM=`Rewrite the user's image-editing instruction for Qwen Image 2
 For changing this image, lead with the requested operation and make the named change strong and unmistakable. Describe only the changed attributes; preserve the untargeted content, identity, product design/count, layout, pose, accessories and rendering medium with a concise blanket clause. Do not describe the old face, clothing, background or style in detail merely to preserve it, since that invites regeneration. Do not soften the requested edit just to preserve identity.
 For making a new scene from a reference subject, actively compose the requested scene and lighting while keeping the referenced identity; do not treat scene creation as a tiny local edit. Ground every visible claim in the supplied images and request; do not invent unseen details, lettering or extra edit operations.
 One image: refer naturally to the image, without adding numbered tags. Preserve any reference tags or protected __NF...__ resource placeholders already supplied by the application verbatim, including for one image; these are bindings, not lettering. Multiple images: use <image1>, <image2>, etc., name each image's role, identify the base canvas when there is one, and say which specific attribute transfers from each reference. A style reference supplies style, not its objects, text or composition. For compositing, preserve identity sources and integrate scale, perspective, contact shadows and illumination coherently. For removal/outpainting, describe only the revealed/extended region needed for continuity. User-selected canvas dimensions, reference order, aspect ratio and sampling remain application parameters; do not insert them into the picture or change them.`;
-const STYLE_SYSTEM=`You prepare a style redraw for Qwen Image 2.1. <image1> is the subject; every later image is a style reference. Return only JSON with drawing, style_description, mood_description, content_description, time_of_day, sun_visible and sky_visible, all in English.
+const STYLE_SYSTEM=`You prepare a style redraw for Qwen Image 2.1. <image1> is the subject; every later image is a style reference. Return only JSON with drawing, light, style_description, mood_description, content_description, time_of_day, sun_visible and sky_visible, all in English.
 drawing: look at how the style image(s) are drawn and pick the one closest value for each field, deciding in this order. Paint on paper with wet edges and no ink outline is watercolour. Flat colour areas with hard-edged shadows is flat_cel, even in a bright picture. Visible brushwork with no outlines is painterly. Thin lines with blurred shadows and glow is soft. Only smooth glossy airbrushed work is glossy.
 genre: flat_cel, painterly, glossy, soft or watercolour. line: none, thin_uniform, tapered, sketchy or pencil. shading: soft_gradient, two_step, three_step, brush, hatching or wash. highlight: none, hard_band, angular, specular, bloom or paper. hair: solid, ribbon, fine, brushed or washed. colour_layout: flat, gradient, impasto or wash. surface: smooth, grain, textured or paper. For example:
 - flat colour fills, one thin even outline, hard shadow shapes: flat_cel, thin_uniform, two_step, angular, ribbon, flat, smooth
@@ -26,11 +26,8 @@ genre: flat_cel, painterly, glossy, soft or watercolour. line: none, thin_unifor
 - thin delicate lines, blurred shadow edges, glowing highlights: soft, thin_uniform, soft_gradient, bloom, fine, gradient, smooth
 - pigment bleeding on rough paper, white paper showing: watercolour, pencil, wash, paper, washed, wash, paper
 style_description: under 20 words on anything special about the drawing the choices above miss, or an empty string. No colour words, and no character, object or scenery from the style image(s).
-mood_description: one comma-separated phrase of 20-40 words on the lighting of the style image(s): time of day first, then the key light with its colour and direction, the shadow colour, the contrast, and any sky shown. Short hard shadows mean midday; golden hour only if a low sun is actually visible. Name no object or scenery from the style image(s). Examples:
-- bright midday, strong direct sunlight from the right and above, hot white-gold highlights, hard-edged shadows, bright interior
-- bright midday, bright blue summer sky with white clouds, clean white key from the upper left, crisp cool grey shadows, fresh and contrasty
-- night, cool blue moonlight key from above, deep navy shadows, one small warm red accent light only, high contrast, deep blue moonlit sky
-- night, one soft lamp as the key light from the side, neutral shadows, mild contrast
+light: how the style image(s) are lit, one closest value each. key: hard, soft or diffuse. direction: above, side, back or front. contrast: high, medium or low. shadow: cool, warm or neutral. skin: matte, satin, glossy or translucent. hair_depth: flat, two or layered. Large areas falling into deep shadow mean high contrast; a clear lit side and dark side mean a hard key.
+mood_description: under 15 words: the time of day, then any sky shown with its colours. Short hard shadows mean midday; golden hour only if a low sun is actually visible. Name no object or scenery from the style image(s).
 content_description: 40-80 words describing <image1>: the person, the exact hair colour in a plain word such as brown, dark brown, black or blonde (never auburn or copper) and the hair style, expression including any wink, facial marks and where they are, clothing, held objects, pose and framing, and the place with its structure and objects. Never state its time of day, sky, lighting or what shows through its windows: the style image(s) decide those. Ground every claim in <image1>. Carry through any request in current_instruction and requested_changes, such as a new pose or background, by describing the requested result; leave out what only asks for this style change. Refer to the pictures by what they show, never by tags or __NF...__ placeholders.
 time_of_day: one of midday, afternoon, golden_hour, dusk, night, overcast. sun_visible and sky_visible: true only if a low sun or open sky actually appears in the style image(s).`;
 // Only the lighting design comes from the reference. Colours stay the source's own: tinting the whole
@@ -52,7 +49,21 @@ const STYLE_DRAWING=Object.freeze({
   colour_layout:{flat:'few flat colour areas',gradient:'smooth airbrushed gradients in the shadows',impasto:'thick painted strokes',wash:'thin transparent washes that let the paper show'},
   surface:{smooth:'smooth skin',grain:'a subtle paper grain',textured:'visible painted texture',paper:'rough paper grain with uneven painted edges'}
 });
+const STYLE_LIGHT=Object.freeze({
+  key:{hard:'a hard direct key light',soft:'a soft key light',diffuse:'soft diffused light'},
+  direction:{above:'from above',side:'from the side',back:'from behind as a rim light',front:'from the front'},
+  contrast:{high:'very high contrast with deep shadow masses',medium:'moderate contrast',low:'low contrast with open shadows'},
+  shadow:{cool:'cool blue-violet shadows',warm:'warm brown shadows',neutral:'neutral grey shadows'},
+  skin:{matte:'matte skin',satin:'softly lit satin skin',glossy:'glossy skin with bright sheen',translucent:'translucent glowing skin'},
+  hair_depth:{flat:'hair kept to one flat tone',two:'hair in two clear tones',layered:'hair in many layered strands with deep darks between them'}
+});
 const STYLE_DRAWING_MIN=3;
+// Picked light comes before the brain's mood text, which then only adds what the choices cannot say.
+export function buildStyleLight(light,mood=''){
+  const key=STYLE_LIGHT.key[light?.key],direction=STYLE_LIGHT.direction[light?.direction];
+  const picked=[key&&direction?`${key} ${direction}`:key,...['contrast','shadow','skin','hair_depth'].map(field=>STYLE_LIGHT[field][light?.[field]])].filter(Boolean);
+  return picked.length<STYLE_DRAWING_MIN?styleSlot(mood):[styleSlot(mood),...picked].filter(Boolean).join(', ');
+}
 export function buildStyleDrawing(drawing,notes=''){
   const picked=Object.entries(STYLE_DRAWING).map(([field,values])=>values[drawing?.[field]]).filter(Boolean);
   if(picked.length<STYLE_DRAWING_MIN)return styleSlot(notes);
@@ -96,7 +107,7 @@ export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
     const ownWords=input.requirements?.trim()||input.currentPrompt;
     return {kind:'qwen21-native',input:{...input},nativeEdit:true,styleRedraw:true,referenceCount:referenceRoles.length,modelPromptLanguage:'en',body:{model,store:false,temperature:0,max_output_tokens:2048,
       input:[{role:'system',content:[{type:'input_text',text:STYLE_SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:'style-redraw',current_instruction:ownWords,requested_changes:'',reference_roles:referenceRoles.map((role,index)=>({image:index+1,role}))})}]}],
-      text:{format:{type:'json_schema',name:'qwen21_style_redraw',strict:true,schema:{type:'object',properties:{drawing:{type:'object',properties:Object.fromEntries(Object.entries(STYLE_DRAWING).map(([field,values])=>[field,{type:'string',enum:Object.keys(values)}])),required:Object.keys(STYLE_DRAWING),additionalProperties:false},style_description:{type:'string'},mood_description:{type:'string'},content_description:{type:'string'},time_of_day:{type:'string',enum:Object.keys(STYLE_TIMES)},sun_visible:{type:'boolean'},sky_visible:{type:'boolean'}},required:['drawing','style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible'],additionalProperties:false}}}}};
+      text:{format:{type:'json_schema',name:'qwen21_style_redraw',strict:true,schema:{type:'object',properties:{drawing:{type:'object',properties:Object.fromEntries(Object.entries(STYLE_DRAWING).map(([field,values])=>[field,{type:'string',enum:Object.keys(values)}])),required:Object.keys(STYLE_DRAWING),additionalProperties:false},light:{type:'object',properties:{...Object.fromEntries(Object.entries(STYLE_LIGHT).map(([field,values])=>[field,{type:'string',enum:Object.keys(values)}]))},required:Object.keys(STYLE_LIGHT),additionalProperties:false},style_description:{type:'string'},mood_description:{type:'string'},content_description:{type:'string'},time_of_day:{type:'string',enum:Object.keys(STYLE_TIMES)},sun_visible:{type:'boolean'},sky_visible:{type:'boolean'}},required:['drawing','light','style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible'],additionalProperties:false}}}}};
   }
   if(nativeEdit){
     const instruction=input.requirements?.trim()||input.currentPrompt;
@@ -184,7 +195,7 @@ function compileQwen21Rewrite(response,prepared,preserve){
   const value=rewriteJson(response.output_text);
   const nativeEdit=prepared.nativeEdit===true,styleRedraw=prepared.styleRedraw===true,expected=styleRedraw?'content_description,mood_description,style_description':nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
   if(!value||typeof value!=='object'||Array.isArray(value)||!styleRedraw&&Object.keys(value).sort().join(',')!==expected)fail('Qwen 2.1 rewrite fields invalid');
-  const styleDescription=styleRedraw?buildStyleDrawing(value.drawing,styleTechnique(styleText(value.style_description))):'',contentDescription=styleRedraw?styleText(value.content_description):'',moodDescription=styleRedraw?styleText(value.mood_description)||STYLE_DEFAULT_MOOD:'';
+  const styleDescription=styleRedraw?buildStyleDrawing(value.drawing,styleTechnique(styleText(value.style_description))):'',contentDescription=styleRedraw?styleText(value.content_description):'',moodDescription=styleRedraw?buildStyleLight(value.light,styleText(value.mood_description))||STYLE_DEFAULT_MOOD:'';
   if(styleRedraw&&!styleDescription)fail('Qwen 2.1 style description missing');
   if(styleRedraw&&!contentDescription)fail('Qwen 2.1 content description missing');
   const written=styleRedraw?buildStyleRedrawPrompt(styleDescription,moodDescription,contentDescription,prepared.referenceCount,value):nativeEdit?value.rewritten_prompt:value.display_prompt;
