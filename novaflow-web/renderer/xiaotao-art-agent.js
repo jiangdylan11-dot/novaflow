@@ -1233,7 +1233,7 @@
           const accepted=typeof imageUploadGrant==='function'?await imageUploadGrant(info):true;
           return current()&&accepted===true;
         },
-        onPricingQuote:()=>{if(current()){state.status='正在准备请求…';notify();}},
+        onPricingQuote:quote=>{if(current()){if(quote?.model&&quote.model!==modelId)state.messages.push({role:'status',content:backupLineNotice(quote.model)});state.status='正在准备请求…';notify();}},
         confirmPricingQuote:async()=>current(),
         onBillingNotice:row=>{
           if(!binding?.current?.()||row?.submitted!==true||row.modelId!==modelId||typeof row.requestId!=='string')return false;
@@ -1245,6 +1245,7 @@
         }
       };
     }
+    function backupLineNotice(id){return '所选模型线路慢，这步已改用 '+(CHAT_MODELS[id]?.label||id).split(' ')[0];}
     function publishBilling(billing) {
       if(!billing)return;
       const row={id:billing.id,modelId:billing.modelId,confirmed:billing.confirmedCount?billing.confirmed:null,unknown:billing.unknown||billing.inFlight,...(billing.owner?{owner:billing.owner}:{})};

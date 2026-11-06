@@ -64,6 +64,11 @@ test('an ordinary edit whose rewrite fails falls back to the request, tags intac
   assert.equal(broken.modelPrompt,input.currentPrompt);
 });
 
+test('a quote on another line tells the person the model changed',()=>{
+  assert.match(source,/onPricingQuote:quote=>\{if\(current\(\)\)\{if\(quote\?\.model&&quote\.model!==modelId\)state\.messages\.push\(\{role:'status',content:backupLineNotice\(quote\.model\)\}\)/);
+  assert.match(source,/所选模型线路慢，这步已改用 /);
+});
+
 test('internal check wording never reaches the panel',()=>{
   for(const text of ['Foart 工具含未知参数（image_generate）：x','模型返回的绘图提示词未通过完整性校验。'])assert.match(box.plainFoartError(Error(text)),/这一步没做成/);
   assert.equal(box.plainFoartError(Error('参考图尺寸仍在读取')),'参考图尺寸仍在读取');
