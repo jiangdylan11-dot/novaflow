@@ -5207,9 +5207,9 @@
         ...(gpt?{}:{agentModelLanguage:'en',promptContract:'qwen21-native-rewrite-v3'}),
         onPricingQuote:options.onPricingQuote,confirmPricingQuote:options.confirmPricingQuote,onBillingNotice:options.onBillingNotice,
         confirmImageUpload:options.confirmImageUpload,isImageInputCurrent:options.isImageInputCurrent,...(Array.isArray(proofRequestImages)?{images:proofRequestImages}:{}),signal});
-      if(!current())throw new Error('模型选择或会话已变化，请核对本次账单。');
+      if(!current())throw new Error('模型选择或会话已变化，本次结果未采用。');
       if(!response||response.ok!==true){
-        const error=new Error(response?.error||'绘图优化未完成，请核对账单状态。');
+        const error=new Error(response?.error||'绘图优化未完成。');
         if(typeof response?.errorCode==='string'&&/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(response.errorCode))error.code=response.errorCode;
         if(typeof response?.billingUnknown==='boolean')error.billingUnknown=response.billingUnknown;
         const quota=response?.quota;
@@ -5229,10 +5229,10 @@
       }
       if(response.analysisBackend!=='runninghub'||response.modelIdentity?.id!==selected.modelId||response.reviewRequired!==true||response.releaseEligible!==true||
         typeof response.displayPrompt!=='string'||!response.displayPrompt.trim()||typeof response.modelPrompt!=='string'||!response.modelPrompt.trim())
-        throw new Error('所选模型的优化回执不完整，未应用结果，请核对账单。');
+        throw new Error('所选模型的优化回执不完整，未应用结果。');
       if(gpt ? response.targetEngine!=='gpt-image-2.5'||response.promptContract!=='gpt-image-semantic-fusion-v1'||response.modelPrompt!==response.displayPrompt
         : (options.generationMode==='img2img'?!['zh','en'].includes(response.modelPromptLanguage):response.modelPromptLanguage!=='en')||(response.modelPromptPolicy!=='qwen21-native-rewrite-v3'&&!(options.generationMode==='img2img'&&response.modelPromptPolicy==='qwen21-style-redraw-v1'))||response.translationValidation!==(options.generationMode==='img2img'?'native-edit-and-literals':'paired-prose-and-literals')||response.promptContract!=='qwen21-native-rewrite-v3')
-        throw new Error('绘图优化合同不匹配，未应用结果，请核对账单。');
+        throw new Error('绘图优化合同不匹配，未应用结果。');
       // A style redraw's prompt is assembled on the server and names pictures by <imageN>, not by the request's mentions.
       const assembled=response.modelPromptPolicy==='qwen21-style-redraw-v1';
       const display=assembled?{ok:true,text:response.displayPrompt}:restoreSmartAiResourceMentions(response.displayPrompt,protectedPrompt),model=assembled?{ok:true,text:response.modelPrompt}:restoreSmartAiResourceMentions(response.modelPrompt,protectedPrompt);
