@@ -118,6 +118,54 @@ for (const computeMode of ['local', 'shared']) {
   await gateSandbox.NovaFlowWebAccount.guard();
   check(!!gateSandbox.document.getElementById('novaflow-web-login-gate'), false);
 }
+// Login lands on the homepage: ?surface= is dropped (other query and hash kept),
+// and a gate inside the editor frame sends the top window home instead.
+for (const framed of [false, true]) {
+  const nav = [];
+  const topLocation = {
+    origin: 'https://foart.invalid',
+    href: 'https://foart.invalid/?surface=drawing&k=1#h',
+    replace(url) { nav.push(['replace', url]); },
+    reload() { nav.push(['reload']); }
+  };
+  const created = [];
+  const gateSandbox = createDomSandbox({
+    electronAPI: {
+      clientAuthStatus: async () => ({ ok: true, result: { authenticated: false } }),
+      clientAuthLogin: async () => ({ ok: true })
+    },
+    setTimeout: (fn) => { if (typeof fn === 'function') fn(); return 0; },
+    setInterval: () => 0, clearInterval() {}
+  });
+  const frameLocation = { origin: 'https://foart.invalid', href: 'https://foart.invalid/editor.html?surface=drawing&k=1#h', replace(url) { nav.push(['frame-replace', url]); }, reload() { nav.push(['frame-reload']); } };
+  gateSandbox.location = framed ? frameLocation : topLocation;
+  gateSandbox.top = framed ? { location: topLocation } : gateSandbox;
+  const make = gateSandbox.document.createElement.bind(gateSandbox.document);
+  gateSandbox.document.createElement = (tag) => {
+    const node = make(tag);
+    node.listeners = {};
+    node.addEventListener = (type, fn) => { (node.listeners[type] ||= []).push(fn); };
+    created.push(node);
+    return node;
+  };
+  const mounted = new Map();
+  gateSandbox.document.getElementById = id => mounted.get(id) || null;
+  gateSandbox.document.body.appendChild = node => { mounted.set(node.id, node); return node; };
+  runInContext(accountSource, createContext(gateSandbox));
+  await gateSandbox.NovaFlowWebAccount.guard();
+  if (framed) {
+    check(!!gateSandbox.document.getElementById('novaflow-web-login-gate'), false);
+    check(nav.at(-1), ['replace', 'https://foart.invalid/?k=1#h']);
+    continue;
+  }
+  check(!!gateSandbox.document.getElementById('novaflow-web-login-gate'), true);
+  const inputs = created.filter((node) => node.tagName === 'INPUT' || node.tagName === 'input');
+  inputs[0].value = 'dylan';
+  inputs[1].value = 'secret';
+  const submit = created.find((node) => (node.listeners.click || []).length && /进入工作台/.test(node.textContent));
+  await submit.listeners.click[0]();
+  check(nav, [['replace', 'https://foart.invalid/?k=1#h']]);
+}
 // Header strip: name, live balance and 退出 sit after the version. The modal is gone.
 function headerDocument() {
   const ids = new Map();

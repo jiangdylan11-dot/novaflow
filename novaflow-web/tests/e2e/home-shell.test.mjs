@@ -90,10 +90,10 @@ test('each cold deep link passes its target to the first editor document',async(
   }
 });
 
-test('login return opens the requested surface and home navigation retains the same editor state',async()=>{
+test('signed-in deep link opens the requested surface and home navigation retains the same editor state',async()=>{
   const guest=fixture({authenticated:false,href:'https://foart.invalid/?surface=drawing'});
   await tick();assert.equal(guest.gate,1);assert.equal(guest.frames,0);
-  // The real login gate reloads the preserved URL; simulate only its successful return here.
+  // A signed-in refresh keeps its surface. Login itself lands on the homepage (web-account test).
   const f=fixture({href:'https://foart.invalid/?surface=drawing'});await tick();
   assert.equal(f.calls[0],'drawing');
   const frame=f.host.child;f.editor.unsavedProject={name:'temporary',value:31};

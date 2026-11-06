@@ -310,11 +310,31 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     void refresh();
   }
 
+  function inEditorFrame() {
+    try { return !!(root.top && root.top !== root && root.top.location.origin === root.location.origin); }
+    catch (_) { return false; }
+  }
+
+  // Signing in or out always lands on the Foart homepage, never back inside a
+  // workspace: navigate the top window (the editor runs in a same-origin frame)
+  // to its URL without ?surface= and without editor.html.
+  function goHome() {
+    const loc = (inEditorFrame() ? root.top : root).location;
+    if (!loc) return;
+    try {
+      const url = new URL(loc.href);
+      url.searchParams.delete('surface');
+      url.pathname = url.pathname.replace(/editor\.html$/, '');
+      if (url.href !== loc.href && typeof loc.replace === 'function') { loc.replace(url.href); return; }
+    } catch (_) { /* No usable href: plain reload below. */ }
+    if (typeof loc.reload === 'function') loc.reload();
+  }
+
   async function logoutAccount(button) {
     if (button) button.disabled = true;
     try {
       await api().clientAuthLogout();
-      if (root.location && typeof root.location.reload === 'function') root.location.reload();
+      goHome();
     } catch (_) {
       if (button) button.disabled = false;
     }
@@ -752,7 +772,8 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
         note.textContent = '已登录，正在进入…';
         // Reload rather than just lifting the gate: panels read the session at
         // boot, and a half-initialised app is worse than a second of waiting.
-        setTimeout(() => root.location.reload(), 400);
+        // The reload lands on the homepage, not the workspace in the URL.
+        setTimeout(goHome, 400);
       } catch (error) {
         note.style.color = '#fca5a5';
         note.textContent = String((error && error.message) || error);
@@ -775,6 +796,8 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       return;
     }
     if (root.document.getElementById(GATE_ID)) return;
+    // Inside the editor frame the gate belongs to the homepage, not the workspace.
+    if (inEditorFrame()) { goHome(); return; }
     if (!root.document.body) { setTimeout(guard, 120); return; }
     root.document.body.appendChild(buildGate());
   }
