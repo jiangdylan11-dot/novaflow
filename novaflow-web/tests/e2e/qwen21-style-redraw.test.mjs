@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
-import {buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
+import {decideStyleTime,buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
 
 let passed=0,failed=0;
 async function test(name,fn){
@@ -19,11 +19,39 @@ const redraw=buildStyleRedrawPrompt(description,mood,content);
 const answer=(style=description,text=content,light=mood)=>({output_text:JSON.stringify({style_description:style,mood_description:light,content_description:text})});
 const compile=(overrides={},response=answer(),roles=['subject','style'])=>compileQwen21NativeRewrite(response,buildQwen21NativeRewrite({...input,...overrides},'model',roles));
 
+const liveR1='Golden hour outdoor setting, with warm low-angle sunlight casting soft, elongated shadows. The key light is a rich golden tone from the side, shadows carry a gentle cool undertone, contrast is moderate, and the sky glows with a bright warm amber hue';
+await test('golden hour with no sun or sky in the picture becomes midday under a blue sky',()=>{
+  const decided=decideStyleTime(liveR1,{time_of_day:'golden_hour',sun_visible:false,sky_visible:false,sky_description:''});
+  assert.equal(decided.time,'midday');assert.equal(decided.sky,'clear bright blue sky filling every window');
+  assert.equal(decided.line,'Time of day: bright midday. Sky: clear bright blue sky filling every window.');
+  assert.equal(decided.mood,'bright white-gold midday sunlight from above, shadows carry a gentle cool undertone, contrast is moderate');
+  const text=buildStyleRelight(liveR1,'<image2>',{time_of_day:'golden_hour',sun_visible:false,sky_visible:false,sky_description:''});
+  assert.ok(text.startsWith(decided.line+' Lighting: take only'));assert.doesNotMatch(text.slice(0,text.indexOf('Express it')),/golden hour|amber/iu);
+});
+await test('a visible low sun keeps golden hour, a visible moon keeps night and a visible bright sky stays',()=>{
+  const golden=decideStyleTime(liveR1,{time_of_day:'golden_hour',sun_visible:true,sky_visible:true,sky_description:'deep blue'});
+  assert.equal(golden.time,'golden_hour');assert.equal(golden.sky,'bright warm sky');
+  const night=decideStyleTime('night, cool blue moonlight, deep shadows',{time_of_day:'night',sun_visible:false,sky_visible:true,sky_description:'dark sky with a full moon'});
+  assert.equal(night.time,'night');assert.equal(night.sky,'dark sky with a full moon, with lamps as the main light');assert.ok(night.mood.includes('moonlight'));
+  const day=decideStyleTime('bright midday, bright blue summer sky with white clouds, crisp cool grey shadows',{time_of_day:'midday',sun_visible:false,sky_visible:true,sky_description:''});
+  assert.equal(day.time,'midday');assert.equal(day.sky,'bright blue summer sky with white clouds');assert.doesNotMatch(day.mood,/sky/iu);
+  assert.equal(decideStyleTime('overcast, soft grey light',{time_of_day:'overcast',sun_visible:false,sky_visible:false}).sky,'bright overcast sky filling every window');
+});
+await test('missing facts fall back to the mood words and never overrule it',()=>{
+  const decided=decideStyleTime(liveR1);assert.equal(decided.time,'golden_hour');assert.equal(decided.sky,'bright warm sky');
+  assert.equal(decideStyleTime('neutral key light from above'),null);
+  assert.equal(decideStyleTime('dusk, soft lamps',{time_of_day:'teatime'}).time,'dusk','an unknown time is ignored');
+});
+await test('the brain facts reach the prompt through the compile step',()=>{
+  const prepared=buildQwen21NativeRewrite({promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',currentPrompt:'换风格',requirements:'',negativePrompt:'',supportsNegativePrompt:true},'m',['subject','style']);
+  const result=compileQwen21NativeRewrite({output_text:JSON.stringify({style_description:description,mood_description:liveR1,content_description:content,time_of_day:'golden_hour',sun_visible:false,sky_visible:false,sky_description:''})},prepared);
+  assert.ok(result.modelPrompt.includes('Time of day: bright midday. Sky: clear bright blue sky filling every window. Lighting:'));
+});
 await test('style mode is chosen only for one subject first followed by style references',()=>{
   for(const roles of [['subject','style'],['subject','style','style']]){
     const prepared=buildQwen21NativeRewrite(input,'model',roles);
     assert.equal(prepared.styleRedraw,true,roles.join());assert.equal(prepared.referenceCount,roles.length);assert.equal(prepared.body.temperature,0);
-    assert.deepEqual(prepared.body.text.format.schema.required,['style_description','mood_description','content_description']);
+    assert.deepEqual(prepared.body.text.format.schema.required,['style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible','sky_description']);
   }
   for(const roles of [['subject'],['style'],['style','subject'],['subject','pose'],['subject','style','pose'],['subject','subject','style'],[]])
     assert.equal(buildQwen21NativeRewrite(input,'model',roles).styleRedraw,undefined,roles.join());
