@@ -145,6 +145,14 @@ export function createXiaotaoOperationV3Ports(rpc, options = {}) {
       return call('mark_xiaotao_operation_stage_dispatched_v3', {...identity(trustedActor,operationId),
         p_phase_id:phase(phaseId),p_request_hash:requestHash(hash)});
     },
+    // The server saw the provider call fail after dispatch: release this phase's hold in full.
+    // The SQL accepts only a phase that is still 'dispatched' and keeps the evidence on the stage.
+    async rejectDispatched({actor:trustedActor, operationId, phaseId, hash, evidence}) {
+      ready();
+      if(!evidence||typeof evidence!=='object'||Array.isArray(evidence)||!Object.keys(evidence).length||JSON.stringify(evidence).length>2000)fail('invalid-rejection-evidence');
+      return call('reject_xiaotao_operation_stage_v3', {...identity(trustedActor,operationId),
+        p_phase_id:phase(phaseId),p_request_hash:requestHash(hash),p_no_charge_evidence:structuredClone(evidence)});
+    },
     // Only server-owned provider results belong here. Compute costs ourselves
     // from the frozen policy; never accept cost or raw credits from a caller.
     async recordAssessedUsage({actor:trustedActor, operationId, phaseId, hash, usageRecords}) {

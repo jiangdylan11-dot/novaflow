@@ -52,6 +52,30 @@ test('a style run works through the page and puts it back',async()=>{
   assert.match(source,/styleRuns\.set\(single,styleRun\)/,'run details stay off the plan, which is validated again before each step');
 });
 
+test('one style picture failing does not drop the others; all failing or a stop is an error',async()=>{
+  const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
+  const start=source.indexOf('async function runStyle'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
+  const make=fails=>{
+    let page=[{name:'a',file:{n:'a'}},{name:'b',file:{n:'b'}},{name:'c',file:{n:'c'}}],calls=0;
+    const rt={references:()=>page,setReference(index,value){page[index]=value;},refreshReferences(){}};
+    const box={root:{__NovaFlowArtGenerate:rt,URL:{createObjectURL:file=>'blob:'+file.n}},state:{},notify(){},currentSubject:{name:'photo',file:{n:'photo'}},
+      async plannerDrawingPrompt(){calls++;if(fails(calls))throw Error('在线模型这次没有返回结果');return {action:'image_generate',phase:'completed',outputs:[{id:String(calls)}],message:'done'};}};
+    vm.createContext(box);vm.runInContext('var run='+source.slice(start,end).trim().replace(/^async function runStyle/,'async function'),box);
+    return {box,calls:()=>calls,page:()=>page};
+  };
+  const partial=make(n=>n===2);
+  const receipt=await partial.box.run({subjectSlot:-1,styleSlots:[0,1,2],perStyle:true,extras:''});
+  assert.equal(partial.calls(),3,'the third picture still runs after the second fails');
+  assert.equal(receipt.outputs.map(o=>o.id).join(),'1,3');
+  assert.equal(receipt.message,'已生成 2 张；未完成：第 2 张：在线模型这次没有返回结果');
+  assert.equal(partial.page().map(ref=>ref.name).join(),'a,b,c','the page is put back');
+  const all=make(()=>true);
+  await assert.rejects(all.box.run({subjectSlot:-1,styleSlots:[0,1],perStyle:true,extras:''}),/第 1 张：在线模型这次没有返回结果；第 2 张/);
+  const stopped=make(n=>n===1);
+  await assert.rejects(stopped.box.run({subjectSlot:-1,styleSlots:[0,1],perStyle:true,extras:''},{aborted:true}),/已停止/);
+  assert.equal(stopped.calls(),0);
+});
+
 test('a request naming both pictures as style still leaves one subject',()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
   const start=source.indexOf('function styleSlots'),end=source.indexOf('function createQwenNodeRecheck');

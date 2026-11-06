@@ -1775,7 +1775,7 @@
             }
             root.console?.debug?.('[Foart tools] execute',op.action,op.name||op.operation?.action||op.operation||current.controls.find(control=>control.id===op.controlId)?.label||op.resourceId||'',op.value??'');
             let receipt;
-            if(styleRuns.has(op))receipt=await runStyle(styleRuns.get(op));
+            if(styleRuns.has(op))receipt=await runStyle(styleRuns.get(op),signal);
             else if(['image_optimize','image_generate'].includes(op.action)){
               const pictures=Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(Boolean).length;
               receipt=await plannerDrawingPrompt({...op,prompt:renumberTurnMentions(op.prompt,pictures)},renumberTurnMentions(message,pictures));
@@ -2196,8 +2196,8 @@
         const {onPricingQuote,confirmPricingQuote,confirmImageUpload}=onlineBusinessUi(selected.modelId,includeReferenceImages?()=>true:null,current);
         const result=await method({request:snapshot.request,assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch,signal:abort.signal,isInputCurrent:current,onPricingQuote,confirmPricingQuote,...(includeReferenceImages?{confirmImageUpload}:{}),
           onBillingNotice:notice=>notice?.requestId===requestId && recordBusinessBillingNotice(notice,{selection:selected,owner,sessionGuard})});
-        if(!current())throw Error('模型或视频上下文已变化，草稿未显示；如已提交请核对账单。');
-        if(result?.ok!==true)throw Error(result?.error||'视频草稿未完成，请核对账单。');
+        if(!current())throw Error('模型或视频上下文已变化，草稿未显示。');
+        if(result?.ok!==true)throw Error(result?.error||'视频草稿未完成。');
         const draft=result.draft;
         if(draft?.status!=='preview-only'||draft.applyAvailable!==false||draft.textOnly!==!includeReferenceImages||typeof draft.displayPrompt!=='string'||typeof draft.modelPrompt!=='string'||draft.h3Mode!==snapshot.request.h3Mode||draft.durationSeconds!==snapshot.request.durationSeconds)throw Error('视频草稿格式无效，未应用。');
         root.NovaFlowAiSequenceMiniMaxH3PromptWorkflow?.rememberDraft?.({mode:draft.h3Mode,prompt:draft.displayPrompt,modelText:draft.modelPrompt});
@@ -2252,8 +2252,8 @@
         const ui=local?{confirmNodeUpload:async()=>current()}:onlineBusinessUi(selected.modelId,null,current);
         const result=await method({request:snapshot.request,assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch,signal:abort.signal,isInputCurrent:current,...ui,...(!local?{
           onBillingNotice:notice=>notice?.requestId===requestId && recordBusinessBillingNotice(notice,{selection:selected,owner,sessionGuard})}:{})});
-        if(!current())throw Error(local?'模型或 UI 已变化，草稿未显示。':'模型或 UI 已变化，草稿未显示；如已提交请核对账单。');
-        if(result?.ok!==true)throw Error(result?.error||(local?'UI 草稿未完成，未应用。':'UI 草稿未完成，请核对账单。'));
+        if(!current())throw Error(local?'模型或 UI 已变化，草稿未显示。':'模型或 UI 已变化，草稿未显示。');
+        if(result?.ok!==true)throw Error(result?.error||(local?'UI 草稿未完成，未应用。':'UI 草稿未完成。'));
         const draft=result.draft;if(draft?.status!=='preview-only'||draft.applyAvailable!==false||typeof draft.prompt!=='string'||typeof draft.negativePrompt!=='string')throw Error('UI 草稿格式无效，未应用。');
         if(!Array.isArray(draft.sourceManifest))throw Error('UI 草稿参考角色无效，未应用。');
         await applyOptimizedMediaPrompt({surface:'ui',prompt:Object.freeze({prompt:draft.prompt,negativePrompt:draft.negativePrompt}),snapshot,bindingCurrent});queued=true;
@@ -2353,7 +2353,7 @@
         state.messages.push({role:'assistant',content:'请核对本次优化草稿；当前未写入或生成，确认后才应用到绘图。\n\n'+receipt.prompt+'\n\n模型执行稿：\n'+receipt.modelPrompt+
           '\n\n本次实扣 '+displayCredits(quota.settled_credits)+' 积分；取消草稿不会退回已结算的费用。'});
         state.status=generateAfterReview===true&&receipt.generationAvailable===true?'请核对草稿；确认生成将按当前绘图模型另计费':generateAfterReview===true?'当前安全生成入口未就绪，可应用草稿。':'等待核对草稿';return true;
-      }catch(error){state.error=String(error?.message||error);state.status='未应用或生成图片；如已提交，请核对账单。';return false;}
+      }catch(error){state.error=String(error?.message||error);state.status='未应用或生成图片。';return false;}
       finally{if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
     }
     // The local brain only chats and writes prompts. An operation request gets
@@ -2485,23 +2485,28 @@
       return {action:op.action,phase:'completed',plannerPrompt:true,provider:rt.state.provider,modelLabel:rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen',prompt:String(rt.state.prompt||''),outputs,message:'已写入提示词并完成生成，请在绘图页查看结果。'};
     }
     // A style run from planStyleRun: one full style redraw per group of style pictures, each writing its own texts and billed on its own.
-    async function runStyle({subjectSlot,styleSlots,perStyle,extras}){
+    async function runStyle({subjectSlot,styleSlots,perStyle,extras},signal){
       const rt=root.__NovaFlowArtGenerate,page=Array.from(rt.references?.()||[]).filter(Boolean).map(ref=>({...ref})),outputs=[];let last=null;
       const subject=subjectSlot>=0?page[subjectSlot]:currentSubject,styles=styleSlots.map(slot=>page[slot]),groups=perStyle?styles.map(style=>[style]):[styles];
       // Clearing a slot revokes its preview, so every placement takes a new one from the file.
       const fresh=ref=>ref.file&&root.URL?.createObjectURL?{...ref,dataUrl:root.URL.createObjectURL(ref.file)}:ref;
       const place=list=>{const slots=Math.max(list.length,Array.from(rt.references?.()||[]).length);for(let index=0;index<slots;index++)rt.setReference(index,list[index]?fresh(list[index]):null);rt.refreshReferences?.();};
+      // One style picture failing (model timeout, invalid draft) must not drop the others: every group gets its run,
+      // and the failures are named at the end. Only a stop or an all-fail turn becomes an error.
+      const failed=[];
       try{
         for(const [index,group] of groups.entries()){
+          if(signal?.aborted)throw Error('已停止');
           place([{...subject,drawingRole:'subject'},...group.map(style=>({...style,drawingRole:'style'}))]);
           const request='@参考图1换成'+group.map((_,slot)=>'@参考图'+(slot+2)).join('和')+'的风格'+(extras?'，'+extras:'');
           state.status='正在生成第 '+(index+1)+'/'+groups.length+' 张…';notify();
-          last=await plannerDrawingPrompt({action:'image_generate',generationMode:'img2img',useResult:false,prompt:request},request,{rolesSet:true});
-          outputs.push(...(last.outputs||[]));
+          try{last=await plannerDrawingPrompt({action:'image_generate',generationMode:'img2img',useResult:false,prompt:request},request,{rolesSet:true});outputs.push(...(last.outputs||[]));}
+          catch(error){if(signal?.aborted||groups.length===1)throw error;failed.push('第 '+(index+1)+' 张：'+String(error?.message||error));}
         }
-      }catch(error){throw Error(outputs.length?'已生成 '+outputs.length+' 张，第 '+(outputs.length+1)+' 张未完成：'+String(error?.message||error):String(error?.message||error));}
-      finally{place(page);}
-      return {...last,outputs,message:perStyle&&groups.length>1?'已按 '+groups.length+' 张风格图各生成一张':last.message};
+      }finally{place(page);}
+      if(!outputs.length)throw Error(failed.length>1?failed.join('；'):String(failed[0]||'未生成'));
+      const summary=perStyle&&groups.length>1?'已按 '+groups.length+' 张风格图各生成一张':last.message;
+      return {...last,outputs,message:failed.length?'已生成 '+outputs.length+' 张；未完成：'+failed.join('；'):summary};
     }
     async function prepareQwenCurrentDrawingPrompt(message,{recordMessage=true,source}={}) {
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate;
@@ -2565,7 +2570,7 @@
         const data=result?.result||result?.data||result,handoff={...result,...data};
         if(result?.ok===false)throw Error(result.error||'音频文字改写失败。');
         if(selected.provider==='local'&&(handoff.analysisBackend!=='qwen-cpu'||handoff.modelIdentity?.id!=='qwen35-heretic'||!['server-model-id','server-weight-path'].includes(handoff.modelIdentity?.verification)||handoff.resourcesReleased!==true||handoff.generationReady!==true))throw Error('本地模型身份或资源释放未确认，结果未采用。');
-        if(selected.provider==='api'&&(handoff.analysisBackend!=='runninghub'||handoff.modelIdentity?.id!==selected.modelId))throw Error('在线模型身份未确认，结果未采用，请核对账单。');
+        if(selected.provider==='api'&&(handoff.analysisBackend!=='runninghub'||handoff.modelIdentity?.id!==selected.modelId))throw Error('在线模型身份未确认，结果未采用。');
         const text=String(data?.prompt||'').trim();if(!text||text.length>4000)throw Error('音频文字改写没有返回有效内容。');
         if(selected.provider==='api'&&(data.quota?.status!=='settled'||creditUnits(data.quota.settled_credits)===null||(data.quota.uncollected_credits||0)>0))throw Error('账单状态未确认，请勿重复提交。');
         if(review)await applyOptimizedMediaPrompt({surface:'audio',prompt:text,snapshot:review,bindingCurrent});
@@ -2656,7 +2661,7 @@
             }
             pendingFoartImageReview=null;foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;state.proposal=null;
             if(['completed','completed-not-placed'].includes(generated?.phase)&&generated.reviewId===review.id){const placed=generated.phase==='completed';state.messages.push({role:'assistant',content:placed?'图片已由原绘图工具生成。':'图片已生成，但未写入画布；请查看绘图结果列表。',imageUrl:generated.imageUrl,name:generated.name});state.status=placed?'已生成':'图片已生成，未写入画布';return placed;}
-            state.error='生成状态待核对，请查看绘图任务和账单，勿重复发送。';state.status='生成状态待核对';return false;
+            state.error='生成状态未确认，请查看绘图任务，勿重复发送。';state.status='生成状态未确认';return false;
           }
           const result=tools.confirmImageReview(review.id);
           if(result?.phase!=='applied'||result.reviewId!==review.id)fail('审核稿应用未确认。');

@@ -1013,7 +1013,7 @@
       if(Date.now()>=policy.expiresAt)return no('companion-pricing-changed','在线价格已过期，请重新发送；本次未提交或扣费。');
       timer=setTimeout(onChange,180000);
       for(const stage of (gptImage||nativeQwen?['structure']:['structure','english'])){
-        if(!current())return no('assistant-selection-changed',submitted?'模型或会话已变，请核对已提交账单。':'模型或会话已变，未提交。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:submitted&&!lastQuota});
+        if(!current())return no('assistant-selection-changed',submitted?'模型或会话已变，本次未完成。':'模型或会话已变，未提交。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:submitted&&!lastQuota});
         const body=stage==='structure'?{stage,modelId:selected.modelId,input,intentId,epoch:selected.epoch,...(images.length?{images}:{})}
           :{stage,stageToken,epoch:selected.epoch};
         const quoted=await api(base,'POST','/api/web/companion/art/quote',body,20000,abort.signal);
@@ -1040,7 +1040,7 @@
         if(!accountOwner?.current?.())return no('assistant-selection-changed','登录会话已变化，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
         recoveryId=quote.recoveryOperationId;
         pendingId=quote.requestId;
-        if(!current())return no('assistant-selection-changed','模型或会话已变，请核对账单记录。',{...(lastQuota?{quota:lastQuota}:{})});
+        if(!current())return no('assistant-selection-changed','模型或会话已变，本次未完成。',{...(lastQuota?{quota:lastQuota}:{})});
         submitted=true;v3Submitted=true;if(stage==='english')englishSubmitted=true;companionCloudUsed.add(requestId);
         const result=await api(base,'POST','/api/web/companion/art/execute',{quoteToken:quote.quoteToken,epoch:selected.epoch,...(stage==='structure'&&images.length?{images}:{})},180000,abort.signal);
         const stagePending=stage==='structure'&&!gptImage&&result?.ok===true&&result.stage==='structure'&&result.settlement?.requestId===quote.requestId&&result.settlement?.status==='pending'&&typeof result.stageToken==='string'&&result.stageToken.length>0&&result.stageToken.length<=180000;
@@ -1052,17 +1052,17 @@
           lastQuota=quota;
           if(!(result.settlement.uncollectedCredits>0))v3FinalSettled=true;
           if(!notice(quote.requestId,quota,false))
-            return no('billing-record-unavailable','本阶段已结算，但账单记录未能更新，请核对实际扣费。',{quota,billingUnknown:true});
+            return no('billing-record-unavailable','本阶段已结算，但账单记录未能更新。',{quota,billingUnknown:true});
           pendingId='';
         }
-        if(stagePending){stageToken=result.stageToken;parentRequestId=quote.requestId;if(!current())return no('assistant-selection-changed','模型或会话已变，请核对账单。');continue;}
-        if(!current())return no('assistant-selection-changed',settled?'模型或会话已变，本阶段已结算，请核对账单。':'模型或会话已变，账单状态待核对。',{...(quota?{quota}:{}),billingUnknown:!settled});
+        if(stagePending){stageToken=result.stageToken;parentRequestId=quote.requestId;if(!current())return no('assistant-selection-changed','模型或会话已变，本次未完成。');continue;}
+        if(!current())return no('assistant-selection-changed',settled?'模型或会话已变，本阶段已结算。':'模型或会话已变，本阶段未完成。',{...(quota?{quota}:{}),billingUnknown:!settled});
         if(settled&&result.settlement.uncollectedCredits>0)
           return no('operation-incomplete',incompleteSettlementMessage({charged:result.settlement.settledCredits,uncollected:result.settlement.uncollectedCredits}),{quota,billingUnknown:true});
         if(result?.ok!==true||!settled){
           console.warn('[NovaFlow] Xiaotao art phase rejected',stage,result?.errorCode||'assistant-business-invalid-result',result?.validationIssue||'');
-          const message=({'structure-invalid':'模型返回的绘图提示词未通过完整性校验。','english-invalid':'模型返回的英文执行稿未通过校验。','provider-incomplete':'模型回复未完整返回。'})[result?.errorCode]||'本阶段未完成。';
-          return no(result?.errorCode||'assistant-business-invalid-result',settled?message:'本阶段未完成，账单状态待核对。',{...(quota?{quota}:{}),billingUnknown:!settled});
+          const message=({'structure-invalid':'模型返回的绘图提示词未通过完整性校验。','english-invalid':'模型返回的英文执行稿未通过校验。','provider-incomplete':'模型回复未完整返回。','provider-failed':'在线模型这次没有返回结果，本次未扣费，可以再试一次。'})[result?.errorCode]||'本阶段未完成。';
+          return no(result?.errorCode||'assistant-business-invalid-result',message,{...(quota?{quota}:{}),billingUnknown:!settled});
         }
         if(stage==='structure'){
           if(nativeQwen){
@@ -1080,7 +1080,7 @@
               return no('assistant-business-invalid-result','绘图提示词未通过验证，请查看实际扣费。',{quota});
             return {...result,prompt:result.displayPrompt,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota};
           }
-          if(typeof result.stageToken!=='string'||!result.stageToken)return no('assistant-business-invalid-result','结构化结果无效，请核对账单。',{...(quota?{quota}:{}),billingUnknown:!settled});
+          if(typeof result.stageToken!=='string'||!result.stageToken)return no('assistant-business-invalid-result','结构化结果无效。',{...(quota?{quota}:{}),billingUnknown:!settled});
           stageToken=result.stageToken;
         } else {
           if(result.releaseEligible!==true||result.reviewRequired!==true||result.translationValidation!=='structure-and-literals'||result.modelPromptPolicy!=='qwen21-task-policy-v1'||
@@ -1091,9 +1091,9 @@
           return {...result,prompt:result.displayPrompt,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota};
         }
       }
-      return no('assistant-business-invalid-result','在线美工结果未完成，请核对账单。');
+      return no('assistant-business-invalid-result','在线美工结果未完成。');
     } catch(error){
-      return no(error?.code||'assistant-business-unavailable',pendingId?'在线请求中断，账单状态待核对。':String(error?.message||'在线美工暂不可用，未提交当前阶段。'),
+      return no(error?.code||'assistant-business-unavailable',pendingId?'在线请求中断，本次未完成，可以再试一次。':String(error?.message||'在线美工暂不可用，未提交当前阶段。'),
         {...(lastQuota?{quota:lastQuota}:{}),billingUnknown:Boolean(pendingId)});
     } finally {
       // A known first stage can be closed without issuing another provider

@@ -6,6 +6,7 @@ import {Buffer} from 'node:buffer';
 import {estimateXiaotaoOnlineCredits,settleXiaotaoOnlineCredits} from './feature-credits.mjs';
 import {companionPricingPolicy} from './companion-pricing.mjs';
 import {postRunningHubResponses} from './runninghub-llm.mjs';
+const ART_PROVIDER_TIMEOUT_MS=120000;
 import {hasXiaotaoDecimalV1,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 import {QWEN21_NATIVE_REWRITE,QWEN21_NATIVE_CONTRACTS,buildQwen21NativeRewrite,compileQwen21NativeRewrite} from './qwen21-native-rewrite.mjs';
 import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
@@ -287,7 +288,7 @@ export function createTrustedArtPhases({secret,models,visionModels=[],compiler,p
           const settlement=v3Settlement(q.requestId,error.receipt,'cancel');
           let current=false;try{current=sameActor(actor,boundActor)&&await isCurrent(boundActor,q.model)===true;}catch{}
           if(!current)fail('selection-stale');
-          return {ok:false,errorCode:'cancelled-before-dispatch',settlement};
+          return {ok:false,errorCode:error.code==='provider-failed'?'provider-failed':'cancelled-before-dispatch',settlement};
         }
       if(useV3){
         if(result?.status!=='recorded'||result.requestHash!==q.requestHash||result.pricingVersion!==q.pricingVersion||result.model!==q.model||
@@ -443,8 +444,11 @@ export async function createCompanionArtBusiness({enabled=false,accountingReady=
       return {...decision,pricingVersion};
     },
     infer:async({body,signal})=>{
+      // A caller signal replaces the provider's own timeout, so bound the wait here: a reply that never
+      // comes must end (and be refunded) before the edge runtime cuts the request off.
+      const bounded=signal&&typeof AbortSignal.any==='function'?AbortSignal.any([signal,AbortSignal.timeout(ART_PROVIDER_TIMEOUT_MS)]):signal;
       const posted=await postRunningHubResponses({body,config:{apiKey:provider.apiKey,baseUrl:provider.baseUrl,model:body.model},
-        fetchImpl,timeoutMs:60000,maxRetries:0,signal,includeBillingIntegrity:true});
+        fetchImpl,timeoutMs:ART_PROVIDER_TIMEOUT_MS,maxRetries:0,signal:bounded,includeBillingIntegrity:true});
       return posted.data;
     },
     executeAtomic:async({userId,sessionId,usageKey,model,stage,imageCount,requestHash,pricingVersion,estimatedCredits,run})=>{
