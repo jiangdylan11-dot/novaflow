@@ -160,11 +160,23 @@ await test('staging an upload does not send a message or touch 绘图, and remov
   assert.equal(controller.removeStaged(controller.state.staged[0].id), true);
   assert.equal(JSON.stringify(controller.state.staged.map(item => item.name)), JSON.stringify(['clip.mp4']));
   assert.equal(await controller.send(''), false);
-  // The local model says this as an ordinary reply, never as an error box.
-  assert.equal(controller.state.error, '');
-  assert.match(controller.state.messages.at(-1).content, /用途/);
+  // Online and local models both say this as an ordinary reply, never as an error box.
+  const assertPlainReply = () => {
+    assert.equal(controller.state.error, '');
+    assert.equal(controller.state.messages.at(-1).role, 'assistant');
+    assert.match(controller.state.messages.at(-1).content, /用途/);
+  };
+  assert.equal(controller.state.provider, 'api');
+  assertPlainReply();
   assert.equal(env.placed.length, 0);
   assert.equal(controller.state.staged.length, 1);
+  // Staged files belong to one model, so the local model gets its own upload.
+  controller.setModel('qwen3.5-9b-heretic');
+  assert.equal(await controller.stageUploads([file('local.png', 'image/png')]), true);
+  assert.equal(await controller.send(''), false);
+  assert.equal(controller.state.provider, 'local');
+  assertPlainReply();
+  assert.equal(env.placed.length, 0);
 });
 
 await test('图生图 placement yields, keeps a light reference, and skips a second mode render', async () => {

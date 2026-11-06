@@ -1827,7 +1827,7 @@
       if (state.pending || state.generating || state.applying) return false;
       message = String(message || '').trim();
       if(message && state.promptSourceCancelledNotice){state.status=state.status.replace(state.promptSourceCancelledNotice,'').trim();state.promptSourceCancelledNotice='';}
-      if (!message) {if ((state.staged || []).length) {state.error = '请先说明这些文件的用途，再发送'; notify();} return false;}
+      if (!message) {if ((state.staged || []).length) {state.messages.push({role:'assistant',content:'请先说明这些文件的用途，再发送'}); state.error = ''; notify();} return false;}
       // 附件只属于发送它的那一条消息：新一条消息不再暗中带上之前发过的附件。
       // 只有在回答小桃刚才的提问时，才继续使用那条消息的附件。
       if(!answersQuestion(message)){lastUploads=[];lastPreparedTask='';}
