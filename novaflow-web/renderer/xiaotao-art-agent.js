@@ -1674,11 +1674,14 @@
             plan={...plan,operations:plan.operations.map(keepTurnPictures).filter(Boolean)};
             if(!plan.operations.length)plan={...plan,status:'done',reply:'已保留本轮参考图，没有使用上一张结果。'};
           }
-          const pagePictures=Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(Boolean).length;
+          // This turn's pictures are the ones the message brought, wherever the router put them; with none, the page's.
+          const turnImages=preferUploads?lastUploads.filter(item=>item.kind==='image'&&(item.file||item.dataUrl)):[];
+          const pagePictures=turnImages.length||Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(Boolean).length;
           const imageOp=plan.status==='act'?plan.operations.find(op=>['image_optimize','image_generate'].includes(op.action)):null;
           const styleRun=imageOp?planStyleRun(imageOp,positiveRequest,pagePictures,!!currentSubject,preferUploads||lastUploads.some(item=>item.kind==='image')):null;
           if(styleRun?.ask)plan={...plan,status:'clarify',reply:styleRun.ask,operations:[]};
-          else if(styleRun){const single={...imageOp,action:'image_generate',generationMode:'img2img',useResult:false};styleRuns.set(single,styleRun);plan={...plan,operations:[single]};}
+          else if(styleRun){const single={...imageOp,action:'image_generate',generationMode:'img2img',useResult:false};
+            styleRuns.set(single,{...styleRun,pictures:turnImages.length?turnImages.map(item=>({name:item.name,file:item.file,dataUrl:item.dataUrl,mimeType:item.mimeType,source:'xiaotao-upload'})):null});plan={...plan,operations:[single]};}
           else if(pageLimitQuestion(imageOp,pagePictures))plan={...plan,status:'clarify',reply:pageLimitQuestion(imageOp,pagePictures),operations:[]};
           // A model may repeat its previous export instead of closing the turn.
           // Once that native encoder returned a real file, never download it again
@@ -2476,25 +2479,24 @@
       return {action:op.action,phase:'completed',plannerPrompt:true,provider:rt.state.provider,modelLabel:rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen',prompt:String(rt.state.prompt||''),outputs,message:'已写入提示词并完成生成，请在绘图页查看结果。'};
     }
     // A style run from planStyleRun: one full style redraw per group of style pictures, each writing its own texts and billed on its own.
-    async function runStyle({subjectSlot,styleSlots,perStyle,extras},signal){
-      const rt=root.__NovaFlowArtGenerate,page=Array.from(rt.references?.()||[]).filter(Boolean).map(ref=>({...ref})),outputs=[];let last=null;
-      const subject=subjectSlot>=0?page[subjectSlot]:currentSubject,styles=styleSlots.map(slot=>page[slot]),groups=perStyle?styles.map(style=>[style]):[styles];
+    // Each run puts only the subject and that run's style pictures on the page; the page then shows what the last run used.
+    async function runStyle({subjectSlot,styleSlots,perStyle,extras,pictures:turn},signal){
+      const rt=root.__NovaFlowArtGenerate,pictures=turn||Array.from(rt.references?.()||[]).filter(Boolean).map(ref=>({...ref})),outputs=[];let last=null;
+      const subject=subjectSlot>=0?pictures[subjectSlot]:currentSubject,styles=styleSlots.map(slot=>pictures[slot]),groups=perStyle?styles.map(style=>[style]):[styles];
       // Clearing a slot revokes its preview, so every placement takes a new one from the file.
       const fresh=ref=>ref.file&&root.URL?.createObjectURL?{...ref,dataUrl:root.URL.createObjectURL(ref.file)}:ref;
       const place=list=>{const slots=Math.max(list.length,Array.from(rt.references?.()||[]).length);for(let index=0;index<slots;index++)rt.setReference(index,list[index]?fresh(list[index]):null);rt.refreshReferences?.();};
       // One style picture failing (model timeout, invalid draft) must not drop the others: every group gets its run,
       // and the failures are named at the end. Only a stop or an all-fail turn becomes an error.
       const failed=[];
-      try{
-        for(const [index,group] of groups.entries()){
-          if(signal?.aborted)throw Error('已停止');
-          place([{...subject,drawingRole:'subject'},...group.map(style=>({...style,drawingRole:'style'}))]);
-          const request='@参考图1换成'+group.map((_,slot)=>'@参考图'+(slot+2)).join('和')+'的风格'+(extras?'，'+extras:'');
-          state.status='正在生成第 '+(index+1)+'/'+groups.length+' 张…';notify();
-          try{last=await plannerDrawingPrompt({action:'image_generate',generationMode:'img2img',useResult:false,prompt:request},request,{rolesSet:true});outputs.push(...(last.outputs||[]));}
-          catch(error){if(signal?.aborted||groups.length===1)throw error;failed.push('第 '+(index+1)+' 张：'+String(error?.message||error));}
-        }
-      }finally{place(page);}
+      for(const [index,group] of groups.entries()){
+        if(signal?.aborted)throw Error('已停止');
+        place([{...subject,drawingRole:'subject'},...group.map(style=>({...style,drawingRole:'style'}))]);
+        const request='@参考图1换成'+group.map((_,slot)=>'@参考图'+(slot+2)).join('和')+'的风格'+(extras?'，'+extras:'');
+        state.status='正在生成第 '+(index+1)+'/'+groups.length+' 张…';notify();
+        try{last=await plannerDrawingPrompt({action:'image_generate',generationMode:'img2img',useResult:false,prompt:request},request,{rolesSet:true});outputs.push(...(last.outputs||[]));}
+        catch(error){if(signal?.aborted||groups.length===1)throw error;failed.push('第 '+(index+1)+' 张：'+String(error?.message||error));}
+      }
       if(!outputs.length)throw Error(failed.length>1?failed.join('；'):String(failed[0]||'未生成'));
       const summary=perStyle&&groups.length>1?'已按 '+groups.length+' 张风格图各生成一张':last.message;
       return {...last,outputs,message:failed.length?'已生成 '+outputs.length+' 张；未完成：'+failed.join('；'):summary};

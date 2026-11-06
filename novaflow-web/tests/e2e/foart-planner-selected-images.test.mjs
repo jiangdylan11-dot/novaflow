@@ -32,7 +32,7 @@ test('mentions follow this turn\'s pictures',()=>{
     ['art_reference_1:photo.jpg','art_reference_2:style.png'],'the screenshot case: two new pictures are 参考图1 and 参考图2, not 4 and 5');
 });
 
-test('a style run works through the page and puts it back',async()=>{
+test('a style run puts only the subject and one style on the page per run',async()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
   const start=source.indexOf('async function runStyle'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
   const seen=[];let page=[{name:'a',file:{n:'a'}},{name:'b',file:{n:'b'}},{name:'c',file:{n:'c'}}];
@@ -44,18 +44,24 @@ test('a style run works through the page and puts it back',async()=>{
   assert.deepEqual(seen.map(row=>row[0]),['photo:subject:blob:photo,a:style:blob:a','photo:subject:blob:photo,b:style:blob:b','photo:subject:blob:photo,c:style:blob:c']);
   assert.ok(seen.every(row=>row[1]===false&&row[2]==='@参考图1换成@参考图2的风格'&&row[3]===true));
   assert.equal(receipt.message,'已按 3 张风格图各生成一张');assert.equal(receipt.outputs.length,3);
-  assert.deepEqual(page.filter(Boolean).map(ref=>ref.name),['a','b','c'],'the page ends as this turn left it');
+  assert.deepEqual(page.filter(Boolean).map(ref=>ref.name+':'+ref.drawingRole),['photo:subject','c:style'],'the page shows what the last run used, not every picture at once');
   seen.length=0;page=[{name:'p',file:{n:'p'}},{name:'s1',file:{n:'s1'}},{name:'s2',file:{n:'s2'}}];
   const split=await box.run({subjectSlot:0,styleSlots:[1,2],perStyle:true,extras:'人物姿势不变'});
   assert.deepEqual(seen.map(row=>row[0]),['p:subject:blob:p,s1:style:blob:s1','p:subject:blob:p,s2:style:blob:s2'],'the subject named in the sentence is used');
   assert.ok(seen.every(row=>row[2]==='@参考图1换成@参考图2的风格，人物姿势不变'),'extra wishes reach every run');
-  assert.equal(split.message,'已按 2 张风格图各生成一张');assert.deepEqual(page.filter(Boolean).map(ref=>ref.name),['p','s1','s2']);
+  assert.equal(split.message,'已按 2 张风格图各生成一张');assert.deepEqual(page.filter(Boolean).map(ref=>ref.name),['p','s2']);
   seen.length=0;page=[{name:'p',file:{n:'p'}},{name:'s1',file:{n:'s1'}},{name:'s2',file:{n:'s2'}}];
   await box.run({subjectSlot:0,styleSlots:[1,2],perStyle:false,extras:''});
   assert.deepEqual(seen.map(row=>row[0]),['p:subject:blob:p,s1:style:blob:s1,s2:style:blob:s2'],'without perStyle it is one run with both');
   assert.equal(seen[0][2],'@参考图1换成@参考图2和@参考图3的风格');
+  // Dylan's case: the page still holds the last turn's 图1/图2; the three pictures he sent are the styles, whatever the page holds.
+  seen.length=0;page=[{name:'old-subject',file:{n:'old-subject'}},{name:'old-style',file:{n:'old-style'}}];
+  const sent=['s1','s2','s3'].map(n=>({name:n,file:{n},source:'xiaotao-upload'}));
+  const turn=await box.run({subjectSlot:-1,styleSlots:[0,1,2],perStyle:true,extras:'',pictures:sent});
+  assert.deepEqual(seen.map(row=>row[0]),['photo:subject:blob:photo,s1:style:blob:s1','photo:subject:blob:photo,s2:style:blob:s2','photo:subject:blob:photo,s3:style:blob:s3'],'each sent style runs once with the remembered subject');
+  assert.equal(turn.outputs.length,3);
   assert.match(source,/if\(newConversation\)\{reset\(\);lastUploads=\[\];currentSubject=null;/);
-  assert.match(source,/styleRuns\.set\(single,styleRun\)/,'run details stay off the plan, which is validated again before each step');
+  assert.match(source,/styleRuns\.set\(single,\{\.\.\.styleRun,pictures:turnImages\.length\?/,'run details stay off the plan, which is validated again before each step');
 });
 
 test('one style picture failing does not drop the others; all failing or a stop is an error',async()=>{
@@ -74,7 +80,7 @@ test('one style picture failing does not drop the others; all failing or a stop 
   assert.equal(partial.calls(),3,'the third picture still runs after the second fails');
   assert.equal(receipt.outputs.map(o=>o.id).join(),'1,3');
   assert.equal(receipt.message,'已生成 2 张；未完成：第 2 张：在线模型这次没有返回结果');
-  assert.equal(partial.page().map(ref=>ref.name).join(),'a,b,c','the page is put back');
+  assert.equal(partial.page().filter(Boolean).map(ref=>ref.name).join(),'photo,c','the page shows the last run');
   const all=make(()=>true);
   await assert.rejects(all.box.run({subjectSlot:-1,styleSlots:[0,1],perStyle:true,extras:''}),/第 1 张：在线模型这次没有返回结果；第 2 张/);
   const stopped=make(n=>n===1);
@@ -134,4 +140,15 @@ test('additional explicit uploads never displace references; unselected fallback
   f.root.NovaFlowFoartTools.setUploads([{kind:'image',name:'extra',dataUrl:png('extra')}]);
   await assert.rejects(f.root.NovaFlowFoartTools.images({preferUploads:true}));
   const empty=fixture();const result=await empty.root.NovaFlowFoartTools.images();assert.equal(result.length,1);assert.equal(result[0].dataUrl,png('result'));
+});
+
+test('a message\'s pictures replace the 图生图 references even when it says 作为风格参考',()=>{
+  const source=readFileSync(new URL('../../renderer/xiaotao-upload.js',import.meta.url),'utf8');
+  const box={window:{},document:{}};box.globalThis=box;box.self=box;vm.createContext(box);vm.runInContext(source,box);
+  const api=box.window.NovaFlowXiaotaoUpload||box.NovaFlowXiaotaoUpload;
+  const images=['s1.png','s2.webp','s3.png'].map(name=>({kind:'image',name,status:'ready'}));
+  for(const text of ['用这3张图作为风格参考，再各自生成一次','把这几张放进图生图参考','用这几张图生图']){
+    const place=api.planRoutes(text,images).place.filter(item=>item.destination.id==='img2img');
+    assert.deepEqual(plain(place.map(item=>[item.name,item.replaceReferences,item.referenceIndex])),[['s1.png',true,0],['s2.webp',true,1],['s3.png',true,2]],text);
+  }
 });

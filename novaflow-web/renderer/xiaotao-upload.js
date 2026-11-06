@@ -259,13 +259,15 @@
         if ((task.loop||requestedDecision==='first_last_pair') && decision === 'first_frame' && images.length === 1) place.push(imagePlace(file, 'last_frame'));
       }
     }
+    // A message's pictures replace the 图生图 references, whether or not it says "作为参考": they belong
+    // to this message, and its @参考图N count from 1. Appending them after earlier pictures would shift every number.
     let drawingIndex=0;
     // A new 多参 task starts from its own pictures; a revision keeps them, or swaps the one it names.
     const swapMatch=task.revision?/(?:图|视频|音频)\s*([1-9]).{0,6}(?:换|替换|改用)|(?:换|替换).{0,6}(?:图|视频|音频)\s*([1-9])/.exec(text):null,swapSlot=swapMatch?Number(swapMatch[1]||swapMatch[2]):0;
     const firstMulti=place.find(item=>item.destination.id==='multi_reference');
     return {place:place.map(item=>({...item,targetSurface:task.surface,
       ...(item===firstMulti&&swapSlot?{swapSlot}:item===firstMulti&&!task.revision?{clearBoard:true}:{}),
-      ...(item.destination.id==='img2img' && !named.length ? {replaceReferences:true,referenceIndex:drawingIndex++} : {})})), ask, reject};
+      ...(item.destination.id==='img2img' ? {replaceReferences:true,referenceIndex:drawingIndex++} : {})})), ask, reject};
   }
   function carried(file, destination) {
     const blob = file?.file && typeof file.file === 'object' ? file.file : file;
