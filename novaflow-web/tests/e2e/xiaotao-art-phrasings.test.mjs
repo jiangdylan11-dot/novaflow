@@ -11,7 +11,7 @@ let passed=0,failed=0;
 const test=(name,fn)=>{try{fn();passed++;}catch(error){failed++;console.error('FAIL '+name+'\n'+error.message);}};
 const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
 const box={};createContext(box);
-runInContext(source.slice(source.indexOf('function turnSlot'),source.indexOf('function createQwenNodeRecheck'))+';this.planStyleRun=planStyleRun;this.plainFoartError=plainFoartError;this.pageLimit=pageLimitQuestion;',box);
+runInContext(source.slice(source.indexOf('function turnSlot'),source.indexOf('function createQwenNodeRecheck'))+';this.planImageRuns=planImageRuns;this.plainFoartError=plainFoartError;this.pageLimit=pageLimitQuestion;',box);
 runInContext(source.slice(source.indexOf('function keepTurnPictures'),source.indexOf('// Which pictures a request names as style'))+';this.keep=keepTurnPictures;',box);
 const context=()=>({schema:FOART_TOOL_SCHEMA,controls:[{id:'control-2',label:'尺寸',kind:'input',type:'number',min:64,max:4096}]});
 const plan=op=>({schema:FOART_TOOL_SCHEMA,status:op?'act':'reply',reply:'好的',operations:op?[op]:[]});
@@ -24,7 +24,7 @@ for(const item of PHRASINGS)test(item.text,()=>{
   if(item.expect.newConversation){assert.match(source,/新对话/);assert.ok(new RegExp('^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$').test(item.text));return;}
   if(!op||!op.action.startsWith('image_')){assert.equal(item.expect.run,null);return;}
   const kept=item.attached?box.keep(op):op;
-  const run=box.planStyleRun(kept,item.text,item.pictures,item.subject===true,item.attached===true||item.pictures>0);
+  const run=box.planImageRuns(kept,item.pictures,item.subject===true);
   if(item.expect.ask){assert.match(String(run?.ask||box.pageLimit(kept,item.pictures)),item.expect.ask);return;}
   if(item.expect.run===null){
     assert.equal(run,null);
@@ -32,23 +32,26 @@ for(const item of PHRASINGS)test(item.text,()=>{
     if(item.expect.useResult!==undefined)assert.equal(kept.useResult,item.expect.useResult);
   }else{
     assert.equal(run?.ask,undefined);
-    for(const key of ['subjectSlot','perStyle'])assert.equal(run[key],item.expect.run[key],key);
-    assert.deepEqual([...run.styleSlots],item.expect.run.styleSlots);
+    assert.equal(run.subjectSlot,item.expect.run.subjectSlot,'subjectSlot');
+    assert.deepEqual(JSON.parse(JSON.stringify(run.runs.map(row=>row.slots))),item.expect.run.runs);
   }
   validateFoartPlan(plan({...kept}),context());
 });
 
-test('with no parameters the wording still carries his sentences',()=>{
+test('the brain\'s roles and runs are placed as given; wording decides nothing',()=>{
   const op={action:'image_generate',prompt:'p',generationMode:'img2img',useResult:false};
-  const run=(text,count,subject)=>box.planStyleRun(op,text,count,subject,true);
-  assert.deepEqual([...run('分别用@参考图1@参考图2@参考图3各自生成一张',3,true).styleSlots],[0,1,2]);
-  assert.equal(run('主体还是刚才那张，继续用@参考图1@参考图2@参考图3各种再生成一次风格转换',3,true).subjectSlot,-1);
-  assert.equal(run('把@参考图1分别转成@参考图2@参考图3的风格',3,false).subjectSlot,0);
-  assert.equal(run('把这些图合成一张',3,true),null);
+  assert.equal(box.planImageRuns(op,3,true),null,'no references or runs: the ordinary drawing path');
+  const pose=box.planImageRuns({...op,references:[{ref:1,role:'style'},{ref:2,role:'style'},{ref:3,role:'pose'}],runs:[{refs:[1,3]},{refs:[2,3]}]},3,true);
+  const slots=plan=>JSON.parse(JSON.stringify(plan.runs.map(run=>run.slots)));
+  assert.deepEqual(slots(pose),[[0,2],[1,2]]);assert.equal(pose.roles[2],'pose');
+  assert.equal(box.planImageRuns({...op,references:[{ref:1,role:'subject'}]},1,false),null,'a subject alone is an ordinary edit');
+  assert.match(box.planImageRuns({...op,references:[{ref:1,role:'style'}]},1,false).ask,/主体图/);
+  assert.match(box.planImageRuns({...op,references:[{ref:1,role:'subject'},{ref:2,role:'style'},{ref:3,role:'style'},{ref:4,role:'pose'}]},4,false).ask,/最多用 3 张图/);
+  assert.deepEqual(slots(box.planImageRuns({...op,references:[{ref:1,role:'style'},{ref:9,role:'style'}]},2,true)),[[0]],'a number past this turn\'s pictures names nothing');
 });
 
 test('stray fields are dropped and bad parameters ignored',()=>{
-  const checked=validateFoartPlan(plan({action:'image_generate',prompt:'p',generationMode:'img2img',useResult:false,eachStyle:true,subjectRef:'one',styleRefs:[],perStyle:'yes'}),context());
+  const checked=validateFoartPlan(plan({action:'image_generate',prompt:'p',generationMode:'img2img',useResult:false,eachStyle:true,references:[{ref:'one',role:'style'}],runs:[]}),context());
   assert.deepEqual(Object.keys(checked.operations[0]).sort(),['action','generationMode','prompt','useResult']);
   assert.throws(()=>validateFoartPlan(plan({action:'set_control',controlId:'control-2',value:5,eachStyle:true}),context()),/未知参数/,'other tools stay strict');
 });

@@ -18,10 +18,11 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 
 test('mentions follow this turn\'s pictures',()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
-  const box={};vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function turnSlot'),source.indexOf('function createQwenNodeRecheck'))+';this.slot=turnSlot;this.extras=styleExtras;',box);
+  const box={};vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function turnSlot'),source.indexOf('function createQwenNodeRecheck'))+';this.slot=turnSlot;this.request=runRequest;',box);
   assert.deepEqual([1,2,3].map(n=>box.slot(n,2)),[0,1,-1],'a number past this turn\'s pictures names nothing');
-  assert.equal(box.extras('分别用@参考图1@参考图2@参考图3各自生成一张，人物姿势不变，背景改成海边'),'人物姿势不变，背景改成海边');
-  assert.doesNotMatch(source,/renumberTurnMentions|turnLabels/,'no second numbering is guessed after send');
+  assert.equal(box.request('@参考图1换成@参考图3的风格，姿势照@参考图2',0,[2,1]),'@参考图1换成@参考图2的风格，姿势照@参考图3','a run\'s brief numbers its pictures as the page holds them');
+  assert.equal(box.request('换成@参考图2的风格',-1,[1]),'换成@参考图2的风格','the remembered subject is not among the labels');
+  assert.doesNotMatch(source,/renumberTurnMentions|turnLabels|planStyleRun|runStyle\b|styleExtras/,'no second numbering is guessed after send');
   // The composer's @ list: this message's attachments from 1 (they replace the page on send), else the page.
   const start=source.indexOf('const mentionResources=()=>{'),end=source.indexOf('const mountMentions');
   const page=[{name:'old1.png',dataUrl:'data:o1'},{name:'old2.png',dataUrl:'data:o2'},null,{name:'old3.png',dataUrl:'data:o3'}];
@@ -32,59 +33,61 @@ test('mentions follow this turn\'s pictures',()=>{
     ['art_reference_1:photo.jpg','art_reference_2:style.png'],'the screenshot case: two new pictures are 参考图1 and 参考图2, not 4 and 5');
 });
 
-test('a style run puts only the subject and one style on the page per run',async()=>{
+test('each run puts the subject and its own pictures on the page, in the brain\'s roles',async()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
-  const start=source.indexOf('async function runStyle'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
+  const start=source.indexOf('async function runImageRuns'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
   const seen=[];let page=[{name:'a',file:{n:'a'}},{name:'b',file:{n:'b'}},{name:'c',file:{n:'c'}}];
   const rt={references:()=>page,setReference(index,value){page[index]=value;},refreshReferences(){}};
   const box={root:{__NovaFlowArtGenerate:rt,URL:{createObjectURL:file=>'blob:'+file.n}},state:{},notify(){},currentSubject:{name:'photo',file:{n:'photo'}},
     async plannerDrawingPrompt(op,message,options){seen.push([page.filter(Boolean).map(ref=>ref.name+':'+ref.drawingRole+':'+ref.dataUrl).join(),op.useResult,message,options.rolesSet]);return {action:'image_generate',phase:'completed',outputs:[{id:String(seen.length)}],message:'done'};}};
-  vm.createContext(box);vm.runInContext('var run='+source.slice(start,end).trim().replace(/^async function runStyle/,'async function'),box);
-  const receipt=await box.run({subjectSlot:-1,styleSlots:[0,1,2],perStyle:true,extras:''});
+  vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function runRequest'),source.indexOf('const pageLimitQuestion='))+'var run='+source.slice(start,end).trim().replace(/^async function runImageRuns/,'async function'),box);
+  const styles=(count,subjectSlot=-1)=>Object.fromEntries(Array.from({length:count},(_,i)=>[i,i===subjectSlot?'subject':'style']));
+  const receipt=await box.run({subjectSlot:-1,roles:styles(3),runs:[0,1,2].map(slot=>({slots:[slot],prompt:'换成@参考图'+(slot+1)+'的风格'})),prompt:'换成这张的风格'});
   assert.deepEqual(seen.map(row=>row[0]),['photo:subject:blob:photo,a:style:blob:a','photo:subject:blob:photo,b:style:blob:b','photo:subject:blob:photo,c:style:blob:c']);
-  assert.ok(seen.every(row=>row[1]===false&&row[2]==='@参考图1换成@参考图2的风格'&&row[3]===true));
-  assert.equal(receipt.message,'已按 3 张风格图各生成一张');assert.equal(receipt.outputs.length,3);
+  assert.ok(seen.every(row=>row[1]===false&&row[2]==='换成@参考图2的风格'&&row[3]===true),'each run\'s brief points at its own picture');
+  assert.equal(receipt.message,'已按要求分 3 次生成 3 张');assert.equal(receipt.outputs.length,3);
   assert.deepEqual(page.filter(Boolean).map(ref=>ref.name+':'+ref.drawingRole),['photo:subject','c:style'],'the page shows what the last run used, not every picture at once');
   seen.length=0;page=[{name:'p',file:{n:'p'}},{name:'s1',file:{n:'s1'}},{name:'s2',file:{n:'s2'}}];
-  const split=await box.run({subjectSlot:0,styleSlots:[1,2],perStyle:true,extras:'人物姿势不变'});
+  const split=await box.run({subjectSlot:0,roles:styles(3,0),runs:[{slots:[1],prompt:''},{slots:[2],prompt:''}],prompt:'@参考图1换成@参考图2的风格，人物姿势不变'});
   assert.deepEqual(seen.map(row=>row[0]),['p:subject:blob:p,s1:style:blob:s1','p:subject:blob:p,s2:style:blob:s2'],'the subject named in the sentence is used');
-  assert.ok(seen.every(row=>row[2]==='@参考图1换成@参考图2的风格，人物姿势不变'),'extra wishes reach every run');
-  assert.equal(split.message,'已按 2 张风格图各生成一张');assert.deepEqual(page.filter(Boolean).map(ref=>ref.name),['p','s2']);
+  assert.ok(seen.every(row=>row[2]==='@参考图1换成@参考图2的风格，人物姿势不变'),'the brief reaches every run');
+  assert.equal(split.message,'已按要求分 2 次生成 2 张');assert.deepEqual(page.filter(Boolean).map(ref=>ref.name),['p','s2']);
   seen.length=0;page=[{name:'p',file:{n:'p'}},{name:'s1',file:{n:'s1'}},{name:'s2',file:{n:'s2'}}];
-  await box.run({subjectSlot:0,styleSlots:[1,2],perStyle:false,extras:''});
-  assert.deepEqual(seen.map(row=>row[0]),['p:subject:blob:p,s1:style:blob:s1,s2:style:blob:s2'],'without perStyle it is one run with both');
-  assert.equal(seen[0][2],'@参考图1换成@参考图2和@参考图3的风格');
+  await box.run({subjectSlot:0,roles:{0:'subject',1:'style',2:'pose'},runs:[{slots:[1,2],prompt:''}],prompt:'@参考图1换成@参考图2的风格，姿势照@参考图3'});
+  assert.deepEqual(seen.map(row=>row[0]),['p:subject:blob:p,s1:style:blob:s1,s2:pose:blob:s2'],'one run with a style and a pose picture, each in its role');
+  assert.equal(seen[0][2],'@参考图1换成@参考图2的风格，姿势照@参考图3');
   // Dylan's case: the page still holds the last turn's 图1/图2; the three pictures he sent are the styles, whatever the page holds.
   seen.length=0;page=[{name:'old-subject',file:{n:'old-subject'}},{name:'old-style',file:{n:'old-style'}}];
   const sent=['s1','s2','s3'].map(n=>({name:n,file:{n},source:'xiaotao-upload'}));
-  const turn=await box.run({subjectSlot:-1,styleSlots:[0,1,2],perStyle:true,extras:'',pictures:sent});
+  const turn=await box.run({subjectSlot:-1,roles:styles(3),runs:[0,1,2].map(slot=>({slots:[slot],prompt:''})),prompt:'换成这张的风格',pictures:sent});
   assert.deepEqual(seen.map(row=>row[0]),['photo:subject:blob:photo,s1:style:blob:s1','photo:subject:blob:photo,s2:style:blob:s2','photo:subject:blob:photo,s3:style:blob:s3'],'each sent style runs once with the remembered subject');
   assert.equal(turn.outputs.length,3);
   assert.match(source,/if\(newConversation\)\{reset\(\);lastUploads=\[\];currentSubject=null;/);
-  assert.match(source,/styleRuns\.set\(single,\{\.\.\.styleRun,pictures:turnImages\.length\?/,'run details stay off the plan, which is validated again before each step');
+  assert.match(source,/imageRunPlans\.set\(single,\{\.\.\.imageRuns,pictures:turnImages\.length\?/,'run details stay off the plan, which is validated again before each step');
 });
 
 test('one style picture failing does not drop the others; all failing or a stop is an error',async()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
-  const start=source.indexOf('async function runStyle'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
+  const start=source.indexOf('async function runImageRuns'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
   const make=fails=>{
     let page=[{name:'a',file:{n:'a'}},{name:'b',file:{n:'b'}},{name:'c',file:{n:'c'}}],calls=0;
     const rt={references:()=>page,setReference(index,value){page[index]=value;},refreshReferences(){}};
     const box={root:{__NovaFlowArtGenerate:rt,URL:{createObjectURL:file=>'blob:'+file.n}},state:{},notify(){},currentSubject:{name:'photo',file:{n:'photo'}},
       async plannerDrawingPrompt(){calls++;if(fails(calls))throw Error('在线模型这次没有返回结果');return {action:'image_generate',phase:'completed',outputs:[{id:String(calls)}],message:'done'};}};
-    vm.createContext(box);vm.runInContext('var run='+source.slice(start,end).trim().replace(/^async function runStyle/,'async function'),box);
+    vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function runRequest'),source.indexOf('const pageLimitQuestion='))+'var run='+source.slice(start,end).trim().replace(/^async function runImageRuns/,'async function'),box);
     return {box,calls:()=>calls,page:()=>page};
   };
   const partial=make(n=>n===2);
-  const receipt=await partial.box.run({subjectSlot:-1,styleSlots:[0,1,2],perStyle:true,extras:''});
+  const three={subjectSlot:-1,roles:{0:'style',1:'style',2:'style'},runs:[0,1,2].map(slot=>({slots:[slot],prompt:''})),prompt:'换成这张的风格'};
+  const receipt=await partial.box.run(three);
   assert.equal(partial.calls(),3,'the third picture still runs after the second fails');
   assert.equal(receipt.outputs.map(o=>o.id).join(),'1,3');
-  assert.equal(receipt.message,'已生成 2 张；未完成：第 2 张：在线模型这次没有返回结果');
+  assert.equal(receipt.message,'已生成 2 张；未完成：第 2 次：在线模型这次没有返回结果');
   assert.equal(partial.page().filter(Boolean).map(ref=>ref.name).join(),'photo,c','the page shows the last run');
   const all=make(()=>true);
-  await assert.rejects(all.box.run({subjectSlot:-1,styleSlots:[0,1],perStyle:true,extras:''}),/第 1 张：在线模型这次没有返回结果；第 2 张/);
+  await assert.rejects(all.box.run({...three,runs:three.runs.slice(0,2)}),/第 1 次：在线模型这次没有返回结果；第 2 次/);
   const stopped=make(n=>n===1);
-  await assert.rejects(stopped.box.run({subjectSlot:-1,styleSlots:[0,1],perStyle:true,extras:''},{aborted:true}),/已停止/);
+  await assert.rejects(stopped.box.run({...three,runs:three.runs.slice(0,2)},{aborted:true}),/已停止/);
   assert.equal(stopped.calls(),0);
 });
 
@@ -160,6 +163,6 @@ test('the online brain reads the request before any 图生图 picture is placed'
   assert.match(source,/if\(deferredDrawing\.includes\(item\)\)continue;/);
   assert.match(source,/deferDrawing=operationGeneral;\n\s*if \(!\(await ensureStaged\(\)\)\) return false;/);
   // A style run never places them all: it places subject + one style per run. A plain 图生图 step places them just before it runs.
-  assert.match(source,/if\(styleRuns\.has\(op\)\)\{drawingPending\.length=0;receipt=await runStyle/);
+  assert.match(source,/if\(imageRunPlans\.has\(op\)\)\{drawingPending\.length=0;receipt=await runImageRuns/);
   assert.match(source,/if\(op\.generationMode!=='txt2img'&&op\.useResult!==true\)await placeDrawingPending\(\);/);
 });

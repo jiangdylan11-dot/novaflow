@@ -15,9 +15,10 @@ const samePlan=(want,got)=>{
   if(!want)return got.status!=='act'||!got.operations.some(op=>op.action.startsWith('image_'));
   const op=got.operations.find(row=>row.action===want.action);
   if(!op)return false;
-  for(const key of ['generationMode','perStyle','count'])if((want[key]??undefined)!==(op[key]??undefined))return false;
-  if(want.subjectRef&&op.subjectRef!==want.subjectRef)return false;
-  if(want.styleRefs&&JSON.stringify(want.styleRefs)!==JSON.stringify(op.styleRefs))return false;
+  for(const key of ['generationMode','count'])if((want[key]??undefined)!==(op[key]??undefined))return false;
+  const roles=rows=>JSON.stringify((rows||[]).map(row=>[row.ref,row.role]).sort());
+  if(want.references&&roles(want.references)!==roles(op.references))return false;
+  if(want.runs&&JSON.stringify(want.runs.map(run=>[...run.refs].sort()))!==JSON.stringify((op.runs||[]).map(run=>[...run.refs].sort())))return false;
   return true;
 };
 let good=0;const wrong=[];

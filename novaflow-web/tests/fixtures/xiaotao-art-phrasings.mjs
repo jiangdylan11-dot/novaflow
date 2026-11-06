@@ -1,11 +1,13 @@
 // Ways people ask 小桃 for 美工 work. "brain" is the plan a correct online brain should send;
 // "expect" is what the app must then do. tests/e2e/xiaotao-art-phrasings.test.mjs feeds the simulated
 // plan through the real checks; tests/manual/xiaotao-style-phrasings.mjs asks the real brain.
-const style=(subjectRef,styleRefs,extra={})=>({action:'image_generate',prompt:'风格转换',generationMode:'img2img',useResult:false,...(subjectRef?{subjectRef}:{}),styleRefs,...extra});
+// style(subject,[styles],{perStyle}) is the brain's references/runs: roles per picture, one run per style when perStyle.
+const style=(subjectRef,styleRefs,{perStyle=false,...extra}={})=>({action:'image_generate',prompt:'风格转换',generationMode:'img2img',useResult:false,
+  references:[...(subjectRef?[{ref:subjectRef,role:'subject'}]:[]),...styleRefs.map(ref=>({ref,role:'style'}))],...(perStyle?{runs:styleRefs.map(ref=>({refs:[ref]}))}:{}),...extra});
 const draw=(extra={})=>({action:'image_generate',prompt:'一张图',generationMode:'txt2img',useResult:false,...extra});
 const revise=(extra={})=>({action:'image_generate',prompt:'修改上一张',generationMode:'img2img',useResult:true,...extra});
 const each={perStyle:true};
-const run=(subjectSlot,styleSlots,perStyle)=>({run:{subjectSlot,styleSlots,perStyle}});
+const run=(subjectSlot,styleSlots,perStyle)=>({run:{subjectSlot,runs:perStyle?styleSlots.map(slot=>[slot]):[styleSlots]}});
 const none={run:null};
 
 export const PHRASINGS=[
@@ -41,8 +43,8 @@ export const PHRASINGS=[
   // limits become questions
   {text:'分别用这些风格各生成一张',pictures:3,brain:style(0,[1,2,3],each),expect:{ask:/主体图/}},
   {text:'换成这张的风格',pictures:1,brain:style(0,[1]),expect:{ask:/主体图/}},
-  {text:'这五张风格各来一张',pictures:5,subject:true,brain:style(0,[1,2,3,4,5],each),expect:{ask:/最多用 4 张/}},
-  {text:'把@参考图1转成@参考图2@参考图3@参考图4的风格',pictures:4,brain:style(1,[2,3,4]),expect:{ask:/混合成一张/}},
+  {text:'这五张风格各来一张',pictures:5,subject:true,brain:style(0,[1,2,3,4,5],each),expect:run(-1,[0,1,2,3,4],true)},
+  {text:'把@参考图1转成@参考图2@参考图3@参考图4的风格',pictures:4,brain:style(1,[2,3,4]),expect:{ask:/最多用 3 张图/}},
   // plain generation
   {text:'画一只猫',pictures:0,brain:draw(),expect:none},
   {text:'生成一张海边的女孩',pictures:0,brain:draw(),expect:none},
@@ -84,4 +86,8 @@ export const PHRASINGS=[
   {text:'清空对话',pictures:0,brain:null,expect:{newConversation:true}},
   // a stray field never stops the run
   {text:'换成这张的风格，别的不变',pictures:1,subject:true,brain:style(0,[1],{mood:'x',subjectSlot:9}),expect:run(-1,[0],false)},
+  // other uses than style: the brain names them, the app places them in that role
+  {text:'用@参考图1和@参考图2的风格各出一张，@参考图3是姿势',pictures:3,subject:true,brain:{action:'image_generate',prompt:'风格转换',generationMode:'img2img',useResult:false,references:[{ref:1,role:'style'},{ref:2,role:'style'},{ref:3,role:'pose'}],runs:[{refs:[1,3]},{refs:[2,3]}]},expect:{run:{subjectSlot:-1,runs:[[0,2],[1,2]]}}},
+  {text:'把@参考图1的背景换成@参考图2的，姿势照@参考图3',pictures:3,brain:{action:'image_generate',prompt:'换背景',generationMode:'img2img',useResult:false,references:[{ref:1,role:'subject'},{ref:2,role:'background'},{ref:3,role:'pose'}]},expect:{run:{subjectSlot:0,runs:[[1,2]]}}},
+  {text:'@参考图1用@参考图2的风格，再用@参考图3的风格',pictures:3,brain:{action:'image_generate',prompt:'风格转换',generationMode:'img2img',useResult:false,references:[{ref:1,role:'subject'},{ref:2,role:'style'},{ref:3,role:'style'}],runs:[{refs:[2]},{refs:[3],prompt:'换成@参考图3的风格，颜色更亮'}]},expect:{run:{subjectSlot:0,runs:[[1],[2]]}}},
 ];
