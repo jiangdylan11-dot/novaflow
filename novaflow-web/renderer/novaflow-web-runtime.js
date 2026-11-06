@@ -1011,8 +1011,10 @@
         if(accepted!==true)return no('assistant-business-upload-declined','已取消参考图片上传，未提交或扣费。');
       }
       if(Date.now()>=policy.expiresAt)return no('companion-pricing-changed','在线价格已过期，请重新发送；本次未提交或扣费。');
-      timer=setTimeout(onChange,180000);
-      for(const stage of (gptImage||nativeQwen?['structure']:['structure','english'])){
+      timer=setTimeout(onChange,240000);
+      // The model answering nothing is refunded by the server (provider-failed, 0 credits); the structure stage then gets one more try before the person hears about it.
+      let retried=false;const stages=gptImage||nativeQwen?['structure']:['structure','english'];
+      for(let si=0;si<stages.length;si++){const stage=stages[si];
         if(!current())return no('assistant-selection-changed',submitted?'模型或会话已变，本次未完成。':'模型或会话已变，未提交。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:submitted&&!lastQuota});
         const body=stage==='structure'?{stage,modelId:selected.modelId,input,intentId,epoch:selected.epoch,...(images.length?{images}:{})}
           :{stage,stageToken,epoch:selected.epoch};
@@ -1059,6 +1061,10 @@
         if(!current())return no('assistant-selection-changed',settled?'模型或会话已变，本阶段已结算。':'模型或会话已变，本阶段未完成。',{...(quota?{quota}:{}),billingUnknown:!settled});
         if(settled&&result.settlement.uncollectedCredits>0)
           return no('operation-incomplete',incompleteSettlementMessage({charged:result.settlement.settledCredits,uncollected:result.settlement.uncollectedCredits}),{quota,billingUnknown:true});
+        if(result?.errorCode==='provider-failed'&&settled&&result.settlement.settledCredits===0&&stage==='structure'&&!retried&&current()){
+          console.warn('[NovaFlow] Xiaotao art model answered nothing, retrying once');
+          retried=true;recoveryId='';pendingId='';si--;continue;
+        }
         if(result?.ok!==true||!settled){
           console.warn('[NovaFlow] Xiaotao art phase rejected',stage,result?.errorCode||'assistant-business-invalid-result',result?.validationIssue||'');
           const message=({'structure-invalid':'模型返回的绘图提示词未通过完整性校验。','english-invalid':'模型返回的英文执行稿未通过校验。','provider-incomplete':'模型回复未完整返回。','provider-failed':'在线模型这次没有返回结果，本次未扣费，可以再试一次。'})[result?.errorCode]||'本阶段未完成。';
@@ -1093,8 +1099,21 @@
       }
       return no('assistant-business-invalid-result','在线美工结果未完成。');
     } catch(error){
-      return no(error?.code||'assistant-business-unavailable',pendingId?'在线请求中断，本次未完成，可以再试一次。':String(error?.message||'在线美工暂不可用，未提交当前阶段。'),
-        {...(lastQuota?{quota:lastQuota}:{}),billingUnknown:Boolean(pendingId)});
+      if(!pendingId)return no(error?.code||'assistant-business-unavailable',String(error?.message||'在线美工暂不可用，未提交当前阶段。'),{...(lastQuota?{quota:lastQuota}:{})});
+      // The request died in flight (gateway cut, network, our own timer). The server settles the hold on its own; read that
+      // settlement instead of guessing, so the person sees what happened and the ledger shows no open hold.
+      let closed=null;
+      if(recoveryId&&sessionGuard()===true&&currentSession()?.token===session){
+        try{const status=await api(base,'POST','/api/web/companion/operation/status',{operationId:recoveryId},10000);
+          const op=status?.ok===true?status.operation:null;
+          if(op?.operationId===recoveryId&&op.status==='settled'&&validCreditAmount(op.charged,decimalCreditPolicy(operationTerms)))closed={charged:op.charged};
+        }catch{/* unknown stays unknown */}
+      }
+      if(closed){
+        const quota={status:'settled',settled_credits:closed.charged};notice(pendingId,quota,false);pendingId='';v3FinalSettled=true;
+        return no(closed.charged===0?'provider-failed':'assistant-business-interrupted',closed.charged===0?'在线模型这次没有返回结果，本次未扣费，可以再试一次。':'在线请求中断，本次未完成，可以再试一次。',{quota});
+      }
+      return no(error?.code||'assistant-business-unavailable','在线请求中断，本次未完成，可以再试一次。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:true});
     } finally {
       // A known first stage can be closed without issuing another provider
       // request. Once English dispatch begins its result may be unknown, so

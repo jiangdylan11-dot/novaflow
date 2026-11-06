@@ -7,7 +7,7 @@ const source=await readFile(new URL('../renderer/novaflow-web-runtime.js',import
 const creditHelpers=source.slice(source.indexOf('  // Operation-v3 can use'),source.indexOf('  const XIAOTAO_ONLINE_ART_RELEASE_ENABLED'));
 const start=source.indexOf('  async function selectedOnlineBusinessPrompt('),end=source.indexOf('  async function localPromptAssistant(',start);
 assert.ok(start>0&&end>start);
-function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,serverSuccess=false,unknownSecond=false,gptResult=false,pricingSource='token_rate_estimate',cacheKnown=false,operationV3=true,mutateQuote=null,storageFail=false,decimal=true}={}){
+function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,serverSuccess=false,unknownSecond=false,gptResult=false,pricingSource='token_rate_estimate',cacheKnown=false,operationV3=true,mutateQuote=null,storageFail=false,decimal=true,status=null,failStructure=null}={}){
  const selection={provider:'api',modelId:'xai/grok-4.7',epoch:0},listeners=new Set(),events=[],pending=new Set(),recovery=new Map();
  const operationId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
  let token='session-a',calls=0,onExecute=null;
@@ -21,11 +21,13 @@ function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,ser
   validOperationId:id=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id||''),
   currentSession:()=>({token}),captureFoartSessionGuard:()=>{const captured=token;return ()=>token===captured;},companionCloudRequests:new Map(),companionCloudUsed:new Set(),
   stopCompanionCloud:()=>{},api:async(_base,_method,path,body,_timeout,signal)=>{
-   calls++;events.push({kind:path.endsWith('/quote')?'quote':path.endsWith('/cancel')?'cancel':'execute',body});
+   calls++;events.push({kind:path.endsWith('/quote')?'quote':path.endsWith('/cancel')?'cancel':path.endsWith('/operation/status')?'status':'execute',body});
    if(signal?.aborted)throw Error('aborted');
    if(path.endsWith('/quote')){const quote={stage:body.stage,model:selection.modelId,requestId:body.stage==='structure'?'a'.repeat(64):'b'.repeat(64),
     pricingVersion:'sha256:'+'c'.repeat(64),estimatedCredits:decimal?0.125:3,maxOutputTokens:body.stage==='structure'&&body.input?.targetEngine!=='gpt-image-2.5'?6144:1536,quoteToken:'synthetic-'+body.stage,...(body.images?{imageCount:body.images.length}:{}),...(operationV3?{billingScope:'operation-v3',recoveryOperationId:operationId}:{})};mutateQuote?.(quote,body.stage);return {ok:true,quote};}
    if(path.endsWith('/cancel'))return {ok:false,errorCode:'operation-cancelled',settlement:{requestId:'a'.repeat(64),status:'settled',settledCredits:0.000002}};
+   if(path.endsWith('/operation/status'))return status?status(body):{ok:true,operation:{operationId,status:'pending-reconciliation'}};
+   if(body.quoteToken==='synthetic-structure'&&failStructure){const outcome=failStructure(events.filter(e=>e.kind==='execute').length);if(outcome)return outcome;}
    if(onExecute)await onExecute(body);
    if(unknownSecond&&body.quoteToken==='synthetic-english')throw Error('synthetic transport lost');
    const id=body.quoteToken==='synthetic-structure'?'a'.repeat(64):'b'.repeat(64);
@@ -139,6 +141,35 @@ test('forged successful second stage lacks trusted contract and is never returne
  assert.equal(result.errorCode,'assistant-business-invalid-result');assert.equal(result.modelPrompt,undefined);
 });
 
+test('a model that answered nothing is refunded by the server and the structure stage is retried once',async()=>{
+ const h=harness({gptResult:true,failStructure:n=>n===1?{ok:false,errorCode:'provider-failed',settlement:{requestId:'a'.repeat(64),status:'settled',settledCredits:0}}:null});
+ h.payload.targetEngine='gpt-image-2.5';delete h.payload.promptSchema;delete h.payload.agentModelLanguage;
+ const result=await h.invoke();
+ assert.equal(result.ok,true);assert.equal(result.prompt,'safe draft');
+ assert.equal(h.events.filter(e=>e.kind==='execute').length,2);assert.equal(h.events.filter(e=>e.kind==='quote').length,2);
+ assert.equal(h.events.filter(e=>e.kind==='cancel').length,0);
+ const twice=harness({gptResult:true,failStructure:()=>({ok:false,errorCode:'provider-failed',settlement:{requestId:'a'.repeat(64),status:'settled',settledCredits:0}})});
+ twice.payload.targetEngine='gpt-image-2.5';delete twice.payload.promptSchema;delete twice.payload.agentModelLanguage;
+ const failed=await twice.invoke();
+ assert.equal(failed.ok,false);assert.equal(failed.errorCode,'provider-failed');assert.match(failed.error,/没有返回结果.*未扣费/);assert.doesNotMatch(failed.error,/核对/);
+ assert.equal(twice.events.filter(e=>e.kind==='execute').length,2);
+});
+test('a request lost in flight reads the server settlement instead of guessing',async()=>{
+ const lost=()=>{throw Object.assign(Error('request failed 504'),{status:504});};
+ const refunded=harness({gptResult:true,status:body=>({ok:true,operation:{operationId:body.operationId,status:'settled',outcome:'cancel',charged:0,uncollected:0}}),failStructure:lost});
+ refunded.payload.targetEngine='gpt-image-2.5';delete refunded.payload.promptSchema;delete refunded.payload.agentModelLanguage;
+ const a=await refunded.invoke();
+ assert.equal(a.errorCode,'provider-failed');assert.match(a.error,/未扣费/);assert.equal(a.billingUnknown,undefined);assert.equal(a.quota.settled_credits,0);
+ assert.equal(refunded.events.filter(e=>e.kind==='settled').length,1);
+ const charged=harness({gptResult:true,status:body=>({ok:true,operation:{operationId:body.operationId,status:'settled',outcome:'cancel',charged:0.25,uncollected:0}}),failStructure:lost});
+ charged.payload.targetEngine='gpt-image-2.5';delete charged.payload.promptSchema;delete charged.payload.agentModelLanguage;
+ const b=await charged.invoke();
+ assert.equal(b.errorCode,'assistant-business-interrupted');assert.equal(b.quota.settled_credits,0.25);assert.doesNotMatch(b.error,/核对/);
+ const open=harness({gptResult:true,failStructure:lost});
+ open.payload.targetEngine='gpt-image-2.5';delete open.payload.promptSchema;delete open.payload.agentModelLanguage;
+ const c=await open.invoke();
+ assert.equal(c.billingUnknown,true);assert.match(c.error,/在线请求中断/);assert.doesNotMatch(c.error,/核对/);
+});
 const syntheticRefs=[
  {role:'subject',dataUrl:'data:image/png;base64,iVBORw0KGgo='},
  {role:'style',dataUrl:'data:image/jpeg;base64,/9j/2Q=='},
