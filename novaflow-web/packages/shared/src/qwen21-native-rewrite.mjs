@@ -16,12 +16,13 @@ const EDIT_SYSTEM=`Rewrite the user's image-editing instruction for Qwen Image 2
 For changing this image, lead with the requested operation and make the named change strong and unmistakable. Describe only the changed attributes; preserve the untargeted content, identity, product design/count, layout, pose, accessories and rendering medium with a concise blanket clause. Do not describe the old face, clothing, background or style in detail merely to preserve it, since that invites regeneration. Do not soften the requested edit just to preserve identity.
 For making a new scene from a reference subject, actively compose the requested scene and lighting while keeping the referenced identity; do not treat scene creation as a tiny local edit. Ground every visible claim in the supplied images and request; do not invent unseen details, lettering or extra edit operations.
 One image: refer naturally to the image, without adding numbered tags. Preserve any reference tags or protected __NF...__ resource placeholders already supplied by the application verbatim, including for one image; these are bindings, not lettering. Multiple images: use <image1>, <image2>, etc., name each image's role, identify the base canvas when there is one, and say which specific attribute transfers from each reference. A style reference supplies style, not its objects, text or composition. For compositing, preserve identity sources and integrate scale, perspective, contact shadows and illumination coherently. For removal/outpainting, describe only the revealed/extended region needed for continuity. User-selected canvas dimensions, reference order, aspect ratio and sampling remain application parameters; do not insert them into the picture or change them.`;
-const STYLE_SYSTEM=`You prepare a style redraw for Qwen Image 2.1. <image1> is the subject; every later image is a style reference. Return only JSON with style_description, mood_description, content_description, time_of_day, sun_visible and sky_visible, all in English.
-style_description: one comma-separated phrase of 25-60 words saying only HOW the style image(s) are drawn: line weight, shading method, highlight logic, hair and skin treatment, detail level. Pick one decisive value for each, never a blend. No colour words, and no character, object or scenery from the style image(s). Write it at the length and precision of these examples, for this picture:
-- painterly semi-realistic anime illustration with no outlines, forms built from soft-edged brush modelling, layered volumetric shading, tight specular highlights on eyes and lips, a strong rim light, hair painted in soft grouped masses with fine flyaway strands, high detail
-- bright flat cel anime illustration, uniform thin clean ink outline, strictly two-step hard-edged shadow shapes with no gradients, highlights as small crisp white shapes, few flat colour areas, smooth flat skin with a simple blush mark, hair in crisp graphic strands with one hard highlight band, moderate detail
-- cinematic anime illustration, crisp fine lines with tapered weight, flat colour fills with smooth airbrushed gradients in the shadows, sharp glossy highlights, sleek hair in long simple masses with a narrow sheen, smooth skin, clean high-contrast finish
-- soft anime illustration, delicate thin line art, gentle gradient cel shading with blurred shadow edges, soft bloom around highlights, glossy eyes with layered catchlights, smooth softly blushed skin, fluffy hair in fine soft strands, medium-high detail
+const STYLE_SYSTEM=`You prepare a style redraw for Qwen Image 2.1. <image1> is the subject; every later image is a style reference. Return only JSON with drawing, style_description, mood_description, content_description, time_of_day, sun_visible and sky_visible, all in English.
+drawing: look at how the style image(s) are drawn and pick the one closest value for each field. genre: flat_cel, painterly, cinematic or soft. line: none, thin_uniform, tapered or sketchy. shading: soft_gradient, two_step, three_step, brush or hatching. highlight: none, hard_band, angular, specular or bloom. hair: solid, ribbon, fine or brushed. colour_layout: flat, gradient or impasto. surface: smooth, grain or textured. Judge by what you see, for example:
+- flat colour fills, one thin even outline, hard shadow shapes: flat_cel, thin_uniform, two_step, angular, ribbon, flat, smooth
+- no outlines, volume built with soft brushwork: painterly, none, brush, specular, brushed, gradient, textured
+- fine lines that swell and taper, glossy airbrushed shadows: cinematic, tapered, soft_gradient, specular, ribbon, gradient, smooth
+- thin delicate lines, blurred shadow edges, glowing highlights: soft, thin_uniform, soft_gradient, bloom, fine, gradient, smooth
+style_description: under 20 words on anything special about the drawing the choices above miss, or an empty string. No colour words, and no character, object or scenery from the style image(s).
 mood_description: one comma-separated phrase of 20-40 words on the lighting of the style image(s): time of day first, then the key light with its colour and direction, the shadow colour, the contrast, and any sky shown. Short hard shadows mean midday; golden hour only if a low sun is actually visible. Name no object or scenery from the style image(s). Examples:
 - bright midday, strong direct sunlight from the right and above, hot white-gold highlights, hard-edged shadows, bright interior
 - bright midday, bright blue summer sky with white clouds, clean white key from the upper left, crisp cool grey shadows, fresh and contrasty
@@ -38,6 +39,22 @@ export function buildStyleRelight(moodDescription,style='<image2>',facts={}){
 // The finish every style redraw is held to, whatever the reference.
 export const STYLE_POLISH='Finish: a polished professional key visual. Refined, attractive facial features faithful to <image1> (same face proportions and facial marks in the same places), expressive eyes with clear catchlights, hair with rich strand detail and flowing highlights, clothing folds and held objects rendered with care, the background painted with real depth and atmosphere (soft painterly distance, glowing scene lights, reflections on glossy surfaces), harmonious colour composition with one dominant mood, crisp focal detail on the face, high overall completion, no rough or unfinished areas.';
 const styleSlot=text=>String(text).trim().replace(/[.\s]+$/u,'');
+// The brain picks how the picture is drawn and the program words it: picking is what a small model does reliably, and the wording stays at the level of the hand-written trials.
+const STYLE_DRAWING=Object.freeze({
+  genre:{flat_cel:'bright flat cel anime illustration',painterly:'painterly semi-realistic anime illustration',cinematic:'cinematic anime illustration',soft:'soft anime illustration'},
+  line:{none:'no outlines, forms defined by tone alone',thin_uniform:'uniform thin clean ink outline',tapered:'crisp fine lines with tapered weight',sketchy:'loose sketchy linework'},
+  shading:{soft_gradient:'gentle gradient cel shading with blurred shadow edges',two_step:'strictly two-step hard-edged shadow shapes with no gradients',three_step:'three clear flat steps of shadow',brush:'forms built from soft-edged brush modelling with layered volumetric shading',hatching:'shading built from hatching or screentone'},
+  highlight:{none:'few distinct highlights',hard_band:'one hard highlight band on the hair',angular:'highlights as small crisp shapes',specular:'tight specular highlights on eyes and lips',bloom:'soft bloom around highlights'},
+  hair:{solid:'hair in simple solid masses',ribbon:'sleek hair in long simple masses with a narrow sheen',fine:'fluffy hair in fine soft strands',brushed:'hair painted in soft grouped masses with fine flyaway strands'},
+  colour_layout:{flat:'few flat colour areas',gradient:'smooth airbrushed gradients in the shadows',impasto:'thick painted strokes'},
+  surface:{smooth:'smooth skin',grain:'a subtle paper grain',textured:'visible painted texture'}
+});
+const STYLE_DRAWING_MIN=3;
+export function buildStyleDrawing(drawing,notes=''){
+  const picked=Object.entries(STYLE_DRAWING).map(([field,values])=>values[drawing?.[field]]).filter(Boolean);
+  if(picked.length<STYLE_DRAWING_MIN)return styleSlot(notes);
+  return [...picked,styleSlot(notes)].filter(Boolean).join(', ');
+}
 // The brain reads the picture; the program decides the time. It called a midday picture with no sky in view golden hour every
 // time, however the instruction was worded, and once called dark corners a night sky, so only a low sun seen in the picture counts.
 // Naming sky here paints sky over walls and ceilings, so the program's line speaks only of the light and the layout.
@@ -76,7 +93,7 @@ export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
     const ownWords=input.requirements?.trim()||input.currentPrompt;
     return {kind:'qwen21-native',input:{...input},nativeEdit:true,styleRedraw:true,referenceCount:referenceRoles.length,modelPromptLanguage:'en',body:{model,store:false,temperature:0,max_output_tokens:2048,
       input:[{role:'system',content:[{type:'input_text',text:STYLE_SYSTEM}]},{role:'user',content:[{type:'input_text',text:JSON.stringify({task:'style-redraw',current_instruction:ownWords,requested_changes:'',reference_roles:referenceRoles.map((role,index)=>({image:index+1,role}))})}]}],
-      text:{format:{type:'json_schema',name:'qwen21_style_redraw',strict:true,schema:{type:'object',properties:{style_description:{type:'string'},mood_description:{type:'string'},content_description:{type:'string'},time_of_day:{type:'string',enum:Object.keys(STYLE_TIMES)},sun_visible:{type:'boolean'},sky_visible:{type:'boolean'}},required:['style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible'],additionalProperties:false}}}}};
+      text:{format:{type:'json_schema',name:'qwen21_style_redraw',strict:true,schema:{type:'object',properties:{drawing:{type:'object',properties:Object.fromEntries(Object.entries(STYLE_DRAWING).map(([field,values])=>[field,{type:'string',enum:Object.keys(values)}])),required:Object.keys(STYLE_DRAWING),additionalProperties:false},style_description:{type:'string'},mood_description:{type:'string'},content_description:{type:'string'},time_of_day:{type:'string',enum:Object.keys(STYLE_TIMES)},sun_visible:{type:'boolean'},sky_visible:{type:'boolean'}},required:['drawing','style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible'],additionalProperties:false}}}}};
   }
   if(nativeEdit){
     const instruction=input.requirements?.trim()||input.currentPrompt;
@@ -164,7 +181,7 @@ function compileQwen21Rewrite(response,prepared,preserve){
   const value=rewriteJson(response.output_text);
   const nativeEdit=prepared.nativeEdit===true,styleRedraw=prepared.styleRedraw===true,expected=styleRedraw?'content_description,mood_description,style_description':nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
   if(!value||typeof value!=='object'||Array.isArray(value)||!styleRedraw&&Object.keys(value).sort().join(',')!==expected)fail('Qwen 2.1 rewrite fields invalid');
-  const styleDescription=styleRedraw?styleTechnique(styleText(value.style_description)):'',contentDescription=styleRedraw?styleText(value.content_description):'',moodDescription=styleRedraw?styleText(value.mood_description)||STYLE_DEFAULT_MOOD:'';
+  const styleDescription=styleRedraw?buildStyleDrawing(value.drawing,styleTechnique(styleText(value.style_description))):'',contentDescription=styleRedraw?styleText(value.content_description):'',moodDescription=styleRedraw?styleText(value.mood_description)||STYLE_DEFAULT_MOOD:'';
   if(styleRedraw&&!styleDescription)fail('Qwen 2.1 style description missing');
   if(styleRedraw&&!contentDescription)fail('Qwen 2.1 content description missing');
   const written=styleRedraw?buildStyleRedrawPrompt(styleDescription,moodDescription,contentDescription,prepared.referenceCount,value):nativeEdit?value.rewritten_prompt:value.display_prompt;

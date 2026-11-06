@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
-import {decideStyleTime,buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
+import {buildStyleDrawing,decideStyleTime,buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
 
 let passed=0,failed=0;
 async function test(name,fn){
@@ -51,6 +51,18 @@ await test('missing facts fall back to the mood words and never overrule it',()=
   assert.equal(decideStyleTime(liveR1).time,'golden_hour');assert.equal(decideStyleTime('neutral key light from above'),null);
   assert.equal(decideStyleTime('dusk, soft lamps',{time_of_day:'teatime'}).time,'dusk','an unknown time is ignored');
 });
+await test('the choices become the drawing words, with free text only as an addition or a fallback',()=>{
+  const flat={genre:'flat_cel',line:'thin_uniform',shading:'two_step',highlight:'angular',hair:'ribbon',colour_layout:'flat',surface:'smooth'};
+  const text=buildStyleDrawing(flat,'tiny star highlights');
+  assert.ok(text.startsWith('bright flat cel anime illustration, uniform thin clean ink outline, strictly two-step hard-edged shadow shapes with no gradients'));assert.ok(text.endsWith(', tiny star highlights'));
+  assert.equal(buildStyleDrawing({genre:'x',line:'y'},'free text'),'free text','too few valid picks fall back to the text');
+  assert.equal(buildStyleDrawing(undefined,'free text.'),'free text');
+  assert.ok(!buildStyleDrawing({...flat,shading:'unknown'}).includes('unknown'),'an unknown value is skipped');
+  const prepared=buildQwen21NativeRewrite({promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',currentPrompt:'换风格',requirements:'',negativePrompt:'',supportsNegativePrompt:true},'m',['subject','style']);
+  assert.deepEqual(prepared.body.text.format.schema.properties.drawing.required,['genre','line','shading','highlight','hair','colour_layout','surface']);
+  const result=compileQwen21NativeRewrite({output_text:JSON.stringify({drawing:flat,style_description:'',mood_description:mood,content_description:content})},prepared);
+  assert.ok(result.modelPrompt.includes('in this style: bright flat cel anime illustration'));
+});
 await test('the style brain reads the request, not the last picture\'s prompt',()=>{
   const old='Time of day: bright midday. Sky: Vivid bright blue sky dotted with fluffy white cumulus clouds.';
   const body=input=>JSON.parse(buildQwen21NativeRewrite({promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',negativePrompt:'',supportsNegativePrompt:true,...input},'m',['subject','style']).body.input[1].content[0].text);
@@ -67,7 +79,7 @@ await test('style mode is chosen only for one subject first followed by style re
   for(const roles of [['subject','style'],['subject','style','style']]){
     const prepared=buildQwen21NativeRewrite(input,'model',roles);
     assert.equal(prepared.styleRedraw,true,roles.join());assert.equal(prepared.referenceCount,roles.length);assert.equal(prepared.body.temperature,0);
-    assert.deepEqual(prepared.body.text.format.schema.required,['style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible']);
+    assert.deepEqual(prepared.body.text.format.schema.required,['drawing','style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible']);
   }
   for(const roles of [['subject'],['style'],['style','subject'],['subject','pose'],['subject','style','pose'],['subject','subject','style'],[]])
     assert.equal(buildQwen21NativeRewrite(input,'model',roles).styleRedraw,undefined,roles.join());
@@ -77,7 +89,7 @@ await test('style mode is chosen only for one subject first followed by style re
 
 await test('the style system asks only for the three texts and bans the wording that darkens the result',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
-  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','hair and skin treatment','detail level','one decisive value for each, never a blend','at the length and precision of these examples','strictly two-step hard-edged shadow shapes with no gradients','soft-edged brush modelling','20-40 words','time of day first','Short hard shadows mean midday','golden hour only if a low sun is actually visible','one soft lamp as the key light from the side','Never state its time of day, sky, lighting or what shows through its windows','exact hair colour','any wink','facial marks','requested_changes','never by tags or __NF...__ placeholders'])
+  for(const needle of ['40-80 words','pick the one closest value for each field','genre: flat_cel, painterly, cinematic or soft','shading: soft_gradient, two_step, three_step, brush or hatching','Judge by what you see','under 20 words on anything special','20-40 words','time of day first','Short hard shadows mean midday','golden hour only if a low sun is actually visible','one soft lamp as the key light from the side','Never state its time of day, sky, lighting or what shows through its windows','exact hair colour','any wink','facial marks','requested_changes','never by tags or __NF...__ placeholders'])
     assert.ok(text.includes(needle),needle);
   assert.doesNotMatch(text,/rendering medium|rewritten_prompt/);
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');
