@@ -413,7 +413,8 @@
           }
           const refs = runtime.references?.() || [];
           // A retry after a failed turn offers the same picture again; keep one copy.
-          if(refs.some(ref=>ref?.name===item.name&&ref?.file?.size===file.size))return {destination:destination.id,fileName:item.name};
+          // A turn that replaces the page must still place every picture it brought.
+          if(!item.replaceReferences&&refs.some(ref=>ref?.name===item.name&&ref?.file?.size===file.size))return {destination:destination.id,fileName:item.name};
           const limit = Math.max(1, Number(runtime.referenceLimit?.()) || destination.limit);
           if(item.replaceReferences && item.referenceIndex===0)for(let i=0;i<refs.length;i++)if(refs[i])runtime.setReference(i,null);
           const index = refs.findIndex(ref => !ref?.dataUrl);

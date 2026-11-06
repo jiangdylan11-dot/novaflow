@@ -115,7 +115,18 @@ function explicitFacts(input,display,model){
     if(source.includes(place)&&(!display.includes(place)||!new RegExp(word,'i').test(model)))fail('Qwen 2.1 rewrite lost an explicit position');
   }
 }
+// An edit whose rewrite fails the checks still has the request itself, which keeps every tag: use that
+// rather than stop a paid run. Style redraws have their own tolerance.
 export function compileQwen21NativeRewrite(response,prepared,preserve){
+  try{return compileQwen21Rewrite(response,prepared,preserve);}
+  catch(error){
+    const plain=[prepared.input?.currentPrompt,prepared.input?.requirements].filter(text=>String(text||'').trim()).join('\n');
+    if(error?.code!=='qwen21-rewrite-invalid'||prepared.nativeEdit!==true||prepared.styleRedraw===true||!plain)throw error;
+    console.warn('[art] edit rewrite replaced by the request',error.message);
+    return compileQwen21Rewrite({output_text:JSON.stringify({rewritten_prompt:plain})},prepared,preserve);
+  }
+}
+function compileQwen21Rewrite(response,prepared,preserve){
   const value=rewriteJson(response.output_text);
   const nativeEdit=prepared.nativeEdit===true,styleRedraw=prepared.styleRedraw===true,expected=styleRedraw?'content_description,mood_description,style_description':nativeEdit?'rewritten_prompt':'display_prompt,model_prompt';
   if(!value||typeof value!=='object'||Array.isArray(value)||!styleRedraw&&Object.keys(value).sort().join(',')!==expected)fail('Qwen 2.1 rewrite fields invalid');

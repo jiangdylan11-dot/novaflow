@@ -18,48 +18,38 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 
 test('mentions follow this turn\'s pictures',()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
-  const start=source.indexOf('function renumberTurnMentions'),end=source.indexOf('function createQwenNodeRecheck');
-  const box={};vm.createContext(box);vm.runInContext(source.slice(start,end)+';this.renumber=renumberTurnMentions;this.styleOnly=styleOnlyRequest;this.subjectSlot=turnSubjectSlot;this.extras=styleExtras;',box);
-  const first='@参考图1换成@参考图2的风格，人物姿势不变',second='分别用@参考图3@参考图4@参考图5各自生成一张';
-  assert.equal(box.renumber(second,3),'分别用@参考图1@参考图2@参考图3各自生成一张');
+  const box={};vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function turnLabels'),source.indexOf('function createQwenNodeRecheck'))+';this.renumber=renumberTurnMentions;this.extras=styleExtras;',box);
+  assert.equal(box.renumber('分别用@参考图3@参考图4@参考图5各自生成一张',3),'分别用@参考图1@参考图2@参考图3各自生成一张');
   assert.equal(box.renumber('把<image4>换成<image5>的风格',2),'把<image1>换成<image2>的风格');
-  assert.equal(box.renumber(first,2),first,'numbers already on the page stay');
-  assert.equal(box.renumber('@参考图3和@参考图4',1),'@参考图3和@参考图4','more names than pictures are left for the page to report');
-  assert.equal(box.styleOnly(first,2),false,'the first sentence brings its own subject');
-  assert.equal(box.styleOnly(second,3),true,'the second brings only style pictures');
-  assert.equal(box.styleOnly('换成@参考图3的风格',1),true);
-  assert.equal(box.styleOnly('把@参考图1分别转成@参考图2@参考图3的风格',3),false,'a named subject stays in charge');
-  assert.equal(box.styleOnly('各自生成一张',1),false);
-  assert.equal(box.styleOnly('用@参考图1的风格画一只猫',1),false);
-  assert.equal(box.subjectSlot('把@参考图1分别转成@参考图2@参考图3的风格',3),0);
-  assert.equal(box.subjectSlot('@参考图2是主体，分别用@参考图1和@参考图3的风格',3),1);
-  assert.equal(box.subjectSlot('把@参考图1转成@参考图2@参考图3的风格',3),-1,'without 分别 it stays one run');
-  assert.equal(box.subjectSlot('把@参考图1分别转成@参考图2的风格',2),-1,'one style picture needs no split');
+  assert.equal(box.renumber('@参考图1换成@参考图2的风格',2),'@参考图1换成@参考图2的风格','numbers already on the page stay');
+  assert.equal(box.renumber('主体@参考图1，用@参考图3@参考图4',2),'主体之前的主体图，用@参考图1@参考图2','labels from before no longer read as this turn\'s pictures');
   assert.equal(box.extras('分别用@参考图3@参考图4@参考图5各自生成一张，人物姿势不变，背景改成海边'),'人物姿势不变，背景改成海边');
-  assert.equal(box.extras(second),'');
 });
 
-test('each style picture runs on the remembered subject, in turn, and the page is put back',async()=>{
+test('a style run works through the page and puts it back',async()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
-  const start=source.indexOf('async function runEachStyle'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
+  const start=source.indexOf('async function runStyle'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
   const seen=[];let page=[{name:'a',file:{n:'a'}},{name:'b',file:{n:'b'}},{name:'c',file:{n:'c'}}];
   const rt={references:()=>page,setReference(index,value){page[index]=value;},refreshReferences(){}};
   const box={root:{__NovaFlowArtGenerate:rt,URL:{createObjectURL:file=>'blob:'+file.n}},state:{},notify(){},currentSubject:{name:'photo',file:{n:'photo'}},
-    async plannerDrawingPrompt(op,message){seen.push([page.filter(Boolean).map(ref=>ref.name+':'+ref.drawingRole+':'+ref.dataUrl).join(),op.useResult,message]);return {action:'image_generate',phase:'completed',outputs:[{id:String(seen.length)}]};}};
-  vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function styleExtras'),source.indexOf('function createQwenNodeRecheck')),box);
-  vm.runInContext('var run='+source.slice(start,end).trim().replace(/^async function runEachStyle/,'async function'),box);
-  const receipt=await box.run();
+    async plannerDrawingPrompt(op,message,options){seen.push([page.filter(Boolean).map(ref=>ref.name+':'+ref.drawingRole+':'+ref.dataUrl).join(),op.useResult,message,options.rolesSet]);return {action:'image_generate',phase:'completed',outputs:[{id:String(seen.length)}],message:'done'};}};
+  vm.createContext(box);vm.runInContext('var run='+source.slice(start,end).trim().replace(/^async function runStyle/,'async function'),box);
+  const receipt=await box.run({subjectSlot:-1,styleSlots:[0,1,2],perStyle:true,extras:''});
   assert.deepEqual(seen.map(row=>row[0]),['photo:subject:blob:photo,a:style:blob:a','photo:subject:blob:photo,b:style:blob:b','photo:subject:blob:photo,c:style:blob:c']);
-  assert.ok(seen.every(row=>row[1]===false&&row[2]==='@参考图1换成@参考图2的风格'));
+  assert.ok(seen.every(row=>row[1]===false&&row[2]==='@参考图1换成@参考图2的风格'&&row[3]===true));
   assert.equal(receipt.message,'已按 3 张风格图各生成一张');assert.equal(receipt.outputs.length,3);
   assert.deepEqual(page.filter(Boolean).map(ref=>ref.name),['a','b','c'],'the page ends as this turn left it');
   seen.length=0;page=[{name:'p',file:{n:'p'}},{name:'s1',file:{n:'s1'}},{name:'s2',file:{n:'s2'}}];
-  const split=await box.run('把@参考图1分别转成@参考图2@参考图3的风格，人物姿势不变',0);
+  const split=await box.run({subjectSlot:0,styleSlots:[1,2],perStyle:true,extras:'人物姿势不变'});
   assert.deepEqual(seen.map(row=>row[0]),['p:subject:blob:p,s1:style:blob:s1','p:subject:blob:p,s2:style:blob:s2'],'the subject named in the sentence is used');
   assert.ok(seen.every(row=>row[2]==='@参考图1换成@参考图2的风格，人物姿势不变'),'extra wishes reach every run');
   assert.equal(split.message,'已按 2 张风格图各生成一张');assert.deepEqual(page.filter(Boolean).map(ref=>ref.name),['p','s1','s2']);
-  assert.match(source,/if\(styleOnly&&!currentSubject\)plan=\{\.\.\.plan,status:'clarify'/,'no subject asks for one');
+  seen.length=0;page=[{name:'p',file:{n:'p'}},{name:'s1',file:{n:'s1'}},{name:'s2',file:{n:'s2'}}];
+  await box.run({subjectSlot:0,styleSlots:[1,2],perStyle:false,extras:''});
+  assert.deepEqual(seen.map(row=>row[0]),['p:subject:blob:p,s1:style:blob:s1,s2:style:blob:s2'],'without perStyle it is one run with both');
+  assert.equal(seen[0][2],'@参考图1换成@参考图2和@参考图3的风格');
   assert.match(source,/if\(newConversation\)\{reset\(\);lastUploads=\[\];currentSubject=null;/);
+  assert.match(source,/styleRuns\.set\(single,styleRun\)/,'run details stay off the plan, which is validated again before each step');
 });
 
 test('a request naming both pictures as style still leaves one subject',()=>{

@@ -560,8 +560,11 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       if(scopedVision){
         const subjects=images.filter(image=>image.role==='subject').length,styles=images.filter(image=>image.role==='style').length;
         // 风格参考可以有多张，一起作为画风来源；有风格参考时仍要一张明确的主体。
-        if(styles>0&&subjects!==1)fail('有风格参考时请明确指定一张主体图，未提交生成。');
-        if(op.generationMode==='img2img'&&subjects!==1)fail('请明确指定一张主体图，未提交生成。');
+        // No clear subject is no reason to stop: the first picture that is not a style one takes the role, else the first.
+        if(op.generationMode==='img2img'&&images.length&&subjects!==1){
+          const pick=images.find(image=>image.role!=='style')||images[0];
+          for(const image of images)if(image===pick)image.role='subject';else if(image.role==='subject')image.role='reference';
+        }
       }
       onStatus('正在按所选模型优化提示词。');
       // 风格重绘固定主体在前：请求和生成按这个顺序，页面上的提示词仍用原槽位编号。
