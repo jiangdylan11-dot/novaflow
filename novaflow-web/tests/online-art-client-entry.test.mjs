@@ -177,15 +177,17 @@ const syntheticRefs=[
  {role:'style',dataUrl:'data:image/jpeg;base64,/9j/2Q=='},
  {role:'reference',dataUrl:'data:image/webp;base64,UklGRgAAAAA='}
 ];
-test('a style redraw asks for DeepSeek, and falls back to the picked model when DeepSeek is off the list',async()=>{
- const run=async listed=>{
-  const h=harness({decimal:true}),pricing=h.scope.companionPricing;h.scope.XIAOTAO_ONLINE_VISION_ART_RELEASE_ENABLED=true;h.scope.STYLE_REDRAW_BRAIN_MODEL='deepseek/deepseek-v4.1-flash';
+test('a style redraw runs on the picked model and its one retry moves to the backup line when listed',async()=>{
+ const silent=()=>({ok:false,errorCode:'provider-failed',settlement:{requestId:'a'.repeat(64),status:'settled',settledCredits:0}});
+ const run=async(listed,failing)=>{
+  const h=harness({decimal:true,failStructure:failing?silent:null,mutateQuote:quote=>{quote.maxOutputTokens=2048;return quote;}}),pricing=h.scope.companionPricing;h.scope.XIAOTAO_ONLINE_VISION_ART_RELEASE_ENABLED=true;h.scope.STYLE_REDRAW_BACKUP_MODEL='deepseek/deepseek-v4.1-flash';
   h.scope.companionPricing=async()=>{const result=await pricing();if(listed)result.policy.models=[...result.policy.models,{id:'deepseek/deepseek-v4.1-flash',available:true}];return result;};
   Object.assign(h.payload,{qwenPromptMode:'img2img',promptContract:'qwen21-native-rewrite-v3',promptSchema:undefined,agentModelLanguage:'en',images:syntheticRefs.slice(0,2).map((image,index)=>({...image,role:index?'style':'subject'})),confirmImageUpload:async()=>true});
-  await h.invoke();return h.events.find(event=>event.kind==='quote')?.body.modelId;
+  await h.invoke();return h.events.filter(event=>event.kind==='quote').map(event=>event.body.modelId);
  };
- assert.equal(await run(true),'deepseek/deepseek-v4.1-flash');
- assert.equal(await run(false),'xai/grok-4.7');
+ assert.deepEqual(await run(true,false),['xai/grok-4.7'],'the picked model writes it');
+ assert.deepEqual(await run(true,true),['xai/grok-4.7','deepseek/deepseek-v4.1-flash'],'a silent line moves to the backup');
+ assert.deepEqual(await run(false,true),['xai/grok-4.7','xai/grok-4.7'],'no backup listed keeps the picked model');
 });
 test('selected images require consent before quote; structure submits exact roles and order twice only',async()=>{
  const h=harness(),events=h.events;h.payload.images=syntheticRefs;

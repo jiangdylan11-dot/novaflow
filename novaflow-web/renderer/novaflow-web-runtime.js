@@ -915,8 +915,8 @@
   }
 
   // Online art is intentionally closed until billing and real-page acceptance.
-  // The model that writes a style redraw's texts, whichever model the menu shows.
-  const STYLE_REDRAW_BRAIN_MODEL='deepseek/deepseek-v4.1-flash';
+  // The person picks the model. When its line answers nothing, a style redraw's one retry goes through this one.
+  const STYLE_REDRAW_BACKUP_MODEL='deepseek/deepseek-v4.1-flash';
   async function selectedOnlineBusinessPrompt(action,payload,selected,controller) {
     const no=(errorCode,error)=>({ok:false,errorCode,error});
     const textOnly=payload.currentDrawingTextOnly===true && typeof XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED!=='undefined' && XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED===true;
@@ -994,9 +994,8 @@
     let timer;companionCloudRequests.set(requestId,abort);
     const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
     const notice=(id,quota,unknown)=>{try{return payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown})===true;}catch{return false;}};
-    // A style redraw is written by DeepSeek whichever model the menu shows: it reads the style picture better and answers in seconds.
     const styleRun=nativeQwen&&images.length>=2&&images[0]?.role==='subject'&&images.slice(1).every(image=>image?.role==='style');
-    let artModel=styleRun?STYLE_REDRAW_BRAIN_MODEL:selected.modelId;
+    let artModel=selected.modelId;
     try {
       if(!current())return no('assistant-selection-changed','模型或会话已变，未提交。');
       // The server's hashed policy is the trusted discriminator; omitting both
@@ -1007,8 +1006,6 @@
         !policy.config?.xiaotao_online||typeof policy.config.xiaotao_online!=='object')
         return no('companion-pricing-changed','在线积分策略不可用，本次未提交。');
       operationTerms=policy.config.xiaotao_online;
-      // DeepSeek off the list is no reason to fail the person: the model they picked writes it instead.
-      if(styleRun&&!policy.models?.some?.(m=>m.id===artModel&&m.available===true))artModel=selected.modelId;
       if(operationTerms.operation_art_v3!==true || !operationCreditPolicy(operationTerms) || ((payload.currentDrawingTextOnly===true||payload.currentDrawingVisionOnly===true)&&!decimalCreditPolicy(operationTerms)) ||
         (payload.currentDrawingVisionOnly===true&&(operationTerms.operation_vision_chat_v3!==true||!images.length)) ||
         !Array.isArray(policy.models) || !policy.models.some(m=>m.id===artModel&&m.available===true))
@@ -1071,6 +1068,7 @@
           return no('operation-incomplete',incompleteSettlementMessage({charged:result.settlement.settledCredits,uncollected:result.settlement.uncollectedCredits}),{quota,billingUnknown:true});
         if(result?.errorCode==='provider-failed'&&settled&&result.settlement.settledCredits===0&&stage==='structure'&&!retried&&current()){
           console.warn('[NovaFlow] Xiaotao art model answered nothing, retrying once');
+          if(styleRun&&policy.models.some(m=>m.id===STYLE_REDRAW_BACKUP_MODEL&&m.available===true))artModel=STYLE_REDRAW_BACKUP_MODEL;
           retried=true;recoveryId='';pendingId='';stageToken='';intentId=(root.crypto||crypto).randomUUID();si--;continue;
         }
         if(result?.ok!==true||!settled){
