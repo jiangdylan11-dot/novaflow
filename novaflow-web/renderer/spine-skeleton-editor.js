@@ -1121,7 +1121,23 @@
   }
 
   async function folderHandleReadable(handle) {
-    return !!(handle && typeof handle.queryPermission === 'function' && await handle.queryPermission({ mode: 'read' }).catch(() => 'denied') === 'granted')
+    if (!(handle && typeof handle.queryPermission === 'function' && await handle.queryPermission({ mode: 'read' }).catch(() => 'denied') === 'granted')) return false
+    return folderHandleExists(handle)
+  }
+  /**
+   * A remembered directory handle keeps its permission after the folder itself was moved or
+   * deleted on disk (user 2026-11-06: the project moved from D: to E:, 导入工程 showed the
+   * browser's "A requested file or directory could not be found..."). Only a folder that can
+   * still be listed counts.
+   */
+  async function folderHandleExists(handle) {
+    if (!handle || typeof handle.entries !== 'function') return !!handle
+    try {
+      const it = handle.entries()
+      await it.next()
+      if (typeof it.return === 'function') await it.return().catch(() => {})
+      return true
+    } catch { return false }
   }
 
   /** The cached handle is this project's image folder only when it is that path. */
@@ -1243,6 +1259,40 @@
     return candidates.length === 1 ? candidates[0] : null
   }
 
+  /**
+   * 导入工程 picks the project's folder, not the file (user 2026-11-06: "SPINE 工程随便怎么放都能打开").
+   * A browser grants a picked file only, never the img folder beside it, so a project moved
+   * from D: to E: opened without pictures. The folder grant covers the .nfproj and its pictures.
+   */
+  async function openProjectFolder(dir, options = {}) {
+    if (!dir || typeof dir.entries !== 'function') throw new Error('请选择存放 .nfproj 的工程文件夹')
+    const found = []
+    for await (const [name, child] of dir.entries()) if (child && child.kind === 'file' && /\.nfproj$/i.test(name)) found.push(child)
+    if (!found.length) throw new Error(`文件夹「${dir.name}」里没有 Foart 工程文件（.nfproj），请选择存放 .nfproj 的那个文件夹`)
+    found.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }))
+    const picked = found.length === 1 ? found[0] : await chooseProjectInFolder(found, dir.name)
+    if (!picked) return 0
+    return openProjectFile(await picked.getFile(), picked, { ...options, directory: { handle: dir } })
+  }
+  async function chooseProjectInFolder(handles, folderName) {
+    const files = await Promise.all(handles.map(async (handle) => ({ handle, file: await handle.getFile().catch(() => null) })))
+    const when = (f) => { if (!f) return ''; const d = new Date(f.lastModified), z = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}` }
+    return new Promise((resolve) => {
+      let mask
+      const done = (choice) => { mask.remove(); window.removeEventListener('keydown', key, true); resolve(choice) }
+      const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(null) } }
+      mask = h('div', { class: 'mask', 'data-nf-project-folder-choice': '1', onclick: (e) => { if (e.target === mask) done(null) } },
+        h('div', { class: 'dialog ask' },
+          h('div', { class: 'hd' }, h('b', {}, `打开「${folderName}」里的工程`), h('button', { class: 'xx', onclick: () => done(null) }, '×')),
+          h('div', { class: 'msg', style: 'display:flex;flex-direction:column;gap:6px' },
+            ...files.map(({ handle, file }) => h('button', { class: 'btn', type: 'button', style: 'display:flex;justify-content:space-between;gap:16px;text-align:left', onclick: () => done(handle) },
+              h('span', {}, handle.name), h('span', { style: 'opacity:.55' }, when(file))))),
+          h('div', { class: 'ft' }, h('button', { class: 'btn', type: 'button', onclick: () => done(null) }, '取消'))))
+      document.body.append(mask)
+      window.addEventListener('keydown', key, true)
+    })
+  }
+
   /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
   async function openProjectFile(data, handle, options = {}) {
     const blob = data instanceof Blob ? data : new Blob([data])
@@ -1294,7 +1344,10 @@
       if (restored) { directory = restored.directory; parentParts = restored.parentParts }
 
     }
-    let projectDirectory = directory ? await projectSubdir(directory, parentParts) : null
+    let projectDirectory = null
+    if (directory) {
+      try { projectDirectory = await projectSubdir(directory, parentParts) } catch { directory = null; parentParts = []; projectDirectory = null }
+    }
     const imported = []
     const missing = []
     for (const p of d.projects) {
@@ -1306,11 +1359,13 @@
       const keyRecord = record || await folderDbDo('readonly', store => store.get(p.folderKey)).catch(() => null)
       const duplicate = await folderKeyIsDuplicate(p.folderKey || '', imagePath, directory, parentParts, keyRecord)
       const ignoreCache = duplicate
+      // a remembered folder that is gone from disk (moved or deleted) is no folder at all
+      const recordAlive = !!(record && record.handle && await folderHandleExists(record.handle))
       if (directory) {
         try { const imageDir = await projectSubdir(directory, projectPath(imagePath, parentParts)); folder = folderFromHandle(imageDir, imageDir.name) }
         catch { /* recorded path is missing: keep the rig and show MISSING attachments */ }
       }
-      if (!folder && !ignoreCache && record && record.handle && await folderHandleReadable(record.handle)) {
+      if (!folder && !ignoreCache && recordAlive && await folderHandleReadable(record.handle)) {
         const outside = !(directory && typeof directory.resolve === 'function' && await directory.resolve(record.handle).catch(() => null))
         if (await cachedFolderMatches(directory, parentParts, imagePath, record.handle)) folder = folderFromHandle(record.handle, record.handle.name)
         // Without a known project root, the saved key and matching imagePath are
@@ -1325,13 +1380,16 @@
         folder = folderFromFiles(prefix.split('/').pop() || '图片', items)
       }
       if (folder) {
-        const names = attachmentPictureNames(p.json)
-        for (const name of Attach.parseAtlas(p.atlasText).keys()) names.add(name)
-        const best = bestPictureRoot((await listProjectImages(folder)).map((f) => f.rel), names)
-        folder = folderWithPictureNames(folder, best, names)
-        folder.recordedPaths = true
+        try {
+          const names = attachmentPictureNames(p.json)
+          for (const name of Attach.parseAtlas(p.atlasText).keys()) names.add(name)
+          const best = bestPictureRoot((await listProjectImages(folder)).map((f) => f.rel), names)
+          folder = folderWithPictureNames(folder, best, names)
+          folder.recordedPaths = true
+        } catch { folder = null /* the folder went away while reading it: show MISSING and offer a reconnect */ }
       }
-      let images = await referencedProjectImages(p.images, folder, d.version === 1 ? p.atlasText : null)
+      let images = []
+      try { images = await referencedProjectImages(p.images, folder, d.version === 1 ? p.atlasText : null) } catch { folder = null; images = [] }
       // Legacy files may have loose PNGs under a subdirectory and a stale absolute Spine path.
       // Keep their old embedded data readable, then let the selected folder override its pixels.
       if (d.version === 1) {
@@ -1345,11 +1403,11 @@
       const folderKey = duplicate ? mintFolderKey() : (p.folderKey || '')
       await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, imageFolder: folder, projectDirectory, projectAccessRoot: directory,
         projectAccessContext: { data, handle },
-        pendingFolder: !folder && !ignoreCache && record?.handle && (record.imagePath == null || record.imagePath === imagePath) ? record.handle : null,
+        pendingFolder: !folder && !ignoreCache && recordAlive && (record.imagePath == null || record.imagePath === imagePath) ? record.handle : null,
         audio: p.audio || [], imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
         label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey, operation: imported.length ? 'append' : operation,
         replace: operation === 'replace' && imported.length === 0 && !!state.json })
-      if (typeof restoreAudioDirectory === 'function') await restoreAudioDirectory(state, p.audioPath || p.json?.skeleton?.audio, p.folderKey)
+      if (typeof restoreAudioDirectory === 'function') { try { await restoreAudioDirectory(state, p.audioPath || p.json?.skeleton?.audio, p.folderKey) } catch { /* audio folder moved: the rig still opens */ } }
       imported.push(activeProject)
       if (folder && folder.handle && typeof rememberFolder === 'function') await rememberFolder(folder.handle)
       if (projects[activeProject]) projects[activeProject].pendingSwapFolder = offer || null
@@ -3294,6 +3352,7 @@
     try { rec = await folderDbDo('readonly', (store) => store.get(key)) } catch { return }
     const target = projectState(proj)
     if (!rec || !rec.handle || !target || target.imageFolder) return
+    if (!await folderHandleExists(rec.handle)) return
     let perm = 'prompt'
     try { perm = await rec.handle.queryPermission({ mode: 'readwrite' }) } catch { perm = 'prompt' }
     if (perm === 'granted') {
@@ -11340,7 +11399,7 @@
       const record = await folderDbDo('readonly', store => store.get('audio:' + key)).catch(() => null)
       if (record?.handle && (!path || record.audioPath === String(path).replace(/\/$/, ''))) {
         if (await folderHandleReadable(record.handle)) handle = record.handle
-        else target.pendingAudioFolder = record.handle
+        else if (await folderHandleExists(record.handle)) target.pendingAudioFolder = record.handle
       }
     }
     if (handle) { target.audioFolder = { handle, name: handle.name, path: String(path || handle.name).replace(/\/$/, '') }; await refreshAudioDirectory(target) }
@@ -13896,6 +13955,8 @@
     openExport: (opts) => openExportDialog(opts),
     /** NovaFlow's own project file (.nfproj): every project in it comes in after the open ones. */
     openProjectFile: (data, handle, options) => openProjectFile(data, handle, options),
+    /** 导入工程: the picked folder's .nfproj (one asks which) with its pictures */
+    openProjectFolder: (dir, options) => openProjectFolder(dir, options),
     newProject: (name, options) => newProject(name, options),
     chooseProjectOperation,
     projectExportInfo,

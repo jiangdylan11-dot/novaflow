@@ -867,3 +867,28 @@ test('a fresh browser connects the selected project directory without rewriting 
  const rig=JSON.stringify(f.state.json);await f.c.connectProjectImageDirectory();
  assert.equal(await f.state.images.get('pic.png').blob.text(),'real pixels');assert.equal(JSON.stringify(f.state.json),rig);assert.equal(await (await file.getFile()).text(),await before.text());assert.equal(f.picker[0].mode,'read');
 });
+test('a project moved to another drive opens with MISSING instead of the browser NotFoundError, then reconnects',async()=>{
+ // user 2026-11-06: the project folder moved from D: to E:; the remembered D: handle kept its permission but was gone
+ const old=disk('D'),f=fixture();await old.put('img/pic.png','old pixels');const gone=await old.root.getDirectoryHandle('img');
+ const notFound=()=>Object.assign(new Error('A requested file or directory could not be found at the time an operation was processed.'),{name:'NotFoundError'});
+ gone.entries=async function*(){throw notFound()};gone.getFileHandle=async()=>{throw notFound()};gone.getDirectoryHandle=async()=>{throw notFound()};
+ f.records.set('saved-slot',{handle:gone,projectDirectory:old.root,projectAccessRoot:old.root,imagePath:'img'});
+ const moved=disk('E');await moved.put('img/pic.png','moved pixels');
+ const p={name:'scene',json:json(),atlasText:atlas(),imagePath:'img',folderKey:'saved-slot',images:[{fileName:'pic.png',path:'pic.png'}]};
+ const file=await moved.put('scene.nfproj',await gzip({format:'novaflow-spine-projects',version:2,projects:[p]}));
+ await f.open(await file.getFile(),file);
+ assert.equal(f.state.json.bones[0].name,'root');assert.equal(f.state.images.size,0);assert.equal(f.state.pendingFolder,null);assert.match(f.status.at(-1)[0],/MISSING/);
+ f.window.directory=moved.root;
+ f.c.useRememberedFolder=async(target,handle)=>{target.imageFolder=f.c.folderFromHandle(handle,handle.name);target.imageFolder.recordedPaths=true;await f.c.connectProjectImages(target,target.imageFolder)};f.c.rememberFolder=()=>{};f.c.restoreAudioDirectory=async()=>{};
+ await f.c.connectProjectImageDirectory();
+ assert.equal(await f.state.images.get('pic.png').blob.text(),'moved pixels');
+});
+test('导入工程 by folder opens the .nfproj inside it with its pictures, wherever the folder moved',async()=>{
+ const f=fixture();f.records.set('saved-slot',{handle:{name:'gone',queryPermission:async()=>'granted',entries:async function*(){throw Object.assign(new Error('gone'),{name:'NotFoundError'})}},imagePath:'img'});
+ const moved=disk('poker');await moved.put('img/pic.png','moved pixels');
+ const p={name:'scene',json:json(),atlasText:atlas(),imagePath:'img',folderKey:'saved-slot',images:[{fileName:'pic.png',path:'pic.png'}]};
+ await moved.put('skeleton.nfproj',await gzip({format:'novaflow-spine-projects',version:2,projects:[p]}));
+ f.c.dir=moved.root;assert.equal(await vm.runInContext('projects.length=0;state.json=null;activeProject=-1;openProjectFolder(dir)',f.c),1);
+ assert.equal(await f.state.images.get('pic.png').blob.text(),'moved pixels');assert.equal(f.picker.length,0);
+ const empty=disk('empty');f.c.dir=empty.root;await assert.rejects(vm.runInContext('openProjectFolder(dir)',f.c),/没有 Foart 工程文件/);
+});

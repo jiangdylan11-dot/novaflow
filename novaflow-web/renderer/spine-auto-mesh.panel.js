@@ -116,7 +116,12 @@
     if (!forRigging && rigDirty) { setStatus('骨骼架设 里还有未保存的修改:先 应用到工程 或 放弃修改', 'error'); return }
     setBusy(true)
     try { await fn() } catch (err) {
-      const message = String((err && err.message) || err || '操作失败')
+      // the browser's own file errors are English; say what happened (user 2026-11-06)
+      const name = err && err.name
+      const message = name === 'NotFoundError' ? '找不到文件或文件夹：它可能已被移动、改名或删除，请重新选择'
+        : name === 'NotReadableError' ? '文件读不了：它可能正被其他程序占用或已在磁盘上改动，请重新选择'
+        : name === 'NotAllowedError' || name === 'SecurityError' ? '没有访问这个文件或文件夹的权限，请重新选择并允许访问'
+        : String((err && err.message) || err || '操作失败')
       setStatus(message, 'error')
       if (/工程文件|NovaFlow 工程/.test(message)) showImportFailure(message)
     } finally { setBusy(false) }
@@ -3480,14 +3485,14 @@
     open.type = 'button'
     styleButton(open, false)
     open.setAttribute('data-nf-project-open', '1')
-    open.title = '打开 Foart 工程文件（.nfproj），里面的工程都加进工程树；打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
-    // the file picker (not the upload input) when the browser has it: the file is remembered, so
-    // 保存工程 / Ctrl+S write back to it (user 2026-10-16)
+    open.title = '选择工程所在的文件夹（放 .nfproj 的那个），工程和图片一起打开；工程文件夹搬到哪里都能打开。打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
+    // the folder, not the file: a browser grants a picked file only, never the img folder beside
+    // it, so a moved project lost its pictures (user 2026-11-06, D: → E:). The folder grant covers both.
     open.addEventListener('click', async () => {
       if (state.busy) return
-      if (typeof window.showOpenFilePicker !== 'function') { nfPicker.click(); return }
-      let handle
-      try { [handle] = await window.showOpenFilePicker({ types: [{ description: 'Foart 工程', accept: { 'application/octet-stream': ['.nfproj'] } }] }) } catch (e) {
+      if (typeof window.showDirectoryPicker !== 'function') { nfPicker.click(); return }
+      let dir
+      try { dir = await window.showDirectoryPicker({ id: 'foart-project', mode: 'readwrite' }) } catch (e) {
         if (e && e.name === 'AbortError') return
         nfPicker.click(); return
       }
@@ -3495,7 +3500,7 @@
         sayHere('打开 Foart 工程…')
         const ed = window.NovaFlowSkeletonEditor
         if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
-        const n = await (await ed.ready()).openProjectFile(await handle.getFile(), handle)
+        const n = await (await ed.ready()).openProjectFolder(dir)
         sayHere(n ? `已打开 Foart 工程（${n} 个工程）` : '已取消', 'ok')
       })
     })
