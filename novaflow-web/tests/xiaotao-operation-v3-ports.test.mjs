@@ -163,3 +163,14 @@ test('only exact trusted database reservation rejections become known failures',
   const p=create(async()=>{throw {code:'P0001',message:'积分不足'};},config());
   await assert.rejects(p.finalize({actor,operationId,outcome:'success'}),e=>e.code==='operation-status-unknown');
 });
+
+test('stale sweep is scoped to one account, needs a sane age, and surfaces the RPC result as is',async()=>{
+  const calls=[],p=create(async(name,args)=>{calls.push({name,args});return {status:'swept',refunded:[],skipped:0};},config());
+  assert.deepEqual(await p.sweepStale({userId:actor.userId}),{status:'swept',refunded:[],skipped:0});
+  assert.deepEqual(calls,[{name:'sweep_xiaotao_stale_dispatched_v3',args:{p_user_id:actor.userId,p_min_age_seconds:120}}]);
+  await assert.rejects(p.sweepStale({userId:'not-a-uuid'}),e=>e.code==='invalid-sweep');
+  await assert.rejects(p.sweepStale({userId:actor.userId,minAgeSeconds:5}),e=>e.code==='invalid-sweep');
+  const missing=create(async()=>{throw Object.assign(Error('function does not exist'),{code:'42883'});},config());
+  await assert.rejects(missing.sweepStale({userId:actor.userId}),e=>e.code==='42883');
+  assert.equal(calls.length,1);
+});

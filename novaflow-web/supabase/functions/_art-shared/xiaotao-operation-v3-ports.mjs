@@ -185,6 +185,13 @@ export function createXiaotaoOperationV3Ports(rpc, options = {}) {
         p_phase_id:phase(phaseId),p_request_hash:requestHash(hash),p_usage:{records},
         p_usd_cost:exact ? exact.usdExact : usdCost,p_raw_credits:exact ? exact.rawCreditsExact : rawCredits});
     },
+    // Holds left 'dispatched' when the edge worker died mid-request (546) are the server's to close.
+    // Best effort, scoped to one account; the caller ignores a failure, so this never blocks a quote.
+    async sweepStale({userId, minAgeSeconds=120}) {
+      ready();
+      if (!uuid(userId) || !Number.isSafeInteger(minAgeSeconds) || minAgeSeconds<60) fail('invalid-sweep');
+      return rpc('sweep_xiaotao_stale_dispatched_v3', {p_user_id:userId, p_min_age_seconds:minAgeSeconds});
+    },
     async finalize({actor:trustedActor, operationId, outcome}) {
       ready();
       if (!['success','cancel','refund'].includes(outcome)) fail('invalid-outcome');

@@ -197,6 +197,27 @@ await test('a style image in slot 1 still runs subject first, while the page kee
   assert.deepEqual(Array.from(prepared.references,ref=>ref.name),['photo.png','style.png']);assert.deepEqual(Array.from(prepared.referenceRolePlan.roles),['subject','style']);
   assert.equal(prepared.promptSnapshot.prompt,redraw);assert.equal(prepared.promptOwnsReferenceRoles,true);assert.equal(rt.state.negativePrompt,STYLE_NEGATIVE);
 });
+await test('a request the edge runtime cut off is sent once more; any other failure is not',async()=>{
+  const png=c=>'data:image/png;base64,'+c;
+  const make=codes=>{
+    const refs=[{drawingRole:'subject',dataUrl:png('AA=='),name:'photo.png'},{drawingRole:'style',dataUrl:png('BB=='),name:'style.png'}];let calls=0;const statuses=[];
+    const rt={state:{active:true,provider:'local',mode:'img2img',prompt:'用<image2>的风格重绘<image1>',negativePrompt:'',width:512,height:512,count:1,running:false,localQwen21Variant:'turbo'},references:()=>refs,selectedResult:()=>null,
+      captureContext(){return {state:this.state,generationSurface:'drawing',routeRevision:1,referenceRevision:1};},captureAgentPreparedSnapshot:()=>({}),replaceAgentPrepared(){return {};},restoreAgentPrepared(){},isAgentPreparedReplacementCurrent:()=>true,render(){}};
+    const root={crypto:globalThis.crypto,console,TextEncoder,setTimeout,clearTimeout,__NovaFlowArtGenerate:rt,document:{querySelectorAll:()=>[]},NovaFlowArtGenerateModels:{capabilityFor:()=>({engine:'qwen-2.1-turbo'})},
+      NovaFlowXiaotaoArtAgent:{panel:{controller:{businessModelSnapshot:()=>({provider:'api',modelId:'m',epoch:1})}}},electronAPI:{onlineVisionArtAvailableSync:()=>true,captureFoartSessionGuard:()=>()=>true},
+      __NovaFlowSmartAI:{async optimizeForAgent(){const code=codes[calls++];if(code)throw Object.assign(Error('在线请求中断'),{code});
+        return {prompt:redraw,displayPrompt:redraw,negativePrompt:STYLE_NEGATIVE,analysisBackend:'runninghub',optimization:{reviewRequired:true,modelPromptPolicy:QWEN21_STYLE_REDRAW_POLICY}};}}};
+    root.window=root;runInContext(read('../../renderer/xiaotao-foart-tools.js'),createContext(root));
+    const tools=root.NovaFlowFoartTools,roles=Array.from(tools.captureDrawingReferenceRoles());
+    return {run:()=>tools.execute({action:'image_optimize',prompt:rt.state.prompt,generationMode:'img2img'},{provider:'api',modelId:'m',onlineBusiness:{},selectionStillCurrent:()=>true,projectStillCurrent:()=>true,currentDrawingVisionOnly:true,referenceSource:'page',referenceRoles:roles,onStatus:t=>statuses.push(t)}),calls:()=>calls,statuses};
+  };
+  const cut=make(['assistant-business-interrupted']);
+  const review=await cut.run();assert.equal(review.modelPrompt,redraw);assert.equal(cut.calls(),2);assert.ok(cut.statuses.some(t=>/重新发送/.test(t)));
+  const twice=make(['assistant-business-interrupted','assistant-business-interrupted']);
+  await assert.rejects(twice.run(),e=>e.code==='assistant-business-interrupted');assert.equal(twice.calls(),2);
+  const other=make(['provider-failed']);
+  await assert.rejects(other.run(),e=>e.code==='provider-failed');assert.equal(other.calls(),1);
+});
 await test('his exact words reach the workflow with a fenced, a long and a Chinese brain reply',async()=>{
   const words='@参考图1的风格换成@参考图2的风格，人物姿势不变';
   const agent=read('../../renderer/xiaotao-art-agent.js'),box={};createContext(box);

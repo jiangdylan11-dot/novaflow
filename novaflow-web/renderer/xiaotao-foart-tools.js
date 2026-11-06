@@ -572,10 +572,18 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       const referenceOrder=styleSet?images.map((_,index)=>index).sort((a,b)=>Number(images[b].role==='subject')-Number(images[a].role==='subject')):null;
       const requestImages=referenceOrder?referenceOrder.map(index=>images[index]):images;
       const toRequestSlots=text=>referenceOrder?String(text).replace(/(<image|@参考图\s*)(\d+)/g,(tag,head,n)=>head+(referenceOrder.indexOf(Number(n)-1)+1||n)):text;
-      const optimized=await root.__NovaFlowSmartAI.optimizeForAgent({assistantSelectionScope:'xiaotao',surface:'art',prompt:toRequestSlots(op.prompt),plannerBrief:op.plannerBrief===true,
+      const optimizeOnce=()=>root.__NovaFlowSmartAI.optimizeForAgent({assistantSelectionScope:'xiaotao',surface:'art',prompt:toRequestSlots(op.prompt),plannerBrief:op.plannerBrief===true,
         negativePrompt:rt.state.negativePrompt||'',requirements:toRequestSlots(requirements),generationMode:op.generationMode,
         engine:gptDrawing?'gpt-image-2.5':'qwen-2.1-turbo',supportsNegativePrompt:!gptDrawing,signal,onProgress:onStatus,...onlineBusiness,images:requestImages,
         selectionStillCurrent,isImageInputCurrent:()=>imageBinding(rt)===beforeBinding&&(!scopedUploads||attachmentStillCurrent()),...(scopedText?{currentDrawingTextOnly:true}:{}),...(scopedVision?{currentDrawingVisionOnly:true}:{})});
+      // A request the edge runtime cut off mid-call (546) is sent once more as a new operation; the server refunds the cut one itself.
+      let optimized;
+      try{optimized=await optimizeOnce();}
+      catch(error){
+        if(error?.code!=='assistant-business-interrupted'||signal?.aborted||!selectionStillCurrent()||!sessionStillCurrent()||(scopedUploads&&!attachmentStillCurrent())||imageBinding(rt)!==beforeBinding)throw error;
+        onStatus?.('在线请求中断，正在重新发送…');
+        optimized=await optimizeOnce();
+      }
       if(signal?.aborted||!selectionStillCurrent()||!sessionStillCurrent()||(scopedUploads&&!attachmentStillCurrent())||imageBinding(rt)!==beforeBinding)fail('绘图内容或模型选择已变化，未写入。');
       const draft=optimized.displayPrompt||optimized.prompt,modelPrompt=optimized.prompt,negativePrompt=optimized.negativePrompt;
       const prompt=referenceOrder?String(draft).replace(/<image(\d+)>/g,(tag,n)=>`<image${(referenceOrder[Number(n)-1]??Number(n)-1)+1}>`):draft;
