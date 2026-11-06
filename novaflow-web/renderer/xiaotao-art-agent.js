@@ -2792,8 +2792,8 @@
     };
     const listen=(node,type,fn)=>{if(typeof node.addEventListener==='function')node.addEventListener(type,fn);else node['on'+type]=fn;};
     const takeFiles=list=>{if(list?.length)void controller.stageUploads(list);};
-    listen(footer,'dragover',event=>{if(event?.dataTransfer)event.preventDefault?.();});
-    listen(footer,'drop',event=>{event?.preventDefault?.();takeFiles(Array.from(event?.dataTransfer?.files||[]));});
+    listen(panel,'dragover',event=>{if(event?.dataTransfer)event.preventDefault?.();});
+    listen(panel,'drop',event=>{event?.preventDefault?.();takeFiles(Array.from(event?.dataTransfer?.files||[]));});
     listen(input,'paste',event=>{const files=Array.from(event?.clipboardData?.files||[]);if(files.length){event.preventDefault?.();takeFiles(files);}});
     for (const b of [newConversation, stop]) b.type = 'button'; iconButton(newConversation,'newChat','新对话（清空当前聊天记录）'); iconButton(stop,'stop','停止'); iconButton(send,'send','发送'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); const inputBox=el('div','nf-xiaotao-input-box'),inputField=el('div','nf-xiaotao-input-field');inputField.append(input);inputBox.append(stagedRow,inputField);footer.append(inputBox,footerActions);
     providers.append(modelTrigger);

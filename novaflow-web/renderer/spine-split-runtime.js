@@ -32368,7 +32368,8 @@
   function blockExternalSourceDragEvent(event) {
     if (!event || !hasExternalSourceFileDrag(event)) return false
     if (isObjectTransferUploadDialogEvent(event)) return false
-    if (isArtGenerateReferenceDropTarget(event)) {
+    // 小桃 floats above the workspace and takes its own drops (chat attachments).
+    if (isArtGenerateReferenceDropTarget(event) || isXiaotaoArtRuntimeElement(event.target)) {
       if (state.sourceDragOver) setGlobalSourceDragOver(false)
       return false
     }

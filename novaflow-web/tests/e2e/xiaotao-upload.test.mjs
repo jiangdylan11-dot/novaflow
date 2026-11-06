@@ -253,7 +253,7 @@ await test('the upload button opens the dialog through IPC and does not send', a
 await test('drag-and-drop and paste stage files without sending', async () => {
   const env = load();
   const ui = mount(env);
-  ui.footer.ondrop({ preventDefault() {}, dataTransfer: { files: [file('drop.png', 'image/png')] } });
+  ui.panel.ondrop({ preventDefault() {}, dataTransfer: { files: [file('drop.png', 'image/png')] } });
   await flush();
   ui.input.onpaste({ preventDefault() {}, clipboardData: { files: [file('paste.mp3', 'audio/mpeg')] } });
   await flush();
