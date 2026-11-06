@@ -225,8 +225,10 @@ await test('a request the edge runtime cut off is sent once more; any other fail
   const review=await cut.run();assert.equal(review.modelPrompt,redraw);assert.equal(cut.calls(),2);assert.ok(cut.statuses.some(t=>/重新发送/.test(t)));
   const twice=make(['assistant-business-interrupted','assistant-business-interrupted']);
   await assert.rejects(twice.run(),e=>e.code==='assistant-business-interrupted');assert.equal(twice.calls(),2);
-  const other=make(['provider-failed']);
-  await assert.rejects(other.run(),e=>e.code==='provider-failed');assert.equal(other.calls(),1);
+  const silent=make(['provider-failed']);
+  assert.equal((await silent.run()).modelPrompt,redraw);assert.equal(silent.calls(),2);
+  const other=make(['quote-changed']);
+  await assert.rejects(other.run(),e=>e.code==='quote-changed');assert.equal(other.calls(),1);
 });
 await test('his exact words reach the workflow with a fenced, a long and a Chinese brain reply',async()=>{
   const words='@参考图1的风格换成@参考图2的风格，人物姿势不变';
