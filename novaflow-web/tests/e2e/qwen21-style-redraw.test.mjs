@@ -33,7 +33,7 @@ await test('style mode is chosen only for one subject first followed by style re
 
 await test('the style system asks only for the three texts and bans the wording that darkens the result',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
-  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','colour temperature','hair and skin treatment','detail level','20-40 words','lighting design','key light colour and direction','shadow colour','contrast level','sky or daylight','exact hair colour','dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','__NF...__'])
+  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','colour temperature','hair and skin treatment','detail level','20-40 words','lighting design','colour temperature stated outright as cool, neutral or warm','key light direction','shadow colour','contrast level','sky or daylight','exact hair colour','dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','__NF...__'])
     assert.ok(text.includes(needle),needle);
   assert.doesNotMatch(text,/rendering medium|rewritten_prompt/);
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');
@@ -43,7 +43,7 @@ await test('the program assembles the prompt from the three slots, then the fixe
   assert.ok(redraw.startsWith('Loosely based on <image1> (use it only for the person, pose and scene;'));
   assert.ok(redraw.includes(`An illustration in this style: ${description}. ${content}. High quality key visual`));
   assert.ok(redraw.includes(`take only the lighting design from <image2>: ${mood}. Express it`));
-  assert.ok(redraw.includes('never yellow or orange skin'));assert.ok(redraw.includes('Never a uniform colour cast'));
+  assert.ok(redraw.includes('never yellow or orange skin'));assert.ok(redraw.includes('is taken from <image2>, never from <image1>'));assert.ok(redraw.includes('warm practical lights are repainted cool.'));assert.doesNotMatch(redraw,/cool lights are repainted warm/);assert.ok(redraw.includes('Never a uniform colour cast'));
   assert.ok(redraw.endsWith(`${buildStyleRelight(mood)} ${STYLE_POLISH}`));
   assert.doesNotMatch(redraw,/keep the real light sources/,'the photo\'s light is not kept');
   assert.doesNotMatch(STYLE_POLISH,/beauty mark|\bcup\b|terminal/,'the finish block fits any picture');
@@ -54,7 +54,7 @@ await test('the program assembles the prompt from the three slots, then the fixe
 });
 
 await test('the compiled result carries the policy, the one prompt and a program-owned negative',()=>{
-  assert.match(STYLE_NEGATIVE,/skin pores.*3d render.*grainy, noise.*uniform color wash.*yellow skin, orange skin$/);
+  assert.match(STYLE_NEGATIVE,/skin pores.*3d render.*grainy, noise.*uniform color wash.*yellow skin, orange skin.*amber tint.*yellow tint$/);
   const result=compile();
   assert.equal(result.modelPromptPolicy,QWEN21_STYLE_REDRAW_POLICY);assert.equal(result.promptContract,QWEN21_NATIVE_REWRITE);
   assert.equal(result.displayPrompt,redraw);assert.equal(result.modelPrompt,redraw);assert.equal(result.styleDescription,description);assert.equal(result.contentDescription,content);assert.equal(result.moodDescription,mood);
