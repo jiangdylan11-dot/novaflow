@@ -1113,7 +1113,8 @@
         const quota={status:'settled',settled_credits:closed.charged};notice(pendingId,quota,false);pendingId='';v3FinalSettled=true;
         return no(closed.charged===0?'provider-failed':'assistant-business-interrupted',closed.charged===0?'在线模型这次没有返回结果，本次未扣费，可以再试一次。':'在线请求中断，本次未完成，可以再试一次。',{quota});
       }
-      return no(error?.code||'assistant-business-unavailable','在线请求中断，本次未完成，可以再试一次。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:true});
+      // Not settled yet: the worker may have been killed mid-call. The caller may try once more; the next quote sweeps this hold.
+      return no('assistant-business-interrupted','在线请求中断，本次未完成，可以再试一次。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:true});
     } finally {
       // A known first stage can be closed without issuing another provider
       // request. Once English dispatch begins its result may be unknown, so

@@ -6,8 +6,9 @@ import {Buffer} from 'node:buffer';
 import {estimateXiaotaoOnlineCredits,settleXiaotaoOnlineCredits} from './feature-credits.mjs';
 import {companionPricingPolicy} from './companion-pricing.mjs';
 import {postRunningHubResponses} from './runninghub-llm.mjs';
-// Well inside the edge gateway's request limit, so a silent model is refunded and reported before the connection is cut.
-const ART_PROVIDER_TIMEOUT_MS=90000;
+// The edge runtime's wall clock counts per worker, not per request (live 2.0.328: execute killed 88s after dispatch), so a
+// silent model is given up early; a worker that still dies leaves a hold the next quote's sweep refunds.
+const ART_PROVIDER_TIMEOUT_MS=60000;
 import {hasXiaotaoDecimalV1,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 import {QWEN21_NATIVE_REWRITE,QWEN21_NATIVE_CONTRACTS,buildQwen21NativeRewrite,compileQwen21NativeRewrite} from './qwen21-native-rewrite.mjs';
 import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
@@ -209,6 +210,8 @@ export function createTrustedArtPhases({secret,models,visionModels=[],compiler,p
       const parsed=readImages(images);
       if(input?.promptContract===QWEN21_NATIVE_REWRITE&&input?.qwenPromptMode==='img2img'&&!parsed.length)fail('invalid-images');
       if(parsed.length&&!vision.has(model))fail('model-vision-unavailable');
+      // A hold this account left behind when a worker died is refunded before new work starts; a sweep failure never blocks the quote.
+      if(useV3&&typeof operationV3.ports?.sweepStale==='function'){try{await operationV3.ports.sweepStale({userId:actor?.userId});}catch{/* best effort */}}
       return makeQuote(actor,model,'structure',structureBody(input,model,policyFor,compiler,parsed),null,intentId,parsed);
     },
     async quoteEnglish({actor,stageToken}) {
