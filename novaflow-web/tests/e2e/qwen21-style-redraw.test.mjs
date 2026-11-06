@@ -33,7 +33,7 @@ await test('style mode is chosen only for one subject first followed by style re
 
 await test('the style system asks only for the three texts and bans the wording that darkens the result',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
-  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','hair and skin treatment','detail level','No colour, palette or colour-temperature words','20-40 words','lighting design','key light colour and direction','shadow colour','contrast level','sky or daylight','colours named strongly','exact hair colour','warm, cool, golden, palette, tone, dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','__NF...__'])
+  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','hair and skin treatment','detail level','No colour, palette or colour-temperature words','20-40 words','lighting design','key light colour and direction','shadow colour','contrast level','sky or daylight','colours named strongly','exact hair colour','warm, cool, golden, palette, tone, dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','never by tags or __NF...__ placeholders'])
     assert.ok(text.includes(needle),needle);
   assert.doesNotMatch(text,/rendering medium|rewritten_prompt/);
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');
@@ -68,10 +68,24 @@ await test('the compiled result carries the policy, the one prompt and a program
 await test('an incomplete style answer is rejected before it can be applied',()=>{
   assert.throws(()=>compile({},answer(' ')),/style description missing/);
   assert.throws(()=>compile({},answer(description,' ')),/content description missing/);
-  assert.throws(()=>compile({},answer(description,content,' ')),/mood description missing/);
-  assert.throws(()=>compile({},{output_text:JSON.stringify({style_description:description,rewritten_prompt:redraw})}),/fields invalid/);
+  assert.throws(()=>compile({},{output_text:JSON.stringify({style_description:description,rewritten_prompt:redraw})}),/content description missing/);
   assert.throws(()=>compile({},{output_text:'not json'}),/complete JSON/);
-  assert.throws(()=>compile({},answer(description,content+' 人物微笑')),/not English/);
+  assert.throws(()=>compile({},{output_text:'[]'}),/fields invalid/);
+});
+
+await test('a loose brain answer is cleaned instead of refused',()=>{
+  const reply=(style,text=content,light=mood)=>({style_description:style,mood_description:light,content_description:text});
+  const fenced=compile({},{output_text:'好的，结果如下：\n```json\n'+JSON.stringify(reply(description))+'\n```'});
+  assert.equal(fenced.modelPrompt,redraw,'fences and leading text');
+  const extra=compile({},{output_text:JSON.stringify({...reply(description),note:'x'})});assert.equal(extra.modelPrompt,redraw,'extra fields');
+  const missing=compile({},{output_text:JSON.stringify({style_description:description,content_description:content})});
+  assert.ok(missing.moodDescription.startsWith('neutral key light'),'a missing mood gets the neutral default');
+  const words=compile({},answer('warm-toned flat cel shading, cool palette, dark thin outlines, two-tone shadows'));
+  assert.equal(words.styleDescription,'flat cel shading, thin outlines, two-tone shadows','colour words go, two-tone stays');
+  const chinese=compile({},answer('平涂赛璐璐，细线条','一位红棕色长卷发的女生，在机场'));assert.ok(chinese.modelPrompt.includes('平涂赛璐璐'),'Chinese is accepted');
+  const long=compile({},answer(description,content+' extra'.repeat(600)));assert.ok(long.contentDescription.length<=1500,'over-long text is trimmed');
+  const tags=compile({currentPrompt:'__NF_REF_1__的风格换成__NF_REF_2__的风格',requirements:'“字样”'},answer(description,'<image1> with __NF_REF_1__ at the airport'));
+  assert.doesNotMatch(tags.modelPrompt,/__NF/);assert.ok(tags.contentDescription.includes('the picture'),'tags in the request or the answer never fail it');
 });
 
 await test('the browser checks accept exactly the policy the server exports',()=>{
@@ -154,6 +168,39 @@ await test('a style image in slot 1 still runs subject first, while the page kee
   tools.confirmImageReview(review.reviewId);
   assert.deepEqual(Array.from(prepared.references,ref=>ref.name),['photo.png','style.png']);assert.deepEqual(Array.from(prepared.referenceRolePlan.roles),['subject','style']);
   assert.equal(prepared.promptSnapshot.prompt,redraw);assert.equal(prepared.promptOwnsReferenceRoles,true);assert.equal(rt.state.negativePrompt,STYLE_NEGATIVE);
+});
+await test('his exact words reach the workflow with a fenced, a long and a Chinese brain reply',async()=>{
+  const words='@参考图1的风格换成@参考图2的风格，人物姿势不变';
+  const agent=read('../../renderer/xiaotao-art-agent.js'),box={};createContext(box);
+  runInContext(agent.slice(agent.indexOf('function styleSlots'),agent.indexOf('function createQwenNodeRecheck'))+';this.slots=(m,n)=>styleSlots(m,n);',box);
+  const answers=[
+    '以下是结果：\n```json\n'+JSON.stringify({style_description:description,mood_description:mood,content_description:content})+'\n```',
+    JSON.stringify({style_description:description+', with warm palette '+'and fine detail '.repeat(40),mood_description:mood+' '+'soft glow '.repeat(40),content_description:content+' '+'and more scene '.repeat(60)}),
+    JSON.stringify({style_description:'平涂赛璐璐，细线条',content_description:'一位红棕色长卷发的女生，眨眼微笑，在机场'}),
+  ];
+  assert.match(read('../../renderer/novaflow-smart-ai.js'),/const assembled=response\.modelPromptPolicy==='qwen21-style-redraw-v1'/);
+  for(const output_text of answers){
+    const png=c=>'data:image/png;base64,'+c,refs=[{drawingRole:'subject',dataUrl:png('AA=='),name:'photo.png'},{drawingRole:'subject',dataUrl:png('BB=='),name:'style.png'}];
+    const styleAt=box.slots(words,refs.length);let seen=false;refs.forEach((ref,i)=>{if(styleAt.has(i))ref.drawingRole='style';else if(!seen){ref.drawingRole='subject';seen=true;}});
+    assert.deepEqual(refs.map(ref=>ref.drawingRole),['subject','style']);
+    let prepared=null;
+    const rt={state:{active:true,provider:'local',mode:'img2img',prompt:words,negativePrompt:'',width:1280,height:960,count:1,running:false,localQwen21Variant:'turbo'},references:()=>refs,selectedResult:()=>null,
+      captureContext(){return {state:this.state,generationSurface:'drawing',routeRevision:1,referenceRevision:1};},captureAgentPreparedSnapshot:()=>({}),replaceAgentPrepared(_handle,value){prepared=value;return {};},restoreAgentPrepared(){},isAgentPreparedReplacementCurrent:()=>true,render(){}};
+    const root={crypto:globalThis.crypto,console,TextEncoder,setTimeout,clearTimeout,__NovaFlowArtGenerate:rt,document:{querySelectorAll:()=>[]},NovaFlowArtGenerateModels:{capabilityFor:()=>({engine:'qwen-2.1-turbo'})},
+      NovaFlowXiaotaoArtAgent:{panel:{controller:{businessModelSnapshot:()=>({provider:'api',modelId:'m',epoch:1})}}},electronAPI:{onlineVisionArtAvailableSync:()=>true,captureFoartSessionGuard:()=>()=>true},
+      __NovaFlowSmartAI:{async optimizeForAgent(options){
+        const brief=buildQwen21NativeRewrite({...input,currentPrompt:'__NF_REF_1__的风格换成__NF_REF_2__的风格，人物姿势不变',negativePrompt:''},'m',Array.from(options.images,image=>image.role));
+        const result=compileQwen21NativeRewrite({output_text},brief);
+        return {prompt:result.modelPrompt,displayPrompt:result.displayPrompt,negativePrompt:result.negativePrompt,analysisBackend:'runninghub',optimization:{reviewRequired:true,modelPromptPolicy:result.modelPromptPolicy}};}}};
+    root.window=root;runInContext(read('../../renderer/xiaotao-foart-tools.js'),createContext(root));
+    const tools=root.NovaFlowFoartTools,roles=Array.from(tools.captureDrawingReferenceRoles());
+    const review=await tools.execute({action:'image_optimize',prompt:words,generationMode:'img2img'},{provider:'api',modelId:'m',onlineBusiness:{},selectionStillCurrent:()=>true,projectStillCurrent:()=>true,currentDrawingVisionOnly:true,referenceSource:'page',referenceRoles:roles});
+    tools.confirmImageReview(review.reviewId);
+    assert.deepEqual(Array.from(prepared.referenceRolePlan.roles),['subject','style']);assert.equal(prepared.promptOwnsReferenceRoles,true);
+    assert.ok(prepared.promptSnapshot.prompt.startsWith('Loosely based on <image1>'));
+    const graph=build({taskProfile:'art-direction',referenceRoles:Array.from(prepared.referenceRolePlan.roles)});
+    assert.equal(sampler(graph).inputs.cfg,3);assert.equal(graph['6'].inputs.width,1536);
+  }
 });
 console.log(`${passed} passed, ${failed} failed`);
 if(failed)process.exit(1);

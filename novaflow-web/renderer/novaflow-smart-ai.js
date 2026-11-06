@@ -5233,7 +5233,9 @@
       if(gpt ? response.targetEngine!=='gpt-image-2.5'||response.promptContract!=='gpt-image-semantic-fusion-v1'||response.modelPrompt!==response.displayPrompt
         : (options.generationMode==='img2img'?!['zh','en'].includes(response.modelPromptLanguage):response.modelPromptLanguage!=='en')||(response.modelPromptPolicy!=='qwen21-native-rewrite-v3'&&!(options.generationMode==='img2img'&&response.modelPromptPolicy==='qwen21-style-redraw-v1'))||response.translationValidation!==(options.generationMode==='img2img'?'native-edit-and-literals':'paired-prose-and-literals')||response.promptContract!=='qwen21-native-rewrite-v3')
         throw new Error('绘图优化合同不匹配，未应用结果，请核对账单。');
-      const display=restoreSmartAiResourceMentions(response.displayPrompt,protectedPrompt),model=restoreSmartAiResourceMentions(response.modelPrompt,protectedPrompt);
+      // A style redraw's prompt is assembled on the server and names pictures by <imageN>, not by the request's mentions.
+      const assembled=response.modelPromptPolicy==='qwen21-style-redraw-v1';
+      const display=assembled?{ok:true,text:response.displayPrompt}:restoreSmartAiResourceMentions(response.displayPrompt,protectedPrompt),model=assembled?{ok:true,text:response.modelPrompt}:restoreSmartAiResourceMentions(response.modelPrompt,protectedPrompt);
       if(!display.ok||!model.ok)throw smartAiResourceMentionError(display.error||model.error);
       // Engines that do not accept negative prompts must not erase the
       // user's existing editor value when a draft is reviewed or applied.

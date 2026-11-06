@@ -306,7 +306,7 @@ export function createTrustedArtPhases({secret,models,visionModels=[],compiler,p
           if(q.prepared.kind==='qwen21-native'){
             let compiled;const validationStart=now();
             try{compiled=compileQwen21NativeRewrite(result.response,validatedPrepared,compiler.validateQwen21NativePreservation);}
-            catch(error){return cancel('structure-invalid',error?.message);}
+            catch(error){if(validatedPrepared.styleRedraw===true)console.warn('[art] style redraw reply rejected',error?.message,String(result.response?.output_text||'').slice(0,800));return cancel('structure-invalid',error?.message);}
             const validationMs=Math.max(0,now()-validationStart);
             const parentHash=hash({actor:boundActor,model:q.model,operation:q.operation,structureHash:q.requestHash,...compiled});
             checkStatus(await operationV3.ports.acceptArtStructure({...identity,structureHash:q.requestHash,parentHash}),'accepted');

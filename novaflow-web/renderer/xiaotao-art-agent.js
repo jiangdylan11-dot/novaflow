@@ -256,6 +256,15 @@
     return op.useResult===true?{...op,useResult:false}:op;
   }
 
+  // Which pictures a request names as style. "图1的风格换成图2的风格" names both, but the first is the
+  // one being changed: a request always leaves one subject.
+  function styleSlots(message,count){
+    const slots=new Set([...message.matchAll(/图\s*([1-9])\s*(?:的)?(?:风格|画风)/g)].map(m=>Number(m[1])-1));
+    if(!slots.size&&/风格|画风|style/i.test(message)&&count>1)slots.add(count-1);
+    if(count>1&&slots.size>=count)slots.delete([...slots][0]);
+    return slots;
+  }
+
   function createQwenNodeRecheck({isNeeded,refresh,timers=root,intervalMs=10000,maxAttempts=12}) {
     let timer=null,inFlight=false,queued=false,attempts=0,stopped=false;
     const needed=()=>!stopped&&isNeeded()===true;
@@ -2374,8 +2383,7 @@
       if(['txt2img','img2img'].includes(op.generationMode)&&rt?.state&&rt.state.mode!==op.generationMode&&typeof rt.setMode==='function'&&(op.generationMode==='img2img'?pageRefCount>0:pageRefCount===0))rt.setMode(op.generationMode);
       if(rt?.state?.mode==='img2img'){
         // Roles the router defaulted (every picture a subject) are retyped from the request: "图2的风格" marks picture 2 as style, one subject remains.
-        const refs=Array.from(rt.references?.()||[]).filter(Boolean),styleAt=new Set([...message.matchAll(/图\s*([1-9])\s*(?:的)?(?:风格|画风)/g)].map(m=>Number(m[1])-1));
-        if(!styleAt.size&&/风格|画风|style/i.test(message)&&refs.length>1)styleAt.add(refs.length-1);
+        const refs=Array.from(rt.references?.()||[]).filter(Boolean),styleAt=styleSlots(message,refs.length);
         const subjects=refs.filter(ref=>ref.drawingRole==='subject').length;
         if(styleAt.size||subjects!==1||refs.some(ref=>!ref.drawingRole)){let subjectSeen=false;refs.forEach((ref,i)=>{
           if(styleAt.has(i))ref.drawingRole='style';else if(!subjectSeen){ref.drawingRole='subject';subjectSeen=true;}else if(!ref.drawingRole||ref.drawingRole==='subject')ref.drawingRole='reference';});}

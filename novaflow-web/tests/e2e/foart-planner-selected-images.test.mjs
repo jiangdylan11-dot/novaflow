@@ -16,6 +16,17 @@ function fixture(){
 }
 const plain=value=>JSON.parse(JSON.stringify(value));
 
+test('a request naming both pictures as style still leaves one subject',()=>{
+  const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
+  const start=source.indexOf('function styleSlots'),end=source.indexOf('function createQwenNodeRecheck');
+  const box={};vm.createContext(box);vm.runInContext(source.slice(start,end)+';this.slots=(m,n)=>[...styleSlots(m,n)];',box);
+  assert.deepEqual(plain(box.slots('@参考图1的风格换成@参考图2的风格，人物姿势不变',2)),[1]);
+  assert.deepEqual(plain(box.slots('图2的风格换成图1的风格',2)),[0]);
+  assert.deepEqual(plain(box.slots('用图2的风格重绘图1',2)),[1]);
+  assert.deepEqual(plain(box.slots('换个风格',2)),[1]);
+  assert.deepEqual(plain(box.slots('图2和图3的风格都用上',3)),[2]);
+});
+
 test('pictures attached this turn are never replaced by a previous result',()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
   const start=source.indexOf('function keepTurnPictures'),end=source.indexOf('function createQwenNodeRecheck');
