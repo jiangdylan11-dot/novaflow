@@ -387,7 +387,9 @@
       pixels = new Uint8Array(settings.maxWidth * settings.maxHeight * 4);
       free = [{ x: 0, y: 0, width: settings.maxWidth, height: settings.maxHeight }];
     }
-    async function addRgba(rgba, width, height, name = frameName(baseName, frames.length)) {
+    // keepWhitespace: images drawn by meshes keep their full size. A mesh's UVs span the whole
+    // original picture, so a trimmed region would make the viewer sample neighbouring atlas pictures.
+    async function addRgba(rgba, width, height, name = frameName(baseName, frames.length), { keepWhitespace = false } = {}) {
       if (busy) throw new Error('Atlas writer is already processing an image');
       busy = true;
       try {
@@ -398,7 +400,7 @@
       const sourceWidth = width, sourceHeight = height;
       if (packed && settings.scale < 100) ({ rgba, width, height } = await resampleResponsive(rgba, width, height, settings.scale, checkpoint));
       const frame = describe(name, rgba, width, height, sourceWidth, sourceHeight);
-      const bounds = packed ? await trimBoundsResponsive(rgba, width, height, settings, checkpoint) : { x: 0, y: 0, width, height };
+      const bounds = packed && !keepWhitespace ? await trimBoundsResponsive(rgba, width, height, settings, checkpoint) : { x: 0, y: 0, width, height, blank: false };
       if (!frame.unique) {
         // Same pixels as an earlier frame of this sequence: no region, no file; the skeleton holds the earlier one.
       } else if (!packed) {

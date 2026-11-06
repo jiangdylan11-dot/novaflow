@@ -307,3 +307,11 @@ test('atlas scale shrinks the packed pixels only; attachments keep the source si
   const ui = await readFile(new URL('../../renderer/spine-sequence-atlas-ui.js', import.meta.url), 'utf8');
   assert.doesNotMatch(ui, /toggle\('(duplicatePadding|bleed)'/); assert.match(ui, /number\('scale'/);
 });
+
+test('mesh pictures keep their whitespace so mesh UVs never reach neighbouring atlas pictures', async () => {
+  const { files } = await output({ baseName: 'mesh', version: '3.7', packed: true, json: { skeleton: { spine: '3.7.94' }, bones: [{ name: 'root' }], slots: [], skins: [] } },
+    [[frame(20, 30, 10, 15), 20, 30, 'card', { keepWhitespace: true }], [frame(20, 30, 10, 15), 20, 30, 'icon']]);
+  const atlas = String(files.get('mesh.atlas'));
+  assert.match(atlas, /card\n  rotate: false\n  xy: \d+, \d+\n  size: 20, 30\n  orig: 20, 30\n  offset: 0, 0/);
+  assert.match(atlas, /icon\n  rotate: false\n  xy: \d+, \d+\n  size: 1, 1\n  orig: 20, 30/);
+});

@@ -3774,6 +3774,16 @@
     return out
   }
 
+  /** The images drawn by meshes (mesh / linkedmesh): exported untrimmed, like Spine's packer, since mesh UVs cover the whole picture. */
+  function meshImageNames(json) {
+    const names = new Set()
+    const skins = Array.isArray(json.skins) ? json.skins : Object.values(json.skins || {}).map((attachments) => ({ attachments }))
+    for (const skin of skins) for (const map of Object.values(skin.attachments || {})) for (const [n, att] of Object.entries(map)) {
+      if (att.type === 'mesh' || att.type === 'linkedmesh') names.add(att.path || att.name || n)
+    }
+    return names
+  }
+
   /** The images the attachments use (附件). */
   function exportImageNames(json) {
     const names = new Set()
@@ -3921,12 +3931,12 @@
     const writer = A.createWriter({ baseName: opts.name, exactBaseName: !!opts.exactBaseName, packed: !!opts.packed, skel, settings: { ...opts.settings, dedupe: false }, version, write, signal: opts.signal })
     const imageCache = createExportImageCache(source, opts.signal)
     try {
-    const missing = []
+    const missing = [], meshImages = meshImageNames(json)
     for (const it of items) {
       await imageCache.checkpoint()
       const img = await imageRgba(it.name, it.file, source, imageCache)
       if (!img) { missing.push(it.name); continue }
-      await writer.addRgba(img.rgba, img.width, img.height, it.name)
+      await writer.addRgba(img.rgba, img.width, img.height, it.name, { keepWhitespace: meshImages.has(it.name) })
     }
     const audioRoot = AudioAssets.path(json.skeleton?.audio) || 'audio'
     if (source.audio?.size) {
