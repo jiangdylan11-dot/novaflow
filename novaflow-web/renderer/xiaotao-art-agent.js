@@ -936,6 +936,9 @@
       return policyAllowsOnline(modelId)&&terms?.operation_style_v3===true&&terms?.operation_vision_chat_v3===true&&Array.isArray(terms.operation_style_vision_models)&&terms.operation_style_vision_models.includes(modelId);
     }
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', activeChatHasImages = false, stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
+    // The tool loop sets foartAbort for its whole run; a prompt step it awaits must not hand the input back early,
+    // or a message sent in that gap bumps `serial` and the loop's next step is thrown away after it was charged.
+    const loopRunning=()=>!!foartAbort&&!foartAbort.signal.aborted;
     let mediaAbort = null, promptAbort = null, foartAbort = null, activeFoartBilling=null, activeChatBilling=null;
     const recapture = snapshot => bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')});
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
@@ -1825,7 +1828,8 @@
       if (retired) return false;
       if (CHAT_MODELS[state.modelId]?.retired) {state.error=CHAT_MODELS[state.modelId]?.detail||'该线路已移除';state.status='未提交，不扣积分';notify();return false;}
       if(state.uploading || state.staging)return false;
-      if (state.pending || state.generating || state.applying) return false;
+      // While the tool loop runs, a new message must not bump `serial` under it; 停止 is the way out.
+      if (state.pending || state.generating || state.applying || loopRunning()) return false;
       message = String(message || '').trim();
       if(message && state.promptSourceCancelledNotice){state.status=state.status.replace(state.promptSourceCancelledNotice,'').trim();state.promptSourceCancelledNotice='';}
       if (!message) {if ((state.staged || []).length) {state.messages.push({role:'assistant',content:'请先说明这些文件的用途，再发送'}); state.error = ''; notify();} return false;}
@@ -2208,7 +2212,7 @@
         state.messages.push({role:'assistant',content:'视频提示词已优化并更新到输入框。',receipts:[`本次实扣 ${displayCredits(result.quota.settled_credits)} 积分。`]});
         state.status='视频提示词已优化并更新。';return true;
       }catch(error){state.error=String(error?.message||error);state.status='视频草稿未完成，未回填或生成。';return false;}
-      finally{if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+      finally{if(promptAbort===abort)promptAbort=null;state.pending=loopRunning();notify();}
     }
     async function prepareSelectedUiDraft(message,{recordMessage=true,source}={}) {
       if(pendingMediaPromptReview){state.error='请先应用或取消上一次提示词草稿。';notify();return false;}
@@ -2263,7 +2267,7 @@
         state.messages.push({role:'assistant',content:'UI 提示词已优化并更新到输入框。'});
         state.status='UI 提示词已优化并更新。';return true;
       } catch(error) {state.error=String(error?.message||error);state.status='UI 草稿未完成，未应用。';return false;}
-      finally {if(!queued){try{if(snapshot?.cancelDraft)snapshot.cancelDraft();else referenceTransaction?.cancel?.();}catch{}}if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+      finally {if(!queued){try{if(snapshot?.cancelDraft)snapshot.cancelDraft();else referenceTransaction?.cancel?.();}catch{}}if(promptAbort===abort)promptAbort=null;state.pending=loopRunning();notify();}
     }
     async function prepareOnlineCurrentDrawingPrompt(message,{recordMessage=true,source,generateAfterReview=false}={}) {
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate,client=api();
@@ -2357,7 +2361,7 @@
           '\n\n本次实扣 '+displayCredits(quota.settled_credits)+' 积分；取消草稿不会退回已结算的费用。'});
         state.status=generateAfterReview===true&&receipt.generationAvailable===true?'请核对草稿；确认生成将按当前绘图模型另计费':generateAfterReview===true?'当前安全生成入口未就绪，可应用草稿。':'等待核对草稿';return true;
       }catch(error){state.error=String(error?.message||error);state.status='未应用或生成图片。';return false;}
-      finally{if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+      finally{if(promptAbort===abort)promptAbort=null;state.pending=loopRunning();notify();}
     }
     // The local brain only chats and writes prompts. An operation request gets
     // the switch notice plus an offer to write the prompt into the drawing box.
@@ -2535,7 +2539,7 @@
         state.messages.push({role:'assistant',content:'绘图提示词已优化并更新到输入框。'});
         state.status='绘图提示词已优化并更新。';return true;
       }catch(error){state.error=String(error?.message||error);state.status='未应用或生成图片。';return false;}
-      finally{if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+      finally{if(promptAbort===abort)promptAbort=null;state.pending=loopRunning();notify();}
     }
     // Text-only audio prompt rewriting uses the existing selected Qwen business
     // route. It never reads audio media or submits an audio generation task.
@@ -2581,7 +2585,7 @@
         state.messages.push({role:'assistant',content:review?'音频提示词已优化并更新到输入框。':'音频提示词已优化：\n'+text,...(selected.provider==='api'?{receipts:['本次实扣 '+displayCredits(data.quota.settled_credits)+' 积分。']}:{})});
         state.status=review?'音频提示词已优化并更新。':'音频提示词已优化。';return true;
       }catch(error){state.error=String(error?.message||error);state.status='文字改写未完成，未生成音频。';return false;}
-      finally{abort.signal.removeEventListener('abort',cancel);if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+      finally{abort.signal.removeEventListener('abort',cancel);if(promptAbort===abort)promptAbort=null;state.pending=loopRunning();notify();}
     }
     // Explicit user actions over one staged image. They never change the work
     // or silently substitute a paid/other model.
@@ -2610,7 +2614,7 @@
         if(!text)throw Error('图片分析没有返回内容，未修改作品。');
         state.messages.push({role:'assistant',content:(kind==='reverse'?'图片反推提示词：\n':'图片画风分析：\n')+text});state.status='分析完成；本地模型免费，未修改作品。';return true;
       } catch(error) {state.error=String(error?.message || error);state.status='图片分析未完成；未修改作品。';return false;}
-      finally {abort.signal.removeEventListener('abort',cancel);if(promptAbort===abort)promptAbort=null;state.pending=false;notify();}
+      finally {abort.signal.removeEventListener('abort',cancel);if(promptAbort===abort)promptAbort=null;state.pending=loopRunning();notify();}
     }
     let businessModelEpoch=0; const businessModelListeners=new Set();
     function businessModelSnapshot(){return Object.freeze({provider:state.provider,modelId:state.modelId,epoch:businessModelEpoch});}
