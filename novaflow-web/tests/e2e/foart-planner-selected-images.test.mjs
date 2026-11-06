@@ -16,6 +16,18 @@ function fixture(){
 }
 const plain=value=>JSON.parse(JSON.stringify(value));
 
+test('pictures attached this turn are never replaced by a previous result',()=>{
+  const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
+  const start=source.indexOf('function keepTurnPictures'),end=source.indexOf('function createQwenNodeRecheck');
+  const box={};vm.createContext(box);vm.runInContext(source.slice(start,end)+';this.keep=keepTurnPictures;',box);
+  assert.equal(box.keep({action:'use_result'}),null);
+  assert.deepEqual(plain(box.keep({action:'image_optimize',prompt:'p',generationMode:'img2img',useResult:true})),{action:'image_optimize',prompt:'p',generationMode:'img2img',useResult:false});
+  const untouched={action:'image_generate',prompt:'p',generationMode:'img2img',useResult:false};assert.equal(box.keep(untouched),untouched);
+  assert.match(source,/\(preferUploads\|\|lastUploads\.some\(item=>item\.kind==='image'\)\)&&!generatedKinds\.has\('image_generate'\)/,'a picture made earlier this turn can still be revised');
+  const contract=readFileSync(new URL('../../renderer/foart-tool-contract.js',import.meta.url),'utf8');
+  assert.ok(contract.includes('If the user attached reference images in this turn, useResult must be false'));
+});
+
 test('planner uses all selected drawing references in slot order instead of displacing the third with a result',async()=>{
   const f=fixture();f.refs.push({drawingRole:'subject',dataUrl:png(1)},{drawingRole:'style',dataUrl:png(2)},{drawingRole:'pose',dataUrl:png(3)});
   const images=await f.root.NovaFlowFoartTools.images();

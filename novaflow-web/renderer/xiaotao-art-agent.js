@@ -250,6 +250,12 @@
   }
   // Poll only while the open panel needs a Qwen node, with a bounded number of
   // attempts. An in-flight check is never duplicated by a render or reopen.
+  // Pictures attached this turn are what the user means: a previous result must not replace them.
+  function keepTurnPictures(op){
+    if(op.action==='use_result')return null;
+    return op.useResult===true?{...op,useResult:false}:op;
+  }
+
   function createQwenNodeRecheck({isNeeded,refresh,timers=root,intervalMs=10000,maxAttempts=12}) {
     let timer=null,inFlight=false,queued=false,attempts=0,stopped=false;
     const needed=()=>!stopped&&isNeeded()===true;
@@ -1595,6 +1601,10 @@
           if(generatedKinds.size&&plan.status==='act'&&plan.operations.some(repeatsGeneration)){
             plan={...plan,operations:plan.operations.filter(op=>!(repeatsGeneration(op)||op.action==='use_result'&&generatedKinds.has('image_generate')))};
             if(!plan.operations.length)plan={...plan,status:'done',reply:'本次生成已有实际结果。'};
+          }
+          if(plan.status==='act'&&(preferUploads||lastUploads.some(item=>item.kind==='image'))&&!generatedKinds.has('image_generate')){
+            plan={...plan,operations:plan.operations.map(keepTurnPictures).filter(Boolean)};
+            if(!plan.operations.length)plan={...plan,status:'done',reply:'已保留本轮参考图，没有使用上一张结果。'};
           }
           // A model may repeat its previous export instead of closing the turn.
           // Once that native encoder returned a real file, never download it again
