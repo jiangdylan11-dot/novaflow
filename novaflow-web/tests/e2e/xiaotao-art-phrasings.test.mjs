@@ -69,6 +69,13 @@ test('a quote on another line tells the person the model changed',()=>{
   assert.match(source,/所选模型线路慢，这步已改用 /);
 });
 
+test('a folded 生图 panel does not switch the page off during a 小桃 run',()=>{
+  const brand=readFileSync(new URL('../../renderer/novaflow-brand-runtime.js',import.meta.url),'utf8');
+  const busy=brand.slice(brand.indexOf('function isArtGeneratePromptAssistantBusy'),brand.indexOf('function isArtGenerateRuntimeOwnedElement'));
+  assert.match(busy,/NovaFlowXiaotaoArtAgent\?\.panel\?\.controller\?\.state\?\.pending === true/);
+  assert.match(brand,/if \(isArtGeneratePromptAssistantBusy\(\) && hasArtGenerateMountedSurface\(\)\) return false;/);
+});
+
 test('internal check wording never reaches the panel',()=>{
   for(const text of ['Foart 工具含未知参数（image_generate）：x','模型返回的绘图提示词未通过完整性校验。'])assert.match(box.plainFoartError(Error(text)),/这一步没做成/);
   assert.equal(box.plainFoartError(Error('参考图尺寸仍在读取')),'参考图尺寸仍在读取');

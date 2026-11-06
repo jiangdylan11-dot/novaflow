@@ -81936,7 +81936,8 @@
   }
 
   function isArtGeneratePromptAssistantBusy() {
-    return !!String(ART_GENERATE_STATE.promptAssistantRunning || "");
+    // A 小桃 run opens this page itself, often with the 生图 panel folded; folding must not switch the page off under it.
+    return !!String(ART_GENERATE_STATE.promptAssistantRunning || "") || window.NovaFlowXiaotaoArtAgent?.panel?.controller?.state?.pending === true;
   }
 
   function isArtGenerateRuntimeOwnedElement(element) {
