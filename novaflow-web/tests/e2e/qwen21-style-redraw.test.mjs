@@ -65,7 +65,8 @@ await test('the choices become the drawing words, with free text only as an addi
 });
 await test('light choices follow the mood words, and too few valid ones keep the mood alone',()=>{
   const light={key:'hard',direction:'side',contrast:'high',shadow:'warm',skin:'satin',hair_depth:'layered'};
-  assert.equal(buildStyleLight(light,'Bright midday'),'Bright midday, a hard direct key light from the side, very high contrast with deep shadow masses, warm brown shadows, softly lit satin skin, hair in many layered strands with deep darks between them');
+  assert.equal(buildStyleLight(light,'Bright midday'),'Bright midday. a hard direct key light from the side, very high contrast with deep shadow masses, warm brown shadows, softly lit satin skin, hair in many layered strands with deep darks between them');
+  const dropped=decideStyleTime(buildStyleLight(light,'Bright midday, no sky is shown'),{time_of_day:'midday',sun_visible:false,sky_visible:false}).mood;assert.match(dropped,/a hard direct key light/u);assert.doesNotMatch(dropped,/\bsky\b/iu);
   assert.equal(buildStyleLight({key:'odd'},'Night.'),'Night');assert.equal(buildStyleLight(undefined,'Night'),'Night');
 });
 await test('the style brain reads the request, not the last picture\'s prompt',()=>{

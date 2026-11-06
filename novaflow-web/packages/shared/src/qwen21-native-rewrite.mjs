@@ -61,7 +61,7 @@ const STYLE_DRAWING_MIN=3;
 export function buildStyleLight(light,mood=''){
   const key=STYLE_LIGHT.key[light?.key],direction=STYLE_LIGHT.direction[light?.direction];
   const picked=[key&&direction?`${key} ${direction}`:key,...['contrast','shadow','skin','hair_depth'].map(field=>STYLE_LIGHT[field][light?.[field]])].filter(Boolean);
-  return picked.length<STYLE_DRAWING_MIN?styleSlot(mood):[styleSlot(mood),...picked].filter(Boolean).join(', ');
+  return picked.length<STYLE_DRAWING_MIN?styleSlot(mood):[styleSlot(mood),picked.join(', ')].filter(Boolean).join('. ');
 }
 export function buildStyleDrawing(drawing,notes=''){
   const picked=Object.entries(STYLE_DRAWING).map(([field,values])=>values[drawing?.[field]]).filter(Boolean);
