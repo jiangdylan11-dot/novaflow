@@ -30,9 +30,9 @@ function ledger(){
       if(operation.status!=='dispatched')throw Error('not dispatched');
       operation.status='recorded';operation.raw=args.p_raw_credits;return {status:'recorded',idempotent:false};
     }
-    if(name==='finalize_xiaotao_operation_v3'){
+    if(name==='finalize_xiaotao_operation_v3_refund'){args={...args,p_outcome:'cancel',refund:true};name='finalize_xiaotao_operation_v3';}if(name==='finalize_xiaotao_operation_v3'){
       if(operation.status==='dispatched')return {status:'pending-reconciliation'};
-      const charged=operation.status==='recorded'?Math.max(1,Math.ceil(operation.raw-1e-9)):0;
+      const charged=args.refund?0:operation.status==='recorded'?Math.max(1,Math.ceil(operation.raw-1e-9)):0;
       operation.status='settled';return {status:'settled',outcome:args.p_outcome,charged,idempotent:false};
     }
     throw Error('unknown rpc');
@@ -92,24 +92,24 @@ test('provider failure or bad usage after dispatch remains pending and is never 
   await assert.rejects(g.execute(),e=>e.code==='operation-status-unknown');
   assert.equal(g.db.operations.get(g.prepared.operationId).status,'dispatched');
 });
-test('known usage is settled even when unusable output or cancellation follows dispatch',async()=>{
+test('unusable output or cancellation after dispatch settles as a refunded cancel (failed turns are free)',async()=>{
   const bad=await fixture({infer:async()=>{const result=reply();result.data.output=[];return result;}});
   const invalid=await bad.execute();assert.equal(invalid.ok,false);assert.equal(invalid.errorCode,'operation-provider-output-invalid');
-  assert.equal(invalid.receipt.charged,1);assert.equal(invalid.receipt.outcome,'cancel');
+  assert.equal(invalid.receipt.charged,0);assert.equal(invalid.receipt.outcome,'cancel');
   const controller=new AbortController();
   const cancelled=await fixture({infer:async()=>{controller.abort();return reply();}});
   const stopped=await cancelled.execute({signal:controller.signal});assert.equal(stopped.ok,false);
-  assert.equal(stopped.errorCode,'operation-cancelled-after-dispatch');assert.equal(stopped.receipt.charged,1);
+  assert.equal(stopped.errorCode,'operation-cancelled-after-dispatch');assert.equal(stopped.receipt.charged,0);
 });
-test('missing or non-stop finish reason settles known usage but never reports success',async()=>{
+test('missing or non-stop finish reason is refunded and never reports success',async()=>{
   for(const finish of [undefined,'length','tool_calls','content_filter']) {
     const f=await fixture({infer:async()=>{const result=reply();result.data.finish_reason=finish;return result;}});
     const result=await f.execute();assert.equal(result.ok,false);assert.equal(result.errorCode,'operation-provider-output-invalid');
-    assert.equal(result.receipt.outcome,'cancel');assert.equal(result.receipt.charged,1);
+    assert.equal(result.receipt.outcome,'cancel');assert.equal(result.receipt.charged,0);
   }
 });
 test('session revoked after provider usage is settled without disclosing reply or receipt',async()=>{
   let active=true;const f=await fixture({isCurrent:async()=>active,infer:async()=>{active=false;return reply();}});
   await assert.rejects(f.execute(),e=>e.code==='selection-stale'&&!('receipt' in e)&&!('reply' in e));
-  assert.equal(f.db.events.at(-1),'finalize_xiaotao_operation_v3');assert.equal(f.db.operations.get(f.prepared.operationId).status,'settled');
+  assert.equal(f.db.events.at(-1),'finalize_xiaotao_operation_v3_refund');assert.equal(f.db.operations.get(f.prepared.operationId).status,'settled');
 });

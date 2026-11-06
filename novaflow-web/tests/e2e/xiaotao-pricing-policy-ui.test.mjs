@@ -85,7 +85,7 @@ test('failed native open cancels the pending operation and displays its known ch
   const e=setup(()=>current,()=>{throw Error('legacy route must not run');},{
     foartOperationStart:async()=>({ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:'act',reply:'打开动画',operations:[{action:'open',surface:'animation'}]},foartOperationSession:{opaque:true}}}),
     foartOperationResume:async()=>{resumes++;throw Error('not expected');},
-    foartOperationCancel:async()=>{cancels++;return {ok:false,billingConfirmed:true,providerSubmitted:true,data:{quota:{status:'settled',settled_credits:1}}};}
+    foartOperationCancel:async payload=>{cancels++;assert.equal(Object.hasOwn(payload,'refund'),false);return {ok:false,billingConfirmed:true,providerSubmitted:true,data:{quota:{status:'settled',settled_credits:1}}};}
   });
   e.sandbox.NovaFlowXiaotaoUpload={inferTask:()=>({surface:'animation',discussion:false,revision:false,named:[]})};
   e.sandbox.NovaFlowFoartToolContract={FOART_TOOL_SCHEMA,validateFoartPlan,foartAnimationExportAllowed:()=>true,foartUnsupportedMediaAnalysis:()=>false};

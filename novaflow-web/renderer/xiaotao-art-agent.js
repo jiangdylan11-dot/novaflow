@@ -2998,7 +2998,7 @@
         rows.forEach((row, index) => {
           const node = renderConversationRow(doc, {...row,receipts:[]}, {copyText, chooseUploadDestination:controller.chooseUploadDestination}); messages.append(node);
           const amount = lastOfTurn.get(row.chargeTurn) === index ? charges.get(row.chargeTurn) : undefined;
-          if (amount !== undefined) {const charge = el('div', 'nf-xiaotao-charge nf-xiaotao-charge-' + (row.role === 'user' ? 'user' : 'reply'), billingNoticeText({confirmed:amount})); charge.setAttribute('role','note'); messages.append(charge);}
+          if (amount !== undefined && Number(amount) > 0) {const charge = el('div', 'nf-xiaotao-charge nf-xiaotao-charge-' + (row.role === 'user' ? 'user' : 'reply'), billingNoticeText({confirmed:amount})); charge.setAttribute('role','note'); messages.append(charge);}
         });
         messages.scrollTop = messages.scrollHeight;
       }

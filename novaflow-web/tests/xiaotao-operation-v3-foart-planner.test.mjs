@@ -41,12 +41,12 @@ function ledger(){
       if(operation.stages.has(args.p_phase_id))return {status:'reserved',first:false,phaseId:args.p_phase_id,estimatedCredits:args.p_estimated_credits};
       operation.stages.set(args.p_phase_id,{status:'reserved'});return {status:'reserved',first:true,phaseId:args.p_phase_id,estimatedCredits:args.p_estimated_credits};
     }
-    if(name==='finalize_xiaotao_operation_v3'){
+    if(name==='finalize_xiaotao_operation_v3_refund'){args={...args,p_outcome:'cancel',refund:true};name='finalize_xiaotao_operation_v3';}if(name==='finalize_xiaotao_operation_v3'){
       if(operation.status==='settled')return {...operation.receipt,idempotent:true};
       if([...operation.stages.values()].some(s=>s.status==='dispatched'))return {status:'pending-reconciliation'};
       const raw=[...operation.stages.values()].reduce((sum,s)=>sum+(s.raw||0),0);operation.status='settled';
       const decimal=JSON.parse(operation.snapshot.policy_snapshot_text).config.xiaotao_online.credit_amount_policy==='decimal-v1';
-      operation.snapshot.status='settled';operation.receipt={status:'settled',outcome:args.p_outcome,charged:raw>0?(decimal?ceilXiaotaoLedgerCredit(String(raw)):Math.max(1,Math.ceil(raw))):0,uncollected:0};return operation.receipt;
+      operation.snapshot.status='settled';operation.receipt={status:'settled',outcome:args.p_outcome,charged:args.refund?0:raw>0?(decimal?ceilXiaotaoLedgerCredit(String(raw)):Math.max(1,Math.ceil(raw))):0,uncollected:0};return operation.receipt;
     }
     throw Error('unexpected RPC '+name);
   };
@@ -108,6 +108,10 @@ test('explicit cancellation after the first known stage settles without another 
   const f=await fixture(),first=await f.service.start({...f.shared,operationToken:f.prepared.token});assert.equal(first.ok,true);
   const receipt=await f.service.cancel({...f.shared,operationToken:f.prepared.token});assert.equal(receipt.outcome,'cancel');assert.equal(receipt.charged,1);assert.equal(f.providerCalls,1);
   const again=await f.service.cancel({...f.shared,operationToken:f.prepared.token});assert.equal(again.idempotent,true);assert.equal(again.charged,1);assert.equal(f.providerCalls,1);
+});
+test('a browser cancel cannot ask for a refund: the known stage is still charged',async()=>{
+  const f=await fixture(),first=await f.service.start({...f.shared,operationToken:f.prepared.token});assert.equal(first.ok,true);
+  const receipt=await f.service.cancel({...f.shared,operationToken:f.prepared.token,refund:true});assert.equal(receipt.outcome,'cancel');assert.equal(receipt.charged,1);
 });
 test('unknown provider outcome holds reservation and cannot be dispatched again',async()=>{
   const f=await fixture([new Error('synthetic timeout')]);

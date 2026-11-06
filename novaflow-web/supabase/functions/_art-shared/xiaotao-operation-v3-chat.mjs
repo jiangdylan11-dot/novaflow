@@ -39,7 +39,8 @@ function actualReply(data) {
 async function executeCombinedStyle({intent,compiled,intentHash,model,policy,verified,ports,trustedActor,infer,signal,sessionFresh}) {
   const results=[];
   const cancel=async errorCode=>{
-    const receipt=await ports.finalize({actor:trustedActor,operationId:verified.operationId,outcome:'cancel'});
+    // A failed style analysis gave the user nothing: refund it.
+    const receipt=await ports.finalize({actor:trustedActor,operationId:verified.operationId,outcome:'refund'});
     if(receipt?.status!=='settled'||receipt.outcome!=='cancel'||!isXiaotaoCreditAmount(receipt.charged,policy.config,{allowZero:true,max:14000000}))fail('operation-status-unknown',503);
     if(!await sessionFresh())fail('selection-stale',401);
     return {ok:false,errorCode,receipt};
@@ -170,7 +171,8 @@ export function createXiaotaoOperationV3Chat({enabled=false,visionEnabled=false,
     const outcome=reply&&(!styleAnalysis||styleResult)&&(!videoRewrite||videoDraft)&&(!uiDraft||uiPreview)&&!signal?.aborted&&stillCurrent?'success':'cancel';
     // Known usage is settled even if provider output cannot be used, the
     // caller cancelled, or the session expired after dispatch.
-    const receipt=await ports.finalize({actor:trustedActor,operationId:verified.operationId,outcome});
+    // An unusable or abandoned answer is refunded; it still settles as 'cancel'.
+    const receipt=await ports.finalize({actor:trustedActor,operationId:verified.operationId,outcome:outcome==='cancel'?'refund':outcome});
     if(receipt?.status!=='settled'||receipt.outcome!==outcome||!isXiaotaoCreditAmount(receipt.charged,policy.config,{allowZero:true,max:14000000}))fail('operation-status-unknown',503);
     if(!await sessionFresh())fail('selection-stale',401);
     if(!reply)return {ok:false,errorCode:'operation-provider-output-invalid',receipt};

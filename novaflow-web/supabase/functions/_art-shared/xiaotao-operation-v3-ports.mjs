@@ -179,7 +179,9 @@ export function createXiaotaoOperationV3Ports(rpc, options = {}) {
     },
     async finalize({actor:trustedActor, operationId, outcome}) {
       ready();
-      if (!['success','cancel'].includes(outcome)) fail('invalid-outcome');
+      if (!['success','cancel','refund'].includes(outcome)) fail('invalid-outcome');
+      // refund: a failed turn that produced nothing settles as 'cancel' with every phase at 0 credits.
+      if (outcome === 'refund') return call('finalize_xiaotao_operation_v3_refund', identity(trustedActor,operationId));
       return call('finalize_xiaotao_operation_v3', {...identity(trustedActor,operationId),p_outcome:outcome});
     }
   });

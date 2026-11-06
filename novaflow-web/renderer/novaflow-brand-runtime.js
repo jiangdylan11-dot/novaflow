@@ -83698,10 +83698,20 @@
     // On 2.1 a new reference 1 fills W / H with its size once it is measured, so an untouched panel
     // edits the image at its own size; the user can still change it.
     if (target === 0) {
-      ART_GENERATE_STATE.referenceSizeFillPending = value?.dataUrl && artGenerateImg2imgCapability()?.engine === "qwen-2.1"
-        ? String(value.dataUrl)
-        : "";
+      const pending = value?.dataUrl && artGenerateImg2imgCapability()?.engine === "qwen-2.1" ? String(value.dataUrl) : "";
+      ART_GENERATE_STATE.referenceSizeFillPending = pending;
+      // A reference placed again (e.g. a style run re-placing the subject) already carries its size,
+      // so no measurement will come back to clear the flag: fill W / H right after the caller's own step.
+      if (pending && readArtGenerateReferenceSize(next)) queueMicrotask(() => settleArtGenerateReferenceSizeFill(next));
     }
+  }
+
+  function settleArtGenerateReferenceSizeFill(ref) {
+    const dataUrl = String(ref?.dataUrl || "");
+    if (!dataUrl || ART_GENERATE_STATE.referenceSizeFillPending !== dataUrl || artGenerateReferences()[0] !== ref) return false;
+    ART_GENERATE_STATE.referenceSizeFillPending = "";
+    if (!applyArtGenerateReferenceResolution(0)) renderArtGenerateSurfaces({ forceBottom: true });
+    return true;
   }
 
   function artGenerateResourceMentionSnapshot() {
@@ -83895,7 +83905,10 @@
 
   function ensureArtGenerateReferenceSize(index, ref) {
     const known = readArtGenerateReferenceSize(ref);
-    if (known) return known;
+    if (known) {
+      if (index === 0 && ART_GENERATE_STATE.referenceSizeFillPending === String(ref?.dataUrl || "")) queueMicrotask(() => settleArtGenerateReferenceSizeFill(ref));
+      return known;
+    }
     const dataUrl = String(ref?.dataUrl || "");
     if (!dataUrl) return null;
     const token = artGenerateReferenceSizeToken(index, dataUrl);
@@ -83903,7 +83916,11 @@
     ART_GENERATE_REFERENCE_SIZE_PENDING.add(token);
     measureArtGenerateReferenceSize(dataUrl).then((size) => {
       // A decode failure keeps its token: a broken data URL must not re-measure on every render.
-      if (!size) return;
+      // It still ends the wait for its size, so nothing waits on a fill that will never come.
+      if (!size) {
+        if (index === 0 && ART_GENERATE_STATE.referenceSizeFillPending === dataUrl) ART_GENERATE_STATE.referenceSizeFillPending = "";
+        return;
+      }
       ART_GENERATE_REFERENCE_SIZE_PENDING.delete(token);
       const current = artGenerateReferences()[index];
       if (!current || String(current.dataUrl || "") !== dataUrl) return;

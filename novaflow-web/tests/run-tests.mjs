@@ -48,6 +48,7 @@ const SUITES = [
   { name: 'qwen21-style-redraw', file: 'e2e/qwen21-style-redraw.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'art-prepare', file: 'e2e/art-prepare.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'xiaotao-art-phrasings', file: 'e2e/xiaotao-art-phrasings.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'art-reference-size-fill-settle', file: 'art-reference-size-fill-settle.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'foart-planner-selected-images', file: 'e2e/foart-planner-selected-images.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'xiaotao-online-billing', file: 'e2e/xiaotao-online-billing.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'prompt-box-width', file: 'e2e/prompt-box-width.test.mjs', needs: [], timeoutMs: 60000 },

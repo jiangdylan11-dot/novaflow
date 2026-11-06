@@ -76,14 +76,15 @@ export function createXiaotaoV3FoartPlanner({enabled=false,secret,loadProvider,r
     let plan,planIssue='';try{const text=outputText(data);if(!text)throw Error('方案没有完整返回');plan=readFoartPlan(text,request.foartContext);}catch(error){planIssue=String(error?.message||'').slice(0,200);}
     const current=await session(isCurrent,trusted);
     if(signal?.aborted||!current||!plan) {
-      const receipt=await ports.finalize({actor:trusted,operationId:trusted.operationId,outcome:'cancel'});if(receipt?.status!=='settled')fail('operation-status-unknown',503);
+      // Nothing usable came back for the user, so this phase is refunded.
+      const receipt=await ports.finalize({actor:trusted,operationId:trusted.operationId,outcome:'refund'});if(receipt?.status!=='settled')fail('operation-status-unknown',503);
       if(!current)fail('selection-stale',401);return {ok:false,errorCode:'operation-planner-incomplete',planIssue,receipt};
     }
     if(plan.status==='act') {
       // A tool can change what the next one may do, so run the first and replan.
       if(generalEnabled&&plan.operations.length>1)plan={...plan,operations:plan.operations.slice(0,1)};
       if(!generalEnabled||plan.operations.length!==1||stage.sequence>=14) {
-        const receipt=await ports.finalize({actor:trusted,operationId:trusted.operationId,outcome:'cancel'});if(receipt?.status!=='settled')fail('operation-status-unknown',503);
+        const receipt=await ports.finalize({actor:trusted,operationId:trusted.operationId,outcome:'refund'});if(receipt?.status!=='settled')fail('operation-status-unknown',503);
         return {ok:false,errorCode:'foart-operation-unsupported',receipt};
       }
       await journal.recordPlan({actor:trusted,sequence:stage.sequence,phaseId:stage.phaseId,requestHash:stage.hash,plan,context:request.foartContext});
@@ -129,6 +130,8 @@ export function createXiaotaoV3FoartPlanner({enabled=false,secret,loadProvider,r
       const stage={actor:checked.trusted,operationId:checked.trusted.operationId,phaseId:next.phaseId,sequence:next.sequence,hash:next.requestHash};
       return runReserved({trusted:checked.trusted,stage,request:next.request,ports,originalIntent,initialContext,signal,isCurrent,generalEnabled:generalAllowed(snapshotPolicy)});
     },
+    // A browser cancel is always charged: only failures the server sees itself are refunded,
+    // so a client cannot claim a failure to get the brain for free.
     async cancel({actor,operationToken,originalIntent,initialContext,isCurrent}) {
       ready();const checked=await validateTicket({actor,operationToken,originalIntent,initialContext,isCurrent,allowExpiredForCancellation:true});
       const ports=portsFor(await journal.loadPolicySnapshot(checked.trusted),{allowSettled:true});
