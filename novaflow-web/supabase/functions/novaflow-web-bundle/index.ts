@@ -533,7 +533,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.321";
+const RELEASE_VERSION = "2.0.322";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -1159,12 +1159,11 @@ function workflowModelId(name, options, method='') {
     return 'foart-qwen21-inpaint-v1';
   }
   if (name === 'spine-split-runtime' && (method === 'buildGenerativeSplitWorkflow' || options?.__args?.[1]?.taskProfile === 'generative-split')) {
-    return options?.__args?.[1]?.profile === 'standard' ? 'qwen-image-2.1' : 'qwen-image-2.1-turbo';
+    return 'qwen-image-2.1-turbo';
   }
   if (name === 'NovaFlowArtGenerateProviderWorkflow' && method === 'buildRunWorkflow' && options?.provider === 'local' && options?.localWorkflow && typeof options.localWorkflow === 'object') {
-    const loaders=Object.values(options.localWorkflow).filter(node=>node?.class_type === 'NovaFlowGGUFBF16Loader').map(node=>node?.inputs?.unet_name);
-    if (loaders.includes('Qwen-Image-2.1-Turbo-BF16.gguf')) return 'qwen-image-2.1-turbo';
-    if (loaders.includes('qwen-image-2.1-UC-BF16.gguf')) return 'qwen-image-2.1';
+    const loaders=Object.values(options.localWorkflow).filter(node=>node?.class_type === 'NovaFlowGGUFBF16Loader' || node?.class_type === 'UNETLoader').map(node=>node?.inputs?.unet_name);
+    if (loaders.includes('Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors')) return 'qwen-image-2.1-turbo';
   }
   const args = name === 'novaflow-brand-runtime' && Array.isArray(options?.__args) ? options.__args : null;
   if (args && args[0] === 'local') {
@@ -1172,7 +1171,7 @@ function workflowModelId(name, options, method='') {
     const profile = String(args[10]?.taskProfile || '');
     const ui = profile.toLowerCase() === 'ui-design' && state.localUiEngine === 'qwen-2.1';
     const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
-    if (ui || draw) return state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
+    if (ui || draw) return 'qwen-image-2.1-turbo';
   }
   if(name==='spine-split-runtime'&&['buildQwenImageOutpaintWorkflow','buildImageAngleAdjustWorkflow','buildObjectTransferQwen21Workflow','buildEffectExtractQwenWorkflow','buildEffectDeeffectQwenWorkflow'].includes(method))return 'qwen-image-2.1-turbo';
   if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && [
@@ -1302,30 +1301,34 @@ const MODEL_MANIFEST = Object.freeze([
     // Drawing and UI design on Qwen-Image-2.1. A node reports it ready exactly when it can build the
     // 2.1 graph (detectQwenImage21, the check the builder itself makes), and the control plane queues
     // a run that asks for 2.1 on this model, so only such a node claims it.
+    // Since 2026-11-06 the 普通 BF16 line is gone: this id stays for the control plane's qwenImage21
+    // feature flag and pool queries, and names the same INT8 Turbo files as qwen-image-2.1-turbo.
     model_id: 'qwen-image-2.1',
-    display_name: 'Qwen-Image-2.1',
+    display_name: 'Qwen-Image-2.1 (Turbo INT8 ConvRot)',
     version: '2.1',
     runtime: 'image',
     min_vram_mb: 16000,
     compatible_workflows: ['novaflow-brand-runtime.buildArtGenerateRunWorkflow'],
     required_files: [
-      { path: 'diffusion_models/qwen-image-2.1-UC-BF16.gguf', min_bytes: 14_000_000_000, sha256: null },
+      { path: 'diffusion_models/Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors', min_bytes: 7_000_000_000, sha256: null },
       { path: 'text_encoders/qwen3vl_8b_bf16_heretic.safetensors', min_bytes: 17_000_000_000, sha256: null },
       { path: 'vae/qwen_image_2.1_vae_bf16.safetensors', min_bytes: 600_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装支持 Qwen 2.1 BF16 的 ComfyUI 节点。'
+      hint: '导入 Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors、BF16 编码器和 VAE。'
     }
   },
   {
-    model_id:'qwen-image-2.1-turbo', display_name:'Qwen-Image-2.1 Turbo GGUF BF16', version:'2.1-turbo', runtime:'image', min_vram_mb:16000,
+    // INT8 ConvRot weights in ComfyUI's scaled-int8 layout (converted from the Unsloth export with
+    // work/art-style-ab-20261105/convert_unsloth_int8_convrot_to_comfy.py), loaded by UNETLoader.
+    model_id:'qwen-image-2.1-turbo', display_name:'Qwen-Image-2.1 Turbo INT8 ConvRot', version:'2.1-turbo', runtime:'image', min_vram_mb:16000,
     compatible_workflows:['novaflow-brand-runtime.buildArtGenerateRunWorkflow','spine-split-runtime'],
     required_files:[
-      {path:'diffusion_models/Qwen-Image-2.1-Turbo-BF16.gguf',min_bytes:14_000_000_000,sha256:null},
+      {path:'diffusion_models/Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors',min_bytes:7_000_000_000,sha256:null},
       {path:'text_encoders/qwen3vl_8b_bf16_heretic.safetensors',min_bytes:17_000_000_000,sha256:null},
       {path:'vae/qwen_image_2.1_vae_bf16.safetensors',min_bytes:600_000_000,sha256:null}
-    ],download:{mode:'import_or_configured_url',hint:'导入 Qwen-Image-2.1-Turbo-BF16.gguf、BF16 编码器和 VAE；需要 ManualSigmas 与 SamplerCustom 节点。'}
+    ],download:{mode:'import_or_configured_url',hint:'导入 Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors、BF16 编码器和 VAE；需要 ManualSigmas 与 SamplerCustom 节点。'}
   },
   {
     // 音频 · 音乐. The medium text-to-audio checkpoint plus its text encoder.
