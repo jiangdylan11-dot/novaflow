@@ -265,6 +265,31 @@
     return slots;
   }
 
+  // The @ list keeps counting across a conversation, but the page holds this turn's pictures from 1:
+  // "@参考图3@参考图4@参考图5" with three pictures on the page means pictures 1 to 3.
+  function renumberTurnMentions(text,count){
+    const named=[...new Set([...String(text).matchAll(/(?:@参考图\s*|<image)(\d+)/g)].map(m=>Number(m[1])))].sort((a,b)=>a-b);
+    if(!count||!named.length||named.length>count||named.at(-1)<=count)return text;
+    return String(text).replace(/(@参考图\s*|<image)(\d+)/g,(tag,head,n)=>head+(named.indexOf(Number(n))+1));
+  }
+  // A turn that brings only style pictures: they restyle the subject of the last style transfer.
+  function styleOnlyRequest(message,count){
+    if(!count||/(?:把|将)\s*@?参考图|主体/.test(message))return false;
+    return count>1&&/分别|各自|每张|逐张|each|respectively|separately/i.test(message)||count===1&&/(?:换成|转成|改成|变成|转换成)\s*@?参考图\s*\d+\s*(?:的)?(?:风格|画风)/.test(message);
+  }
+
+  // "把@参考图1分别转成@参考图2@参考图3的风格": a subject named in the same turn, with two or more style pictures.
+  function turnSubjectSlot(message,count){
+    if(count<3||!/分别|各自|每张|逐张|each|respectively|separately/i.test(message))return -1;
+    const named=/(?:把|将)\s*(?:@参考图\s*|<image)(\d+)|(?:@参考图\s*|<image)(\d+)>?\s*(?:是|为|作为|当)\s*主体/.exec(message);
+    const slot=named?Number(named[1]||named[2])-1:-1;
+    return slot<count?slot:-1;
+  }
+  // What a sentence asks beyond which pictures to use: the clauses that name no picture and no 分别/各自.
+  function styleExtras(message){
+    return String(message||'').split(/[，。；,;\n]+/).map(part=>part.trim()).filter(part=>part&&!/@参考图|<image|分别|各自|每张|逐张|each|respectively|separately/i.test(part)).join('，');
+  }
+
   function createQwenNodeRecheck({isNeeded,refresh,timers=root,intervalMs=10000,maxAttempts=12}) {
     let timer=null,inFlight=false,queued=false,attempts=0,stopped=false;
     const needed=()=>!stopped&&isNeeded()===true;
@@ -899,6 +924,8 @@
     const modelSessions = Object.create(null), transientSessions = Object.create(null);
     const cancelledPromptSourceModels = new Set();
     state.staged = []; state.pendingUploads = []; state.pendingUploadId = '';
+    // The one picture kept across messages: the subject of the last style transfer, until a new subject or 新对话.
+    let currentSubject = null;
     let stagedSeq = 0, carryAttachments = null, carryAsk = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
     const communityUploads = () => communityAttachmentMetadata(state.modelId,state.staged,lastUploads);
@@ -1615,6 +1642,17 @@
             plan={...plan,operations:plan.operations.map(keepTurnPictures).filter(Boolean)};
             if(!plan.operations.length)plan={...plan,status:'done',reply:'已保留本轮参考图，没有使用上一张结果。'};
           }
+          const pagePictures=Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(Boolean).length;
+          const imageOp=plan.status==='act'?plan.operations.find(op=>['image_optimize','image_generate'].includes(op.action)):null;
+          const turnPictures=!!imageOp&&(preferUploads||lastUploads.some(item=>item.kind==='image'));
+          const styleOnly=turnPictures&&styleOnlyRequest(positiveRequest,pagePictures);
+          const subjectSlot=turnPictures?turnSubjectSlot(renumberTurnMentions(positiveRequest,pagePictures),pagePictures):-1;
+          if(styleOnly&&!currentSubject)plan={...plan,status:'clarify',reply:'这些是风格图，还缺一张要转换的主体图。请先发主体图。',operations:[]};
+          else if(styleOnly&&pagePictures>4)plan={...plan,status:'clarify',reply:`一次最多用 4 张风格图，现在有 ${pagePictures} 张。请告诉我用哪 4 张。`,operations:[]};
+          else if(styleOnly)plan={...plan,operations:[{...imageOp,action:'image_generate',generationMode:'img2img',useResult:false,eachStyle:true}]};
+          else if(subjectSlot>=0&&pagePictures>5)plan={...plan,status:'clarify',reply:`一次最多用 4 张风格图，现在有 ${pagePictures-1} 张。请告诉我用哪 4 张。`,operations:[]};
+          else if(subjectSlot>=0)plan={...plan,operations:[{...imageOp,action:'image_generate',generationMode:'img2img',useResult:false,eachStyle:true,subjectSlot}]};
+          else if(imageOp?.generationMode==='img2img'&&pagePictures>3)plan={...plan,status:'clarify',reply:`一次最多用 3 张参考图，现在有 ${pagePictures} 张。请告诉我用哪 3 张。`,operations:[]};
           // A model may repeat its previous export instead of closing the turn.
           // Once that native encoder returned a real file, never download it again
           // merely because the planner repeated the same finished operation.
@@ -1702,8 +1740,10 @@
             }
             root.console?.debug?.('[Foart tools] execute',op.action,op.name||op.operation?.action||op.operation||current.controls.find(control=>control.id===op.controlId)?.label||op.resourceId||'',op.value??'');
             let receipt;
-            if(['image_optimize','image_generate'].includes(op.action)){
-              receipt=await plannerDrawingPrompt(op,message);
+            if(op.eachStyle)receipt=await runEachStyle(message,op.subjectSlot);
+            else if(['image_optimize','image_generate'].includes(op.action)){
+              const pictures=Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(Boolean).length;
+              receipt=await plannerDrawingPrompt({...op,prompt:renumberTurnMentions(op.prompt,pictures)},renumberTurnMentions(message,pictures));
               // "先画…然后做成视频": a finished picture is one step of the request, so the planner gets the next round.
               if(op.action==='image_generate'&&receipt?.phase==='completed'&&/然后|接着|之后|再把|再用|再做|做成|转成|导出|保存|配乐|配音|视频|动画/.test(positiveRequest))delete receipt.plannerPrompt;
             } else receipt=await tools.execute(state.provider==='api'&&op.action==='media'?await frameworkPrompt(op):op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
@@ -1760,7 +1800,7 @@
       const explicitNewQwenImage=state.modelId==='qwen3.5-9b-heretic' && state.staged.some(item=>item.kind==='image');
       
       const newConversation=/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message);
-      if(newConversation){reset();lastUploads=[];return true;}
+      if(newConversation){reset();lastUploads=[];currentSubject=null;return true;}
       // This is deliberately narrow: the user explicitly asks to optimize the
       // CURRENT drawing prompt AND generate. Other source-choice and compound
       // requests continue through their existing paths.
@@ -2401,7 +2441,28 @@
       // Every picture of this run is reported, with the drawing model that made it, not only the selected one.
       const fresh=Array.from(rt.state.results||[]).filter(item=>item&&!earlier.has(item.id)),made=rt.selectedResult?.();
       const outputs=(fresh.length?fresh.reverse():made?[made]:[]).map((item,index)=>({id:item.id,name:item.name||item.fileName||'成图'+(index+1)}));
+      const drawn=Array.from(rt.references?.()||[]).filter(Boolean),subject=drawn.find(ref=>ref.drawingRole==='subject');
+      if(subject&&drawn.some(ref=>ref.drawingRole==='style'))currentSubject={...subject};
       return {action:op.action,phase:'completed',plannerPrompt:true,provider:rt.state.provider,modelLabel:rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen',prompt:String(rt.state.prompt||''),outputs,message:'已写入提示词并完成生成，请在绘图页查看结果。'};
+    }
+    // One full style redraw per style picture, on the remembered subject: each writes its own texts and is billed on its own.
+    async function runEachStyle(message,subjectSlot=-1){
+      const rt=root.__NovaFlowArtGenerate,page=Array.from(rt.references?.()||[]).filter(Boolean).map(ref=>({...ref})),outputs=[];let last=null;
+      const subject=subjectSlot>=0?page[subjectSlot]:currentSubject,styles=page.filter((_,index)=>index!==subjectSlot);
+      // Clearing a slot revokes its preview, so every placement takes a new one from the file.
+      const fresh=ref=>ref.file&&root.URL?.createObjectURL?{...ref,dataUrl:root.URL.createObjectURL(ref.file)}:ref;
+      const place=list=>{const slots=Math.max(list.length,Array.from(rt.references?.()||[]).length);for(let index=0;index<slots;index++)rt.setReference(index,list[index]?fresh(list[index]):null);rt.refreshReferences?.();};
+      const extras=styleExtras(message),request='@参考图1换成@参考图2的风格'+(extras?'，'+extras:'');
+      try{
+        for(const [index,style] of styles.entries()){
+          place([{...subject,drawingRole:'subject'},{...style,drawingRole:'style'}]);
+          state.status=`正在生成第 ${index+1}/${styles.length} 张…`;notify();
+          last=await plannerDrawingPrompt({action:'image_generate',generationMode:'img2img',useResult:false,prompt:request},request);
+          outputs.push(...(last.outputs||[]));
+        }
+      }catch(error){throw Error(outputs.length?`已生成 ${outputs.length} 张，第 ${outputs.length+1} 张未完成：`+String(error?.message||error):String(error?.message||error));}
+      finally{place(page);}
+      return {...last,outputs,message:`已按 ${styles.length} 张风格图各生成一张`};
     }
     async function prepareQwenCurrentDrawingPrompt(message,{recordMessage=true,source}={}) {
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate;
