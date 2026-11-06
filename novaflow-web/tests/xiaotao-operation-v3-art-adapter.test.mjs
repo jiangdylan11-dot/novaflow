@@ -48,3 +48,21 @@ test('a failure before dispatch settles cancellation instead of leaving a reserv
   await assert.rejects(f.adapter.executePhase({...f.args,run:async()=>{throw Error('cancelled');}}),e=>e.code==='cancelled-before-dispatch'&&e.receipt.status==='settled');
   assert.deepEqual(f.calls.map(x=>x.name),['reserve_xiaotao_operation_stage_v3','finalize_xiaotao_operation_v3']);
 });
+test('a model failure after dispatch releases the hold and closes the operation at 0',async()=>{
+  const f=await fixture(name=>name==='reject_xiaotao_operation_stage_v3'?{status:'rejected',idempotent:false}:
+    name==='finalize_xiaotao_operation_v3_refund'?{status:'settled',outcome:'cancel',charged:0,uncollected:0,refunded:true}:undefined);
+  await assert.rejects(f.adapter.executePhase({...f.args,run:async({markProviderDispatched})=>{await markProviderDispatched();
+    throw Object.assign(Error('在线模型响应超时'),{statusCode:504,code:'ETIMEDOUT'});}}),
+    e=>e.code==='provider-failed'&&e.receipt.status==='settled'&&e.receipt.charged===0);
+  assert.deepEqual(f.calls.map(x=>x.name),['reserve_xiaotao_operation_stage_v3','mark_xiaotao_operation_stage_dispatched_v3','reject_xiaotao_operation_stage_v3','finalize_xiaotao_operation_v3_refund']);
+  const reject=f.calls[2].args;assert.equal(reject.p_phase_id,'structure');assert.equal(reject.p_request_hash,hash);assert.equal(reject.p_no_charge_evidence.reason,'ETIMEDOUT');
+});
+test('usage that cannot be recorded is refunded too; an unclear rejection keeps the hold',async()=>{
+  const f=await fixture(name=>name==='record_xiaotao_operation_stage_usage_v3'?Promise.reject(Error('invalid usage')):
+    name==='reject_xiaotao_operation_stage_v3'?{status:'rejected',idempotent:false}:
+    name==='finalize_xiaotao_operation_v3_refund'?{status:'settled',outcome:'cancel',charged:0,uncollected:0}:undefined);
+  await assert.rejects(f.adapter.executePhase({...f.args,run:async({markProviderDispatched})=>{await markProviderDispatched();return {answer,decision:{usageMissing:false}};}}),e=>e.code==='provider-failed');
+  const held=await fixture(name=>{if(name==='reject_xiaotao_operation_stage_v3')throw Error('timeout');});
+  await assert.rejects(held.adapter.executePhase({...held.args,run:async({markProviderDispatched})=>{await markProviderDispatched();throw Error('provider down');}}),e=>e.code==='operation-status-unknown');
+  assert.equal(held.calls.some(x=>x.name.startsWith('finalize_')),false);
+});

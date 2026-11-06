@@ -49,18 +49,33 @@ export async function createXiaotaoV3ArtAdapter({enabled=false,provider,rpc,secr
         const mark=await ports.markDispatched(args);
         if(mark?.status!=='dispatched'||mark.first_dispatch!==true)fail('operation-status-unknown');
       };
+      // A failure this server saw after dispatch (the model failed, timed out or answered without
+      // usable usage): the person got nothing, so the hold is released in full and the operation
+      // closes at 0 (Dylan, Nov 6: server-confirmed failures are not charged). The SQL only rejects
+      // a phase that is still 'dispatched'; any unclear RPC result stays held as before.
+      const refundFailed=async reason=>{
+        let receipt;
+        try {
+          const rejected=await ports.rejectDispatched({...args,evidence:{reason:String(reason||'provider-failed').slice(0,120),stage}});
+          if(rejected?.status!=='rejected')fail('operation-status-unknown');
+          receipt=await ports.finalize({actor,operationId,outcome:'refund'});
+        } catch {fail('operation-status-unknown');}
+        if(receipt?.status!=='settled'||receipt.outcome!=='cancel')fail('operation-status-unknown');
+        throw Object.assign(new Error('provider-failed'),{code:'provider-failed',statusCode:502,receipt});
+      };
       let result;
       try {result=await run({markProviderDispatched});}
       catch(error) {
-        // An RPC timeout can happen after dispatch was committed; never infer
-        // that a failed marker means the hold can be safely released.
-        if(dispatchAttempted)fail('operation-status-unknown');
+        if(dispatchAttempted)await refundFailed(error?.code||error?.message);
         const receipt=await ports.finalize({actor,operationId,outcome:'cancel'});
         if(receipt?.status!=='settled'||receipt.outcome!=='cancel')fail('operation-status-unknown');
         throw Object.assign(new Error('cancelled-before-dispatch'),{code:'cancelled-before-dispatch',statusCode:409,receipt});
       }
-      if(!dispatchAttempted||result?.answer?.model!==model||!result?.answer?.usage)fail('operation-status-unknown');
-      const recorded=await ports.recordAssessedUsage({...args,usageRecords:[result.answer.usage]});
+      if(!dispatchAttempted)fail('operation-status-unknown');
+      if(result?.answer?.model!==model||!result?.answer?.usage)await refundFailed('provider-answer-invalid');
+      let recorded;
+      try {recorded=await ports.recordAssessedUsage({...args,usageRecords:[result.answer.usage]});}
+      catch(error) {await refundFailed(error?.code||'usage-unrecorded');}
       if(recorded?.status!=='recorded')fail('operation-status-unknown');
       return {status:'recorded',response:result.answer,decision:result.decision,requestHash,pricingVersion,model};
     }
