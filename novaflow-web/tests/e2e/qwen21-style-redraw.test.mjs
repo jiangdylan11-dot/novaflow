@@ -12,9 +12,9 @@ async function test(name,fn){
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 const input={promptContract:QWEN21_NATIVE_REWRITE,qwenPromptMode:'img2img',currentPrompt:'把人物转成这个风格',requirements:'',negativePrompt:'',supportsNegativePrompt:true};
 const system=prepared=>prepared.body.input[0].content[0].text;
-const description='flat cel-shaded illustration, clean thin line art, hard two-tone shadows, warm-toned palette, flat smooth skin, hair in crisp grouped strands, moderate detail';
+const description='flat cel-shaded illustration, clean thin line art, hard two-tone shadows, flat smooth skin, hair in crisp grouped strands, moderate detail';
 const content='a young woman with long wavy auburn hair, winking with a soft smile, a small beauty mark on her cheek, wearing a striped top, holding up a plastic cup, seated in an airport terminal at night';
-const mood='warm lamp glow from the left, soft orange-pink palette, cosy atmosphere, soft but clear contrast';
+const mood='warm-neutral soft lamp key light from the side, neutral brown shadows, a dim cosy atmosphere, mild contrast';
 const redraw=buildStyleRedrawPrompt(description,mood,content);
 const answer=(style=description,text=content,light=mood)=>({output_text:JSON.stringify({style_description:style,mood_description:light,content_description:text})});
 const compile=(overrides={},response=answer(),roles=['subject','style'])=>compileQwen21NativeRewrite(response,buildQwen21NativeRewrite({...input,...overrides},'model',roles));
@@ -33,7 +33,7 @@ await test('style mode is chosen only for one subject first followed by style re
 
 await test('the style system asks only for the three texts and bans the wording that darkens the result',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
-  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','colour temperature','hair and skin treatment','detail level','20-40 words','lighting design','colour temperature stated outright as cool, neutral or warm','key light direction','shadow colour','contrast level','sky or daylight','exact hair colour','dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','__NF...__'])
+  for(const needle of ['25-60 words','40-80 words','line weight','shading method','highlight logic','hair and skin treatment','detail level','No colour, palette or colour-temperature words','20-40 words','lighting design','key light colour and direction','shadow colour','contrast level','sky or daylight','colours named strongly','exact hair colour','warm, cool, golden, palette, tone, dark, dim, low-key, moody, desaturated, muted, high-key, daylight, pale','half-lidded','any wink','facial marks','requested_changes','__NF...__'])
     assert.ok(text.includes(needle),needle);
   assert.doesNotMatch(text,/rendering medium|rewritten_prompt/);
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');
@@ -43,7 +43,7 @@ await test('the program assembles the prompt from the three slots, then the fixe
   assert.ok(redraw.startsWith('Loosely based on <image1> (use it only for the person, pose and scene;'));
   assert.ok(redraw.includes(`An illustration in this style: ${description}. ${content}. High quality key visual`));
   assert.ok(redraw.includes(`take only the lighting design from <image2>: ${mood}. Express it`));
-  assert.ok(redraw.includes('never yellow or orange skin'));assert.ok(redraw.includes('is taken from <image2>, never from <image1>'));assert.ok(redraw.includes('warm practical lights are repainted cool.'));assert.doesNotMatch(redraw,/cool lights are repainted warm/);assert.ok(redraw.includes('Never a uniform colour cast'));
+  assert.ok(redraw.includes('never yellow or orange skin'));assert.ok(redraw.includes('the hair keeps exactly the colour named in the content description'));assert.ok(redraw.includes('Colour appears only where light actually falls'));assert.ok(redraw.includes('take their colours from <image2>. Everything else keeps its own true colour'));assert.ok(redraw.includes('Never a uniform colour cast, tint, wash, filter or haze'));assert.equal(redraw.match(/Never a uniform|Never tint/g).length,1,'the rule is stated once');assert.ok(redraw.includes('Full tonal range'));assert.doesNotMatch(redraw,/overall colour temperature/);
   assert.ok(redraw.endsWith(`${buildStyleRelight(mood)} ${STYLE_POLISH}`));
   assert.doesNotMatch(redraw,/keep the real light sources/,'the photo\'s light is not kept');
   assert.doesNotMatch(STYLE_POLISH,/beauty mark|\bcup\b|terminal/,'the finish block fits any picture');
@@ -128,14 +128,6 @@ await test('several style images share the 1.5 MP total and an ordinary edit sta
   assert.ok(pixels('201')+pixels('202')<=1500000);assert.equal(sampler(graph).inputs.cfg,3);
   const edit=build({taskProfile:'art-direction',referenceRoles:['subject','reference']});
   assert.equal(sampler(edit).inputs.cfg,1);assert.ok(edit['201'].inputs.width*edit['201'].inputs.height<=500000);
-});
-
-await test('only a local style redraw gets the tone step, and it can be redone from the untouched picture',()=>{
-  assert.match(source,/runProvider === "local" \? artStyleToneReference\(options\.drawingPrepared\) : ""/);
-  assert.match(source,/toneSourceUrl: rawImageUrl, toneReferenceUrl: toneReference, toneStrength/);
-  assert.match(source,/gradeArtStyleResult\(result\.toneSourceUrl, result\.toneReferenceUrl, strength\)/);
-  assert.match(read('../../renderer/spine-split-runtime.js'),/replaceSourceResourceImage,/);
-  assert.match(read('../../renderer/index.html'),/art-tone-match\.js/);
 });
 
 await test('a reviewed draft reports the roles it will run with, and the draft prompt owns the role text',()=>{

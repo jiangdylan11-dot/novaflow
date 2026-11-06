@@ -16,8 +16,7 @@ Qwen-Image-2.1 Turbo 不会从风格图片里读画风，但会照着具体文�
 1. 用户在小桃里确认一张主体和一张或多张风格图。
 2. `optimizeForAgent` 把图片按主体在前发给 `novaflow-companion`，`packages/shared/src/qwen21-native-rewrite.mjs` 的风格模式让在线模型只写 `style_description`、`mood_description` 和 `content_description` 三段短文，程序把它们套进固定模板，只取参考图的打光设计、颜色保持原样，再接上 `STYLE_POLISH`，策略为 `qwen21-style-redraw-v1`。
 3. 负向提示词由程序决定：用户自己的内容在前，后接 `STYLE_NEGATIVE`。
-4. 确认草稿后，本地 Qwen 2.1 生成：CFG 3，主体图 0.25 MP，风格图 1 MP，空白 latent 固定约 1.77 MP（4:3 时 1536×1152），最后缩到用户设的 W/H。
-5. 出图后在页面上做“色调跟随参考图”（`renderer/art-tone-match.js`）：按明暗分段把颜色往第一张风格图靠，默认 50，画面右上角滑块 0 到 80，改强度不用重新生成，保存的是调色后的图。页面上的提示词保留原槽位编号。
+4. 确认草稿后，本地 Qwen 2.1 生成：CFG 3，主体图 0.25 MP，风格图 1 MP，空白 latent 固定约 1.77 MP（4:3 时 1536×1152），最后缩到用户设的 W/H。页面上的提示词保留原槽位编号。
 
 ## 采样规则
 

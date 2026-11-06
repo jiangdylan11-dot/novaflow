@@ -81590,36 +81590,6 @@
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt textarea::placeholder {
         color: rgba(154, 160, 168, 0.74) !important;
       }
-      #novaflow-art-tone-bar {
-        position: fixed;
-        top: var(--nf-tone-top, 72px);
-        right: var(--nf-tone-right, 280px);
-        z-index: 2147482630;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        height: 32px;
-        padding: 0 10px;
-        box-sizing: border-box;
-        border-radius: 6px;
-        background: #1f1f1f;
-        color: #e5e7eb;
-        font-size: 12px;
-      }
-      #novaflow-art-tone-bar input {
-        width: 120px;
-        margin: 0;
-        accent-color: #1ea672;
-        outline: none;
-      }
-      #novaflow-art-tone-bar .novaflow-art-tone-value {
-        min-width: 18px;
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
-      body:not(.novaflow-primary-target-art) #novaflow-art-tone-bar {
-        display: none !important;
-      }
       #${ART_GENERATE_RIGHT_PANEL_ID} {
         position: fixed;
         z-index: 2147482620;
@@ -82965,7 +82935,6 @@
       syncArtGenerateBasePlaceholdersHidden(false);
       document.getElementById(ART_GENERATE_WORKSPACE_ID)?.remove();
       document.getElementById(ART_GENERATE_RIGHT_PANEL_ID)?.remove();
-      document.getElementById(ART_TONE_BAR_ID)?.remove();
       document.getElementById(ART_GENERATE_PROMPT_HISTORY_POPOVER_ID)?.remove();
       document.getElementById(ART_GENERATE_PROMPT_HISTORY_CLICK_SHIELD_ID)?.remove();
       window.NovaFlowArtGenerateReferenceDropTool?.syncSourceResourceCards?.(false);
@@ -82978,7 +82947,6 @@
     ART_GENERATE_FORCE_BOTTOM_RENDER = false;
     renderArtGenerateWorkspace(forceBottomRender);
     renderArtGenerateRightPanel();
-    syncArtToneBar();
     window.NovaFlowArtGenerateReferenceDropTool?.syncSourceResourceCards?.(
       ART_GENERATE_STATE.mode === "img2img" &&
       Boolean(document.querySelector(`#${ART_GENERATE_WORKSPACE_ID} [data-ais-import^="art_reference_"]`))
@@ -85352,63 +85320,6 @@
     });
   }
 
-  // 色调跟随参考图 belongs to a style redraw: colours follow the first style image, on the page, so
-  // the strength can change without another generation.
-  const ART_TONE_BAR_ID = "novaflow-art-tone-bar";
-  function artStyleToneReference(prepared) {
-    if (window.NovaFlowArtPrepare?.generationOptions?.(prepared)?.styleRedraw !== true) return "";
-    return String(prepared?.references?.[1]?.dataUrl || "");
-  }
-
-  async function gradeArtStyleResult(imageUrl, referenceUrl, strength) {
-    try {
-      return await window.NovaFlowArtToneMatch.gradeDataUrl(imageUrl, referenceUrl, strength);
-    } catch (error) {
-      console.warn("[NovaFlow] Art tone match failed", error);
-      return imageUrl;
-    }
-  }
-
-  async function setArtToneStrength(result, strength) {
-    const token = (result.toneToken = (result.toneToken || 0) + 1);
-    const imageUrl = await gradeArtStyleResult(result.toneSourceUrl, result.toneReferenceUrl, strength);
-    if (token !== result.toneToken) return;
-    result.imageUrl = imageUrl;
-    result.toneStrength = strength;
-    await window.NovaFlowSpineSplitBridge?.replaceSourceResourceImage?.(result.id, imageUrl);
-    renderArtGenerateSurfaces();
-  }
-
-  function syncArtToneBar() {
-    const result = ART_GENERATE_STATE.active ? selectedArtGenerateResult() : null;
-    let bar = document.getElementById(ART_TONE_BAR_ID);
-    if (!result?.toneSourceUrl) {
-      bar?.remove();
-      return;
-    }
-    if (!(bar instanceof HTMLElement)) {
-      const max = window.NovaFlowArtToneMatch.MAX_STRENGTH;
-      const value = createArtEl("span", { className: "novaflow-art-tone-value" });
-      const range = createArtEl("input", { type: "range", min: "0", max: String(max), step: "0.05", title: "\u8272\u8c03\u8ddf\u968f\u53c2\u8003\u56fe" });
-      range.addEventListener("input", () => { value.textContent = String(Math.round(Number(range.value) * 100)); });
-      range.addEventListener("change", () => {
-        const current = selectedArtGenerateResult();
-        if (current?.toneSourceUrl) setArtToneStrength(current, Number(range.value));
-      });
-      bar = createArtEl("div", { id: ART_TONE_BAR_ID }, [createArtEl("span", { text: "\u8272\u8c03\u8ddf\u968f" }), range, value]);
-      document.body?.appendChild(bar);
-    }
-    const stage = String(document.documentElement?.getAttribute("data-novaflow-stage-box") || "").split(",").map(Number);
-    if (stage.length === 4 && stage.every(Number.isFinite)) {
-      bar.style.setProperty("--nf-tone-top", `${stage[1] + 10}px`);
-      bar.style.setProperty("--nf-tone-right", `${Math.max(0, (window.innerWidth || 0) - stage[0] - stage[2]) + 10}px`);
-    }
-    const range = bar.querySelector("input");
-    if (range && document.activeElement !== range) range.value = String(result.toneStrength);
-    const value = bar.querySelector(".novaflow-art-tone-value");
-    if (value && document.activeElement !== range) value.textContent = String(Math.round(result.toneStrength * 100));
-  }
-
   async function placeArtGenerateResultIntoSource(result, options = {}) {
     if (!result || !result.imageUrl) return false;
     const bridge = window.NovaFlowSpineSplitBridge;
@@ -85418,8 +85329,7 @@
         return !!(await bridge.addSourceDataUrlResource(result.name || "foart_generate.png", result.imageUrl, {
           message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90",
           generationElapsedSec: result.generationElapsedSec,
-          isCurrent: options.isCurrent,
-          ...(result.toneSourceUrl ? { externalId: result.id } : {})
+          isCurrent: options.isCurrent
         }));
       }
       if (options.isCurrent || typeof bridge.importSourceDataUrl !== "function") return false;
@@ -87064,10 +86974,7 @@
           if (!outputBlob) throw new Error("图片下载失败");
           if (!blob) blob = outputBlob;
         }
-        const rawImageUrl = await artBlobToDataUrl(blob);
-        const toneReference = runProvider === "local" ? artStyleToneReference(options.drawingPrepared) : "";
-        const toneStrength = window.NovaFlowArtToneMatch?.DEFAULT_STRENGTH;
-        const imageUrl = toneReference ? await gradeArtStyleResult(rawImageUrl, toneReference, toneStrength) : rawImageUrl;
+        const imageUrl = await artBlobToDataUrl(blob);
         if (!isArtGenerateRunCurrent(runToken)) return;
         prepared?.assertCurrent?.();
         const result = {
@@ -87076,7 +86983,6 @@
           source: "generate",
           mode: runMode,
           provider: runProvider,
-          ...(toneReference ? { toneSourceUrl: rawImageUrl, toneReferenceUrl: toneReference, toneStrength } : {}),
           nsfw: !!settingsSnapshot.nsfw,
           ...(runProvider === 'local' && settingsSnapshot.nsfwLoraEnabled ? {nsfwLoraEnabled:true,nsfwLoraName:settingsSnapshot.nsfwLoraName} : {}),
           name: file.filename || `${prefix}.png`,
