@@ -915,6 +915,8 @@
   }
 
   // Online art is intentionally closed until billing and real-page acceptance.
+  // The model that writes a style redraw's texts, whichever model the menu shows.
+  const STYLE_REDRAW_BRAIN_MODEL='deepseek/deepseek-v4.1-flash';
   async function selectedOnlineBusinessPrompt(action,payload,selected,controller) {
     const no=(errorCode,error)=>({ok:false,errorCode,error});
     const textOnly=payload.currentDrawingTextOnly===true && typeof XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED!=='undefined' && XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED===true;
@@ -992,6 +994,9 @@
     let timer;companionCloudRequests.set(requestId,abort);
     const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
     const notice=(id,quota,unknown)=>{try{return payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown})===true;}catch{return false;}};
+    // A style redraw is written by DeepSeek whichever model the menu shows: it reads the style picture better and answers in seconds.
+    const styleRun=nativeQwen&&images.length>=2&&images[0]?.role==='subject'&&images.slice(1).every(image=>image?.role==='style');
+    let artModel=styleRun?STYLE_REDRAW_BRAIN_MODEL:selected.modelId;
     try {
       if(!current())return no('assistant-selection-changed','模型或会话已变，未提交。');
       // The server's hashed policy is the trusted discriminator; omitting both
@@ -1002,9 +1007,11 @@
         !policy.config?.xiaotao_online||typeof policy.config.xiaotao_online!=='object')
         return no('companion-pricing-changed','在线积分策略不可用，本次未提交。');
       operationTerms=policy.config.xiaotao_online;
+      // DeepSeek off the list is no reason to fail the person: the model they picked writes it instead.
+      if(styleRun&&!policy.models?.some?.(m=>m.id===artModel&&m.available===true))artModel=selected.modelId;
       if(operationTerms.operation_art_v3!==true || !operationCreditPolicy(operationTerms) || ((payload.currentDrawingTextOnly===true||payload.currentDrawingVisionOnly===true)&&!decimalCreditPolicy(operationTerms)) ||
         (payload.currentDrawingVisionOnly===true&&(operationTerms.operation_vision_chat_v3!==true||!images.length)) ||
-        !Array.isArray(policy.models) || !policy.models.some(m=>m.id===selected.modelId&&m.available===true))
+        !Array.isArray(policy.models) || !policy.models.some(m=>m.id===artModel&&m.available===true))
         return no('online-business-unavailable','\u5728\u7ebf\u7f8e\u5de5\u8ba1\u8d39\u7b56\u7565\u672a\u5f00\u901a\uff0c\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
       if(images.length){
         const accepted=await payload.confirmImageUpload({count:images.length,images});
@@ -1017,12 +1024,12 @@
       let retried=false;const stages=gptImage||nativeQwen?['structure']:['structure','english'];
       for(let si=0;si<stages.length;si++){const stage=stages[si];
         if(!current())return no('assistant-selection-changed',submitted?'模型或会话已变，本次未完成。':'模型或会话已变，未提交。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:submitted&&!lastQuota});
-        const body=stage==='structure'?{stage,modelId:selected.modelId,input,intentId,epoch:selected.epoch,...(images.length?{images}:{})}
+        const body=stage==='structure'?{stage,modelId:artModel,input,intentId,epoch:selected.epoch,...(images.length?{images}:{})}
           :{stage,stageToken,epoch:selected.epoch};
         const quoted=await api(base,'POST','/api/web/companion/art/quote',body,20000,abort.signal);
         if(!current())return no('assistant-selection-changed','模型或会话已变，未提交当前阶段。',{...(lastQuota?{quota:lastQuota}:{})});
         const quote=quoted?.quote;
-        if(quoted?.ok!==true||quote?.stage!==stage||quote?.model!==selected.modelId||
+        if(quoted?.ok!==true||quote?.stage!==stage||quote?.model!==artModel||
           !/^[A-Za-z0-9_-]{8,100}$/.test(quote?.requestId||'')||
           !/^sha256:[a-f0-9]{64}$/.test(quote?.pricingVersion||'')||quote.pricingVersion!==policy.version||
           !validOperationQuote(quote?.estimatedCredits,operationTerms)||
