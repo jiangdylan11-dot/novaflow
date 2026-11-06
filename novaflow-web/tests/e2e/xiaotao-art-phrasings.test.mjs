@@ -11,7 +11,7 @@ let passed=0,failed=0;
 const test=(name,fn)=>{try{fn();passed++;}catch(error){failed++;console.error('FAIL '+name+'\n'+error.message);}};
 const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
 const box={};createContext(box);
-runInContext(source.slice(source.indexOf('function turnLabels'),source.indexOf('function createQwenNodeRecheck'))+';this.planStyleRun=planStyleRun;this.plainFoartError=plainFoartError;this.pageLimit=pageLimitQuestion;',box);
+runInContext(source.slice(source.indexOf('function turnSlot'),source.indexOf('function createQwenNodeRecheck'))+';this.planStyleRun=planStyleRun;this.plainFoartError=plainFoartError;this.pageLimit=pageLimitQuestion;',box);
 runInContext(source.slice(source.indexOf('function keepTurnPictures'),source.indexOf('// Which pictures a request names as style'))+';this.keep=keepTurnPictures;',box);
 const context=()=>({schema:FOART_TOOL_SCHEMA,controls:[{id:'control-2',label:'尺寸',kind:'input',type:'number',min:64,max:4096}]});
 const plan=op=>({schema:FOART_TOOL_SCHEMA,status:op?'act':'reply',reply:'好的',operations:op?[op]:[]});
@@ -41,8 +41,8 @@ for(const item of PHRASINGS)test(item.text,()=>{
 test('with no parameters the wording still carries his sentences',()=>{
   const op={action:'image_generate',prompt:'p',generationMode:'img2img',useResult:false};
   const run=(text,count,subject)=>box.planStyleRun(op,text,count,subject,true);
-  assert.deepEqual([...run('分别用@参考图3@参考图4@参考图5各自生成一张',3,true).styleSlots],[0,1,2]);
-  assert.equal(run('主体@参考图1，继续用@参考图3@参考图4@参考图5各种再生成一次风格转换',3,true).subjectSlot,-1);
+  assert.deepEqual([...run('分别用@参考图1@参考图2@参考图3各自生成一张',3,true).styleSlots],[0,1,2]);
+  assert.equal(run('主体还是刚才那张，继续用@参考图1@参考图2@参考图3各种再生成一次风格转换',3,true).subjectSlot,-1);
   assert.equal(run('把@参考图1分别转成@参考图2@参考图3的风格',3,false).subjectSlot,0);
   assert.equal(run('把这些图合成一张',3,true),null);
 });

@@ -18,12 +18,18 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 
 test('mentions follow this turn\'s pictures',()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
-  const box={};vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function turnLabels'),source.indexOf('function createQwenNodeRecheck'))+';this.renumber=renumberTurnMentions;this.extras=styleExtras;',box);
-  assert.equal(box.renumber('分别用@参考图3@参考图4@参考图5各自生成一张',3),'分别用@参考图1@参考图2@参考图3各自生成一张');
-  assert.equal(box.renumber('把<image4>换成<image5>的风格',2),'把<image1>换成<image2>的风格');
-  assert.equal(box.renumber('@参考图1换成@参考图2的风格',2),'@参考图1换成@参考图2的风格','numbers already on the page stay');
-  assert.equal(box.renumber('主体@参考图1，用@参考图3@参考图4',2),'主体之前的主体图，用@参考图1@参考图2','labels from before no longer read as this turn\'s pictures');
-  assert.equal(box.extras('分别用@参考图3@参考图4@参考图5各自生成一张，人物姿势不变，背景改成海边'),'人物姿势不变，背景改成海边');
+  const box={};vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function turnSlot'),source.indexOf('function createQwenNodeRecheck'))+';this.slot=turnSlot;this.extras=styleExtras;',box);
+  assert.deepEqual([1,2,3].map(n=>box.slot(n,2)),[0,1,-1],'a number past this turn\'s pictures names nothing');
+  assert.equal(box.extras('分别用@参考图1@参考图2@参考图3各自生成一张，人物姿势不变，背景改成海边'),'人物姿势不变，背景改成海边');
+  assert.doesNotMatch(source,/renumberTurnMentions|turnLabels/,'no second numbering is guessed after send');
+  // The composer's @ list: this message's attachments from 1 (they replace the page on send), else the page.
+  const start=source.indexOf('const mentionResources=()=>{'),end=source.indexOf('const mountMentions');
+  const page=[{name:'old1.png',dataUrl:'data:o1'},{name:'old2.png',dataUrl:'data:o2'},null,{name:'old3.png',dataUrl:'data:o3'}];
+  const list=staged=>{const scope={root:{__NovaFlowArtGenerate:{references:()=>page}},controller:{state:{staged}}};vm.createContext(scope);
+    return plain(vm.runInContext(source.slice(start,end).replace('const mentionResources=','')+';',scope)()).map(row=>row.key+':'+row.fileName);};
+  assert.deepEqual(list([]),['art_reference_1:old1.png','art_reference_2:old2.png','art_reference_3:old3.png']);
+  assert.deepEqual(list([{id:'up-4',kind:'image',name:'photo.jpg',previewUrl:'data:p'},{id:'up-5',kind:'audio',name:'a.mp3'},{id:'up-6',kind:'image',name:'style.png',previewUrl:'data:s'}]),
+    ['art_reference_1:photo.jpg','art_reference_2:style.png'],'the screenshot case: two new pictures are 参考图1 and 参考图2, not 4 and 5');
 });
 
 test('a style run works through the page and puts it back',async()=>{

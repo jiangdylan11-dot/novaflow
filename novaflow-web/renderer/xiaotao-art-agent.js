@@ -270,18 +270,10 @@
     return slots;
   }
 
-  // The @ list keeps counting across a conversation, while the page holds this turn's pictures from 1:
-  // the last labels named are this turn's, in order; earlier ones are pictures from before.
-  function turnLabels(text,count){
-    const named=[...new Set([...String(text).matchAll(/(?:@参考图\s*|<image)(\d+)/g)].map(m=>Number(m[1])))].sort((a,b)=>a-b);
-    const slotOf=label=>{const index=named.slice(-count).indexOf(label);return named.length>=count&&index>=0?index:named.length<count&&label<=count?label-1:-1;};
-    return {named,slotOf};
-  }
-  function renumberTurnMentions(text,count){
-    const {named,slotOf}=turnLabels(text,count);
-    if(!count||!named.length||named.at(-1)<=count)return text;
-    return String(text).replace(/(@参考图\s*|<image)(\d+)>?/g,(tag,head,n)=>{const slot=slotOf(Number(n));return slot<0?'之前的主体图':head+(slot+1)+(head==='<image'?'>':'');});
-  }
+  // @参考图N is the Nth picture this turn works on: the composer numbers a message's own attachments
+  // from 1 (they replace the page's pictures when sent), or the page's pictures when none are attached.
+  // A number past this turn's pictures names nothing.
+  function turnSlot(label,count){return Number.isInteger(label)&&label>=1&&label<=count?label-1:-1;}
   // What a sentence asks beyond which pictures to use: the clauses that name no picture and no 分别/各自.
   const EACH_WORDS=/分别|各自|各种|每张|每个|逐张|逐个|挨个|依次|轮流|一张一张|one by one|each|respectively|separately/i;
   function styleExtras(message){
@@ -290,7 +282,7 @@
   // Who is who in a style request. The brain's parameters decide; wording is only read when it sent none.
   // Returns null for anything that is not a style run, {ask} for one short question, or the run itself.
   function planStyleRun(op,message,count,hasSubject,turnPictures){
-    const {slotOf}=turnLabels(message,count),unique=list=>[...new Set(list)].filter(slot=>slot>=0&&slot<count);
+    const slotOf=label=>turnSlot(label,count),unique=list=>[...new Set(list)].filter(slot=>slot>=0&&slot<count);
     const explicit=op.subjectRef!==undefined||op.styleRefs!==undefined||op.perStyle!==undefined;
     let subjectSlot=-1,styleSlots=[],perStyle=op.perStyle===true;
     if(explicit){
@@ -1777,8 +1769,7 @@
             let receipt;
             if(styleRuns.has(op))receipt=await runStyle(styleRuns.get(op));
             else if(['image_optimize','image_generate'].includes(op.action)){
-              const pictures=Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(Boolean).length;
-              receipt=await plannerDrawingPrompt({...op,prompt:renumberTurnMentions(op.prompt,pictures)},renumberTurnMentions(message,pictures));
+              receipt=await plannerDrawingPrompt(op,message);
               // "先画…然后做成视频": a finished picture is one step of the request, so the planner gets the next round.
               if(op.action==='image_generate'&&receipt?.phase==='completed'&&/然后|接着|之后|再把|再用|再做|做成|转成|导出|保存|配乐|配音|视频|动画/.test(positiveRequest))delete receipt.plannerPrompt;
             } else receipt=await tools.execute(state.provider==='api'&&op.action==='media'?await frameworkPrompt(op):op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
@@ -2906,11 +2897,12 @@
     for (const b of [newConversation, stop]) b.type = 'button'; iconButton(newConversation,'newChat','新对话（清空当前聊天记录）'); iconButton(stop,'stop','停止'); iconButton(send,'send','发送'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); const inputBox=el('div','nf-xiaotao-input-box'),inputField=el('div','nf-xiaotao-input-field');inputField.append(input);inputBox.append(stagedRow,inputField);footer.append(inputBox,footerActions);
     providers.append(modelTrigger);
     panel.append(header, modelMenu, messages, mediaPromptPanel, proposal, tools, status, error, footer); host.append(modelBackdrop, fab, panel); doc.body.append(host);
-    // Same @ references as the prompt boxes: page references first, then this turn's attachments.
+    // @参考图N numbers what this message will send: its own attachments from 1, which replace the
+    // page's pictures on send; with nothing attached, the page's pictures as its prompt box numbers them.
     let mentionHandle=null;
     const mentionResources=()=>{
-      const page=Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(Boolean).map(ref=>({id:ref.identity||ref.name,name:ref.name||ref.file?.name||'',previewUrl:ref.previewUrl||ref.dataUrl||''}));
       const staged=(controller.state.staged||[]).filter(item=>item.kind==='image').map(item=>({id:item.id,name:item.name,previewUrl:item.previewUrl||''}));
+      const page=staged.length?[]:Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(Boolean).map(ref=>({id:ref.identity||ref.name,name:ref.name||ref.file?.name||'',previewUrl:ref.previewUrl||ref.dataUrl||''}));
       return [...page,...staged].map((row,index)=>({key:'art_reference_'+(index+1),sourceId:String(row.id||index),occupied:true,kind:'image',fileName:row.name,previewUrl:row.previewUrl}));
     };
     const mountMentions=()=>{try{mentionHandle=root.NovaFlowResourceMentionTool?.mountTextarea?.({textarea:input,surface:'art-generate',getResources:mentionResources})||mentionHandle;}catch{}};

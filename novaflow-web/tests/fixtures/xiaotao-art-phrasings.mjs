@@ -12,8 +12,8 @@ export const PHRASINGS=[
   // Dylan's own sentences
   {text:'@参考图1把风格换成@参考图2的风格，人物姿势不变',pictures:2,brain:style(1,[2],{extraInstructions:'人物姿势不变'}),expect:run(0,[1],false)},
   {text:'@参考图1的风格换成@参考图2的风格，人物姿势不变',pictures:2,brain:style(1,[2],{extraInstructions:'人物姿势不变'}),expect:run(0,[1],false)},
-  {text:'分别用@参考图3@参考图4@参考图5各自生成一张',pictures:3,subject:true,brain:style(0,[3,4,5],each),expect:run(-1,[0,1,2],true)},
-  {text:'主体@参考图1，继续用@参考图3@参考图4@参考图5各种再生成一次风格转换',pictures:3,subject:true,brain:style(1,[3,4,5],each),expect:run(-1,[0,1,2],true)},
+  {text:'分别用@参考图1@参考图2@参考图3各自生成一张',pictures:3,subject:true,brain:style(0,[1,2,3],each),expect:run(-1,[0,1,2],true)},
+  {text:'主体还是刚才那张，继续用@参考图1@参考图2@参考图3各种再生成一次风格转换',pictures:3,subject:true,brain:style(0,[1,2,3],each),expect:run(-1,[0,1,2],true)},
   {text:'用@参考图1@参考图2@参考图3再各自生成一次',pictures:3,subject:true,brain:style(0,[1,2,3],each),expect:run(-1,[0,1,2],true)},
   // style, one run
   {text:'把@参考图1转成@参考图2的风格',pictures:2,brain:style(1,[2]),expect:run(0,[1],false)},
@@ -23,7 +23,7 @@ export const PHRASINGS=[
   {text:'make image 1 look like the style of image 2',pictures:2,brain:style(1,[2]),expect:run(0,[1],false)},
   {text:'restyle picture 2 using picture 1',pictures:2,brain:style(2,[1]),expect:run(1,[0],false)},
   {text:'把@参考图1转成@参考图2和@参考图3混合的风格',pictures:3,brain:style(1,[2,3]),expect:run(0,[1,2],false)},
-  {text:'换成@参考图3的风格',pictures:1,subject:true,brain:style(0,[3]),expect:run(-1,[0],false)},
+  {text:'换成@参考图1的风格',pictures:1,subject:true,brain:style(0,[1]),expect:run(-1,[0],false)},
   {text:'换成这张的风格',pictures:1,subject:true,brain:style(0,[1]),expect:run(-1,[0],false)},
   {text:'再用这张的风格转一次',pictures:1,subject:true,brain:style(0,[1]),expect:run(-1,[0],false)},
   // style, one run per picture
@@ -33,8 +33,8 @@ export const PHRASINGS=[
   {text:'挨个试一下这些风格',pictures:2,subject:true,brain:style(0,[1,2],each),expect:run(-1,[0,1],true)},
   {text:'每个风格都来一张',pictures:4,subject:true,brain:style(0,[1,2,3,4],each),expect:run(-1,[0,1,2,3],true)},
   {text:'依次换成这三种风格',pictures:3,subject:true,brain:style(0,[1,2,3],each),expect:run(-1,[0,1,2],true)},
-  {text:'再来一轮，@参考图6@参考图7',pictures:2,subject:true,brain:style(0,[6,7],each),expect:run(-1,[0,1],true)},
-  {text:'跳过上一张，用@参考图2@参考图9各转一张',pictures:2,subject:true,brain:style(0,[2,9],each),expect:run(-1,[0,1],true)},
+  {text:'再来一轮，@参考图1@参考图2',pictures:2,subject:true,brain:style(0,[1,2],each),expect:run(-1,[0,1],true)},
+  {text:'用@参考图2@参考图9各转一张',pictures:2,subject:true,brain:style(0,[2,9],each),expect:run(-1,[1],true)},
   {text:'one for each style please',pictures:2,subject:true,brain:style(0,[1,2],each),expect:run(-1,[0,1],true)},
   {text:'apply these styles one by one',pictures:3,subject:true,brain:style(0,[1,2,3],each),expect:run(-1,[0,1,2],true)},
   {text:'try each of these looks on her',pictures:2,subject:true,brain:style(0,[1,2],each),expect:run(-1,[0,1],true)},
