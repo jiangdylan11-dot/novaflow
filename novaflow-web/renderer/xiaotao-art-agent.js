@@ -2940,13 +2940,15 @@
       return createController({bridge,onChange:state=>{if(epoch===controllerEpoch)render(state);}});
     };
     controller=makeController();
+    // Signed in or out is what decides whether the conversation belongs to someone else now. The account label can
+    // change for the same person (restored from storage first, then from the profile load), and such a change used to
+    // rebuild the controller under a running turn right after a refresh ("模型选择或会话已变化"). A real account switch
+    // always passes through signed-out (or arrives from another tab via the storage listener below).
     const authIdentity=()=>{
       try {
         const auth=root.NovaFlowClientAuth?.state?.();
         if(!auth || typeof auth.loggedIn!=='boolean')return null;
-        if(!auth.loggedIn)return 'signed-out';
-        const account=String(auth.account||'').trim().toLowerCase();
-        return account ? `account:${account}` : null;
+        return auth.loggedIn?'signed-in':'signed-out';
       } catch {return null;}
     };
     let lastAuthIdentity=authIdentity();
@@ -2968,7 +2970,8 @@
     nodeRecheck=createQwenNodeRecheck({isNeeded:()=>qwenRecheckEligible()&&!controller.modelAvailable('qwen3.5-9b-heretic'),refresh:()=>controller.calibrateLocalStatus()});
     root.addEventListener?.('novaflow-client-auth-changed',()=>{
       const next=authIdentity();
-      if(next!==lastAuthIdentity){lastAuthIdentity=next;replaceSession();}
+      // Unknown → known is the auth module finishing its load, not a change of person.
+      if(next!==lastAuthIdentity){const known=lastAuthIdentity!==null;lastAuthIdentity=next;if(known&&next!==null)replaceSession();}
       controller.invalidateLocalCapability();nodeRecheck.reset();if(qwenRecheckEligible())void nodeRecheck.refreshNow();
     });
     const storedAccount=value=>{

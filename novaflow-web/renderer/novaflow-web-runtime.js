@@ -947,7 +947,8 @@
     const requestId=typeof payload.requestId==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(payload.requestId)?payload.requestId:'';
     // The existing business request UUID is the stable intent for every
     // retry/quote of this action, not a fresh identifier for each attempt.
-    const intentId=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)?requestId:'';
+    // The operation id is derived from this intent, so a retry after a refunded (settled) operation needs a fresh one.
+    let intentId=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)?requestId:'';
     const session=currentSession()?.token;
     const sessionGuard=captureFoartSessionGuard();
     if(!requestId||!intentId||!session||typeof sessionGuard!=='function'||typeof AbortController!=='function')
@@ -1063,7 +1064,7 @@
           return no('operation-incomplete',incompleteSettlementMessage({charged:result.settlement.settledCredits,uncollected:result.settlement.uncollectedCredits}),{quota,billingUnknown:true});
         if(result?.errorCode==='provider-failed'&&settled&&result.settlement.settledCredits===0&&stage==='structure'&&!retried&&current()){
           console.warn('[NovaFlow] Xiaotao art model answered nothing, retrying once');
-          retried=true;recoveryId='';pendingId='';si--;continue;
+          retried=true;recoveryId='';pendingId='';stageToken='';intentId=(root.crypto||crypto).randomUUID();si--;continue;
         }
         if(result?.ok!==true||!settled){
           console.warn('[NovaFlow] Xiaotao art phase rejected',stage,result?.errorCode||'assistant-business-invalid-result',result?.validationIssue||'');

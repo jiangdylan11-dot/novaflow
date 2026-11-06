@@ -13,7 +13,7 @@ function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,ser
  let token='session-a',calls=0,onExecute=null;
  const controller={businessModelSnapshot:()=>({...selection}),subscribeBusinessModel(fn){listeners.add(fn);return()=>listeners.delete(fn);}};
  const root={NovaFlowXiaotaoArtAgent:{panel:{controller}}},requestId='0d2aa225-e027-4d20-8ef3-7b5d1a9bbfee';
- const scope={root,Date,JSON,Object,String,Number,Array,Error,Promise,RegExp,AbortController,setTimeout,clearTimeout,
+ const scope={root,Date,JSON,Object,String,Number,Array,Error,Promise,RegExp,AbortController,setTimeout,clearTimeout,crypto:globalThis.crypto,
   CONFIG:{companionUrl:'https://example.invalid',authUrl:'https://example.invalid'},
   XIAOTAO_ONLINE_ART_RELEASE_ENABLED:artEnabled,foartSessionObservers:new Set(),
   companionPricing:async()=>({ok:true,policy:{version:'sha256:'+'c'.repeat(64),expiresAt:Date.now()+60000,...(decimal?{models:[{id:selection.modelId,available:true}]}:{}),config:{xiaotao_online:{...(operationV3?{operation_art_v3:true}:{}),...(decimal?{billing_scope:'operation',minimum_positive_credits:0,credit_amount_policy:'decimal-v1',credit_precision:6,credit_rounding:'ceil'}:{})}}}}),
@@ -148,6 +148,8 @@ test('a model that answered nothing is refunded by the server and the structure 
  assert.equal(result.ok,true);assert.equal(result.prompt,'safe draft');
  assert.equal(h.events.filter(e=>e.kind==='execute').length,2);assert.equal(h.events.filter(e=>e.kind==='quote').length,2);
  assert.equal(h.events.filter(e=>e.kind==='cancel').length,0);
+ const intents=h.events.filter(e=>e.kind==='quote').map(e=>e.body.intentId);
+ assert.ok(intents[0]&&intents[1]&&intents[0]!==intents[1],'the retry is a new intent, so the server opens a new operation instead of the refunded one');
  const twice=harness({gptResult:true,failStructure:()=>({ok:false,errorCode:'provider-failed',settlement:{requestId:'a'.repeat(64),status:'settled',settledCredits:0}})});
  twice.payload.targetEngine='gpt-image-2.5';delete twice.payload.promptSchema;delete twice.payload.agentModelLanguage;
  const failed=await twice.invoke();

@@ -576,11 +576,12 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
         negativePrompt:rt.state.negativePrompt||'',requirements:toRequestSlots(requirements),generationMode:op.generationMode,
         engine:gptDrawing?'gpt-image-2.5':'qwen-2.1-turbo',supportsNegativePrompt:!gptDrawing,signal,onProgress:onStatus,...onlineBusiness,images:requestImages,
         selectionStillCurrent,isImageInputCurrent:()=>imageBinding(rt)===beforeBinding&&(!scopedUploads||attachmentStillCurrent()),...(scopedText?{currentDrawingTextOnly:true}:{}),...(scopedVision?{currentDrawingVisionOnly:true}:{})});
-      // A request the edge runtime cut off mid-call (546) is sent once more as a new operation; the server refunds the cut one itself.
+      // A request the edge runtime cut off mid-call (546), or a model that answered nothing twice inside the runtime, is sent once
+      // more as a new request (new intent, new operation); the server has already refunded the failed one.
       let optimized;
       try{optimized=await optimizeOnce();}
       catch(error){
-        if(error?.code!=='assistant-business-interrupted'||signal?.aborted||!selectionStillCurrent()||!sessionStillCurrent()||(scopedUploads&&!attachmentStillCurrent())||imageBinding(rt)!==beforeBinding)throw error;
+        if(!['assistant-business-interrupted','provider-failed'].includes(error?.code)||signal?.aborted||!selectionStillCurrent()||!sessionStillCurrent()||(scopedUploads&&!attachmentStillCurrent())||imageBinding(rt)!==beforeBinding)throw error;
         onStatus?.('在线请求中断，正在重新发送…');
         optimized=await optimizeOnce();
       }
