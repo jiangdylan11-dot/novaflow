@@ -183,7 +183,8 @@ await assert.rejects((await createWorkflowHost({ rendererDir, objectInfo: { RMBG
 const io = (...names) => Object.fromEntries(names.map((name) => [name, ['*']]));
 const qwen21Info = {
   LoadImage: { input: { required: { image: [['x.png']] } } },
-  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['Qwen-Image-2.1-Turbo-BF16.gguf', 'qwen-image-2.1-UC-BF16.gguf']] } } },
+  UNETLoader: { input: { required: { unet_name: [['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']], weight_dtype: [['default', 'fp8_e4m3fn']] } } },
+  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } },
   CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']], type: [['stable_diffusion', 'qwen_image']] }, optional: { device: [['default', 'cpu']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
   TextEncodeQwenImage21: { input: { required: { ...io('clip', 'prompt', 'negative_prompt'), resolution: ['INT', { default: 1024 }], images: ['COMFY_AUTOGROW_V3', {}] }, optional: io('vae') } },
@@ -291,9 +292,9 @@ const t2i = await buildArt('txt2img', [], []);
 assert.equal(byClass(t2i, 'TextEncodeQwenImage21').length, 1);
 const t2iLatent = byClass(t2i, 'EmptyLatentImage')[0][1].inputs;
 assert.deepEqual([t2iLatent.width, t2iLatent.height], [896, 1312]);
-const t2iSampler = byClass(t2i, 'KSampler')[0][1].inputs;
-// Foart's current default is 25 steps; CFG 1 with no user's negative prompt.
-assert.deepEqual([t2iSampler.seed, t2iSampler.steps, t2iSampler.cfg], [42, 25, 1]);
+const t2iSampler = byClass(t2i, 'SamplerCustom')[0][1].inputs;
+// Every 2.1 run is Turbo since 2026-11-06: eight fixed sigmas, CFG 1 with no user's negative prompt.
+assert.deepEqual([t2iSampler.noise_seed, t2iSampler.cfg, t2i[t2iSampler.sigmas[0]].class_type], [42, 1, 'ManualSigmas']);
 assert.equal(byClass(t2i, 'SaveImage')[0][1].inputs.filename_prefix, 'Foart_Art');
 // W / H on reference 1's size (as a new reference 1 fills them): an edit on the encoder's own latent.
 const i2i = await buildArt('img2img', ['ref.png'], [{ width: 624, height: 1360 }], { width: 624, height: 1360 });
@@ -303,7 +304,7 @@ const i2iFirst = i2i[i2iEncode['images.image_1'][0]];
 assert.deepEqual([i2iFirst.class_type, i2iFirst.inputs.width, i2iFirst.inputs.height], ['ImageScale', 640, 1376]);
 assert.equal(i2i[i2iFirst.inputs.image[0]].inputs.image, 'ref.png');
 assert.equal(i2iEncode.resolution, 0);
-assert.deepEqual(byClass(i2i, 'KSampler')[0][1].inputs.latent_image[1], 2);
+assert.deepEqual(byClass(i2i, 'SamplerCustom')[0][1].inputs.latent_image[1], 2);
 // Another aspect (900 x 1300 here) is sampled on an empty latent of that size; a large reference 1 is
 // brought to ~1 MP by the graph instead of the encoder's resolution setting.
 const i2iRelayout = await buildArt('img2img', ['big.png'], [{ width: 2048, height: 2048 }]);
@@ -311,7 +312,7 @@ const relayoutEncode = byClass(i2iRelayout, 'TextEncodeQwenImage21')[0][1].input
 assert.equal(relayoutEncode.resolution, 0);
 const relayoutFirst = i2iRelayout[relayoutEncode['images.image_1'][0]].inputs;
 assert.ok(relayoutFirst.width * relayoutFirst.height <= 1048576);
-assert.equal(i2iRelayout[byClass(i2iRelayout, 'KSampler')[0][1].inputs.latent_image[0]].class_type, 'EmptyLatentImage');
+assert.equal(i2iRelayout[byClass(i2iRelayout, 'SamplerCustom')[0][1].inputs.latent_image[0]].class_type, 'EmptyLatentImage');
 await assert.rejects(buildArt('img2img', ['ref.png'], [], { nsfw: true }), /旧版 NSFW 生图路线已移除/);
 const template = ['User instruction, highest priority:', '补全腿部', '', 'Complete the masked missing area.', 'Transparent background.', '', 'Original protective context:', 'leg'].join(String.fromCharCode(10));
 const withParts = promptOf(JSON.parse(JSON.stringify(await build21(undefined, { promptParts: { user: '补全腿部，赤脚', part: 'Extend the leg.' } }, template))));
@@ -361,7 +362,7 @@ const transferHost = await createWorkflowHost({ rendererDir, objectInfo: { ...qw
 const transfer = await transferHost.buildGraph({ module: 'spine-split-runtime', method: 'buildObjectTransferQwen21Workflow', options: { __args: transferArgs } });
 assert.equal(transfer['1'].inputs.image, 'nfweb-1-0-run_placement.png');
 assert.equal(transfer['2'].inputs.image, 'nfweb-1-1-run_scene.png');
-assert.equal(transfer['4'].inputs.unet_name, 'Qwen-Image-2.1-Turbo-BF16.gguf');
+assert.equal(transfer['4'].inputs.unet_name, 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors');
 assert.equal(Object.values(transfer).find((node) => node.class_type === 'SaveImage').inputs.filename_prefix, 'run_1');
 // The guard: a graph that names a file this task did not upload is refused.
 assertGraphLoadsTaskInputs(transfer, ['nfweb-1-0-run_placement.png', 'nfweb-1-1-run_scene.png']);

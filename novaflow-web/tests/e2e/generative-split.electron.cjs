@@ -59,7 +59,7 @@ app.whenReady().then(async () => {
       let mismatch = false; try { api.restoreFrame(canvas(32, 32), frame); } catch { mismatch = true; }
       ok(mismatch, 'wrong output dimensions rejected before placement');
       const info = Object.fromEntries(['LoadImage','NovaFlowGGUFBF16Loader','CLIPLoader','VAELoader','TextEncodeQwenImage21','QwenImage21Cache','BasicGuider','RandomNoise','KSamplerSelect','SamplerCustomAdvanced','VAEDecode','SaveImage','ManualSigmas','BasicScheduler'].map(k => [k, {}]));
-      info.NovaFlowGGUFBF16Loader.input = { required: { unet_name: [['Qwen-Image-2.1-Turbo-BF16.gguf','qwen-image-2.1-UC-BF16.gguf']] } };
+      info.NovaFlowGGUFBF16Loader.input = { required: { unet_name: [['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors','qwen-image-2.1-UC-BF16.gguf']] } };
       info.CLIPLoader.input = { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']] } };
       info.VAELoader.input = { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } };
       window.splitUploads = {}; window.splitCalls = []; window.splitPrompts = []; t.install(info);

@@ -30,22 +30,23 @@ assert(Object.values(graph).some(item => item.class_type === 'CheckpointLoaderSi
 // Drawing needs its model/sampling helper as well as a registered builder.
 // Without that dependency a reduced package silently uses fallback sampling.
 const artInfo = {
-  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf', 'Qwen-Image-2.1-Turbo-BF16.gguf']] } } },
+  UNETLoader: { input: { required: { unet_name: [['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']], weight_dtype: [['default']] } } },
   CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
-  TextEncodeQwenImage21: {}, QwenImage21Cache: {}, KSampler: {}, VAEDecode: {}, SaveImage: {}, ImageScale: {}
+  TextEncodeQwenImage21: {}, QwenImage21Cache: {}, KSampler: {}, VAEDecode: {}, SaveImage: {}, ImageScale: {}, ManualSigmas: {}, SamplerCustom: {}, KSamplerSelect: {}
 };
 const artHost = await createWorkflowHost({ rendererDir: outputDir, objectInfo: artInfo });
 const art = await artHost.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
   'local', 'txt2img', [], 'NF_compute', 'a red swordswoman', '', 'fixture', [],
   { provider: 'local', mode: 'txt2img', width: 900, height: 1300, seed: 42, randomSeed: false, localDrawEngine: 'qwen-2.1',
-    samplingOverrides: { 'qwen-2.1:txt2img': { steps: 37, cfg: 2.2 } } }, 4, {}
+    samplingOverrides: { 'qwen-2.1-turbo:txt2img': { cfg: 2.2 } } }, 4, {}
 ] } });
 assert(Object.values(art).some(item => item.class_type === 'TextEncodeQwenImage21'));
-const sampler = Object.values(art).find(item => item.class_type === 'KSampler');
-assert.equal(sampler.inputs.seed, 42);
-assert.equal(sampler.inputs.steps, 37);
+// Every 2.1 run is Turbo (eight fixed sigmas) since 2026-11-06; the user's cfg override still applies.
+const sampler = Object.values(art).find(item => item.class_type === 'SamplerCustom');
+assert.equal(sampler.inputs.noise_seed, 42);
 assert.equal(sampler.inputs.cfg, 2.2);
+assert.equal(art[sampler.inputs.sigmas[0]].class_type, 'ManualSigmas');
 
 const packaged = JSON.parse(await readFile(new URL('../../worker/electron-builder-compute.json', import.meta.url), 'utf8'));
 assert(!packaged.extraResources.some(item => /web-dist|worker-renderer/.test(item.from)));

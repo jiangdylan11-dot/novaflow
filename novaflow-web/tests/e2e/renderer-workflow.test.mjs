@@ -228,7 +228,7 @@ try {
           prompt: 'a small blue cube on a white table, product photo',
           width: 512, height: 512, steps: 4, count: 1,
           localWorkflow: {
-            1: { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: 'Qwen-Image-2.1-Turbo-BF16.gguf' } },
+            1: { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors' } },
             9: { class_type: 'SaveImage', inputs: { images: [1, 0], filename_prefix: 'e2e' } }
           }
         }

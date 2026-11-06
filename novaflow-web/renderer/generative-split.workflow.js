@@ -5,15 +5,17 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict'
 
+  // One line only since 2026-11-06: the 普通 · BF16 (40-step, UC gguf) profile was removed.
   const PROFILE_OPTIONS = Object.freeze([
-    { id: 'turbo', label: 'Turbo · BF16', steps: 8 },
-    { id: 'standard', label: '普通 · BF16', steps: 40 }
+    { id: 'turbo', label: 'Turbo · INT8', steps: 8 }
   ])
 
   function runtimeProfile(id) {
-    if (id !== 'turbo' && id !== 'standard') throw new Error('未知的对象分离线路')
+    if (id !== 'turbo') throw new Error('未知的对象分离线路')
+    // Turbo: INT8 ConvRot weights through ComfyUI's own UNETLoader (2026-11-06).
     return {
-      unet: id === 'turbo' ? 'Qwen-Image-2.1-Turbo-BF16.gguf' : 'qwen-image-2.1-UC-BF16.gguf',
+      loader: 'UNETLoader',
+      unet: 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors',
       clip: 'qwen3vl_8b_bf16_heretic.safetensors',
       vae: 'qwen_image_2.1_vae_bf16.safetensors'
     }
@@ -36,12 +38,13 @@
 
   function buildWorkflow(options) {
     const info = options.objectInfo || {}
-    const profile = options.profile || 'turbo'
+    // A saved 'standard' choice from before 2026-11-06 runs on the one remaining line.
+    const profile = options.profile === 'standard' ? 'turbo' : (options.profile || 'turbo')
     const model = runtimeProfile(profile)
-    const required = ['LoadImage', 'NovaFlowGGUFBF16Loader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'QwenImage21Cache', 'BasicGuider', 'RandomNoise', 'KSamplerSelect', 'SamplerCustomAdvanced', 'VAEDecode', 'SaveImage']
-    required.push(profile === 'turbo' ? 'ManualSigmas' : 'BasicScheduler')
+    const required = ['LoadImage', model.loader, 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'QwenImage21Cache', 'BasicGuider', 'RandomNoise', 'KSamplerSelect', 'SamplerCustomAdvanced', 'VAEDecode', 'SaveImage']
+    required.push('ManualSigmas')
     for (const node of required) if (!info[node]) throw new Error(`对象分离缺少节点：${node}`)
-    for (const [node, key, file] of [['NovaFlowGGUFBF16Loader', 'unet_name', model.unet], ['CLIPLoader', 'clip_name', model.clip], ['VAELoader', 'vae_name', model.vae]]) {
+    for (const [node, key, file] of [[model.loader, 'unet_name', model.unet], ['CLIPLoader', 'clip_name', model.clip], ['VAELoader', 'vae_name', model.vae]]) {
       if (!choices(info, node, key).includes(file)) throw new Error(`对象分离缺少模型：${file}`)
     }
     if (!options.imageName || !options.guideName) throw new Error('对象分离缺少画面或定位图')
@@ -50,7 +53,7 @@
     const graph = {
       '1': { class_type: 'LoadImage', inputs: { image: options.imageName } },
       '2': { class_type: 'LoadImage', inputs: { image: options.guideName } },
-      '3': { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: model.unet } },
+      '3': { class_type: model.loader, inputs: { unet_name: model.unet, weight_dtype: 'default' } },
       '4': { class_type: 'CLIPLoader', inputs: { clip_name: model.clip, type: 'qwen_image', device: 'default' } },
       '5': { class_type: 'VAELoader', inputs: { vae_name: model.vae } },
       '6': { class_type: 'TextEncodeQwenImage21', inputs: { clip: ['4', 0], vae: ['5', 0], prompt: promptForStage(options.stage, options.objectName, options.prompt), negative_prompt: '', resolution: 0, 'images.image_1': ['1', 0], 'images.image_2': ['2', 0] } },
@@ -58,9 +61,7 @@
       '8': { class_type: 'BasicGuider', inputs: { model: ['7', 0], conditioning: ['6', 0] } },
       '9': { class_type: 'RandomNoise', inputs: { noise_seed: seed } },
       '10': { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' } },
-      '11': profile === 'turbo'
-        ? { class_type: 'ManualSigmas', inputs: { sigmas: '1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0' } }
-        : { class_type: 'BasicScheduler', inputs: { model: ['7', 0], scheduler: 'simple', steps: 40, denoise: 1 } },
+      '11': { class_type: 'ManualSigmas', inputs: { sigmas: '1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0' } },
       '12': { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['9', 0], guider: ['8', 0], sampler: ['10', 0], sigmas: ['11', 0], latent_image: ['6', 2] } },
       '13': { class_type: 'VAEDecode', inputs: { samples: ['12', 0], vae: ['5', 0] } },
       '14': { class_type: 'SaveImage', inputs: { images: ['13', 0], filename_prefix: options.outputPrefix || 'Foart_GenerativeSplit' } }

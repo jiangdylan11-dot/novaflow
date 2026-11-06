@@ -23,8 +23,9 @@ const run = (state, options = {}, provider = 'local') =>
   ({ __args: [provider, 'txt2img', [], 'NovaFlow', 'prompt', '', 'client', [], state, undefined, options] });
 
 // ---- the model a run is queued for: the conditions the node builds 2.1 under -------------------
-equal(workflowModelId(M, run({ localDrawEngine: 'qwen-2.1' })), 'qwen-image-2.1');
-equal(workflowModelId(M, run({ localUiEngine: 'qwen-2.1' }, { taskProfile: 'ui-design' })), 'qwen-image-2.1');
+// One 2.1 line since 2026-11-06: every 2.1 run is queued for the Turbo model.
+equal(workflowModelId(M, run({ localDrawEngine: 'qwen-2.1' })), 'qwen-image-2.1-turbo');
+equal(workflowModelId(M, run({ localUiEngine: 'qwen-2.1' }, { taskProfile: 'ui-design' })), 'qwen-image-2.1-turbo');
 equal(workflowModelId(M, run({ localUiEngine: 'qwen-2.1', localQwen21Variant: 'turbo' }, { taskProfile: 'ui-design' })), 'qwen-image-2.1-turbo');
 equal(workflowModelId(M, run({ localDrawEngine: 'qwen-2.1', localQwen21Variant: 'turbo' })), 'qwen-image-2.1-turbo');
 equal(workflowModelId(M, run({})), 'qwen-image-2.1-turbo');
@@ -76,12 +77,14 @@ try {
   equal(task21.body.capableWorkers, 0);
   equal(await claim(older), null);
 
-  const newer = await node('2.1', ['qwen-image-2.1'].map((model_id) =>
+  // Since 2026-11-06 a 2.1 node reports both ids for the same INT8 Turbo files, and every 2.1 run is
+  // queued for the Turbo model.
+  const newer = await node('2.1', ['qwen-image-2.1', 'qwen-image-2.1-turbo'].map((model_id) =>
     ({ model_id, status: 'ready', detail: { lora_catalog: lora(['qwen/q21.safetensors']) } })));
   const caps = (await request('/api/web/capabilities')).body;
   equal(caps.features.qwenImage21, true);
   const claimed = await claim(newer);
-  equal([claimed.id, claimed.model_id], [task21.body.task.id, 'qwen-image-2.1']);
+  equal([claimed.id, claimed.model_id], [task21.body.task.id, 'qwen-image-2.1-turbo']);
   const fallback = await create(run({}));
   equal(fallback.body.task.model_id, 'qwen-image-2.1-turbo');
   equal(await claim(older), null);
@@ -127,7 +130,10 @@ try {
 // ---- the node reports 2.1 when it can build the graph --------------------------------------------
 const io = (...names) => Object.fromEntries(names.map((name) => [name, ['*']]));
 const qwen21Nodes = {
-  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } },
+  UNETLoader: { input: { required: { unet_name: [['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']], weight_dtype: [['default']] } } },
+  ManualSigmas: { input: { required: io('sigmas') } },
+  SamplerCustom: { input: { required: io('model', 'sigmas') } },
+  KSamplerSelect: { input: { required: io('sampler_name') } },
   CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']], type: [['qwen_image']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
   TextEncodeQwenImage21: { input: { required: io('clip', 'prompt') } },

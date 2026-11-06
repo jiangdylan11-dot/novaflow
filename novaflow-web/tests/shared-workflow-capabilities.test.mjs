@@ -19,7 +19,7 @@ test('real workflow routing matches independently detected RMBG, B-only SAM and 
   assert.equal(workflowModelId('spine-split-runtime',{__args:[null,'test.png','test',{}, {modelSize:'ViT-H'}]},'samPointWorkflowFromPrompts'),'foart-sam-vit-h-v1');
   assert.equal(workflowModelId('spine-split-runtime',{__args:[null,'test.png','test',{}, {modelSize:'ViT-L'}]},'samPointWorkflowFromPrompts'),'foart-sam-vit-l-v1');
   assert.equal(workflowModelId('spine-split-runtime',{__args:[null,'test.png','test',{}, {}]},'samPointWorkflowFromPrompts'),'foart-sam-auto-v1');
-  assert.equal(workflowModelId('NovaFlowArtGenerateProviderWorkflow',{provider:'local',localWorkflow:{'1':{class_type:'NovaFlowGGUFBF16Loader',inputs:{unet_name:'Qwen-Image-2.1-Turbo-BF16.gguf'}}}},'buildRunWorkflow'),'qwen-image-2.1-turbo');
+  assert.equal(workflowModelId('NovaFlowArtGenerateProviderWorkflow',{provider:'local',localWorkflow:{'1':{class_type:'NovaFlowGGUFBF16Loader',inputs:{unet_name:'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors'}}}},'buildRunWorkflow'),'qwen-image-2.1-turbo');
   assert.equal(workflowModelId('NovaFlowArtGenerateProviderWorkflow',{provider:'local',localWorkflow:{'1':{class_type:'CheckpointLoaderSimple',inputs:{ckpt_name:'Qwen-Rapid-AIO-NSFW-v20.safetensors'}}}},'buildRunWorkflow'),'qwen-image-2.1-turbo');
   assert.equal(workflowModelId('spine-split-runtime',{__args:[null,'test.png','test',{}, {modelSize:'ViT-B'}]},'samPointWorkflowFromPrompts'),SAM_B_CAPABILITY);
   assert.notEqual(workflowModelId('spine-split-runtime',{__args:[null,'test.png','test',{}, {modelSize:'ViT-H'}]},'samPointWorkflowFromPrompts'),SAM_B_CAPABILITY);

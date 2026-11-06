@@ -95,30 +95,34 @@ export const MODEL_MANIFEST = Object.freeze([
     // Drawing and UI design on Qwen-Image-2.1. A node reports it ready exactly when it can build the
     // 2.1 graph (detectQwenImage21, the check the builder itself makes), and the control plane queues
     // a run that asks for 2.1 on this model, so only such a node claims it.
+    // Since 2026-11-06 the 普通 BF16 line is gone: this id stays for the control plane's qwenImage21
+    // feature flag and pool queries, and names the same INT8 Turbo files as qwen-image-2.1-turbo.
     model_id: 'qwen-image-2.1',
-    display_name: 'Qwen-Image-2.1',
+    display_name: 'Qwen-Image-2.1 (Turbo INT8 ConvRot)',
     version: '2.1',
     runtime: 'image',
     min_vram_mb: 16000,
     compatible_workflows: ['novaflow-brand-runtime.buildArtGenerateRunWorkflow'],
     required_files: [
-      { path: 'diffusion_models/qwen-image-2.1-UC-BF16.gguf', min_bytes: 14_000_000_000, sha256: null },
+      { path: 'diffusion_models/Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors', min_bytes: 7_000_000_000, sha256: null },
       { path: 'text_encoders/qwen3vl_8b_bf16_heretic.safetensors', min_bytes: 17_000_000_000, sha256: null },
       { path: 'vae/qwen_image_2.1_vae_bf16.safetensors', min_bytes: 600_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装支持 Qwen 2.1 BF16 的 ComfyUI 节点。'
+      hint: '导入 Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors、BF16 编码器和 VAE。'
     }
   },
   {
-    model_id:'qwen-image-2.1-turbo', display_name:'Qwen-Image-2.1 Turbo GGUF BF16', version:'2.1-turbo', runtime:'image', min_vram_mb:16000,
+    // INT8 ConvRot weights in ComfyUI's scaled-int8 layout (converted from the Unsloth export with
+    // work/art-style-ab-20261105/convert_unsloth_int8_convrot_to_comfy.py), loaded by UNETLoader.
+    model_id:'qwen-image-2.1-turbo', display_name:'Qwen-Image-2.1 Turbo INT8 ConvRot', version:'2.1-turbo', runtime:'image', min_vram_mb:16000,
     compatible_workflows:['novaflow-brand-runtime.buildArtGenerateRunWorkflow','spine-split-runtime'],
     required_files:[
-      {path:'diffusion_models/Qwen-Image-2.1-Turbo-BF16.gguf',min_bytes:14_000_000_000,sha256:null},
+      {path:'diffusion_models/Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors',min_bytes:7_000_000_000,sha256:null},
       {path:'text_encoders/qwen3vl_8b_bf16_heretic.safetensors',min_bytes:17_000_000_000,sha256:null},
       {path:'vae/qwen_image_2.1_vae_bf16.safetensors',min_bytes:600_000_000,sha256:null}
-    ],download:{mode:'import_or_configured_url',hint:'导入 Qwen-Image-2.1-Turbo-BF16.gguf、BF16 编码器和 VAE；需要 ManualSigmas 与 SamplerCustom 节点。'}
+    ],download:{mode:'import_or_configured_url',hint:'导入 Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors、BF16 编码器和 VAE；需要 ManualSigmas 与 SamplerCustom 节点。'}
   },
   {
     // 音频 · 音乐. The medium text-to-audio checkpoint plus its text encoder.

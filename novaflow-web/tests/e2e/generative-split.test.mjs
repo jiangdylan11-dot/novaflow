@@ -7,26 +7,28 @@ import { createWorkflowHost } from '../../worker/src/comfy/workflow-host.mjs';
 import { workflowModelId, isAllowedWorkflowCall } from '../../packages/shared/src/workflow-modules.mjs';
 createRequire(import.meta.url)('../../renderer/generative-split.workflow.js');
 const api = globalThis.NovaFlowGenerativeSplitWorkflow;
-const unet = ['Qwen-Image-2.1-Turbo-BF16.gguf', 'qwen-image-2.1-UC-BF16.gguf'];
-const info = Object.fromEntries(['LoadImage', 'NovaFlowGGUFBF16Loader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'QwenImage21Cache', 'BasicGuider', 'RandomNoise', 'KSamplerSelect', 'SamplerCustomAdvanced', 'VAEDecode', 'SaveImage', 'ManualSigmas', 'BasicScheduler'].map(name => [name, {}]));
+const unet = ['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors', 'qwen-image-2.1-UC-BF16.gguf'];
+const info = Object.fromEntries(['LoadImage', 'NovaFlowGGUFBF16Loader', 'UNETLoader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'QwenImage21Cache', 'BasicGuider', 'RandomNoise', 'KSamplerSelect', 'SamplerCustomAdvanced', 'VAEDecode', 'SaveImage', 'ManualSigmas', 'BasicScheduler'].map(name => [name, {}]));
 info.NovaFlowGGUFBF16Loader.input = { required: { unet_name: [unet] } };
+info.UNETLoader.input = { required: { unet_name: [unet], weight_dtype: [['default', 'fp8_e4m3fn']] } };
 info.CLIPLoader.input = { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']] } };
 info.VAELoader.input = { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } };
 const options = { profile: 'turbo', stage: 'object', imageName: 'original.png', guideName: 'guide.png', objectName: '帽子', seed: 42, taskProfile: 'generative-split' };
 
-test('BF16 profiles, native RGBA latent and strict model availability', () => {
+test('one Turbo INT8 profile (a saved 普通 choice runs on it), native RGBA latent and strict model availability', () => {
+  assert.deepEqual(api.profiles.map((p) => p.id), ['turbo']);
   for (const profile of ['turbo', 'standard']) {
     const graph = api.buildWorkflow({ ...options, profile, objectInfo: info });
-    assert.equal(graph[3].inputs.unet_name, unet[profile === 'turbo' ? 0 : 1]);
+    assert.equal(graph[3].inputs.unet_name, unet[0]);
+    assert.equal(graph[3].class_type, 'UNETLoader');
     assert.equal(graph[4].inputs.clip_name, 'qwen3vl_8b_bf16_heretic.safetensors');
     assert.deepEqual(graph[12].inputs.latent_image, ['6', 2]);
     assert.equal(graph[6].inputs.resolution, 0);
     assert.equal(graph[7].inputs.dtype, 'default');
     assert(!Object.values(graph).some(node => /NoiseMask|RMBG/.test(node.class_type)));
-    if (profile === 'turbo') assert.equal(graph[11].inputs.sigmas.split(',').length, 9);
-    else assert.equal(graph[11].inputs.steps, 40);
+    assert.equal(graph[11].inputs.sigmas.split(',').length, 9);
   }
-  assert.throws(() => api.buildWorkflow({ ...options, objectInfo: { ...info, NovaFlowGGUFBF16Loader: {} } }), /缺少模型/);
+  assert.throws(() => api.buildWorkflow({ ...options, objectInfo: { ...info, UNETLoader: {} } }), /缺少模型/);
   assert.throws(() => api.buildWorkflow({ ...options, objectInfo: { ...info, ManualSigmas: null } }), /缺少节点/);
   assert.throws(() => api.buildWorkflow({ ...options, profile: 'int8', objectInfo: info }), /未知/);
   assert.match(api.promptForStage('object', '帽子'), /不限制补全范围/);
@@ -109,7 +111,7 @@ test('worker replays integrated builder with its own catalogue and correct sched
   const host = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: info });
   assert(isAllowedWorkflowCall('spine-split-runtime', 'buildGenerativeSplitWorkflow'));
   assert.equal(workflowModelId('spine-split-runtime', { __args: [{}, options] }, 'buildGenerativeSplitWorkflow'), 'qwen-image-2.1-turbo');
-  assert.equal(workflowModelId('spine-split-runtime', { __args: [{}, { ...options, profile: 'standard' }] }, 'buildGenerativeSplitWorkflow'), 'qwen-image-2.1');
+  assert.equal(workflowModelId('spine-split-runtime', { __args: [{}, { ...options, profile: 'standard' }] }, 'buildGenerativeSplitWorkflow'), 'qwen-image-2.1-turbo');
   assert.equal(workflowModelId('spine-split-runtime', { __args: [{}, {}] }), 'qwen-image-2.1-turbo');
   const graph = await host.buildGraph({ module: 'spine-split-runtime', method: 'buildGenerativeSplitWorkflow', options: { __args: [{ poisonedCatalogue: true }, options] } });
   assert.deepEqual(JSON.parse(JSON.stringify(graph)), api.buildWorkflow({ ...options, objectInfo: info }));

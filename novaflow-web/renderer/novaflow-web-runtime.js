@@ -3397,7 +3397,7 @@
   const PORT_TASK_TYPE = { 8188: IMAGE_PROBE, 8189: 'h3_i2v' };
 
   function selectedImageProbeType() {
-    return root.__NovaFlowArtGenerate?.state?.localQwen21Variant==='standard' ? 'qwen21-standard' : 'qwen21-turbo';
+    return 'qwen21-turbo'; // the 普通 (BF16) line was removed on 2026-11-06
   }
   let capsCache = { at: 0, byTaskType: {} };
   async function poolHas(taskType) {

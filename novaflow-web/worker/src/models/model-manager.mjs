@@ -153,14 +153,18 @@ export async function inspectAllModels(modelsRoot, { verifyHashes = false, manif
 // The files the renderer's Qwen-Image-2.1 builders choose from (ART_QWEN21_* in
 // renderer/novaflow-brand-runtime.js). The page asks for this before it plans a
 // UI-design run: a 2.1 node takes up to 16 references, a 2511 node three.
-const QWEN21_UNETS = ['qwen-image-2.1-UC-BF16.gguf'];
+// Turbo: INT8 ConvRot weights through ComfyUI's own UNETLoader (2026-11-06). The 普通 BF16 gguf line
+// (qwen-image-2.1-UC-BF16.gguf through NovaFlowGGUFBF16Loader) was removed the same day.
+const QWEN21_TURBO_LOADER = 'UNETLoader';
+const QWEN21_TURBO_UNETS = ['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors'];
 const QWEN21_CLIPS = ['qwen3vl_8b_bf16_heretic.safetensors', 'qwen3vl_8b_bf16.safetensors'];
 const QWEN21_VAE = 'qwen_image_2.1_vae_bf16.safetensors';
-const QWEN21_NODES = ['TextEncodeQwenImage21', 'NovaFlowGGUFBF16Loader', 'CLIPLoader', 'VAELoader', 'EmptyLatentImage', 'SplitImageWithAlpha', 'ImageScale', 'ImageCrop'];
+const QWEN21_NODES = ['TextEncodeQwenImage21', QWEN21_TURBO_LOADER, 'CLIPLoader', 'VAELoader', 'EmptyLatentImage', 'SplitImageWithAlpha', 'ImageScale', 'ImageCrop'];
 
-export async function detectQwenImage21(comfy, { timeoutMs = 5000, variant = 'standard' } = {}) {
+export async function detectQwenImage21(comfy, { timeoutMs = 5000, variant = 'turbo' } = {}) {
   const specs = {};
-  for (const node of [...QWEN21_NODES,...(variant==='turbo'?['ManualSigmas','SamplerCustom','KSamplerSelect']:[])]) {
+  const loader = QWEN21_TURBO_LOADER;
+  for (const node of [...QWEN21_NODES, 'ManualSigmas', 'SamplerCustom', 'KSamplerSelect']) {
     try {
       const res = await fetch(comfy.baseUrl + '/object_info/' + node, { signal: AbortSignal.timeout(timeoutMs) });
       if (!res.ok) return false;
@@ -173,7 +177,7 @@ export async function detectQwenImage21(comfy, { timeoutMs = 5000, variant = 'st
     const field = specs[node]?.input?.required?.[key];
     return Array.isArray(field) && Array.isArray(field[0]) ? field[0].map(String) : [];
   };
-  return (variant==='turbo'?['Qwen-Image-2.1-Turbo-BF16.gguf']:QWEN21_UNETS).some((name) => choices('NovaFlowGGUFBF16Loader', 'unet_name').includes(name))
+  return QWEN21_TURBO_UNETS.some((name) => choices(loader, 'unet_name').includes(name))
     && QWEN21_CLIPS.some((name) => choices('CLIPLoader', 'clip_name').includes(name))
     && choices('VAELoader', 'vae_name').includes(QWEN21_VAE);
 }

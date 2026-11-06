@@ -20,7 +20,8 @@ const assert = new Proxy(strictAssert, { get(target, key) {
 const io = (...names) => Object.fromEntries(names.map((name) => [name, ['*']]));
 const qwen21Info = {
   LoadImage: { input: { required: { image: [['x.png']] } } },
-  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf', 'Qwen-Image-2.1-Turbo-BF16.gguf']] } } },
+  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } },
+  UNETLoader: { input: { required: { unet_name: [['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']], weight_dtype: [['default', 'fp8_e4m3fn']] } } },
   CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']], type: [['stable_diffusion', 'qwen_image']] }, optional: { device: [['default', 'cpu']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
   TextEncodeQwenImage21: { input: { required: { ...io('clip', 'prompt', 'negative_prompt'), resolution: ['INT', { default: 1024 }], images: ['COMFY_AUTOGROW_V3', {}] }, optional: io('vae') } },
@@ -55,8 +56,8 @@ for (const [intent, preserveLayout] of [[undefined,undefined], ['redesign',false
     ] }
   });
   assert.equal(graph['7'].inputs.latent_image[0], preserveLayout ? '5' : intent === 'redesign' ? '6' : '5');
-  assert.equal(graph['7'].inputs.denoise, 1);
-  assert.equal(graph['7'].inputs.steps, 25);
+  assert.equal(graph['7'].class_type, 'SamplerCustom'); // every 2.1 run is Turbo since 2026-11-06
+  assert.equal(graph[graph['7'].inputs.sigmas[0]].class_type, 'ManualSigmas');
   if (preserveLayout) assert.match(graph['5'].inputs.prompt, /保持布局参考图的全部区域.*网格行列及控件数量/);
   if (intent === 'redesign' || intent === 'style-transfer') assert.doesNotMatch(graph['5'].inputs.prompt, /保持图1中主体的位置/);
   else assert.match(graph['5'].inputs.prompt, /保持图1中主体的位置/);
@@ -84,10 +85,10 @@ assert.ok(nativeGraph['5'].inputs['images.image_2']);
     { taskProfile: 'ui-design', referenceRoles: [{ index: 0, role: 'layout' }] }
   ] } });
   const standardUi = await host21.buildGraph(uiArgs('standard'));
-  assert.equal(standardUi['1'].inputs.unet_name, 'qwen-image-2.1-UC-BF16.gguf');
-  assert.equal(standardUi['7'].class_type, 'KSampler');
+  assert.equal(standardUi['1'].inputs.unet_name, 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors'); // a saved 普通 choice runs on the one line
+  assert.equal(standardUi['7'].class_type, 'SamplerCustom');
   const turboUi = await host21.buildGraph(uiArgs('turbo'));
-  assert.equal(turboUi['1'].inputs.unet_name, 'Qwen-Image-2.1-Turbo-BF16.gguf');
+  assert.equal(turboUi['1'].inputs.unet_name, 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors');
   assert.equal(turboUi['7'].class_type, 'SamplerCustom');
   assert.equal(turboUi['7'].inputs.cfg, 1);
   assert.ok(Object.values(turboUi).some((node) => node.class_type === 'ManualSigmas'));
@@ -163,7 +164,8 @@ for (let i = 0; i < 10; i += 1) {
   assert.equal(ui[ref[0]].inputs.image, names[i]);
 }
 assert.equal(encodeInputs['images.image_11'], undefined);
-assert.equal(byClass(ui, 'UNETLoader').length + byClass(ui, 'TextEncodeQwenImageEditPlus').length, 0);
+assert.equal(byClass(ui, 'TextEncodeQwenImageEditPlus').length, 0);
+assert.deepEqual(byClass(ui, 'UNETLoader').map(([, node]) => node.inputs.unet_name), ['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']);
 // The style screenshot and the background are over their 0.5 MP budget; the symbols go in as they are.
 const refScales = byClass(ui, 'ImageScale').filter(([, node]) => node.inputs.image[0] !== byClass(ui, 'SplitImageWithAlpha')[0][0]);
 assert.equal(refScales.length, 2);
@@ -174,8 +176,9 @@ for (const [, node] of refScales) {
 const latent = byClass(ui, 'EmptyLatentImage')[0][1].inputs;
 // The working size keeps the requested aspect within 1% (flooring both sides stretched it 3%).
 assert.deepEqual([latent.width, latent.height], [640, 1376]);
-const sampler = byClass(ui, 'KSampler')[0][1].inputs;
-assert.deepEqual([sampler.seed, sampler.steps, sampler.cfg, sampler.latent_image[0]], [7, 40, 1, byClass(ui, 'EmptyLatentImage')[0][0]]);
+// Every 2.1 run is Turbo since 2026-11-06: SamplerCustom on the eight fixed sigmas.
+const sampler = byClass(ui, 'SamplerCustom')[0][1].inputs;
+assert.deepEqual([sampler.noise_seed, sampler.cfg, sampler.latent_image[0]], [7, 1, byClass(ui, 'EmptyLatentImage')[0][0]]);
 // A finished layout must remain at its native working resolution, rather than
 // being treated like a small style sample. The panel's sampling values are real.
 const preservedUi = await buildUi(host21, ['portrait.png','material.png'], [{width:576,height:1248},{width:512,height:512}], ['layout','material'], { uiPreserveLayout:true, uiNativeEditPrompt:true });
@@ -193,7 +196,8 @@ const withNegative = JSON.parse(JSON.stringify(await host21.buildGraph({ module:
   16, { taskProfile: 'ui-design', referenceRoles: [{ index: 0, role: 'style' }, { index: 1, role: 'content' }] }
 ] } })));
 assert.equal(byClass(withNegative, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, '模糊，水印');
-assert.equal(byClass(withNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
+// On Turbo a negative prompt alone does not raise the CFG (only a value typed on the panel does).
+assert.equal(byClass(withNegative, 'SamplerCustom')[0][1].inputs.cfg, 1);
 // Opaque output at the requested size.
 const [splitId] = byClass(ui, 'SplitImageWithAlpha')[0];
 const finish = byClass(ui, 'ImageScale').find(([, node]) => node.inputs.image[0] === splitId)[1].inputs;
@@ -250,14 +254,14 @@ const buildDraw = async (names, sizes, width, height, negative = '', extraState 
   { provider: 'local', mode: 'img2img', width, height, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1', ...extraState }, 4, {}
 ] } })));
 const drawI2i = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720);
-// Drawing defaults to the user's 25 steps unless the panel says otherwise.
-assert.equal(byClass(drawI2i, 'KSampler')[0][1].inputs.steps, 25);
+// Drawing runs the Turbo eight-step schedule.
+assert.equal(byClass(drawI2i, 'SamplerCustom').length, 1);
 const drawSaved = drawI2i[byClass(drawI2i, 'SaveImage')[0][1].inputs.images[0]];
 assert.equal(drawSaved.class_type, 'ImageScale');
 assert.deepEqual([drawSaved.inputs.width, drawSaved.inputs.height], [512, 720]);
-assert.equal(byClass(drawI2i, 'KSampler')[0][1].inputs.cfg, 1);
+assert.equal(byClass(drawI2i, 'SamplerCustom')[0][1].inputs.cfg, 1);
 const drawEncode = byClass(drawI2i, 'TextEncodeQwenImage21')[0];
-assert.deepEqual(byClass(drawI2i, 'KSampler')[0][1].inputs.latent_image, [drawEncode[0], 2]);
+assert.deepEqual(byClass(drawI2i, 'SamplerCustom')[0][1].inputs.latent_image, [drawEncode[0], 2]);
 const drawFirst = drawI2i[drawEncode[1].inputs['images.image_1'][0]];
 assert.deepEqual([drawFirst.class_type, drawFirst.inputs.width, drawFirst.inputs.height], ['ImageScale', 512, 736]);
 assert.equal(drawI2i[drawFirst.inputs.image[0]].class_type, 'LoadImage');
@@ -272,7 +276,7 @@ Object.keys(drawI2i).forEach((id) => assert.ok(!reaches(drawI2i, id, id), `cycle
 const drawRelayout = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 1024, 1024);
 const relayoutLatent = byClass(drawRelayout, 'EmptyLatentImage')[0];
 assert.deepEqual([relayoutLatent[1].inputs.width, relayoutLatent[1].inputs.height], [1024, 1024]);
-assert.deepEqual(byClass(drawRelayout, 'KSampler')[0][1].inputs.latent_image, [relayoutLatent[0], 0]);
+assert.deepEqual(byClass(drawRelayout, 'SamplerCustom')[0][1].inputs.latent_image, [relayoutLatent[0], 0]);
 assert.equal(drawRelayout[byClass(drawRelayout, 'SaveImage')[0][1].inputs.images[0]].class_type, 'VAEDecode');
 // A large W / H is sampled at ~1.3 MP and scaled up at the end.
 const drawLarge = await buildDraw(['ref.png'], [{ width: 4000, height: 4000 }], 2048, 2048);
@@ -303,13 +307,13 @@ const drawT2i = async (userNegative, compiledNegative, extraState = {}) => JSON.
 ] } })));
 const profileOnly = await drawT2i('', '错误人体，畸形手指，低完成度');
 assert.equal(byClass(profileOnly, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, '');
-assert.deepEqual([byClass(profileOnly, 'KSampler')[0][1].inputs.steps, byClass(profileOnly, 'KSampler')[0][1].inputs.cfg], [25, 1]);
+assert.equal(byClass(profileOnly, 'SamplerCustom')[0][1].inputs.cfg, 1);
 const drawNegative = await drawT2i('blurry, extra fingers', 'blurry, extra fingers，错误人体，低完成度');
 assert.equal(byClass(drawNegative, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, 'blurry, extra fingers');
-assert.equal(byClass(drawNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
-// Steps / CFG typed on the panel for this route are what the run uses.
-const drawTyped = await drawT2i('', '', { samplingOverrides: { 'qwen-2.1:txt2img': { steps: 25, cfg: 3 } } });
-assert.deepEqual([byClass(drawTyped, 'KSampler')[0][1].inputs.steps, byClass(drawTyped, 'KSampler')[0][1].inputs.cfg], [25, 3]);
+assert.equal(byClass(drawNegative, 'SamplerCustom')[0][1].inputs.cfg, 1);
+// A CFG typed on the panel for this route is what the run uses (Turbo keeps its eight steps).
+const drawTyped = await drawT2i('', '', { samplingOverrides: { 'qwen-2.1-turbo:txt2img': { cfg: 3 } } });
+assert.equal(byClass(drawTyped, 'SamplerCustom')[0][1].inputs.cfg, 3);
 // The page always sends localDrawEngine for a non-NSFW local drawing. Without it (an old cached page)
 // there is no 2511 template left to fall back on: the run is refused. Asked for 2.1, a node without it
 // is an error rather than a 2511 graph that keeps three references.
@@ -336,7 +340,9 @@ assert.equal(sanitizeReferences(Array.from({ length: 25 }, (_, i) => ({ name: `r
 // ---- node probe -----------------------------------------------------------------------------
 const catalogue = {
   ...qwen21Info,
-  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } }
+  ManualSigmas: { input: { required: io('sigmas') } },
+  SamplerCustom: { input: { required: io('model', 'sigmas') } },
+  KSamplerSelect: { input: { required: io('sampler_name') } }
 };
 let served = catalogue;
 const server = createServer((req, res) => {
@@ -347,7 +353,7 @@ const server = createServer((req, res) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const comfy = { baseUrl: `http://127.0.0.1:${server.address().port}` };
 assert.equal(await detectQwenImage21(comfy), true);
-served = { ...catalogue, NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['flux1-dev-Q8_0.gguf']] } } } };
+served = { ...catalogue, UNETLoader: { input: { required: { unet_name: [['flux1-dev-fp8.safetensors']], weight_dtype: [['default']] } } } };
 assert.equal(await detectQwenImage21(comfy), false);
 served = { ...catalogue, TextEncodeQwenImage21: undefined };
 assert.equal(await detectQwenImage21(comfy), false);
@@ -489,28 +495,28 @@ assert.equal(artLora.qwen21Route({ provider: 'local', mode: 'img2img', nsfw: tru
 assert.deepEqual([...models.capabilityFor('local', 'txt2img', { nsfw: true }).fields], ['width', 'height', 'steps', 'cfg', 'seed']);
 assert.deepEqual([...models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields], allFields);
 assert.deepEqual([...models.capabilityFor('local', 'img2img', { nsfw: true }).fields], ['width', 'height', 'steps', 'cfg', 'seed']);
-// Route defaults: 2.1 drawing 25 steps, CFG 1 (2.5 with the user's negative); NSFW (Rapid AIO) 6 steps, CFG 1;
+// Route defaults: 2.1 drawing is the Turbo line (eight fixed steps, CFG 1 even with a negative) since 2026-11-06; NSFW (Rapid AIO) 6 steps, CFG 1;
 // the 2511 route of a LoRA run 4 Lightning steps at CFG 1, the base 40 steps at CFG 4 with a negative.
 const pick = (sampling) => sampling && [sampling.route, sampling.steps, sampling.cfg, sampling.lightning];
-assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'txt2img', '')), ['qwen-2.1', 25, 1, false]);
-assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'img2img', 'blurry')), ['qwen-2.1', 25, 2.5, false]);
+assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'txt2img', '')), ['qwen-2.1-turbo', 8, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'img2img', 'blurry')), ['qwen-2.1-turbo', 8, 1, false]);
 assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true }, 'img2img', 'blurry')), ['rapid', 6, 1, false]);
 assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true }, 'txt2img', '')), ['rapid', 6, 1, false]);
 // A LoRA run stays on 2.1 there (its list offers only LoRAs made for 2.1).
 const lora = { provider: 'local', loras: [{ name: 'x' }] };
-assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 25, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1-turbo', 8, 1, false]);
 // The 2511 route is only ever named by a run (no panel shows it): 4 Lightning steps at CFG 1, the
 // base 40 steps at CFG 4 with a negative. Without the node's answer the panel still shows 2.1.
 assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '', 'standard')), ['standard', 4, 1, true]);
 assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', 'blurry', 'standard')), ['standard', 40, 4, false]);
 const withQwen21 = globalThis.electronAPI;
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
-assert.deepEqual(pick(models.localSamplingFor(lora, 'txt2img', '')), ['qwen-2.1', 25, 1, false]);
-assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 25, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'txt2img', '')), ['qwen-2.1-turbo', 8, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1-turbo', 8, 1, false]);
 globalThis.electronAPI = withQwen21;
 assert.equal(models.localSamplingFor({ provider: 'gpt' }, 'img2img', ''), null);
 // The state's own negative prompt is the default source; a run can name its route.
-assert.equal(models.localSamplingFor({ provider: 'local', negativePrompt: 'blurry' }, 'txt2img').cfg, 2.5);
+assert.equal(models.localSamplingFor({ provider: 'local', negativePrompt: 'blurry' }, 'txt2img').cfg, 1);
 assert.equal(models.localSamplingFor({ provider: 'local' }, 'img2img', '', 'standard').route, 'standard');
 // Typed values stay with their route and mode, within the route's range; typing the default or
 // clearing the field follows the route again.
@@ -519,16 +525,15 @@ assert.equal(models.setLocalSamplingValue(typed, 'img2img', 'steps', '20').steps
 assert.equal(models.localSamplingFor(typed, 'img2img').stepsManual, true);
 assert.equal(models.localSamplingFor(typed, 'txt2img').steps, 6);
 typed.nsfw = false;
-assert.equal(models.localSamplingFor(typed, 'img2img').steps, 25);
+// Turbo: the eight steps are fixed (typing another count is clamped back), the CFG is the user's.
+assert.equal(models.localSamplingFor(typed, 'img2img').steps, 8);
 models.setLocalSamplingValue(typed, 'img2img', 'cfg', '3.25');
 assert.equal(models.localSamplingFor(typed, 'img2img').cfg, 3.3);
 models.setLocalSamplingValue(typed, 'img2img', 'steps', '40');
-assert.equal(models.localSamplingFor(typed, 'img2img').stepsManual, true);
-assert.equal(models.localSamplingFor(typed, 'img2img').steps, 40);
-models.setLocalSamplingValue(typed, 'img2img', 'steps', '25');
 assert.equal(models.localSamplingFor(typed, 'img2img').stepsManual, false);
+assert.equal(models.localSamplingFor(typed, 'img2img').steps, 8);
 models.setLocalSamplingValue(typed, 'img2img', 'cfg', '');
-assert.equal(typed.samplingOverrides['qwen-2.1:img2img'], undefined);
+assert.equal(typed.samplingOverrides['qwen-2.1-turbo:img2img'], undefined);
 typed.nsfw = true;
 assert.equal(models.localSamplingFor(typed, 'img2img').steps, 8);
 // On the 2511 route more than 8 steps turns the Lightning LoRA off and CFG follows to 4.
@@ -641,22 +646,18 @@ for (const [provider,total] of [['gpt',16]]) {
 
 console.log(checks + ' passed, 0 failed: UI design on Qwen-Image-2.1 (page plan, worker graph, node probe)');
 
-// Measured native exception: the UI's W/H reach both the first encoded canvas
-// and the latent. Similar-looking requests outside this boundary are rejected.
+// The measured 864x1536 native exception belonged to the 普通 BF16 line, which was removed on
+// 2026-11-06: on the one Turbo line that request samples at the capped working size like any other.
 {
  const boundedNames=['layout.png','style-samples.png','tiger.png'];
  const boundedSizes=[{width:576,height:1250},{width:512,height:512},{width:175,height:218}];
  const boundedState={width:864,height:1536,uiPreserveLayout:true,uiLayoutMode:'preserve',uiNativeEditPrompt:true};
  const native=await buildUi(host21,boundedNames,boundedSizes,['layout','style','asset'],boundedState);
- assert.equal(native['6'].inputs.width,864);assert.equal(native['6'].inputs.height,1536);
+ const working=native['6'].inputs;
+ assert.ok(working.width*working.height<=1048576,'global working pixel cap');
+ assert.ok(Math.abs(working.width/working.height-864/1536)<=0.01*(864/1536),'requested aspect kept within 1%');
+ assert.equal(native['7'].class_type,'SamplerCustom');
  assert.deepEqual(native['7'].inputs.latent_image,['5',2]);
- const pad=native[native['5'].inputs['images.image_1'][0]],fit=native[pad.inputs.image[0]];
- assert.equal(pad.class_type,'ImagePadForOutpaint');assert.equal(pad.inputs.left,78);assert.equal(pad.inputs.right,78);
- assert.equal(fit.inputs.width,0);assert.equal(fit.inputs.height,1536);assert.equal(fit.inputs.crop,'disabled');
- assert.equal(native['10'].inputs.width,864);assert.equal(native['10'].inputs.height,1536);
- await assert.rejects(()=>buildUi(host21,[...boundedNames,'more.png'],[...boundedSizes,{width:175,height:218}],['layout','style','asset','asset'],boundedState),/最多三图/);
- await assert.rejects(()=>buildUi(host21,boundedNames,[boundedSizes[0],{width:1024,height:1024},{width:1024,height:1024}],['layout','style','asset'],boundedState),/参考像素/);
- await assert.rejects(()=>buildUi(host21,boundedNames,boundedSizes,['layout','style','asset'],{...boundedState,samplingOverrides:{'qwen-2.1:img2img':{steps:32,cfg:1}}}),/40步/);
  const ordinary=await buildUi(host21,boundedNames,boundedSizes,['layout','style','asset'],{...boundedState,width:1152,height:2048});
  assert.ok(ordinary['6'].inputs.width*ordinary['6'].inputs.height<=1048576,'global working pixel cap remains unchanged');
 }
@@ -670,7 +671,7 @@ console.log(checks + ' passed, 0 failed: UI design on Qwen-Image-2.1 (page plan,
   const graph=await buildUi(host21,names,sizes,['layout','style','style','asset'],{width,height,uiPreserveLayout:true,uiLayoutMode:'preserve',uiNativeEditPrompt:true,seed:10050506,randomSeed:false});
   assert.equal(graph['6'].inputs.width,width);assert.equal(graph['6'].inputs.height,height);
   assert.equal(graph['10'].inputs.width,width);assert.equal(graph['10'].inputs.height,height);
-  assert.equal(graph['7'].inputs.steps,40);assert.equal(graph['7'].inputs.cfg,1);
+  assert.equal(graph['7'].class_type,'SamplerCustom');assert.equal(graph['7'].inputs.cfg,1);
   assert.deepEqual(graph['7'].inputs.latent_image,['5',2]);
   assert.equal(Object.keys(graph['5'].inputs).filter(k=>k.startsWith('images.image_')).length,4);
   assert.ok(width*height<=1048576);

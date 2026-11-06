@@ -574,7 +574,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       const toRequestSlots=text=>referenceOrder?String(text).replace(/(<image|@参考图\s*)(\d+)/g,(tag,head,n)=>head+(referenceOrder.indexOf(Number(n)-1)+1||n)):text;
       const optimized=await root.__NovaFlowSmartAI.optimizeForAgent({assistantSelectionScope:'xiaotao',surface:'art',prompt:toRequestSlots(op.prompt),plannerBrief:op.plannerBrief===true,
         negativePrompt:rt.state.negativePrompt||'',requirements:toRequestSlots(requirements),generationMode:op.generationMode,
-        engine:gptDrawing?'gpt-image-2.5':rt.state.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1',supportsNegativePrompt:!gptDrawing,signal,onProgress:onStatus,...onlineBusiness,images:requestImages,
+        engine:gptDrawing?'gpt-image-2.5':'qwen-2.1-turbo',supportsNegativePrompt:!gptDrawing,signal,onProgress:onStatus,...onlineBusiness,images:requestImages,
         selectionStillCurrent,isImageInputCurrent:()=>imageBinding(rt)===beforeBinding&&(!scopedUploads||attachmentStillCurrent()),...(scopedText?{currentDrawingTextOnly:true}:{}),...(scopedVision?{currentDrawingVisionOnly:true}:{})});
       if(signal?.aborted||!selectionStillCurrent()||!sessionStillCurrent()||(scopedUploads&&!attachmentStillCurrent())||imageBinding(rt)!==beforeBinding)fail('绘图内容或模型选择已变化，未写入。');
       const draft=optimized.displayPrompt||optimized.prompt,modelPrompt=optimized.prompt,negativePrompt=optimized.negativePrompt;

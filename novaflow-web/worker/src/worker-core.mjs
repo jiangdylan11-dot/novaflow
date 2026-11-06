@@ -381,7 +381,7 @@ export function createQwenReportTracker() {
 export async function qwenEditLoraAvailable(turboReady, catalog) {
   if (!turboReady) return false;
   try {
-    const result = await catalog.read('qwen', { engine: 'qwen-2.1', modelName: 'Qwen-Image-2.1-Turbo-BF16.gguf' });
+    const result = await catalog.read('qwen', { engine: 'qwen-2.1', modelName: 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors' });
     if (result.ok !== true || !Array.isArray(result.items)) return false;
     const names = new Set(result.items.map(item => String(item.name || '').replaceAll('\\', '/').toLowerCase()));
     return names.has(QWEN21_EDIT_LORA_NAME.toLowerCase()) && names.has(QWEN21_UC_LORA_NAME);
@@ -855,8 +855,9 @@ export function createWorker(options) {
       }
     }
     const diskModels = modelsRoot ? await inspectAllModels(modelsRoot).catch(() => []) : [];
-    const qwen21 = state.comfy.image ? await detectQwenImage21(comfyImage).catch(() => false) : false;
+    // One 2.1 line since 2026-11-06 (Turbo INT8): the qwenImage21 flag and the Turbo flag agree.
     const qwen21Turbo=state.comfy.image?await detectQwenImage21(comfyImage,{variant:'turbo'}).catch(()=>false):false;
+    const qwen21 = qwen21Turbo;
     // Only a worker with this versioned builder and the compatible target
     // adapter advertises the capability; an old Turbo worker cannot claim it.
     const qwenEditLoraReady = await qwenEditLoraAvailable(qwen21Turbo, loraCatalog);

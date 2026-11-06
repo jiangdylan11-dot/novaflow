@@ -20,7 +20,7 @@ function verifiedExecutionApproval(payload, context, fingerprint) {
     && ['sampling-confirmation','approved-feedback'].includes(value.basis) && plain(value.sampling)
     && Object.keys(value.sampling).sort().join(',') === 'cfg,steps,variant'
     && ['standard','turbo'].includes(value.sampling.variant)
-    && value.sampling.variant === (context.localQwen21Variant || 'standard')
+    && value.sampling.variant === (context.localQwen21Variant || 'turbo')
     && Number.isFinite(value.sampling.cfg) && value.sampling.cfg > 0 && value.sampling.cfg <= 100
     && Number.isInteger(value.sampling.steps) && value.sampling.steps > 0 && value.sampling.steps <= 150,
   'flash-agent-invalid-approval', '生图确认与本次请求或参数不一致，请重新确认');

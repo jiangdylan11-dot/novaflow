@@ -4,14 +4,14 @@ import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
 
 const source=readFileSync(new URL('../../renderer/novaflow-brand-runtime.js',import.meta.url),'utf8');
-const code=source.slice(source.indexOf('  const ART_QWEN21_UNETS ='),source.indexOf('  // UI design on a Qwen-Image-2.1 node:'));
+const code=source.slice(source.indexOf('  const ART_QWEN21_TURBO_UNETS ='),source.indexOf('  // UI design on a Qwen-Image-2.1 node:'));
 const modelSandbox={module:{exports:{}}};
 runInContext(readFileSync(new URL('../../renderer/art-generate-model.resource.js',import.meta.url),'utf8'),createContext(modelSandbox));
 const realModels=modelSandbox.module.exports;
 function build(options,extra=false,native=true,state={}){
-  const info={NovaFlowGGUFBF16Loader:{input:{required:{unet_name:[['qwen-image-2.1-UC-BF16.gguf','Qwen-Image-2.1-Turbo-BF16.gguf']]}}},CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_bf16_heretic.safetensors']]}}},VAELoader:{input:{required:{vae_name:[['qwen_image_2.1_vae_bf16.safetensors']]}}},TextEncodeQwenImage21:{},KSampler:{},VAEDecode:{},SaveImage:{},ImageScale:{}};
-  if(!native)info.NovaFlowGGUFBF16Loader.input.required.unet_name[0]=['qwen-image-2.1-UC-Q8_0.gguf'];
-  if(native){info.UNETLoader={input:{required:{unet_name:[['qwen-image-2.1-UC-BF16-native.safetensors']]}}};info.CLIPLoader.input.required.clip_name[0].push('qwen3vl_8b_bf16_heretic.safetensors');}
+  const info={NovaFlowGGUFBF16Loader:{input:{required:{unet_name:[['qwen-image-2.1-UC-BF16.gguf']]}}},CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_bf16_heretic.safetensors']]}}},VAELoader:{input:{required:{vae_name:[['qwen_image_2.1_vae_bf16.safetensors']]}}},TextEncodeQwenImage21:{},KSampler:{},VAEDecode:{},SaveImage:{},ImageScale:{}};
+  info.UNETLoader={input:{required:{unet_name:[[native?'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors':'other-model.safetensors']],weight_dtype:[['default']]}}};
+  if(native){info.UNETLoader.input.required.unet_name[0].push('qwen-image-2.1-UC-BF16-native.safetensors');info.CLIPLoader.input.required.clip_name[0].push('qwen3vl_8b_bf16_heretic.safetensors');}
   const vm=createContext({window:{electronAPI:{__objectInfoSync:()=>info}}});runInContext(readFileSync(new URL('../../renderer/qwen21-turbo.workflow.js',import.meta.url),'utf8'),vm);vm.NovaFlowQwen21Turbo=vm.NovaFlowQwen21Turbo;vm.window.NovaFlowArtGenerateModels=realModels;vm.window.NovaFlowQwen21Turbo=vm.NovaFlowQwen21Turbo;runInContext(code,vm);
   return vm.buildArtQwen21Workflow('img2img',extra?['source','style','pose']:['source','style'],'proof','prompt',{width:832,height:1216,seed:7,randomSeed:false,uiPreserveLayout:false,negativePrompt:'avoid donor',...state},extra?[{width:1280,height:960},{width:3328,height:4864},{width:1000,height:1000}]:[{width:1280,height:960},{width:3328,height:4864}],options,'avoid donor',{cfg:3,steps:40});
 }
@@ -25,7 +25,7 @@ test('a portrait relayout keeps content near the working size and full style det
   assert.deepEqual(Array.from(style['5'].inputs['images.image_1']),['200',0]);assert.deepEqual(Array.from(style['5'].inputs['images.image_2']),['201',0]);
   assert.equal(style['6'].inputs.width,832);assert.equal(style['6'].inputs.height,1216);
   assert.deepEqual(Array.from(style['7'].inputs.latent_image),['6',0]);
-  assert.equal(style['7'].inputs.cfg,3);assert.equal(style['7'].inputs.steps,40);
+  assert.equal(style['7'].inputs.cfg,3);assert.equal(style['7'].class_type,'SamplerCustom');
 });
 
 test('source-sized grounded style uses the first reference latent without a photographic framing lock',()=>{
@@ -70,13 +70,13 @@ test('source-aspect alignment stays scoped away from fresh-layout controls and o
   }
 });
 
-test('analyzed drawing uses available native BF16 with matching encoder while ordinary edits keep their route',()=>{
+test('every drawing runs the Turbo INT8 file through UNETLoader with the matching encoder (the 普通 line is gone)',()=>{
   const high=build({taskProfile:'art-direction',referenceRoles:['subject','style']},false,true).workflow;
-  assert.equal(high['1'].class_type,'NovaFlowGGUFBF16Loader');assert.equal(high['1'].inputs.unet_name,'qwen-image-2.1-UC-BF16.gguf');
-  assert.equal(high['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');assert.equal(high['7'].inputs.steps,40);
+  assert.equal(high['1'].class_type,'UNETLoader');assert.equal(high['1'].inputs.unet_name,'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors');
+  assert.equal(high['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');assert.equal(high['7'].class_type,'SamplerCustom');
   const ordinary=build({},false,true).workflow;
-  assert.equal(ordinary['1'].class_type,'NovaFlowGGUFBF16Loader');assert.equal(ordinary['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');
-  assert.equal(build({taskProfile:'art-direction'},false,false),null,'Q8-only nodes do not silently replace BF16');
+  assert.equal(ordinary['1'].class_type,'UNETLoader');assert.equal(ordinary['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');
+  assert.equal(build({taskProfile:'art-direction'},false,false),null,'a node without the INT8 file does not silently run another model');
 });
 test('style priority cannot re-budget pose controls, ordinary edits or UI generation',()=>{
   const multiple=build({taskProfile:'art-direction',referenceRoles:['subject','style','pose']},true).workflow;
@@ -86,10 +86,10 @@ test('style priority cannot re-budget pose controls, ordinary edits or UI genera
 });
 
 
-test('Turbo drawing selects the exact Turbo BF16 GGUF and the shipped eight-step schedule',()=>{
+test('Turbo drawing selects the exact Turbo INT8 ConvRot file through UNETLoader and the shipped eight-step schedule',()=>{
   const graph=build({taskProfile:'art-direction'},false,true,{localQwen21Variant:'turbo'}).workflow;
-  assert.equal(graph['1'].class_type,'NovaFlowGGUFBF16Loader');
-  assert.equal(graph['1'].inputs.unet_name,'Qwen-Image-2.1-Turbo-BF16.gguf');
+  assert.equal(graph['1'].class_type,'UNETLoader');assert.equal(graph['1'].inputs.weight_dtype,'default');
+  assert.equal(graph['1'].inputs.unet_name,'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors');
   assert.equal(graph['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');
   assert.equal(graph['7'].class_type,'SamplerCustom');assert.equal(graph['7'].inputs.cfg,1);
   assert.equal(graph[graph['7'].inputs.sigmas[0]].inputs.sigmas,'1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0');

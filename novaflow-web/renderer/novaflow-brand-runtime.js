@@ -81777,7 +81777,7 @@
     const tool = window.NovaFlowArtGenerateModeTool;
     const mounted = !!(host instanceof HTMLElement && tool?.syncControlPanel?.({
       host, state: ART_GENERATE_STATE, workspaceId: ART_GENERATE_WORKSPACE_ID,
-      showTurboRoute: !window.NovaFlowUiDesignDrawing?.isActive?.(),
+      showTurboRoute: false, // one 2.1 line since 2026-11-06, nothing to switch
       showAccount: !window.NovaFlowUiDesignDrawing?.isActive?.(),
       onChange: () => { renderArtGenerateSurfaces({ forceBottom: true }); syncArtGenerateRuntime(); scheduleArtGeneratePreviewRefresh([0, 16, 64]); }
     }));
@@ -85791,9 +85791,13 @@
   // It only runs on a compute node whose ComfyUI carries the 2.1 weights: the worker warms the node
   // catalogue and exposes it as electronAPI.__objectInfoSync. The desktop and the browser never have
   // that hook, so they keep their current graphs; NSFW, LoRA and UI-design runs keep theirs too.
-  const ART_QWEN21_UNETS = ["qwen-image-2.1-UC-BF16.gguf"];
-  const ART_QWEN21_TURBO_UNETS = ["Qwen-Image-2.1-Turbo-BF16.gguf"];
-  const ART_QWEN21_BF16 = ART_QWEN21_UNETS;
+  // Turbo runs the INT8 ConvRot weights through ComfyUI's own UNETLoader (2026-11-06: same output as
+  // the BF16 gguf by eye, 7 GB stays resident, 41 s instead of 68 s per style transfer on 16 GB).
+  const ART_QWEN21_TURBO_UNETS = ["Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors"];
+  const ART_QWEN21_TURBO_LOADER = "UNETLoader";
+  // The 普通 · BF16 line (qwen-image-2.1-UC-BF16.gguf, 40 steps) was removed on 2026-11-06; the two
+  // measured-BF16-only UI paths below (认可版本 catalog graph, 864×1536 native) stay closed.
+  const ART_QWEN21_BF16 = [];
   const ART_QWEN21_CLIPS = ["qwen3vl_8b_bf16_heretic.safetensors", "qwen3vl_8b_bf16.safetensors"];
   const ART_QWEN21_VAE = "qwen_image_2.1_vae_bf16.safetensors";
 
@@ -85805,11 +85809,12 @@
 
   function artQwen21Runtime(options) {
     const info = window.electronAPI?.__objectInfoSync?.();
-    if (!info || !info.TextEncodeQwenImage21 || !info.NovaFlowGGUFBF16Loader || !info.CLIPLoader || !info.VAELoader || !info.KSampler || !info.VAEDecode || !info.SaveImage) return null;
-    const unet = artQwen21Choice(info.NovaFlowGGUFBF16Loader, "unet_name", options?.localQwen21Variant==='turbo'?ART_QWEN21_TURBO_UNETS:ART_QWEN21_UNETS);
+    const loader = ART_QWEN21_TURBO_LOADER;
+    if (!info || !info.TextEncodeQwenImage21 || !info[loader] || !info.CLIPLoader || !info.VAELoader || !info.KSampler || !info.VAEDecode || !info.SaveImage) return null;
+    const unet = artQwen21Choice(info[loader], "unet_name", ART_QWEN21_TURBO_UNETS);
     const clip = artQwen21Choice(info.CLIPLoader, "clip_name", ART_QWEN21_CLIPS);
     const vae = artQwen21Choice(info.VAELoader, "vae_name", [ART_QWEN21_VAE]);
-    return unet && clip && vae ? { info, unet, clip, vae, loader:'NovaFlowGGUFBF16Loader' } : null;
+    return unet && clip && vae ? { info, unet, clip, vae, loader } : null;
   }
 
   // At cfg 1 (the 2.1 default) the sampler never evaluates the negative prompt: filled and empty gave
@@ -85873,7 +85878,7 @@
     const models = window.NovaFlowArtGenerateModels;
     const styleRedraw = mode === 'img2img' && models?.isStyleRedraw?.(providerOptions) === true;
     if (styleRedraw && sampling?.cfgManual !== true) cfg = models.STYLE_REDRAW_CFG;
-    const turboCfg = sampling?.cfgManual === true || styleRedraw ? cfg : 1;
+    const turboCfg = sampling?.cfgManual === true || styleRedraw ? cfg : 1; // every 2.1 run is Turbo since 2026-11-06
     const runtime = artQwen21Runtime(state);
     if (!runtime) return null;
     const info = runtime.info || {};
@@ -85900,7 +85905,7 @@
       workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps, cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
       workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
       workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "Foart_Art") } };
-      return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow,{cfg:turboCfg}):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-t2i":"qwen-image-2.1-t2i" };
+      return { workflow:window.NovaFlowQwen21Turbo.apply(workflow,{cfg:turboCfg}), modelKey: "qwen-image-2.1-turbo-t2i" };
     }
     const sizes = references.map((_, index) => {
       const size = Array.isArray(referenceSizes) ? referenceSizes[index] : null;
@@ -85975,7 +85980,7 @@
       output = ["9", 0];
     }
     workflow["10"] = { class_type: "SaveImage", inputs: { images: output, filename_prefix: String(outputPrefix || "Foart_Art") } };
-    return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow,{cfg:turboCfg}):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-i2i":"qwen-image-2.1-i2i" };
+    return { workflow:window.NovaFlowQwen21Turbo.apply(workflow,{cfg:turboCfg}), modelKey: "qwen-image-2.1-turbo-i2i" };
   }
 
   // UI design on a Qwen-Image-2.1 node: every connected reference goes in as images.image_N and the
@@ -86035,7 +86040,7 @@
   function buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt) {
     const guidance = qwen21Guidance(negativePrompt);
     const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, negativePrompt, "qwen-2.1", "ui");
-    const uiTurbo = state?.localQwen21Variant === 'turbo';
+    const uiTurbo = true; // the 普通 line was removed on 2026-11-06
     const finishUiQwen21 = (workflow) => {
       if (!uiTurbo) return { workflow, modelKey: 'qwen-image-2.1-ui' };
       const turboApi = window.NovaFlowQwen21Turbo;
@@ -87273,7 +87278,7 @@
         samplingOverrides: source.samplingOverrides,
         loras: source.loras,
         localUiEngine: source.localUiEngine === "qwen-2.1" ? "qwen-2.1" : "",
-        ...(source.localQwen21Variant === 'turbo' || source.localQwen21Variant === 'standard' ? { localQwen21Variant: source.localQwen21Variant } : {}),
+        ...(source.localQwen21Variant === 'turbo' ? { localQwen21Variant: source.localQwen21Variant } : {}),
         localDrawEngine: options.taskProfile === "ui-layer" && source.localDrawEngine === "qwen-2.1" ? "qwen-2.1" : "",
         iterationReferenceCount: Math.max(0, Math.round(Number(source.iterationReferenceCount) || 0)),
         gptQualityImg2img: ["low", "medium", "high"].includes(source.gptQualityImg2img) ? source.gptQualityImg2img : "high",

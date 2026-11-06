@@ -150,12 +150,11 @@ export function workflowModelId(name, options, method='') {
     return 'foart-qwen21-inpaint-v1';
   }
   if (name === 'spine-split-runtime' && (method === 'buildGenerativeSplitWorkflow' || options?.__args?.[1]?.taskProfile === 'generative-split')) {
-    return options?.__args?.[1]?.profile === 'standard' ? 'qwen-image-2.1' : 'qwen-image-2.1-turbo';
+    return 'qwen-image-2.1-turbo';
   }
   if (name === 'NovaFlowArtGenerateProviderWorkflow' && method === 'buildRunWorkflow' && options?.provider === 'local' && options?.localWorkflow && typeof options.localWorkflow === 'object') {
-    const loaders=Object.values(options.localWorkflow).filter(node=>node?.class_type === 'NovaFlowGGUFBF16Loader').map(node=>node?.inputs?.unet_name);
-    if (loaders.includes('Qwen-Image-2.1-Turbo-BF16.gguf')) return 'qwen-image-2.1-turbo';
-    if (loaders.includes('qwen-image-2.1-UC-BF16.gguf')) return 'qwen-image-2.1';
+    const loaders=Object.values(options.localWorkflow).filter(node=>node?.class_type === 'NovaFlowGGUFBF16Loader' || node?.class_type === 'UNETLoader').map(node=>node?.inputs?.unet_name);
+    if (loaders.includes('Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors')) return 'qwen-image-2.1-turbo';
   }
   const args = name === 'novaflow-brand-runtime' && Array.isArray(options?.__args) ? options.__args : null;
   if (args && args[0] === 'local') {
@@ -163,7 +162,7 @@ export function workflowModelId(name, options, method='') {
     const profile = String(args[10]?.taskProfile || '');
     const ui = profile.toLowerCase() === 'ui-design' && state.localUiEngine === 'qwen-2.1';
     const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
-    if (ui || draw) return state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
+    if (ui || draw) return 'qwen-image-2.1-turbo';
   }
   if(name==='spine-split-runtime'&&['buildQwenImageOutpaintWorkflow','buildImageAngleAdjustWorkflow','buildObjectTransferQwen21Workflow','buildEffectExtractQwenWorkflow','buildEffectDeeffectQwenWorkflow'].includes(method))return 'qwen-image-2.1-turbo';
   if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && [

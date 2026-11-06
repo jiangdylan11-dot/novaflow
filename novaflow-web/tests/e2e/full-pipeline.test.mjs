@@ -26,7 +26,7 @@ const turboTask = (prompt, extra = {}) => ({
   workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildRunWorkflow' },
   parameters: { provider: 'local', mode: 'txt2img', prompt, width: 512, height: 512, steps: 4, count: 1,
     localWorkflow: {
-      1: { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: 'Qwen-Image-2.1-Turbo-BF16.gguf' } },
+      1: { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors' } },
       9: { class_type: 'SaveImage', inputs: { images: [1, 0], filename_prefix: 'e2e' } }
     } },
   ...extra
@@ -137,7 +137,7 @@ try {
     check('progress was reported while running', sawProgress || reported,
       { sawProgress, states: events.map((e) => e.to_status) });
     check('task completed', completed.status === TASK_STATE.COMPLETED, completed.status);
-    check('ComfyUI got the Turbo graph', comfy.prompts.some(({ graph }) => graph?.['1']?.inputs?.unet_name === 'Qwen-Image-2.1-Turbo-BF16.gguf'), comfy.prompts.length);
+    check('ComfyUI got the Turbo graph', comfy.prompts.some(({ graph }) => graph?.['1']?.inputs?.unet_name === 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors'), comfy.prompts.length);
     check('output manifest lists a file',
       (completed.output_manifest.files || []).length > 0, completed.output_manifest);
     check('a real image came back',

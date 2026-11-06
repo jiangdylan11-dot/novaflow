@@ -114,7 +114,7 @@
 
   function localSamplingRoute(state, mode) {
     if (normalizeProvider(state?.provider) !== 'local') return ''
-    if (localQwen21Drawing(state)) return state?.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1'
+    if (localQwen21Drawing(state)) return 'qwen-2.1-turbo'
     if (state?.nsfw === true) return 'rapid'
     return normalizeMode(mode || state?.mode) === 'img2img' ? 'standard' : ''
   }
@@ -151,7 +151,7 @@
   // names the route it actually builds. null off the sampling routes.
   function localSamplingFor(state, mode, userNegativePrompt, route, surface = 'drawing', runPolicy) {
     const modeKey = normalizeMode(mode || state?.mode)
-    route = route==='qwen-2.1'&&state?.localQwen21Variant==='turbo'?'qwen-2.1-turbo':LOCAL_SAMPLING_ROUTES[route] ? route : localSamplingRoute(state, modeKey)
+    route = route==='qwen-2.1'?'qwen-2.1-turbo':LOCAL_SAMPLING_ROUTES[route] ? route : localSamplingRoute(state, modeKey)
     if (!route) return null
     const negative = String(userNegativePrompt ?? state?.negativePrompt ?? '').trim()
     const override = localSamplingOverride(state, route, modeKey)
@@ -233,7 +233,7 @@
     const provider = normalizeProvider(state?.provider)
     const mode = normalizeMode(state?.mode)
     const route = provider === 'local' && localQwen21Drawing(state)
-      ? (state?.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1')
+      ? 'qwen-2.1-turbo'
       : provider === 'local' && mode === 'txt2img' ? 'rapid' : ''
     return `${provider}:${mode}:${route}`
   }

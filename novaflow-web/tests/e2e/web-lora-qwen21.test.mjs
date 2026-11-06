@@ -171,10 +171,10 @@ try {
   checks += 1;
 
   // The versioned edit capability uses the actual catalog and validates
-  // tensor shapes against the exact Turbo model, not just the file name.
-  const turbo = join(models, 'diffusion_models', 'Qwen-Image-2.1-Turbo-BF16.gguf');
+  // tensor shapes against the exact Turbo model (an INT8 safetensors since 2026-11-06), not just the file name.
+  const turbo = join(models, 'diffusion_models', 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors');
   const target = join(models, 'loras', ...QWEN21_EDIT_LORA_NAME.split('/'));
-  await writeFile(turbo, gguf(q21Tensors));
+  await writeFile(turbo, safetensors(Object.fromEntries(q21Tensors)));
   await writeFile(target, safetensors(lora(q21Tensors, 'comfy')));
   names.push(QWEN21_EDIT_LORA_NAME);
   assert.equal(await qwenEditLoraAvailable(true, workerCatalog), false);

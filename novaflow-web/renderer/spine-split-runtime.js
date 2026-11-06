@@ -5499,7 +5499,7 @@
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
       '2': { class_type: 'ImagePadForOutpaint', inputs: { ...pad, feathering: 0, image: ['1', 0] } },
       '3': { class_type: 'GrowMask', inputs: { mask: ['2', 1], expand: IMAGE_OUTPAINT_SEAM_REDRAW_PX, tapered_corners: true } },
-      '4': { class_type: 'NovaFlowGGUFBF16Loader', inputs: buildComfyNodeInputs(info.NovaFlowGGUFBF16Loader, { unet_name: runtime.unetName }) },
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: runtime.unetName, weight_dtype: 'default' }) },
       '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: runtime.clipName, type: 'qwen_image', device: 'default' }) },
       '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: runtime.vaeName }) },
       '7': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['2', 0], vae: ['6', 0] }) },
@@ -5967,7 +5967,7 @@
     // sampler runs on the encoder's latent at denoise 1, and the RGBA decode is split to RGB.
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'NovaFlowGGUFBF16Loader', inputs: buildComfyNodeInputs(info.NovaFlowGGUFBF16Loader, { unet_name: runtime.unetName }) },
+      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: runtime.unetName, weight_dtype: 'default' }) },
       '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: runtime.clipName, type: 'qwen_image', device: 'default' }) },
       '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: runtime.vaeName }) },
       '5': {
@@ -7915,7 +7915,7 @@
 
   function resolveQwen21EditRuntime(info, featureName) {
     // A node that cannot build the 2.1 graph is an error, never a silent run on another model.
-    const requiredNodes = ['LoadImage', 'NovaFlowGGUFBF16Loader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
+    const requiredNodes = ['LoadImage', 'UNETLoader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = requiredNodes.every((name) => info && info[name]) ? qwen21Runtime(info) : null
     if (!runtime) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${featureName}。请检查 Foart的生成服务和运行日志，确认模型及组件就绪后重试`)
     return { engine: 'qwen-2.1', unetName: runtime.unetName, clipName: runtime.clipName, vaeName: runtime.vaeName, loraName: '' }
@@ -7946,7 +7946,7 @@
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
       '2': { class_type: 'LoadImage', inputs: { image: uploads.referenceName } },
-      '4': { class_type: 'NovaFlowGGUFBF16Loader', inputs: buildComfyNodeInputs(info.NovaFlowGGUFBF16Loader, { unet_name: resolved.unetName }) },
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'default' }) },
       '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
       '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
     }
@@ -8748,7 +8748,9 @@
   // ComfyUI 0.24.1 (the 8188 default) has none of them, so this is false there and every existing
   // route keeps running exactly as before. Point NOVAFLOW_COMFY_IMAGE_URL at a 0.37.0 Runtime that
   // carries the 2.1 weights and the 2.1 branches light up with no other configuration.
-  const QWEN21_UNETS = ['Qwen-Image-2.1-Turbo-BF16.gguf']
+  // Turbo INT8 ConvRot weights through ComfyUI's own UNETLoader (2026-11-06; the BF16 gguf and its
+  // NovaFlowGGUFBF16Loader are no longer used on this route).
+  const QWEN21_UNETS = ['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']
   const QWEN21_CLIPS = ['qwen3vl_8b_bf16_heretic.safetensors', 'qwen3vl_8b_bf16.safetensors']
   const QWEN21_VAE = 'qwen_image_2.1_vae_bf16.safetensors'
   const QWEN21_STEPS = 8
@@ -8786,8 +8788,8 @@
   }
 
   function qwen21Runtime(info) {
-    if (!info || !info.TextEncodeQwenImage21 || !info.NovaFlowGGUFBF16Loader || !info.CLIPLoader || !info.VAELoader) return null
-    const unetName = qwen21Pick(info.NovaFlowGGUFBF16Loader, 'unet_name', QWEN21_UNETS)
+    if (!info || !info.TextEncodeQwenImage21 || !info.UNETLoader || !info.CLIPLoader || !info.VAELoader) return null
+    const unetName = qwen21Pick(info.UNETLoader, 'unet_name', QWEN21_UNETS)
     const clipName = qwen21Pick(info.CLIPLoader, 'clip_name', QWEN21_CLIPS)
     const vaeName = qwen21Pick(info.VAELoader, 'vae_name', [QWEN21_VAE])
     if (!unetName || !clipName || !vaeName) return null
@@ -8862,7 +8864,7 @@
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
       '2': { class_type: 'LoadImage', inputs: { image: maskName } },
-      '4': { class_type: 'NovaFlowGGUFBF16Loader', inputs: buildComfyNodeInputs(info.NovaFlowGGUFBF16Loader, { unet_name: runtime.unetName }) },
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: runtime.unetName, weight_dtype: 'default' }) },
       '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: runtime.clipName, type: 'qwen_image', device: 'default' }) },
       '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: runtime.vaeName }) }
     }
@@ -22801,7 +22803,7 @@
     // denoise 1 and the RGBA decode is split to RGB. No LoRA, shift or CFGNorm: those were 2511 settings.
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'NovaFlowGGUFBF16Loader', inputs: buildComfyNodeInputs(info.NovaFlowGGUFBF16Loader, { unet_name: resolved.unetName }) },
+      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'default' }) },
       '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
       '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) },
       '5': {
@@ -23077,7 +23079,7 @@
     // RGBA decode is split to RGB. No LoRA, shift or CFGNorm: those were 2511 settings.
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'NovaFlowGGUFBF16Loader', inputs: buildComfyNodeInputs(info.NovaFlowGGUFBF16Loader, { unet_name: resolved.unetName }) },
+      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'default' }) },
       '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
       '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) },
       '5': {

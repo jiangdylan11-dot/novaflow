@@ -112,9 +112,9 @@ await test('one role rule sets CFG 3 on both 2.1 routes unless the user typed a 
 });
 
 const source=read('../../renderer/novaflow-brand-runtime.js');
-const builderCode=source.slice(source.indexOf('  const ART_QWEN21_UNETS ='),source.indexOf('  // UI design on a Qwen-Image-2.1 node:'));
+const builderCode=source.slice(source.indexOf('  const ART_QWEN21_TURBO_UNETS ='),source.indexOf('  // UI design on a Qwen-Image-2.1 node:'));
 function build(options,{state={},sizes=[{width:2000,height:1500},{width:2000,height:3000}],names=['a.png','b.png']}={}){
-  const info={NovaFlowGGUFBF16Loader:{input:{required:{unet_name:[['qwen-image-2.1-UC-BF16.gguf','Qwen-Image-2.1-Turbo-BF16.gguf']]}}},CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_bf16_heretic.safetensors']]}}},VAELoader:{input:{required:{vae_name:[['qwen_image_2.1_vae_bf16.safetensors']]}}},TextEncodeQwenImage21:{},KSampler:{},VAEDecode:{},SaveImage:{},ImageScale:{}};
+  const info={NovaFlowGGUFBF16Loader:{input:{required:{unet_name:[['qwen-image-2.1-UC-BF16.gguf']]}}},UNETLoader:{input:{required:{unet_name:[['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']],weight_dtype:[['default']]}}},CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_bf16_heretic.safetensors']]}}},VAELoader:{input:{required:{vae_name:[['qwen_image_2.1_vae_bf16.safetensors']]}}},TextEncodeQwenImage21:{},KSampler:{},VAEDecode:{},SaveImage:{},ImageScale:{}};
   const vm=createContext({});vm.window={electronAPI:{__objectInfoSync:()=>info},NovaFlowArtGenerateModels:models};
   runInContext(read('../../renderer/qwen21-turbo.workflow.js'),vm);vm.window.NovaFlowQwen21Turbo=vm.NovaFlowQwen21Turbo;
   runInContext(builderCode,vm);

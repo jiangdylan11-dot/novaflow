@@ -54,7 +54,7 @@ test('shared catalogue checks both models; task validation uses its named model'
 test('browser accepts Turbo style adapters and inserts them after the native BF16 loader', () => {
   const name = 'qwen/fusal-qwen-image-2.1-turbo-style.safetensors';
   assert.deepEqual(Array.from(art.catalogFromInfo({ ok: true, items: [{ name }, { name: 'qwen/Qwen-Image-2.1-Turbo.safetensors' }] })), [name]);
-  const graph = { 1: { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: 'Qwen-Image-2.1-Turbo-BF16.gguf' } }, 2: { class_type: 'KSampler', inputs: { model: ['1', 0] } } };
+  const graph = { 1: { class_type: 'NovaFlowGGUFBF16Loader', inputs: { unet_name: 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors' } }, 2: { class_type: 'KSampler', inputs: { model: ['1', 0] } } };
   assert.equal(art.isQwen21Graph(graph), true);
   art.apply(graph, { provider: 'local', mode: 'txt2img', loras: [{ name, strength: 0.8 }] });
   assert.equal(graph.nf_art_lora_1.inputs.lora_name, name);

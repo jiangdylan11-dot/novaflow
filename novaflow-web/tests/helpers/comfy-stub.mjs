@@ -50,7 +50,8 @@ const WEIGHTS = MODEL_MANIFEST.flatMap((model) => model.required_files.map((file
 
 function nodeInfo(name) {
   const required = { model_name: [WEIGHTS] };
-  if (name === 'NovaFlowGGUFBF16Loader') required.unet_name = [['Qwen-Image-2.1-Turbo-BF16.gguf']];
+  if (name === 'NovaFlowGGUFBF16Loader') required.unet_name = [['qwen-image-2.1-UC-BF16.gguf']];
+  if (name === 'UNETLoader') required.unet_name = [['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors'], ['default', 'fp8_e4m3fn']];
   if (name === 'CLIPLoader') required.clip_name = [['qwen3vl_8b_bf16.safetensors']];
   if (name === 'VAELoader') required.vae_name = [['qwen_image_2.1_vae_bf16.safetensors']];
   return { [name]: { input: { required } } };
