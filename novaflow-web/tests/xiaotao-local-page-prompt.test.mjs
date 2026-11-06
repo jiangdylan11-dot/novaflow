@@ -16,7 +16,7 @@ function setup(){
   root.__NovaFlowSmartAI={optimizeForAgent:async options=>{optimized=options;return {analysisBackend:'qwen-cpu',modelIdentity:{id:'qwen35-heretic'},resourcesReleased:true,generationReady:true,displayPrompt:'【参考帧对齐】\n…\n\n【画面与动作】\n[镜头 1] 女孩发丝轻轻飘动，2 秒后回到开头姿态形成循环。'};}};
   const api=()=>({captureFoartSessionGuard:()=>()=>true,qwenBusinessAvailableSync:()=>true,qwen21NativeRewriteV3AvailableSync:()=>true,runtimeFeatures:async()=>({}),artAgentChat:async()=>{chats++;return {ok:true,data:{reply:'一段方案',history:[],toolTrace:[]}};}});
   const bridge={clearPrepared(){},captureChat:()=>({artContext:{surface:'other'},images:[]}),hasResult:()=>false};
-  const c=root.NovaFlowXiaotaoArtAgent.createController({api,bridge});c.state.qwen35CpuTrialAvailable=true;
+  const c=root.NovaFlowXiaotaoArtAgent.createController({api,bridge});c.setModel('qwen3.5-9b-heretic');c.state.qwen35CpuTrialAvailable=true;
   return {c,get page(){return page;},get chats(){return chats;},get optimized(){return optimized;}};
 }
 test('local brain writes an H3 draft into the video box for a description',async()=>{

@@ -9,7 +9,7 @@ function setup(chatReply){
   let chats=0;
   const api=()=>({captureFoartSessionGuard:()=>()=>true,qwenBusinessAvailableSync:()=>true,runtimeFeatures:async()=>({}),artAgentChat:async()=>{chats++;return chatReply;}});
   const bridge={clearPrepared(){},captureChat:()=>({artContext:{surface:'other'},images:[]}),hasResult:()=>false};
-  const c=root.NovaFlowXiaotaoArtAgent.createController({api,bridge});c.state.qwen35CpuTrialAvailable=true;
+  const c=root.NovaFlowXiaotaoArtAgent.createController({api,bridge});c.setModel('qwen3.5-9b-heretic');c.state.qwen35CpuTrialAvailable=true;
   return {c,get chats(){return chats;}};
 }
 test('做一张…图 on the local model gets the switch notice without calling the model',async()=>{

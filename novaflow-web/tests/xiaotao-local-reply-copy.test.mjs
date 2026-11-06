@@ -10,7 +10,7 @@ function setup(){const root={console,crypto:webcrypto,AbortController,setTimeout
 test('local chat and legacy displayed rows copy only the actual answer',async()=>{
  const root=setup(),api=()=>({artAgentChat:async()=>({ok:true,data:{reply:'你好，我能协助创作。',history:[],toolTrace:[]}})});
  const bridge={clearPrepared(){},captureChat:()=>({artContext:{surface:'other'},images:[]}),hasResult:()=>false};
- const c=root.NovaFlowXiaotaoArtAgent.createController({api,bridge});c.state.qwen35CpuTrialAvailable=true;
+ const c=root.NovaFlowXiaotaoArtAgent.createController({api,bridge});c.setModel('qwen3.5-9b-heretic');c.state.qwen35CpuTrialAvailable=true;
  assert.equal(await c.send('你好'),true);assert.equal(c.state.messages.at(-1).content,'你好，我能协助创作。');assert.equal(c.state.status,'已回复');
  const f=documentFixture(),writes=[],env={navigator:{clipboard:{writeText:async v=>writes.push(v)}}};
  for(const row of [root.NovaFlowXiaotaoArtAgent.conversationRows(c.state.messages).at(-1),root.NovaFlowXiaotaoArtAgent.conversationRows([{role:'assistant',content:'本次为文字或图片对话，未操作软件。\n\n你好，我能协助创作。'}])[0]]){

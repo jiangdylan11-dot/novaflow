@@ -13,7 +13,7 @@ function page() {
   runInContext(source,createContext(sandbox));
   const bridge={clearPrepared(){},async captureChat(){return {artContext:{surface:'other'},images:[]};},capture(){throw Error('no drawing context');}};
   const api=()=>({promptAssistantGetStatus:async()=>({ok:true,result:await status}),artAgentChat:async payload=>{calls.push(payload);return {ok:true,data:{reply:'你好',history:[],toolTrace:[]}};}});
-  const controller=sandbox.NovaFlowXiaotaoArtAgent.createController({bridge,storage,api});
+  const controller=sandbox.NovaFlowXiaotaoArtAgent.createController({bridge,storage,api});controller.setModel(modelId);// 小桃 opens on 豆包; pick the local brain.
   return {controller,calls,setStatus:value=>{status=value;}};
 }
 test('Qwen is enabled only by its independent capability and sends the explicit local model',async()=>{

@@ -45,7 +45,8 @@ function fixture({local=memoryStorage(),session=memoryStorage(),respond,captureC
     },
     ...extraApi
   });
-  const create=()=>root.NovaFlowXiaotaoArtAgent.createController({bridge,api});
+  // 小桃 opens on 豆包; these fixtures exercise the free local brain, so pick it first.
+  const create=()=>{const controller=root.NovaFlowXiaotaoArtAgent.createController({bridge,api});controller.setModel('qwen3.5-9b-heretic');return controller;};
   return {root,local,session,payloads,owner,create,get stopCalls(){return stopCalls;},setSurface:value=>{surface=value;}};
 }
 async function localReady(controller) {await controller.calibrateLocalStatus();}

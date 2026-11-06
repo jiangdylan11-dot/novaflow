@@ -19,6 +19,11 @@
   function selectedModelPayload(id) {
     return id==='gemma-4-12b-it' || id==='qwen3.5-9b-heretic' || isXiaotaoOnlineModel(id) ? {modelId:id} : {};
   }
+  // 小桃 opens on 豆包; a user without credits is told to switch to the free
+  // local model or ask the admin to top up.
+  const DEFAULT_XIAOTAO_MODEL_ID = 'bytedance/doubao-seed-2.1-lite';
+  const CREDIT_SHORTAGE_REPLY = '你的积分不足，这次没有完成。可以在上方模型选择里切换到免费的本地模型（Qwen3.5 9B）继续对话和优化提示词，或联系管理员充值后再使用在线模型。';
+  const isCreditShortage = text => /积分不足|insufficient_credits/i.test(String(text || '')) && !/计费池/.test(String(text || ''));
   const LOCAL_CHAT_ONLY_NOTICE = '本地模型只支持对话和提示词优化，不能操作软件。需要操作时请切换到在线模型。';
   // Availability starts false; the server checks the selected node and owner.
   function qwenCandidateHasMedia(value) {
@@ -768,7 +773,7 @@
   function createController({bridge, api: getApi = () => root.electronAPI, onChange = () => {}, timers = root, uploadHost = null} = {}) {
     let retired = false;
     const api = () => retired ? null : getApi();
-    const state = {provider:'local', modelId:'qwen3.5-9b-heretic', mode:'chat', activeTask:null,messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, staging:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'Qwen3.5 9B', toolTrace:[], localSession:null, localModelStatus:null, qwenExecutionDevice:null, qwen35CpuTrialChecked:false, pricingPolicy:null, pricingError:'',billingNotices:[]};
+    const state = {provider:'api', modelId:DEFAULT_XIAOTAO_MODEL_ID, mode:'chat', activeTask:null,messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, staging:false, confirmation:null, samplingApproval:null, operation:null, status:'正在获取在线模型状态…', error:'', model:CHAT_MODELS[DEFAULT_XIAOTAO_MODEL_ID].label, toolTrace:[], localSession:null, localModelStatus:null, qwenExecutionDevice:null, qwen35CpuTrialChecked:false, pricingPolicy:null, pricingError:'',billingNotices:[]};
     let pendingFoartImageReview=null,foartImageReviewUndo=null;
     state.foartImageReviewCanUndo=false;
     const pricingKey = 'novaflow.xiaotao-pricing.v1';
@@ -1151,9 +1156,16 @@
       state.messages.push({role:'assistant', content: fault ? '本地模型这次没能处理，可能是本机正在切换或释放资源。请稍后再发一次；需要操作软件或生成时，可以切换到在线模型。' : text});
       state.error = ''; state.status = '';
     }
+    // No credits: say so as a plain reply that points to the free model or a top-up.
+    function creditShortageAsReply() {
+      if (state.provider !== 'api' || !state.error || state.pending || !isCreditShortage(state.error)) return;
+      state.messages.push({role:'assistant', content:CREDIT_SHORTAGE_REPLY});
+      state.error = ''; state.status = '积分不足';
+    }
     function notify() {
       if (retired) return;
       localErrorAsReply();
+      creditShortageAsReply();
       sessions[state.provider] = {messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId};
       modelSessions[state.modelId]={messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId,activeTask:state.activeTask,historyOriginUnknown:state.historyOriginUnknown===true};
       onChange(state);
@@ -2643,7 +2655,7 @@
     function reset() {if (CHAT_MODELS[state.modelId]?.retired || state.pending || state.generating || state.applying || state.uploading || state.staging || state.staged.some(item=>item.status==='reading')) return false;  if(pendingFoartImageReview)root.NovaFlowFoartTools?.cancelImageReview?.(pendingFoartImageReview.id);pendingFoartImageReview=null;foartImageReviewUndo=null;state.foartImageReviewCanUndo=false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; lastUploads=[];lastPreparedTask='';pendingIntent=null;pendingPromptSource=null;state.promptSourceCancelledNotice='';clearMediaPromptReview();bridge.clearPrepared(); releaseCurrentStagedMedia(); sessions[state.provider]={messages:[],history:[],conversationId:''}; delete modelSessions[state.modelId];delete transientSessions[state.modelId]; Object.assign(state, {activeTask:null,messages:[], history:[],historyOriginUnknown:false, conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', status:state.mode === 'drawing' ? '当前模型的新对话，将使用当前绘图内容' : '当前模型的新对话，可以直接聊天'}); notify(); return true;}
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying || state.uploading) return false;
-      return setModel(provider === 'local' ? 'qwen3.5-9b-heretic' : 'xai/grok-4.7');
+      return setModel(provider === 'local' ? 'qwen3.5-9b-heretic' : DEFAULT_XIAOTAO_MODEL_ID);
     }
     function setModel(modelId) {
       const model = CHAT_MODELS[modelId];

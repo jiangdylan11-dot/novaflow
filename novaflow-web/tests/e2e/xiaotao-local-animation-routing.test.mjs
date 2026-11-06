@@ -21,7 +21,8 @@ function fixture(discussion,{realTask=false,active=true,communityEnabled=false}=
   const api=()=>({promptAssistantGetStatus:async()=>({ok:true,result:{available:true,features:{qwen35CpuTrial:communityEnabled}}}),artAgentChat:async payload=>{requests.push(JSON.parse(JSON.stringify(payload)));return payload.mode==='foart'
     ? {ok:true,data:{resourcesReleased:true,toolPlan:{schema:'nf.foart.tool-plan.v1',status:'clarify',reply:'请说明想怎样调整。',operations:[]}}}
     : {ok:true,data:{reply:'可以先讨论。',history:[]}};}});
-  return {controller:root.NovaFlowXiaotaoArtAgent.createController({bridge,api}),requests,executed,opened,api:root.NovaFlowXiaotaoArtAgent};
+  const controller=root.NovaFlowXiaotaoArtAgent.createController({bridge,api});controller.setModel('qwen3.5-9b-heretic');// 小桃 opens on 豆包; pick the local brain.
+  return {controller,requests,executed,opened,api:root.NovaFlowXiaotaoArtAgent};
 }
 
 test('community models reject every non-image attachment and expose only attachment metadata',async()=>{

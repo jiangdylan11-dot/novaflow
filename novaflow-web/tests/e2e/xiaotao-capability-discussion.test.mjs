@@ -57,7 +57,7 @@ test('capability questions in active UI use pure chat without capturing project'
 });
 
 test('local capability question does not silently switch models or execute tools',async()=>{
-  const e=setup({ui:true});await e.controller.calibrateLocalStatus();
+  const e=setup({ui:true});e.controller.setModel('qwen3.5-9b-heretic');await e.controller.calibrateLocalStatus();
   assert.equal(await e.controller.send('你可以控制软件了吗'),true);
   assert.equal(e.controller.state.modelId,'qwen3.5-9b-heretic');assert.equal(e.controller.state.provider,'local');
   assert.equal(e.calls.requests.length,0);assert.equal(e.calls.toolCaptures,0);assert.equal(e.calls.executed,0);
