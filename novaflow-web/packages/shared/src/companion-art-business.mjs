@@ -6,8 +6,10 @@ import {estimateXiaotaoOnlineCredits,settleXiaotaoOnlineCredits} from './feature
 import {companionPricingPolicy} from './companion-pricing.mjs';
 import {postRunningHubResponses} from './runninghub-llm.mjs';
 // The edge runtime's wall clock counts per worker, not per request (live 2.0.328: execute killed 88s after dispatch), so a
-// silent model is given up early; a worker that still dies leaves a hold the next quote's sweep refunds.
-const ART_PROVIDER_TIMEOUT_MS=60000;
+// silent model is given up before that; a worker that still dies leaves a hold the next quote's sweep refunds.
+// 80s (Nov 6, 2.0.331 ledger): 豆包 with images often needs more than 60s for the structured style text, and the two
+// refund RPCs after the abort take about 1-2s, so this still ends ~6s before the observed kill.
+const ART_PROVIDER_TIMEOUT_MS=80000;
 import {hasXiaotaoDecimalV1,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 import {QWEN21_NATIVE_REWRITE,QWEN21_NATIVE_CONTRACTS,buildQwen21NativeRewrite,compileQwen21NativeRewrite} from './qwen21-native-rewrite.mjs';
 import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
