@@ -37,6 +37,7 @@ const STYLE_TIMES={midday:'bright midday daylight',afternoon:'afternoon daylight
 const STYLE_TIME_WORDS=[['golden_hour',/golden[- ]hour|sunset|sunrise/iu],['night',/\bnight|moonlit|moonlight/iu],['dusk',/\bdusk|twilight|evening/iu],['overcast',/overcast/iu],['afternoon',/afternoon/iu],['midday',/midday|noon|morning|daylight|sunlight/iu]];
 const STYLE_NOT_DAY=/\b(?:late afternoon\s+)?(?:golden[- ]hour|sunset|sunrise|dusk|twilight|evening|night(?:time)?)\b\s*/giu;
 const STYLE_LOW_SUN=[[/\b(?:golden|honey(?:-gold)?|amber)\b/giu,'white-gold'],[/\blow(?:[- ]side)?[- ]angle\b/giu,'high'],[/\bfrom the side\b/giu,'from above'],[/\b(?:elongated|long)\b/giu,'short']];
+const STYLE_NO_SKY=/\bno sky\b[^.]*\.?|(?:,\s*)?(?:and\s+)?(?:the\s+)?\bsky\b[^.;]*/giu;
 const STYLE_LAYOUT='The layout, walls, ceiling and openings of <image1> stay exactly as they are.';
 export function decideStyleTime(mood,facts={}){
   const said=STYLE_TIMES[facts.time_of_day]?facts.time_of_day:STYLE_TIME_WORDS.find(([,words])=>words.test(mood))?.[0];
@@ -45,7 +46,9 @@ export function decideStyleTime(mood,facts={}){
   const day=time==='midday'||time==='afternoon'||time==='overcast';
   let text=String(mood);
   if(day)text=text.replace(STYLE_NOT_DAY,'').replace(/^[\s,.;]+|[\s,;]+$/gu,'').replace(/^./u,letter=>letter.toUpperCase());
-  if(time!==said)text=STYLE_LOW_SUN.reduce((value,[words,next])=>value.replace(words,next),text.split(/(?<=[,.;])\s*/u).filter(part=>!/\bsky\b/iu.test(part)).join(' ')).replace(/[\s,;]+$/u,'');
+  // Any sky wording left in a daytime text with no sky in view brings back the photo's dark windows.
+  if(day&&noSky)text=text.replace(STYLE_NO_SKY,'').replace(/[\s,;]+$/u,'');
+  if(time!==said)text=STYLE_LOW_SUN.reduce((value,[words,next])=>value.replace(words,next),text);
   const light=day?(noSky?'Every existing window and opening of <image1> is filled with bright pale daylight.':'Daylight enters through the existing windows and openings of <image1>.'):time==='golden_hour'?'':'Lamps are the main light.';
   return {time,mood:text||STYLE_DEFAULT_MOOD,line:[`Time of day: ${STYLE_TIMES[time]}.`,light,STYLE_LAYOUT].filter(Boolean).join(' ')};
 }

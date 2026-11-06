@@ -34,6 +34,12 @@ await test('golden hour with a sky but no low sun is still midday, and its sky w
   assert.equal(decided.time,'midday');assert.doesNotMatch(decided.line+decided.mood,/\bsky\b|night|golden hour/iu);assert.match(decided.line,/bright pale daylight/u);assert.match(decided.mood,/deep cool blue/u);
   assert.equal(decideStyleTime('dusk, lamps on',{time_of_day:'dusk',sun_visible:false,sky_visible:true}).time,'dusk','dusk with a sky in view stands');
 });
+await test('daytime with no sky in view drops every sky phrase whole',()=>{
+  const seen='Midday light with a strong key from the upper left, casting short hard shadows. Contrast is high. No sky is shown; the background sits in shaded foliage and wood.';
+  assert.equal(decideStyleTime(seen,{time_of_day:'midday',sun_visible:false,sky_visible:false}).mood,'Midday light with a strong key from the upper left, casting short hard shadows. Contrast is high.');
+  const cut=decideStyleTime('Golden hour lighting, with warm sunlight casting soft shadows, the sky is deep dark blue, with bright highlights. Gentle contrast.',{time_of_day:'golden_hour',sun_visible:false,sky_visible:false}).mood;
+  assert.doesNotMatch(cut,/dark blue|\bsky\b/iu);assert.match(cut,/Gentle contrast/u);
+});
 await test('a time that stands keeps the brain sentence',()=>{
   const golden=decideStyleTime(liveR1,{time_of_day:'golden_hour',sun_visible:true,sky_visible:true});assert.equal(golden.time,'golden_hour');assert.equal(golden.mood,liveR1);
   const moon='Nighttime rainy scene lit by cool pale blue moonlight, a deep dark blue sky with thin clouds';
