@@ -177,3 +177,14 @@ test('local reverse goes down the prompt path when the reference area has a pict
   await f.c.send('反推');
   assert.doesNotMatch(f.c.state.messages.map(m=>m.content).join('\n'),/本地模型看不到图片/);
 });
+
+test('a message sent while the tool loop is still running is refused instead of invalidating the loop',async()=>{
+  // The planner call is the loop's first step; a send during it (a double click, a harness, an eager user) used to pass
+  // once an inner prompt step had cleared `pending`, bump `serial`, and make the next charged step fail its selection check.
+  const foart=[];let during=null,pendingDuring=null;
+  const f=await fixture({refs:refs(),foart});
+  foart.push(new Promise(resolve=>setTimeout(async()=>{pendingDuring=f.c.state.pending;during=await f.c.send('再来一次');resolve(done('好的'));},0)));
+  assert.equal(await f.c.send('把这张图做成水彩风'),true);
+  assert.equal(pendingDuring,true);assert.equal(during,false,'the second send is refused while the loop runs');
+  assert.equal(f.starts.length,1);assert.equal(f.c.state.error,'');
+});
