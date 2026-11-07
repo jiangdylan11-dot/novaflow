@@ -46,6 +46,12 @@ await test('a long style prompt reaches the workflow whole',()=>{
   assert.equal(sanitizeWorkflowOptions(long).length,5000);
   assert.equal(validateTaskParameters('audio_music',{prompt:long}).prompt.length,5000);
 });
+await test('what the brain observed stays out of the picture prompt',()=>{
+  const prepared=buildQwen21NativeRewrite(input,'model',['subject','style']);
+  const result=compileQwen21NativeRewrite({output_text:JSON.stringify({observe:'OBSERVEDNOTE hard edges',style_description:description,mood_description:mood,content_description:content,time_of_day:'midday',sun_visible:false,sky_visible:false})},prepared);
+  assert.doesNotMatch(result.modelPrompt,/OBSERVEDNOTE/u);
+  assert.equal(prepared.body.text.format.schema.properties.observe.type,'string');
+});
 await test('the picked hair word replaces a warm colour, and an unknown pick changes nothing',()=>{
   assert.equal(styleHairColour('long wavy reddish-brown hair, smiling','brown'),'long wavy brown hair, smiling');
   assert.equal(styleHairColour('copper-red hair','dark_brown'),'dark brown hair');
@@ -112,7 +118,7 @@ await test('style mode is chosen only for one subject first followed by style re
   for(const roles of [['subject','style'],['subject','style','style']]){
     const prepared=buildQwen21NativeRewrite(input,'model',roles);
     assert.equal(prepared.styleRedraw,true,roles.join());assert.equal(prepared.referenceCount,roles.length);assert.equal(prepared.body.temperature,0);
-    assert.deepEqual(prepared.body.text.format.schema.required,['drawing','hair_colour','light','style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible']);
+    assert.deepEqual(prepared.body.text.format.schema.required,['observe','drawing','hair_colour','light','style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible']);
   }
   for(const roles of [['subject'],['style'],['style','subject'],['subject','pose'],['subject','style','pose'],['subject','subject','style'],[]])
     assert.equal(buildQwen21NativeRewrite(input,'model',roles).styleRedraw,undefined,roles.join());
@@ -122,7 +128,7 @@ await test('style mode is chosen only for one subject first followed by style re
 
 await test('the style system asks only for the three texts and bans the wording that darkens the result',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
-  for(const needle of ['450-600 characters','each visible scene object with its material and colour','pick the one closest value for each field','genre: flat_cel, painterly, glossy, soft or watercolour','shading: soft_gradient, two_step, three_step, brush, hatching or wash','deciding in this order','Flat colour areas with hard-edged shadows is flat_cel','under 20 words on anything special','key: hard, soft or diffuse','when unsure between glossy and another, pick the other','Skin with no visible shine is matte','layered only if separate locks can be counted','hair_depth: flat, two or layered','under 15 words','Short hard shadows mean midday','golden hour only if a low sun is actually visible','Never state its time of day, sky, lighting or what shows through its windows','exact hair colour','any wink','one small mole on the left cheek','requested_changes','never by tags or __NF...__ placeholders'])
+  for(const needle of ['450-600 characters','each visible scene object with its material and colour','pick the one closest value for each field','genre: flat_cel, painterly, glossy, soft or watercolour','shading: soft_gradient, two_step, three_step, brush, hatching or wash','deciding in this order','Flat colour areas with hard-edged shadows is flat_cel','under 20 words on anything special','key: hard, soft or diffuse','When unsure, go by what you observed','40% or more is high','Skin with no visible shine is matte','layered only if separate locks with dark gaps','hair_depth: flat, two or layered','under 15 words','Short hard shadows mean midday','golden hour only if a low sun is actually visible','Never state its time of day, sky, lighting or what shows through its windows','exact hair colour','any wink','one small mole on the left cheek','requested_changes','never by tags or __NF...__ placeholders'])
     assert.ok(text.includes(needle),needle);
   assert.doesNotMatch(text,/rendering medium|rewritten_prompt/);
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');
