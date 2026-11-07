@@ -808,7 +808,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   // Pin all bytes except Python's equivalent CRLF/LF source line endings.
   // Derive these hashes from the packaged source after CRLF -> LF conversion;
   // BOM, lone CR, whitespace and every other byte remain security-relevant.
-  const expectedBridgeService='ac5cdf0337d525536c2382125dd47d368ca9dd9c80c24efda2553be4493516f0';
+  const expectedBridgeService='6432af6e38c0825aa7b0b51dd0ef11cf747852f49fdc8afd20db219631884099';
   const expectedBridgeAdapter='ecb801bcf473bfd36f291a32fe882d586e2c9d0450d0c25a6981381f62f06014';
   const fileDigest=file=>{
     const input=readFileSync(file), normalized=Buffer.allocUnsafe(input.length);let used=0;
@@ -838,7 +838,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         && fileDigest(fileURLToPath(new URL('./local-model-selection.mjs',import.meta.url)))==='b4ae5e46438b8c704aff6e26281d1c522deb5dae32a04c993db1cc648a94111f';
     } catch { return false; }
   };
-  const qwenImageReady=()=>{try{return qwenNativeReady()===true && fileDigest(join(dirname(config().serviceScript),'prompt_assistant','qwen21_image_edit.py'))==='15df47b615b92c00e99bbd65ba3891556ae0602d6798200a70212efbdd5713e8';}catch{return false;}};
+  const qwenImageReady=()=>{try{return qwenNativeReady()===true && fileDigest(join(dirname(config().serviceScript),'prompt_assistant','qwen21_image_edit.py'))==='8798c6f3830a0597fb6d16ce2c5e341e0a925bd4e69a68eed666fa147cf15f2f';}catch{return false;}};
   return selectedBackend === 'strata' ? createStrataPromptAssistant({ worker, comfyUrls, configPath: candidateConfigPath,
     normalizeOptimizeRequest, normalizeReverseRequest, legacyApi: api, logger, qwenBusinessBridge, qwenBusinessTextOnly, qwenSession, qwenBusinessReady, qwenNativeReady,qwenImageReady,
     communityCpuTrialForDevelopment: communityCpuTrialForDevelopment===true,

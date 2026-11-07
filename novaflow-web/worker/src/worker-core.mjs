@@ -26,6 +26,7 @@ import { videoRuntimeUrl } from './runtime-services.mjs';
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength, audioGraphExtras } from './comfy/workflow-runner.mjs';
 import { cleanAudioCaption } from './comfy/audio-reprompt.mjs';
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
+import { buildQwen21NativeRewrite, compileQwen21NativeRewrite, isStyleRedrawRoles, QWEN21_STYLE_REDRAW_POLICY } from '../../packages/shared/src/qwen21-native-rewrite.mjs';
 import { workflowModule, QWEN21_EDIT_LORA_CAPABILITY, QWEN21_EDIT_LORA_NAME, QWEN21_UC_LORA_NAME } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy, detectQwenImage21, WORKER_MODEL_MANIFEST } from './models/model-manager.mjs';
 import { createWorkerLoraCatalog } from './models/lora-catalog.mjs';
@@ -1515,18 +1516,30 @@ export function createWorker(options) {
         candidate.scope!==actor.scope || candidate.attempt!==actor.attempt || !['before','after'].includes(phase))return false;
       try {await check('infer',phase==='before'?'start':'finish');return !cancelled();} catch {return false;}
     };
-    const reply=await assistant.runForTask(task.id,imageEdit?'qwenImageEdit':'qwenRotationCandidate',request,{
+    // A subject followed by style pictures uses the same style-redraw instructions as the online brain: the local
+    // model only answers them by looking at the pictures, and the prompt is assembled here.
+    const styleRedraw=imageEdit && isStyleRedrawRoles(request.images.map(image=>image.role));
+    const stylePrepared=styleRedraw?buildQwen21NativeRewrite({currentPrompt:request.currentPrompt,requirements:request.requirements,negativePrompt:request.negativePrompt,
+      promptContract:'qwen21-native-rewrite-v3',qwenPromptMode:'img2img',supportsNegativePrompt:true},'local',request.images.map(image=>image.role)):null;
+    const assistantRequest=styleRedraw?{...request,styleRedraw:{system:stylePrepared.body.input[0].content[0].text,user:stylePrepared.body.input[1].content[0].text}}:request;
+    const reply=await assistant.runForTask(task.id,imageEdit?'qwenImageEdit':'qwenRotationCandidate',assistantRequest,{
       ...(imageEdit?{imageEditActor:actor,imageEditPhaseVerifier:verify}:{rotationActor:actor,rotationPhaseVerifier:verify}),isCancelled:cancelled
     });
     if(reply?.ok!==true || !reply.data)throw new Error(qwenPlanSafeFailureMessage(reply));
+    if(styleRedraw){
+      if(typeof reply.data.styleAnswer!=='string')throw new Error('Qwen image edit result unverified');
+      const compiled=compileQwen21NativeRewrite({output_text:reply.data.styleAnswer},stylePrepared,()=>true),{styleAnswer,...rest}=reply.data;
+      reply.data={...rest,displayPrompt:compiled.modelPrompt,modelPrompt:compiled.modelPrompt,negativePrompt:compiled.negativePrompt,modelPromptLanguage:'en',
+        promptContract:'qwen21-native-rewrite-v3',modelPromptPolicy:QWEN21_STYLE_REDRAW_POLICY,translationValidation:'native-edit-and-literals'};
+    }
     const editInstruction=imageEdit?(request.requirements.trim()||request.currentPrompt).replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|(?<![A-Za-z0-9])'[^'\r\n]+'(?![A-Za-z0-9])|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/g,''):'';
-    const editLanguage=/[\u3400-\u9fff]/u.test(editInstruction)?'zh':'en';
+    const editLanguage=styleRedraw?'en':/[\u3400-\u9fff]/u.test(editInstruction)?'zh':'en';
     if(imageEdit && (reply.data.analysisBackend!=='qwen-cpu' || reply.data.modelIdentity?.id!=='qwen35-heretic' ||
       reply.data.modelIdentity?.verification!=='server-weight-path' || reply.data.resourcesReleased!==true || reply.data.generationReady!==true ||
-      reply.data.promptContract!=='qwen21-native-rewrite-v3' || reply.data.modelPromptPolicy!=='qwen21-native-rewrite-v3' ||
+      reply.data.promptContract!=='qwen21-native-rewrite-v3' || reply.data.modelPromptPolicy!==(styleRedraw?QWEN21_STYLE_REDRAW_POLICY:'qwen21-native-rewrite-v3') ||
       reply.data.translationValidation!=='native-edit-and-literals' || reply.data.modelPromptLanguage!==editLanguage ||
       typeof reply.data.displayPrompt!=='string' || reply.data.displayPrompt.trim().length<2 || typeof reply.data.modelPrompt!=='string' ||
-      reply.data.modelPrompt!==reply.data.displayPrompt || reply.data.negativePrompt!==request.negativePrompt))
+      reply.data.modelPrompt!==reply.data.displayPrompt || (styleRedraw?!reply.data.negativePrompt.startsWith(request.negativePrompt):reply.data.negativePrompt!==request.negativePrompt)))
       throw new Error('Qwen image edit result unverified');
     if(imageEdit && request.images.length>1){
       const referenced=new Set([...reply.data.modelPrompt.matchAll(/<image(\d+)>/gi)].map(match=>Number(match[1])));

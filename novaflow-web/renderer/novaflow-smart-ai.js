@@ -5279,7 +5279,8 @@
       const originals=options.images.map(image=>({role:image.role,dataUrl:image.dataUrl})),source=String(options.prompt||'').trim(),requirements=String(options.requirements||'').trim(),negativePrompt=String(options.negativePrompt||'');
       const current=()=>!signal?.aborted&&options.isImageInputCurrent()===true&&options.selectionStillCurrent()===true&&options.images.length===originals.length&&originals.every((image,index)=>options.images[index]?.role===image.role&&options.images[index]?.dataUrl===image.dataUrl);
       if(!source||!current())throw new Error('图片、提示词或模型已变化，未提交。');
-      const requestId=window.crypto.randomUUID();options.onRequest?.(requestId);options.onProgress?.('正在根据参考图优化提示词…');
+      const styleRedraw=(roles=>roles.length>=2&&roles[0]==='subject'&&roles.slice(1).every(role=>role==='style'))(originals.map(image=>image.role));
+      const requestId=window.crypto.randomUUID();options.onRequest?.(requestId);options.onProgress?.(styleRedraw?'正在看参考图写风格，本地模型大约需要一到两分钟…':'正在根据参考图优化提示词…');
       const response=await api.promptAssistantOptimizePrompt({requestId,assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch,
         localImageEdit:true,surface:'art',purpose:'optimize',targetEngine:'qwen-2.1',qwenPromptMode:'img2img',nsfw:false,currentPrompt:source,requirements,negativePrompt,
         images:originals,isImageInputCurrent:current,selectionStillCurrent:current,signal});
@@ -5287,12 +5288,12 @@
       if(response?.ok!==true)throw new Error(response?.error||'参考图提示词优化未完成。');
       const data=response.data;
       const descriptive=(requirements||source).replace(/[“「『][^”」』\r\n]*[”」』]|“[^”]*”|‘[^’]*’|"[^"\r\n]*"|(?<![A-Za-z0-9])'[^'\r\n]+'(?![A-Za-z0-9])|<image\d+>|@参考图\s*\d+|__NF[A-Za-z0-9_]+__/gu,'');
-      const language=/[\u3400-\u9fff]/u.test(descriptive)?'zh':'en';
-      if(!verifiedAgentPromptHandoff(data,null,true)||data?.promptContract!=='qwen21-native-rewrite-v3'||data?.modelPromptPolicy!=='qwen21-native-rewrite-v3'||data?.translationValidation!=='native-edit-and-literals'||data?.modelPromptLanguage!==language||
-        typeof data.displayPrompt!=='string'||data.displayPrompt.trim().length<2||data.modelPrompt!==data.displayPrompt||data.negativePrompt!==negativePrompt)
+      const language=styleRedraw?'en':/[\u3400-\u9fff]/u.test(descriptive)?'zh':'en',policy=styleRedraw?'qwen21-style-redraw-v1':'qwen21-native-rewrite-v3';
+      if(!verifiedAgentPromptHandoff(data,null,true)||data?.promptContract!=='qwen21-native-rewrite-v3'||data?.modelPromptPolicy!==policy||data?.translationValidation!=='native-edit-and-literals'||data?.modelPromptLanguage!==language||
+        typeof data.displayPrompt!=='string'||data.displayPrompt.trim().length<2||data.modelPrompt!==data.displayPrompt||typeof data.negativePrompt!=='string'||(styleRedraw?!data.negativePrompt.startsWith(negativePrompt):data.negativePrompt!==negativePrompt))
         throw new Error('参考图优化结果合同不完整，未应用。');
-      return {prompt:data.modelPrompt,displayPrompt:data.displayPrompt,negativePrompt,resourcesReleased:true,modelIdentity:data.modelIdentity,generationReady:true,analysisBackend:'qwen-cpu',
-        optimization:{schema:'nf.agent.prompt-optimization.v1',requestId,analysisProvider:'local',modelIdentity:data.modelIdentity,framework:'qwen21-native-rewrite',modelPromptPolicy:'qwen21-native-rewrite-v3',modelPromptLanguage:language}};
+      return {prompt:data.modelPrompt,displayPrompt:data.displayPrompt,negativePrompt:data.negativePrompt,resourcesReleased:true,modelIdentity:data.modelIdentity,generationReady:true,analysisBackend:'qwen-cpu',
+        optimization:{schema:'nf.agent.prompt-optimization.v1',requestId,analysisProvider:'local',modelIdentity:data.modelIdentity,framework:'qwen21-native-rewrite',modelPromptPolicy:policy,modelPromptLanguage:language}};
     }
     const online=!qwenBusiness && options.analysisProvider==='api'&&options.surface!=='art';
     const optimize=payload=>online?api.smartAiPromptOptimize(payload):api.promptAssistantOptimizePrompt(qwenBusiness?{...payload,assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch}:payload);

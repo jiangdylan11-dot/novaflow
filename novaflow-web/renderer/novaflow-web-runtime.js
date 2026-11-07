@@ -1341,13 +1341,13 @@
     if(qwenImageEdit && reply.byteLength!==finished.output_manifest.files[0].bytes)throw new Error('参考图结果文件大小不匹配，未应用。');
     const result=JSON.parse(new TextDecoder().decode(reply));
     if(qwenImageEdit){
-      const proof=result?.imageEditBinding,data=result?.data;
+      const proof=result?.imageEditBinding,data=result?.data,styleRedraw=(roles=>roles.length>=2&&roles[0]==='subject'&&roles.slice(1).every(role=>role==='style'))(payload.images.map(image=>image.role));
       if(result?.ok!==true||!proof||Object.keys(proof).sort().join(',')!=='attempt,requestId,requestSha256,taskId,workerId'||
         proof.taskId!==created.task.id||proof.workerId!==selectedNode||proof.attempt!==assignedPlanAttempt||proof.requestId!==requestId||proof.requestSha256!==qwenImageDigest||
         !data||data.analysisBackend!=='qwen-cpu'||data.modelIdentity?.id!=='qwen35-heretic'||!['server-model-id','server-weight-path'].includes(data.modelIdentity?.verification)||
-        data.resourcesReleased!==true||data.generationReady!==true||data.promptContract!=='qwen21-native-rewrite-v3'||data.modelPromptPolicy!=='qwen21-native-rewrite-v3'||
-        data.translationValidation!=='native-edit-and-literals'||data.modelPromptLanguage!==qwenImageEditLanguage(payload.currentPrompt,payload.requirements)||
-        typeof data.displayPrompt!=='string'||data.displayPrompt.trim().length<2||data.modelPrompt!==data.displayPrompt||data.negativePrompt!==payload.negativePrompt)
+        data.resourcesReleased!==true||data.generationReady!==true||data.promptContract!=='qwen21-native-rewrite-v3'||data.modelPromptPolicy!==(styleRedraw?'qwen21-style-redraw-v1':'qwen21-native-rewrite-v3')||
+        data.translationValidation!=='native-edit-and-literals'||data.modelPromptLanguage!==(styleRedraw?'en':qwenImageEditLanguage(payload.currentPrompt,payload.requirements))||
+        typeof data.displayPrompt!=='string'||data.displayPrompt.trim().length<2||data.modelPrompt!==data.displayPrompt||typeof data.negativePrompt!=='string'||(styleRedraw?!data.negativePrompt.startsWith(payload.negativePrompt):data.negativePrompt!==payload.negativePrompt))
         throw new Error('参考图优化结果与请求或模型不匹配，未应用。');
       const latest=(await control('GET','/api/web/tasks/'+encodeURIComponent(created.task.id)))?.task;check();
       const files=latest?.output_manifest?.files,expected='qwen21-local-image-edit-result-'+assignedPlanAttempt+'.json';

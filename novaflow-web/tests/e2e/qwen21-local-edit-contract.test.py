@@ -9,7 +9,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'particle-editor-desktop'))
 from prompt_assistant.qwen21_prompt_policy import compile_agent_native
-from prompt_assistant.qwen21_image_edit import compile_image_edit
+from prompt_assistant.qwen21_image_edit import compile_image_edit, answer_style_redraw
 
 
 class LocalContractTests(unittest.TestCase):
@@ -23,6 +23,23 @@ class LocalContractTests(unittest.TestCase):
             result=compile_agent_native({**base,'currentPrompt':source},lambda *args,**kwargs:pair)
             self.assertEqual(result['displayPrompt'],chinese)
             self.assertEqual(result['negativePrompt'],'模糊')
+
+    def test_style_redraw_sends_both_pictures_and_retries_one_loose_answer(self):
+        buffer=io.BytesIO();Image.new('RGB',(4,3),'red').save(buffer,format='PNG')
+        url='data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode()
+        payload={'requestId':'abc-12345','mode':'image-edit','images':[{'role':'subject','dataUrl':url},{'role':'style','dataUrl':url}],
+                 'currentPrompt':'用图2的风格画图1','requirements':'','negativePrompt':'','promptContract':'qwen21-native-rewrite-v3',
+                 'styleRedraw':{'system':'SYSTEM RULES','user':'{"task":"style-redraw"}'}}
+        answers=iter(['not json','```json {"content_description":"a person"} ```'])
+        calls=[]
+        def generate(text,**kwargs):
+            calls.append((text,kwargs));return next(answers)
+        result=answer_style_redraw(payload,generate,lambda image:('tensor',image.size))
+        self.assertEqual(len(calls),2);self.assertEqual(len(calls[0][1]['images']),2)
+        self.assertIn('SYSTEM RULES',calls[0][1]['llama_template']);self.assertEqual(calls[0][0].count('<|vision_start|>'),2)
+        self.assertEqual(json.loads(result['styleAnswer']),{'content_description':'a person'})
+        with self.assertRaises(ValueError):
+            answer_style_redraw({**payload,'images':[{'role':'style','dataUrl':url},{'role':'subject','dataUrl':url}]},generate,lambda image:image)
 
     def test_single_image_is_decoded_and_sent_as_real_visual_input(self):
         buffer=io.BytesIO();Image.new('RGB',(4,3),'red').save(buffer,format='PNG')

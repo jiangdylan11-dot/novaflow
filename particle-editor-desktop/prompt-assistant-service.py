@@ -21940,13 +21940,18 @@ def _handle_request(payload: dict) -> dict:
     if command == "qwenImageEdit":
         # The scoped worker verifies the owner/node/task/attempt lease before
         # and after this operation. Never expose it through ordinary business.
-        from prompt_assistant.qwen21_image_edit import compile_image_edit
+        from prompt_assistant.qwen21_image_edit import compile_image_edit, answer_style_redraw
         data = {key: value for key, value in payload.items() if key not in ("id", "command")}
         art_reference_block_sensitive_minor(str(data.get("currentPrompt") or "") + "\n" + str(data.get("requirements") or ""), static_rule=False)
         def tensor_from_image(image):
             import numpy as np
             import torch
             return torch.from_numpy(np.asarray(image).astype("float32") / 255.0).unsqueeze(0)
+        if "styleRedraw" in data:
+            # The same safety check runs on the request and on the brain's description of the subject.
+            result = answer_style_redraw(data, assistant.generate, tensor_from_image)
+            art_reference_block_sensitive_minor(result["styleAnswer"], static_rule=False)
+            return result
         result = compile_image_edit(data, assistant.generate, tensor_from_image)
         art_reference_block_sensitive_minor(result["displayPrompt"] + "\n" + result["modelPrompt"], static_rule=False)
         return result

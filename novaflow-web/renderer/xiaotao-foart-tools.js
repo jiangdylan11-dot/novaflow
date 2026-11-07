@@ -463,9 +463,6 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       fail('本地小桃大脑尚未接通该绘图优化，未调用在线优化器或扣费。');
     const localReferenceSlots=Array.from(rt.references?.()||[]),localReferences=localReferenceSlots.filter(Boolean);
     if(scopedText&&localReferences.length)fail('参考图状态已变化，未提交或扣费。');
-    // 风格转换要由在线模型看图写风格词；本地模型只说明并建议切换，不报错、不扣费。
-    if(selectedLocalArt&&op.generationMode==='img2img'&&(localReferences.some(ref=>ref.drawingRole==='style'||ref.role==='style')||localReferences.length&&root.NovaFlowArtPrepare?.input?.({state:{...rt.state,prompt:op.prompt},references:localReferenceSlots}).references.some(ref=>ref.roles?.includes('style'))))
-      fail('风格转换需要在线模型看图来写风格，可以在小桃的模型选择里切换到在线模型后再试；这次没有提交或扣费。');
     const localImageEdit=selectedLocalArt&&op.generationMode==='img2img'&&localReferences.length>=1&&localReferences.length<=3&&root.electronAPI?.qwen21LocalImageEditAvailableSync?.()===true;
     if(localImageEdit){
       const selectedCurrent=selectionStillCurrent,context=rt.captureContext?.(),route=context?.routeRevision,revision=context?.referenceRevision;
@@ -544,6 +541,11 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
         if(drawingRole!==null&&genericRole!==null&&normalizeRole(drawingRole)!==normalizeRole(genericRole))
           fail('参考图角色信息冲突，请重新选择用途；未提交优化。');
         let role=normalizeRole(drawingRole??genericRole??'auto');
+        // An unset slot on the local brain takes the subject/style role the prompt gives it ("用图1的风格画图2").
+        if(localImageEdit&&role==='reference'){
+          const said=root.NovaFlowArtPrepare?.input?.({state:{...rt.state,prompt:op.prompt},references:referenceSlots})?.references?.find(item=>item.source===refIndex+1)?.roles||[];
+          if(said.length===1&&['subject','style'].includes(said[0]))role=said[0];
+        }
         if(scopedVision){
           const choice=roleMap[refIndex],prior=drawingRole??genericRole??'auto';
           if(!choice||choice.index!==refIndex+1||choice.identity!==imageIdentity(ref)||typeof choice.role!=='string'||
@@ -590,7 +592,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       const prompt=referenceOrder?String(draft).replace(/<image(\d+)>/g,(tag,n)=>`<image${(referenceOrder[Number(n)-1]??Number(n)-1)+1}>`):draft;
       const promptOwnsReferenceRoles=optimized.optimization?.modelPromptPolicy==='qwen21-style-redraw-v1';
       const localPolicy=optimized.optimization?.modelPromptPolicy;
-      const validLocalPolicy=localPolicy==='qwen21-task-policy-v1'||((op.generationMode==='txt2img'||localImageEdit)&&localPolicy==='qwen21-native-rewrite-v3');
+      const validLocalPolicy=localPolicy==='qwen21-task-policy-v1'||((op.generationMode==='txt2img'||localImageEdit)&&localPolicy==='qwen21-native-rewrite-v3')||(localImageEdit&&localPolicy==='qwen21-style-redraw-v1');
       if(selectedLocalArt&&(optimized.analysisBackend!=='qwen-cpu'||optimized.optimization?.modelIdentity?.id!=='qwen35-heretic'||!validLocalPolicy))fail('本地优化模型或专业规则未确认，未写入。');
       if(selectedLocalArt&&(typeof prompt!=='string'||!prompt.trim()||typeof modelPrompt!=='string'||!modelPrompt.trim()))fail('审核草稿不完整，未写入。');
       const optimization=selectedLocalArt?{...optimized.optimization,reviewRequired:true,modelPromptLanguage:localImageEdit?optimized.optimization.modelPromptLanguage:'en'}:optimized.optimization;

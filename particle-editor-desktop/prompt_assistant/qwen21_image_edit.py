@@ -145,3 +145,32 @@ def compile_image_edit(payload, generate, to_tensor):
         raise ValueError('英文编辑提示词未完整返回')
     return {'displayPrompt': display, 'modelPrompt': model, 'negativePrompt': negative, 'modelPromptLanguage': language,
             'promptContract': CONTRACT, 'modelPromptPolicy': CONTRACT, 'translationValidation': 'native-edit-and-literals'}
+
+
+def answer_style_redraw(payload, generate, to_tensor):
+    """Style redraw: the worker supplies the shared instructions; this only looks at the pictures and returns the JSON answer."""
+    style = payload.get('styleRedraw') if isinstance(payload, dict) else None
+    if (not isinstance(style, dict) or set(style) != {'system', 'user'} or
+        not all(isinstance(style[key], str) and 0 < len(style[key]) <= 16000 for key in style)):
+        raise ValueError('风格转换请求无效')
+    images = payload.get('images')
+    roles = [image.get('role') for image in images] if isinstance(images, list) and all(isinstance(image, dict) for image in images) else []
+    if (set(payload) != {'requestId', 'mode', 'images', 'currentPrompt', 'requirements', 'negativePrompt', 'promptContract', 'styleRedraw'} or
+        payload.get('mode') != 'image-edit' or payload.get('promptContract') != CONTRACT or
+        not 2 <= len(roles) <= 3 or roles[0] != 'subject' or any(role != 'style' for role in roles[1:]) or
+        any(set(image) != {'role', 'dataUrl'} for image in images)):
+        raise ValueError('风格转换参考图无效')
+    tensors = [to_tensor(decode_reference(image['dataUrl'])) for image in images]
+    template = '<|im_start|>system\n' + style['system'] + '\n<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n'
+    data = ''.join(f'<image{index}>\n{VISION_TOKEN}\n' for index in range(1, len(images) + 1)) + style['user']
+    # One retry when the answer is not a JSON object; the worker checks the fields.
+    for _ in range(2):
+        raw = str(generate(data, images=tensors, llama_template=template, max_length=2048, do_sample=False, temperature=0.0, trace_label='qwen21LocalStyleRedraw') or '').strip()
+        start, end = raw.find('{'), raw.rfind('}')
+        try:
+            value = json.loads(raw[start:end + 1]) if start >= 0 and end > start else None
+        except ValueError:
+            value = None
+        if isinstance(value, dict):
+            return {'styleAnswer': json.dumps(value, ensure_ascii=False)}
+    raise ValueError('本地模型未返回完整的风格描述')

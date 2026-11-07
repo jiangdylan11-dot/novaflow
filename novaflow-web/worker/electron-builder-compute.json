@@ -76,7 +76,8 @@
         "xiaotao-role-policy.mjs",
         "xiaotao-upload-guard.mjs",
         "release.mjs",
-        "foart-tool-plan.mjs"
+        "foart-tool-plan.mjs",
+        "qwen21-native-rewrite.mjs"
       ]
     },
     {
