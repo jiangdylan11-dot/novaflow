@@ -101,7 +101,7 @@ export async function planNaturalUiDraft({baseUrl,payload,cpu,infer,fetchImpl=fe
       }
       await new Promise(resolve=>setTimeout(resolve,pollMs));
     }
-    throw new Error('PE等待超时，请核对任务 '+sent.prompt_id+'；勿重复提交');
+    throw new Error('PE等待超时，请查看任务 '+sent.prompt_id+'；勿重复提交');
   };
   try{
     active();if(!infer){await idle();const available=await json('/object_info/CLIPLoader');

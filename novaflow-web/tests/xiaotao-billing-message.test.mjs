@@ -168,9 +168,9 @@ test('an interrupted stage the server settled at zero reads the status and says 
 // ---- no leftover wording
 test('no user-facing 待核对 / 核对账单 text remains',()=>{
   const files=['renderer/novaflow-web-runtime.js','renderer/xiaotao-art-agent.js','renderer/audio-studio.tool.js','renderer/novaflow-brand-runtime.js',
-    'packages/shared/src/online-ai-charge.mjs','packages/shared/src/backend-legacy-v249-online-ai-charge.mjs','packages/shared/src/companion-pricing-context.mjs','packages/shared/src/xiaotao-v2-credit-ports.mjs'];
+    'renderer/xiaotao-foart-tools.js','renderer/xiaotao-media-agent.js','packages/shared/src/feature-credits.mjs','packages/shared/src/backend-legacy-v249-feature-credits.mjs','packages/shared/src/companion-chat.mjs','packages/shared/src/online-ai-charge.mjs','packages/shared/src/backend-legacy-v249-online-ai-charge.mjs','packages/shared/src/companion-pricing-context.mjs','packages/shared/src/xiaotao-v2-credit-ports.mjs'];
   for(const file of files){
     const source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
-    assert.doesNotMatch(source,/(?<!等)待核|核对账单/,file);
+    assert.doesNotMatch(source,/(?<!等)待核|核对账单|核对积分|核对预留|核对实际|请核对(?!(?:优化|本次优化|已应用的)?草稿)/,file);
   }
 });

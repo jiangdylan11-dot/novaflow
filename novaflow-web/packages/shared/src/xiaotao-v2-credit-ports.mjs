@@ -36,7 +36,7 @@ export function createXiaotaoV2CreditPorts(rpc,{expectedConfig,expectedCap,polic
       } catch(error) {
         if(error?.code==='xiaotao_pricing_snapshot_changed' || error?.code==='xiaotao_reservation_release_unconfirmed')throw error;
         if(String(error?.message || '').includes('xiaotao pricing changed; obtain a new quote'))
-          throw Object.assign(new Error('计费策略已变化，请重新报价。本次未调用模型；如该请求曾提交，请核对积分状态'),{statusCode:409,code:'xiaotao_pricing_snapshot_changed'});
+          throw Object.assign(new Error('计费策略已变化，请重新报价。本次未调用模型'),{statusCode:409,code:'xiaotao_pricing_snapshot_changed'});
         // These exact server-side exceptions are transaction rollbacks before
         // a new hold; retain the established actionable balance messages.
         if(error?.code==='P0001' && ['积分不足','计费池余额不足，请联系管理员','额度迁移维护中，请稍后再试','该功能积分单价未配置'].includes(error?.message))throw error;

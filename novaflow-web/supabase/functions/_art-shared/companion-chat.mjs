@@ -117,12 +117,12 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
   // compatible. If either quote field is supplied, both must match this snapshot.
   let validatedPolicy=null;
   if(isNewPricedModel(selectedModel) || payload.pricingVersion != null || payload.quoteFingerprint != null){
-   if(provider.pricingSnapshotReady !== true)throw new CompanionError(503,'在线计费策略尚未同步。本次未调用模型；如该请求曾提交，请核对积分状态');
+   if(provider.pricingSnapshotReady !== true)throw new CompanionError(503,'在线计费策略尚未同步。本次未调用模型');
    const policy=await companionPricingPolicy(provider);
    if(!policy.models.some(model=>model.id === (payload.modelId || 'legacy-online') && model.available))
-    throw new CompanionError(503,'所选在线模型尚未开通或无法安全报价。本次未调用模型；如该请求曾提交，请核对积分状态');
+    throw new CompanionError(503,'所选在线模型尚未开通或无法安全报价。本次未调用模型');
    if(payload.pricingVersion !== policy.version || payload.quoteFingerprint !== await companionQuoteFingerprint(payload,policy.version))
-    throw new CompanionError(409,'计费策略或请求内容已变化，请重新报价。本次未调用模型；如该请求曾提交，请核对积分状态','companion-pricing-changed');
+    throw new CompanionError(409,'计费策略或请求内容已变化，请重新报价。本次未调用模型','companion-pricing-changed');
    validatedPolicy=policy;
   }
   if(typeof charge!=='function')throw new CompanionError(503,'在线计量未配置');
@@ -130,7 +130,7 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
   const requirePricedUsage = usage => {
    if(!isNewPricedModel(selectedModel))return;
    const part=settleXiaotaoOnlineCredits({usage,model:selectedModel,config:provider.creditConfig});
-   if(part.usageMissing)throw new CompanionError(502,'在线模型已被请求，但用量或费用无法核实；本次未结算积分，请核对预留状态。供应商可能仍产生费用。');
+   if(part.usageMissing)throw new CompanionError(502,'在线模型已被请求，但用量或费用无法核实；本次未结算积分，预留由服务器自动处理。供应商可能仍产生费用。');
   };
   try{
    const charged=await charge({userId:user.id,feature,amount:1,usageKey:'xiaotao:'+payload.requestId,estimatedCredits:estimate.credits,metadata:{model:selectedModel,imageAnalysis:imageCount>0,estimate:estimate.credits,...(validatedPolicy?{pricing_version:validatedPolicy.version,pricing_policy:validatedPolicy.config}:{})},run:async()=>{
@@ -168,7 +168,7 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
       reply=toolPlan.reply;
     }
     const decision=settleXiaotaoOnlineCredits({usage:result.usage,usageRecords,model:result.model||selectedModel,reservedCredits:estimate.credits,config:provider.creditConfig});
-    if(isNewPricedModel(selectedModel) && decision.usageMissing)throw new CompanionError(502,'在线模型已被请求，但用量或费用无法核实；本次未结算积分，请核对预留状态。供应商可能仍产生费用。');
+    if(isNewPricedModel(selectedModel) && decision.usageMissing)throw new CompanionError(502,'在线模型已被请求，但用量或费用无法核实；本次未结算积分，预留由服务器自动处理。供应商可能仍产生费用。');
     calibration=billingSampleFor(result.model||selectedModel,result.usage,decision,provider.creditConfig);if(planningRepairUsed)calibration.usable=false;decisionCredits=decision.credits;
     return {amount:1,reply,...(toolPlan?{toolPlan}:{}),model:result.model||selectedModel,imageCount,settledCredits:decision.credits,rhCostUsd:decision.usdCost,pricingSource:decision.pricingSource,metadata:{model:result.model||selectedModel,provider_request_id:requestIds.at(-1),provider_request_ids:requestIds,imageCount,usage:result.usage,request_usage:usageRecords.map(tokenUsageRecord),planningRepairUsed,token_rate_estimate:decision.tokenRateEstimate,billing_warning:decision.warning||null,billing_mode:'token',estimated_credits:estimate.credits,settled_credits:decision.credits}};
    }});
@@ -179,7 +179,7 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
    return {reply:charged.reply,...(charged.toolPlan?{toolPlan:charged.toolPlan}:{}),model:charged.model,imageCount:charged.imageCount,billingSample,quota:{...(charged.quota||{}),billing_mode:'token',estimated_credits:estimate.credits,settled_credits:charged.quota?.settled_credits??charged.settledCredits,feature}};
   }catch(error){
    if(error instanceof CompanionError)throw error;
-   if(error?.code==='xiaotao_pricing_snapshot_changed')throw new CompanionError(409,'计费策略已变化，请重新报价。本次未调用模型；如该请求曾提交，请核对积分状态','companion-pricing-changed');
+   if(error?.code==='xiaotao_pricing_snapshot_changed')throw new CompanionError(409,'计费策略已变化，请重新报价。本次未调用模型','companion-pricing-changed');
    if(['xiaotao_reservation_release_unconfirmed','xiaotao_reservation_status_unknown','xiaotao_settlement_status_unknown'].includes(error?.code))
     throw new CompanionError(503,error.message,error.code);
    const status=Number(error?.statusCode)||502;

@@ -89,7 +89,7 @@ async function checkAccount(config, { fetchImpl = globalThis.fetch, timeoutMs = 
     }
     if (body?.code !== 0 || !body?.data || typeof body.data !== "object" || Array.isArray(body.data)) {
       // Do not echo provider messages: they may contain request credentials.
-      throw new Error("账户检测未通过，请核对 Key、账户权限和余额页面");
+      throw new Error("账户检测未通过，请检查 Key、账户权限和余额页面");
     }
     const number = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
     const data = body.data;
@@ -105,7 +105,7 @@ async function checkAccount(config, { fetchImpl = globalThis.fetch, timeoutMs = 
     };
   } catch (err) {
     // Fixed messages also cover network errors with sensitive URLs/request dumps.
-    const reason = /^HTTP \d+$/.test(err?.message || "") ? err.message : err?.name === "TimeoutError" ? "请求超时" : "连接或账户检测失败，请核对地址、Key 和账户权限";
+    const reason = /^HTTP \d+$/.test(err?.message || "") ? err.message : err?.name === "TimeoutError" ? "请求超时" : "连接或账户检测失败，请检查地址、Key 和账户权限";
     return { ...result, status: "error", checked: true, accountStatus: "unknown", error: `RunningHub：${reason}`, durationMs: Date.now() - startedAt, checkedAt: new Date().toISOString() };
   }
 }

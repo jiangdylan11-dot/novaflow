@@ -40,7 +40,7 @@ test('changed pricing, capability or content fail before reserve; missing versio
   const quote=await original.instance.quote({payload:request});
   const binding={pricingVersion:quote.pricingVersion,quoteFingerprint:quote.quoteFingerprint};
   const rateChanged=fixture({creditConfig:{...provider.creditConfig,credits_per_usd:124}});
-  await assert.rejects(rateChanged.instance.reply({user:{id:'u'},payload:{...request,...binding}}),e=>/重新报价/.test(e.message) && /核对积分状态/.test(e.message) && !/本次未扣积分/.test(e.message));assert.deepEqual(rateChanged.calls,[]);
+  await assert.rejects(rateChanged.instance.reply({user:{id:'u'},payload:{...request,...binding}}),e=>/重新报价/.test(e.message) && /未调用模型/.test(e.message) && !/核对/.test(e.message) && !/本次未扣积分/.test(e.message));assert.deepEqual(rateChanged.calls,[]);
   const providerChanged=fixture({configRevision:'2'});
   await assert.rejects(providerChanged.instance.reply({user:{id:'u'},payload:{...request,...binding}}),/重新报价/);assert.deepEqual(providerChanged.calls,[]);
   const noProviderRevision=fixture({configRevision:null});assert.ok((await noProviderRevision.instance.pricing()).models.every(model=>!model.available));
@@ -91,7 +91,7 @@ test('database config change during reserve fails before upstream and database v
  const rpc=async(name)=>{if(name==='reserve_xiaotao_credits_v2')throw Error('xiaotao pricing changed; obtain a new quote');assert.fail('unexpected '+name);};
  const options={provider,dbSnapshot:snapshot,envOnline:{enabled_models:['openai/gpt-6.1-sol-saver']},rpc,legacyCharge:async()=>assert.fail('legacy'),fetchImpl:async()=>{calls++;}};
  const service=await createCompanionPricingContext(options);const body={...payload,modelId:'openai/gpt-6.1-sol-saver'};const quote=await service.quote({payload:body});
- await assert.rejects(service.reply({user:{id:'u'},payload:{...body,pricingVersion:quote.pricingVersion,quoteFingerprint:quote.quoteFingerprint}}),e=>e.status===409 && /核对积分状态/.test(e.message) && !/本次未扣积分/.test(e.message));
+ await assert.rejects(service.reply({user:{id:'u'},payload:{...body,pricingVersion:quote.pricingVersion,quoteFingerprint:quote.quoteFingerprint}}),e=>e.status===409 && /未调用模型/.test(e.message) && !/核对/.test(e.message) && !/本次未扣积分/.test(e.message));
  assert.equal(calls,0);
  const closed=await createCompanionPricingContext({...options,dbSnapshot:null});
  assert.ok((await closed.pricing()).models.every(model=>!model.available));

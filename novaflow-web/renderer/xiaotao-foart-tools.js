@@ -872,7 +872,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       // ordinary image/video generation wrappers.
       const nativeArtConfirmation=nativePending?.state==='running'&&!!el.closest('#novaflow-spine-split-mode-dialog[role="dialog"]');
       if(el.matches('[data-novaflow-art-generate-submit]')||!nativeArtConfirmation&&/^(?:生成|开始生成|重新生成)(?:\s|·|$)/.test(label(el)))fail('请使用对应生成工具，以保留优化、引用和执行回执');
-      if(el.matches('#novaflow-aifx-mvp [data-action="generate"],[data-prb-run],[data-mp4-run],[data-vfc-run],[data-saw-run]')||el.closest('[data-novaflow-tools-workspace]')&&/开始压缩/.test(label(el)))fail('请使用特效或工具执行操作，以核对实际输出');
+      if(el.matches('#novaflow-aifx-mvp [data-action="generate"],[data-prb-run],[data-mp4-run],[data-vfc-run],[data-saw-run]')||el.closest('[data-novaflow-tools-workspace]')&&/开始压缩/.test(label(el)))fail('请使用特效或工具执行操作，以确认实际输出');
       const referenceCard=/^移除/.test(label(el))?el.closest('[data-novaflow-h3-source-id]'):null;
       const removedReference=referenceCard?{sourceId:referenceCard.getAttribute('data-novaflow-h3-source-id'),name:referenceCard.getAttribute('data-novaflow-h3-filename'),label:referenceCard.getAttribute('aria-label'),boardId:referenceCard.closest('[data-novaflow-h3-media-panel]')?.getAttribute('data-board-id')}:null;
       const beforePrompt=root.__NovaFlowArtGenerate?.state.prompt,beforeMedia=new Set((root.NovaFlowMediaAgent?.capture?.().artContext.videoResources||[]).map(r=>r.id));
@@ -1032,7 +1032,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       }});
       review.markUploadCommitted();imageReviewUndo={reviewId,rt,binding,transaction:review.uploadTransaction,selectionStillCurrent:review.selectionStillCurrent,sessionStillCurrent:review.sessionStillCurrent};pendingImageReview=null;
       try{rt.render?.({forceBottom:true});if(!review.uploadTransaction.isCurrent()||imageBinding(rt)!==binding)throw Error('drawing changed');}
-      catch{try{review.uploadTransaction.undo();imageReviewUndo=null}catch{reviewUncertain('草稿应用后状态变化，请核对绘图界面。')}fail('草稿应用失败，写入已撤销。');}
+      catch{try{review.uploadTransaction.undo();imageReviewUndo=null}catch{reviewUncertain('草稿应用后状态变化，请查看绘图界面。')}fail('草稿应用失败，写入已撤销。');}
       return {phase:'applied',reviewId};
     }
     const previous={prompt:rt.state.prompt,negativePrompt:rt.state.negativePrompt};let undoToken,writtenBinding=null;
@@ -1048,13 +1048,13 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       imageReviewUndo={reviewId,rt,binding,undoToken,previous,selectionStillCurrent:review.selectionStillCurrent,sessionStillCurrent:review.sessionStillCurrent};pendingImageReview=null;
     }catch(error){
       let canRestore=false;try{canRestore=!!writtenBinding&&imageBinding(rt)===writtenBinding;}catch{}
-      if(!canRestore)reviewUncertain('审核时绘图状态已变化，请核对当前内容。');
+      if(!canRestore)reviewUncertain('审核时绘图状态已变化，请查看当前内容。');
       rt.state.prompt=previous.prompt;rt.state.negativePrompt=previous.negativePrompt;throw error;
     }
     try{
       rt.render?.({forceBottom:true});
       if(!review.selectionStillCurrent()||!review.sessionStillCurrent()||imageBinding(rt)!==imageReviewUndo.binding||!rt.isAgentPreparedReplacementCurrent(undoToken))
-        fail('审核稿应用后状态已变化，请核对绘图界面。');
+        fail('审核稿应用后状态已变化，请查看绘图界面。');
     }
     catch(error){
       try{
@@ -1113,7 +1113,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
     if(undo.transaction){undo.transaction.undo();imageReviewUndo=null;try{rt.render?.({forceBottom:true});return {phase:'undone',reviewId};}catch{return {phase:'undone',reviewId,warning:'撤销已恢复，请刷新查看。'};}}
     rt.restoreAgentPrepared(undo.undoToken);
     try{rt.state.prompt=undo.previous.prompt;rt.state.negativePrompt=undo.previous.negativePrompt;}
-    catch{imageReviewUndo=null;reviewUncertain('准备态已恢复，提示词恢复未确认，请核对绘图界面。');}
+    catch{imageReviewUndo=null;reviewUncertain('准备态已恢复，提示词恢复未确认，请查看绘图界面。');}
     imageReviewUndo=null;
     try{rt.render?.({forceBottom:true});return {phase:'undone',reviewId};}
     catch{return {phase:'undone',reviewId,warning:'内容已恢复，但绘图界面刷新失败，请手动刷新。'};}

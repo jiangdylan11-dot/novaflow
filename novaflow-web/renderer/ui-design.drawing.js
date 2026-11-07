@@ -548,7 +548,7 @@
 
       const size = outputSize(state), canvas = selected.node.data.canvasSize
 
-      if (![size.width,size.height].every(n => Number.isInteger(Number(n)) && Number(n) >= 64 && Number(n) <= 4096 && Number(n) % 8 === 0) || Number(size.width) !== Number(canvas.width) || Number(size.height) !== Number(canvas.height)) throw new Error('修改区域与输出尺寸不匹配，请核对尺寸并重新选区')
+      if (![size.width,size.height].every(n => Number.isInteger(Number(n)) && Number(n) >= 64 && Number(n) <= 4096 && Number(n) % 8 === 0) || Number(size.width) !== Number(canvas.width) || Number(size.height) !== Number(canvas.height)) throw new Error('修改区域与输出尺寸不匹配，请检查尺寸并重新选区')
 
       if (mounted && mounted.getSelectionBinding?.() !== selectionSourceBinding(selected, options.bindingReferences || references, state.prompt)) throw new Error('修改底图或画板尺寸已变化，请重新选中修改区域；本次未提交生成')
 

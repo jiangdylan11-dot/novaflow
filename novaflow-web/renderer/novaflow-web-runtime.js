@@ -475,9 +475,9 @@
       if(sessionGuard&&!sessionGuard()){sessionInvalidated=true;onChange();}
       if(!isCurrent() || cancelPromise){
         const cancellation=cancelPromise ? await cancelPromise : null;
-        if(sessionInvalidated)return {ok:false,errorCode:'assistant-session-cancel-unconfirmed',error:'账号会话已变化或过期，旧任务取消和资源释放尚未确认，请核对节点状态。'};
+        if(sessionInvalidated)return {ok:false,errorCode:'assistant-session-cancel-unconfirmed',error:'账号会话已变化或过期，旧任务取消和资源释放尚未确认，请稍后查看节点状态。'};
         return {ok:false,errorCode: cancellation && cancellation.ok===false ? 'assistant-selection-cancel-unconfirmed':'assistant-selection-changed',
-          error:cancellation && cancellation.ok===false ? '模型或节点已切换；取消未确认，请核对节点状态。' : '模型或节点已切换，正在尝试取消旧任务；停止和资源释放尚未确认。'};
+          error:cancellation && cancellation.ok===false ? '模型或节点已切换；取消未确认，请稍后查看节点状态。' : '模型或节点已切换，正在尝试取消旧任务；停止和资源释放尚未确认。'};
       }
       return result;
     } finally {unsubscribe();if(sessionTimer!==null)root.clearTimeout(sessionTimer);if(typeof root.removeEventListener==='function'){
@@ -780,7 +780,7 @@
       if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算，但这次的账单提示没有更新。',{quota});
       if(!current())return no('assistant-selection-changed','模型或 UI 已变化，草稿未显示。',{quota});
       if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0||result.uiDraft?.status!=='preview-only'||result.uiDraft?.applyAvailable!==false)
-        return no('ui-draft-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'草稿未完成，请核对实际结算。',{quota});
+        return no('ui-draft-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'草稿未完成。',{quota});
       return {ok:true,draft:result.uiDraft,modelIdentity:{id:selected.modelId},quota};
     } catch {return no('operation-unknown',submitted?ONLINE_RESULT_UNCONFIRMED:'请求未执行，请稍后再试。');}
     finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
@@ -859,13 +859,13 @@
       if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算，但这次的账单提示没有更新。',{quota});
       if(!current())return no('assistant-selection-changed','模型或素材已变化，结果未显示。',{quota});
       if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0)
-        return no('style-analysis-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'分析未完成，请核对实际结算。',{quota});
+        return no('style-analysis-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'分析未完成。',{quota});
       const value=result.styleResult,only=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).every(k=>keys.includes(k)),text=(v,max)=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
       if(kind==='style'&&only(value,['style','rawStyle'])&&text(value.style,400)&&typeof value.rawStyle==='string')return {ok:true,style:value.style,rawStyle:value.rawStyle,model:selected.modelId,quota};
       if(kind==='aifx-supplement'&&only(value,['supplement'])&&text(value.supplement,600))return {ok:true,supplement:value.supplement,model:selected.modelId,quota};
       if(combined&&only(value,['material','rawMaterial','supplement'])&&text(value.supplement,600)&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,supplement:value.supplement,model:selected.modelId,quota};
       if(kind==='aifx-material'&&only(value,['material','rawMaterial'])&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,model:selected.modelId,quota};
-      return no('style-analysis-incomplete','分析结果不符合所需格式，请核对实际结算。',{quota});
+      return no('style-analysis-incomplete','分析结果不符合所需格式。',{quota});
     }catch{return no('operation-unknown',submitted?ONLINE_RESULT_UNCONFIRMED:'请求未执行，请稍后重试。');}
     finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
@@ -1254,13 +1254,13 @@
       try { response=await fetch(candidateSecureBase(CONFIG.controlUrl)+'/api/web/qwen-rotation/tasks',{
         method:'POST',headers:authHeaders(),body:JSON.stringify({requestId,workerId:selectedNode,sha256,bytes:bytes.byteLength}),
         redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.any([owned.inputAbort.signal,AbortSignal.timeout(20000)])
-      }); } catch {throw new Error('候选创建结果未确认，请核对任务状态后再试。');}
-      if(!response.ok)throw new Error(response.status>=500?'候选创建结果未确认，请核对任务状态后再试。':'候选任务创建未通过。');
-      try {created=await response.json();} catch {throw new Error('候选创建结果未确认，请核对任务状态后再试。');}
+      }); } catch {throw new Error('候选创建结果未确认，请稍后查看任务列表再试。');}
+      if(!response.ok)throw new Error(response.status>=500?'候选创建结果未确认，请稍后查看任务列表再试。':'候选任务创建未通过。');
+      try {created=await response.json();} catch {throw new Error('候选创建结果未确认，请稍后查看任务列表再试。');}
       if(created?.ok!==true || !QWEN_ROTATION_CANDIDATE_ID.test(String(created?.task?.id||'')) || !Object.hasOwn(created.task,'assigned_worker_id') ||
         !['queued','assigned','uploading'].includes(created.task.status) || !Number.isSafeInteger(created.task.attempt_count) ||
         created.task.attempt_count<0 || (created.task.assigned_worker_id!=null && created.task.assigned_worker_id!==selectedNode))
-        throw new Error('候选创建结果不匹配，请核对任务状态后再试。');
+        throw new Error('候选创建结果不匹配，请稍后查看任务列表再试。');
     } else if(qwenPlan){
       if(!QWEN_ROTATION_REQUEST_ID.test(requestId) || bytes.byteLength<1 || bytes.byteLength>262144 ||
         typeof AbortSignal==='undefined' || typeof AbortSignal.any!=='function' || typeof AbortSignal.timeout!=='function')
@@ -1275,7 +1275,7 @@
       if(created?.ok!==true || !NODE_ID.test(String(created?.task?.id||'')) || QWEN_ROTATION_CANDIDATE_ID.test(String(created.task.id).toLowerCase()) ||
         !['created','queued','assigned','uploading'].includes(created.task.status) || !Number.isSafeInteger(created.task.attempt_count) ||
         created.task.attempt_count<0 || (created.task.assigned_worker_id!=null && created.task.assigned_worker_id!==selectedNode))
-        throw new Error('动画规划任务创建结果不匹配，请核对任务状态后再试。');
+        throw new Error('动画规划任务创建结果不匹配，请稍后查看任务列表再试。');
     } else if(qwenImageEdit){
       if(bytes.byteLength>16*1024*1024)throw new Error('参考图片和文字合计超过 16 MiB，请缩小图片后重试。');
       if(!QWEN_ROTATION_REQUEST_ID.test(requestId)||bytes.byteLength<1||
@@ -1287,7 +1287,7 @@
           request_sha256:qwenImageDigest,request_bytes:bytes.byteLength},references:[{name:QWEN_IMAGE_EDIT_REQUEST_FILE,kind:'json',bytes:bytes.byteLength}]});
       if(created?.ok!==true||!NODE_ID.test(String(created?.task?.id||''))||QWEN_ROTATION_CANDIDATE_ID.test(String(created.task.id).toLowerCase())||
         !['created','queued','assigned','uploading'].includes(created.task.status)||!Number.isSafeInteger(created.task.attempt_count)||created.task.attempt_count<0||
-        (created.task.assigned_worker_id!=null&&created.task.assigned_worker_id!==selectedNode))throw new Error('参考图任务创建结果不匹配，请核对任务状态。');
+        (created.task.assigned_worker_id!=null&&created.task.assigned_worker_id!==selectedNode))throw new Error('参考图任务创建结果不匹配，请稍后查看任务列表。');
     } else created = await control('POST', '/api/web/tasks', {
       task_type: 'prompt_assistant',
       ...(qwenBoundBusiness ? {target_worker_id:selectedNode} : conversationNode ? {target_worker_id:conversationNode} : {}),
@@ -2801,7 +2801,7 @@
       parameters: intent.options || {},
       references: refs
     }); } catch (error) {
-      if (artBinding) { discardArtImageBinding(artBinding.ticket); throw new Error('任务创建结果未确认，请核对任务状态后再试'); }
+      if (artBinding) { discardArtImageBinding(artBinding.ticket); throw new Error('任务创建结果未确认，请稍后查看任务列表再试'); }
       throw error;
     }
 

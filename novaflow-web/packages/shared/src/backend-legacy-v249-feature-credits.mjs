@@ -872,7 +872,7 @@ export function createFeatureCreditPorts(rpc) {
       // may already hold credits. Never report it as an insufficient balance.
       if (name === 'reserve_feature_credits' && error?.code === '23505' &&
           ['xiaotao-text','xiaotao-vision','online_chat_turn','xiaotao_vision'].includes(args?.p_feature)) {
-        throw Object.assign(new Error('本次未调用模型；该请求可能已有积分预留，请核对积分记录'),
+        throw Object.assign(new Error('本次未调用模型；这次请求和正在进行的一笔重复了，稍后再试一次'),
           {statusCode:503,code:'xiaotao_reservation_status_unknown'});
       }
       const wrapped = new Error(publicCreditError(error?.message || error));

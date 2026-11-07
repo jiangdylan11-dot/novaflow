@@ -218,13 +218,13 @@
     };
     const settled=async(prompt,binding)=>{
       for(let i=0;i<80;i++){
-        if(typeof binding!=='function'||binding()!==true||!isWorkspaceBound()||root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')fail('视频工作区或账号已变化，请核对当前内容。');
+        if(typeof binding!=='function'||binding()!==true||!isWorkspaceBound()||root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')fail('视频工作区或账号已变化，请查看当前内容。');
         const actual=root.NovaFlowAiSequenceGeneration?.capture?.();
-        if(!sameExceptPrompt(actual))fail('视频素材或参数已变化，请核对当前内容。');
+        if(!sameExceptPrompt(actual))fail('视频素材或参数已变化，请查看当前内容。');
         if(actual.prompt===prompt)return true;
         await new Promise(resolve=>root.setTimeout(resolve,25));
       }
-      fail('提示词更新未能确认，请核对当前内容。');
+      fail('提示词更新未能确认，请查看当前内容。');
     };
     const applyDraft=async(prompt,{userConfirmed=false,bindingCurrent}={})=>{
       if(phase!=='pending'||userConfirmed!==true||typeof prompt!=='string'||!prompt.trim()||prompt.length>12000||!current()||typeof bindingCurrent!=='function'||bindingCurrent()!==true)fail('视频草稿或确认已失效，未应用。');

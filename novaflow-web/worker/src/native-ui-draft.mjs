@@ -78,7 +78,7 @@ export async function planNativeUiDraft({baseUrl,payload,cpu,infer,fetchImpl=fet
     }
     await idle();dispatchClientId='novaflow-native-ui-'+randomUUID();const start=Date.now();
     const sent=await json('/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({client_id:dispatchClientId,prompt:bindViews(graph)})});
-    if(!sent.prompt_id)throw new Error('模型提交结果未确认，请核对队列；不会自动重提');
+    if(!sent.prompt_id)throw new Error('模型提交结果未确认，请查看队列；不会自动重提');
     ids.push(sent.prompt_id);
     const h=await waitForOwnedUiPrompt({promptId:sent.prompt_id,history:async id=>(await json('/history/'+id))[id],
       isCancelled:()=>Boolean(isCancelled() || payload.signal?.aborted),timeoutMs,pollMs});

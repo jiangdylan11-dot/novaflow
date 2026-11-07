@@ -12,7 +12,7 @@ test('legacy Xiaotao unique conflict reports possible existing hold without invo
   const charge = createOnlineAiCharge(ports);
   await assert.rejects(charge({userId:'user',feature:'xiaotao-text',amount:1,usageKey:'same-key',estimatedCredits:20,
     run:async()=>{providerCalls++;}}), error => error.statusCode === 503 &&
-      error.code === 'xiaotao_reservation_status_unknown' && /可能已有积分预留/.test(error.message) &&
+      error.code === 'xiaotao_reservation_status_unknown' && /正在进行的一笔重复/.test(error.message) && !/核对/.test(error.message) &&
       !/未扣积分|积分不足/.test(error.message));
   assert.equal(providerCalls,0);
 });

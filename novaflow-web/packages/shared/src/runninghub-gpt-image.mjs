@@ -377,7 +377,7 @@ export function describeImageFailure(httpStatus, data) {
     return { message: MISSING_ENDPOINT_MESSAGE, statusCode: 404, retryable: false, moderation: false, missingEndpoint: true };
   }
   if (business === 1) {
-    return { message: 'RunningHub API Key 无效，请核对密钥与出图站点', statusCode: 401, retryable: false, moderation: false };
+    return { message: 'RunningHub API Key 无效，请检查密钥与出图站点', statusCode: 401, retryable: false, moderation: false };
   }
   const described = describeRunningHubFailure(httpStatus, data && typeof data === 'object' ? data : {});
   const code = releaseCode(data);
