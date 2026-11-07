@@ -46,10 +46,12 @@ await test('the picked hair word replaces a warm colour, and an unknown pick cha
   assert.equal(styleHairColour('auburn hair','other'),'auburn hair');
   assert.equal(styleHairColour('a red scarf and black hair','brown'),'a red scarf and brown hair','only the word before hair changes');
 });
-await test('smooth skin stays out of flat, painted and watercolour pictures',()=>{
-  for(const genre of ['flat_cel','painterly','watercolour'])assert.doesNotMatch(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre}}),/smooth clean skin/u);
-  assert.match(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre:'glossy'}}),/smooth clean skin/u);
-  assert.match(buildStyleRedrawPrompt('d','m','c'),/smooth clean skin/u);
+await test('hand-drawn media drop only the words that fight them',()=>{
+  for(const genre of ['flat_cel','painterly','watercolour'])assert.doesNotMatch(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre}}),/strong contrast|rich saturated/u);
+  assert.match(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre:'flat_cel'}}),/High quality key visual/u);
+  assert.doesNotMatch(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre:'watercolour'}}),/key visual/u);
+  assert.match(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre:'glossy'}}),/strong contrast/u);
+  assert.match(buildStyleRedrawPrompt('d','m','c'),/rich saturated/u);
 });
 await test('a cut never leaves stubs when the light choices remain',()=>{
   const light={key:'hard',direction:'side',contrast:'high',shadow:'warm',skin:'satin',hair_depth:'layered'};
@@ -119,9 +121,9 @@ await test('the style system asks only for the three texts and bans the wording 
 
 await test('the program assembles the prompt from the three slots, then the fixed lighting and finish blocks',()=>{
   assert.ok(redraw.startsWith('Loosely based on <image1> (use it only for the person, pose and scene;'));
-  assert.ok(redraw.includes(`An illustration in this style: ${description}. ${content}. `));assert.doesNotMatch(redraw,/key visual|strong contrast|rich saturated/u);
-  assert.ok(redraw.includes(`take only the lighting design from <image2>: ${mood}. Colour appears`));
-  assert.ok(redraw.includes('exists at that single time of day'));assert.ok(redraw.includes('Artificial lights may be on at any time of day'));assert.ok(redraw.includes('Never mix a daytime sky with a night-dark room'));assert.ok(redraw.includes('a scene is never a single hue'));assert.ok(redraw.includes('Every window shows that same sky across all its panes'));assert.ok(redraw.includes('only when that time is dusk or night is the sky dark'));assert.ok(!redraw.includes('at dusk or night the sky is dark'));assert.ok(redraw.includes('never the same hue as the light'));assert.ok(redraw.includes('never yellow or orange skin'));assert.ok(redraw.includes('the hair keeps exactly the colour named in the content description'));assert.ok(redraw.includes('Colour appears only where light actually falls'));assert.ok(redraw.includes('take their colours from <image2>. Everything else keeps its own true colour'));assert.ok(redraw.includes('Never a uniform colour cast, tint, wash, filter or haze'));assert.equal(redraw.match(/Never a uniform|Never tint/g).length,1,'the rule is stated once');assert.doesNotMatch(redraw,/Full tonal range/u);assert.doesNotMatch(redraw,/overall colour temperature/);
+  assert.ok(redraw.includes(`An illustration in this style: ${description}. ${content}. High quality key visual`));
+  assert.ok(redraw.includes(`take only the lighting design from <image2>: ${mood}. Express it`));
+  assert.ok(redraw.includes('exists at that single time of day'));assert.ok(redraw.includes('Artificial lights may be on at any time of day'));assert.ok(redraw.includes('Never mix a daytime sky with a night-dark room'));assert.ok(redraw.includes('a scene is never a single hue'));assert.ok(redraw.includes('Every window shows that same sky across all its panes'));assert.ok(redraw.includes('only when that time is dusk or night is the sky dark'));assert.ok(!redraw.includes('at dusk or night the sky is dark'));assert.ok(redraw.includes('never the same hue as the light'));assert.ok(redraw.includes('never yellow or orange skin'));assert.ok(redraw.includes('the hair keeps exactly the colour named in the content description'));assert.ok(redraw.includes('Colour appears only where light actually falls'));assert.ok(redraw.includes('take their colours from <image2>. Everything else keeps its own true colour'));assert.ok(redraw.includes('Never a uniform colour cast, tint, wash, filter or haze'));assert.equal(redraw.match(/Never a uniform|Never tint/g).length,1,'the rule is stated once');assert.ok(redraw.includes('Full tonal range'));assert.doesNotMatch(redraw,/overall colour temperature/);
   assert.ok(redraw.endsWith(`${buildStyleRelight(mood)} ${STYLE_POLISH}`));
   assert.doesNotMatch(redraw,/keep the real light sources/,'the photo\'s light is not kept');
   assert.doesNotMatch(STYLE_POLISH,/beauty mark|\bcup\b|terminal/,'the finish block fits any picture');
