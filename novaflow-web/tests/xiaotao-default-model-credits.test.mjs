@@ -9,7 +9,7 @@ import {FOART_TOOL_SCHEMA,validateFoartPlan} from '../packages/shared/src/foart-
 // 小桃 opens on 豆包; with no credits it tells the user to switch to the free model or ask the admin to top up.
 // Controller test with synthetic data; no account, model or network is used.
 const read=name=>readFileSync(new URL('../renderer/'+name,import.meta.url),'utf8');
-const MODEL='deepseek/deepseek-v4.1-flash';
+const MODEL='bytedance/doubao-seed-2.1-lite';
 const png=name=>'data:image/png;base64,'+Buffer.from(name).toString('base64');
 const clarify=reply=>({ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:'clarify',reply,operations:[]}}});
 const done=reply=>({ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:'reply',reply,operations:[]}}});
@@ -40,8 +40,8 @@ async function fixture({refs=[],prompt='',foart=[],chat=[]}={}) {
 
 test('小桃 opens on 豆包 Seed 2.1 Lite',async()=>{
   const f=await fixture();
-  assert.deepEqual(f.opened,{modelId:'deepseek/deepseek-v4.1-flash',provider:'api'});
-  assert.equal(f.c.modelAvailable('deepseek/deepseek-v4.1-flash'),true);
+  assert.deepEqual(f.opened,{modelId:'bytedance/doubao-seed-2.1-lite',provider:'api'});
+  assert.equal(f.c.modelAvailable('bytedance/doubao-seed-2.1-lite'),true);
 });
 for(const failure of ['积分不足','insufficient_credits'])test('no credits ('+failure+') becomes a reply pointing to the free model or a top-up',async()=>{
   const f=await fixture({foart:[{ok:false,errorCode:'insufficient_credits',error:failure}]});
