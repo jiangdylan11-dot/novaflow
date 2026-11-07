@@ -2441,10 +2441,17 @@
         ...(operation?{operationBillingV3:true}:{}),mode:'chat',promptLanguage:'en',message:String(text||'').slice(0,12000),history:[],artContext:{},images:[],uploads:[]});
       return reply?.ok===true?String(reply.data?.reply||'').trim().replace(/^```\w*\s*|\s*```$/g,''):'';
     }
+    // A picture left in the split workspace reads as an open page while the generator is off; a mask or tool in use stays untouched.
+    function wakeDrawing(){
+      const rt=root.__NovaFlowArtGenerate,split=root.NovaFlowSpineSplitBridge?.getState?.();
+      if(rt?.captureContext?.()?.generationSurface!=='drawing'||rt.state?.active===true||split?.maskEditor?.active||split?.selectionTool?.active||split?.penTool?.active||split?.objectTransfer?.active)return false;
+      rt.activate?.();return rt.state?.active===true;
+    }
     async function plannerDrawingPrompt(op,message,{rolesSet=false}={}){
       const rt=root.__NovaFlowArtGenerate;let info=activePromptSource();
       // A collapsed 生图 panel or another section is no reason to stop: the planner chose drawing.
       if(!info){await root.NovaFlowFoartTools?.execute?.({action:'open',surface:'drawing'},{});info=activePromptSource();}
+      if(!info&&wakeDrawing())info=activePromptSource();
       if(info?.surface==='ui'){
         let uiWorkspace;try{uiWorkspace=capturePromptWorkspace(info);}catch(error){throw Error('当前 UI 页面还没准备好：'+String(error?.message||error));}
         const prompt=String(op.prompt||'').trim()||info.pagePrompt.trim()||message;

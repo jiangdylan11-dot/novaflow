@@ -16,6 +16,16 @@ function fixture(){
 }
 const plain=value=>JSON.parse(JSON.stringify(value));
 
+test('a folded page with a picture left open is switched back on, and a tool in use is left alone',()=>{
+  const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
+  const body=source.slice(source.indexOf('function wakeDrawing'),source.indexOf('async function plannerDrawingPrompt'));
+  const run=(active,split)=>{let woken=0;const state={active};const root={__NovaFlowArtGenerate:{state,captureContext:()=>({generationSurface:'drawing'}),activate(){woken++;state.active=true;}},NovaFlowSpineSplitBridge:{getState:()=>split}};
+    const box={root};vm.createContext(box);return [vm.runInContext(body+';wakeDrawing()',box),woken];};
+  assert.deepEqual(run(false,{source:{}}),[true,1]);
+  assert.deepEqual(run(true,{source:{}}),[false,0]);
+  assert.deepEqual(run(false,{maskEditor:{active:true}}),[false,0]);
+});
+
 test('mentions follow this turn\'s pictures',()=>{
   const source=readFileSync(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
   const box={};vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function turnSlot'),source.indexOf('function createQwenNodeRecheck'))+';this.slot=turnSlot;this.request=runRequest;',box);
