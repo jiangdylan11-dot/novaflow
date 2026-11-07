@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
-import {buildStyleLight,buildStyleDrawing,decideStyleTime,buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
+import {styleHairColour,buildStyleLight,buildStyleDrawing,decideStyleTime,buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
 
 let passed=0,failed=0;
 async function test(name,fn){
@@ -39,6 +39,12 @@ await test('daytime with no sky in view drops every sky phrase whole',()=>{
   assert.equal(decideStyleTime(seen,{time_of_day:'midday',sun_visible:false,sky_visible:false}).mood,'Midday light with a strong key from the upper left, casting short hard shadows. Contrast is high.');
   const cut=decideStyleTime('Golden hour lighting, with warm sunlight casting soft shadows, the sky is deep dark blue, with bright highlights. Gentle contrast.',{time_of_day:'golden_hour',sun_visible:false,sky_visible:false}).mood;
   assert.doesNotMatch(cut,/dark blue|\bsky\b/iu);assert.match(cut,/Gentle contrast/u);
+});
+await test('the picked hair word replaces a warm colour, and an unknown pick changes nothing',()=>{
+  assert.equal(styleHairColour('long wavy reddish-brown hair, smiling','brown'),'long wavy brown hair, smiling');
+  assert.equal(styleHairColour('copper-red hair','dark_brown'),'dark brown hair');
+  assert.equal(styleHairColour('auburn hair','other'),'auburn hair');
+  assert.equal(styleHairColour('a red scarf and black hair','brown'),'a red scarf and brown hair','only the word before hair changes');
 });
 await test('a cut never leaves stubs when the light choices remain',()=>{
   const light={key:'hard',direction:'side',contrast:'high',shadow:'warm',skin:'satin',hair_depth:'layered'};
@@ -90,7 +96,7 @@ await test('style mode is chosen only for one subject first followed by style re
   for(const roles of [['subject','style'],['subject','style','style']]){
     const prepared=buildQwen21NativeRewrite(input,'model',roles);
     assert.equal(prepared.styleRedraw,true,roles.join());assert.equal(prepared.referenceCount,roles.length);assert.equal(prepared.body.temperature,0);
-    assert.deepEqual(prepared.body.text.format.schema.required,['drawing','light','style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible']);
+    assert.deepEqual(prepared.body.text.format.schema.required,['drawing','hair_colour','light','style_description','mood_description','content_description','time_of_day','sun_visible','sky_visible']);
   }
   for(const roles of [['subject'],['style'],['style','subject'],['subject','pose'],['subject','style','pose'],['subject','subject','style'],[]])
     assert.equal(buildQwen21NativeRewrite(input,'model',roles).styleRedraw,undefined,roles.join());
