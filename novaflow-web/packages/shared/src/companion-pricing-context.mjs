@@ -18,7 +18,7 @@ export function parseCompanionOnlineOverlay(input) {
   } catch { return invalidOverlay(); }
 }
 
-const invalidPricingConfig=()=>{throw Object.assign(new Error('在线计费配置无效，暂时无法执行；请联系管理员核对'),{status:503,statusCode:503,code:'operation-billing-unavailable'});};
+const invalidPricingConfig=()=>{throw Object.assign(new Error('在线计费配置无效，暂时无法执行；请联系管理员检查配置'),{status:503,statusCode:503,code:'operation-billing-unavailable'});};
 
 // Defaults remain valid for absent fields. An explicitly malformed value must
 // not silently become a different chargeable price or rounding policy.

@@ -2401,7 +2401,7 @@
     communityBoneImage=null
     if (!image || imageToken!==image.token || Date.now()>=image.expires || !communitySelectionReady() || state.json!==image.project || JSON.stringify(state.json)!==image.source || communitySelectionBinding()!==image.binding || agentPreviewImage()!==image.dataUrl || typeof boneName !== 'string' || !boneName || boneName.length > 100 || state.json.bones.filter(b=>b.name===boneName).length !== 1) throw new Error('当前画面或状态已变化，未改变选区')
     const token=globalThis.crypto?.randomUUID?.()
-    if (!token) throw new Error('无法安全核对选择，未改变选区')
+    if (!token) throw new Error('无法安全确认选择，未改变选区')
     communityBoneSelection={phase:'preview',token,project:state.json,source:image.source,binding:image.binding,image:image.dataUrl,previous:state.sel?{...state.sel}:null,boneName,expires:Date.now()+120000}
     return {token,boneName,previous:selectedBones(),message:'仅预览选择目标；尚未改变选区。'}
   }
@@ -13345,7 +13345,7 @@
   }
   function agentPreviewCommunityKeys(op, baseline) {
     communityKeyPreview = null
-    const fail = () => { throw new Error('无法完整核对关键帧预览，未修改作品') }
+    const fail = () => { throw new Error('无法完整确认关键帧预览，未修改作品') }
     if (!state.json || !communityPreviewStable() || op?.operation !== 'key_bones' || Object.keys(op).some(key=>!['action','operation','name','keys'].includes(key)) || op.name !== state.anim || !Array.isArray(op.keys) || !op.keys.length || op.keys.length > 12) fail()
     const names = [...new Set(op.keys.map(key => key?.boneName))]
     if (!names.length || names.length > 4 || names.some(name => typeof name !== 'string' || !name || !state.json.bones.some(b => b.name === name))) fail()
@@ -13403,7 +13403,7 @@
     if(!token)fail()
     communityKeyPreview={token,expiresAt:Date.now()+120000,source,expectedAfter:JSON.stringify(after),project:state.json,fileName:state.fileName,mode:state.mode,frame:state.frame,selection:JSON.stringify(selectedBones()),operation,names,fps:FPS,animation:state.anim,durationSeconds:live.durationSeconds}
     return {token,animation:op.name,targets:names.slice(),fps:FPS,durationSeconds:live.durationSeconds,changes,
-      warning:'仅核对轨道数据未写入其他对象；骨骼层级和约束仍可能带来视觉联动。'}
+      warning:'仅检查轨道数据未写入其他对象；骨骼层级和约束仍可能带来视觉联动。'}
   }
   function agentCommitCommunityKeys(token, confirmedTargets) {
     const preview=communityKeyPreview
@@ -13477,7 +13477,7 @@
   }
   function agentPrepareSingleBoneRotation(op,baseline) {
     singleBoneRotationPreview=null;singleBoneRotationUndo=null;agentDiscardCommunityKeys()
-    const fail=()=>{agentDiscardCommunityKeys();throw new Error('无法安全核对单骨骼旋转预览，未修改作品')}
+    const fail=()=>{agentDiscardCommunityKeys();throw new Error('无法安全确认单骨骼旋转预览，未修改作品')}
     if(!op||op.action!=='animation'||op.operation!=='key_bones'||!Array.isArray(op.keys)||op.keys.length!==1||!Array.isArray(state.history)||state.history.length>=200||!Array.isArray(state.future))fail()
     const key=op.keys[0],values=key?.values
     if(!key||!values||typeof values!=='object'||Array.isArray(values)||Object.keys(values).length!==1||!Object.hasOwn(values,'rotation')||!Number.isFinite(values.rotation))fail()
@@ -13594,7 +13594,7 @@
   }
   function agentPrepareIdleAnimation(draft) {
     idleAnimationPreview=null;idleAnimationUndo=null
-    const fail=()=>{throw new Error('无法安全核对待机动画草稿，未修改作品')}
+    const fail=()=>{throw new Error('无法安全确认待机动画草稿，未修改作品')}
     const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key))
     if(!state.json || !communityPreviewStable() || !Array.isArray(state.history) || state.history.length>=200 || !Array.isArray(state.future) ||
       !exact(draft,['action','operation','name','durationSeconds','keys']) || draft.action!=='animation' || draft.operation!=='create_idle' ||

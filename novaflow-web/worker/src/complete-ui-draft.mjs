@@ -108,7 +108,7 @@ export async function planNaturalUiDraft({baseUrl,payload,cpu,infer,fetchImpl=fe
     }
     await idle();dispatchClientId='novaflow-ui-draft-'+randomUUID();const started=Date.now();
     const sent=await json('/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({client_id:dispatchClientId,prompt:graph})});
-    if(!sent.prompt_id)throw new Error('PE提交状态未确认，请先核对任务；本次不重复提交');
+    if(!sent.prompt_id)throw new Error('PE提交状态未确认，请先查看任务；本次不重复提交');
     ids.push(sent.prompt_id);
     while(Date.now()-started<timeoutMs){
       const history=(await json('/history/'+sent.prompt_id))[sent.prompt_id];

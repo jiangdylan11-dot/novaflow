@@ -908,7 +908,7 @@
       const references=context.references.map(r=>r?copy(r):null);
       const selection=copy(mounted.editor?.getSelection?.()||null);
       const project=copy(mounted.store?.getState?.()?.project||null);
-      if(!project)throw new Error('UI 项目状态不可核对，未提交。');
+      if(!project)throw new Error('UI 项目状态无法确认，未提交。');
       if(!Number.isSafeInteger(context.routeRevision))throw new Error('UI 页面状态无法核验，请重新打开后重试');
       return {state,references,referenceLimit:context.referenceLimit,routeRevision:context.routeRevision,selection,project};
     }

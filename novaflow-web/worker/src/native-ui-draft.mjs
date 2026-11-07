@@ -45,7 +45,7 @@ export async function planNativeUiDraft({baseUrl,payload,cpu,infer,fetchImpl=fet
     return r.json();
   };
   const idle=async()=>{active();const q=await json('/queue');
-    if(!Array.isArray(q.queue_running)||!Array.isArray(q.queue_pending))throw new Error('无法核对GPU队列；未提交分析');
+    if(!Array.isArray(q.queue_running)||!Array.isArray(q.queue_pending))throw new Error('无法确认GPU队列；未提交分析');
     if(q.queue_running.length||q.queue_pending.length)throw new Error('其他任务正在使用GPU，请等待完成；未重复提交');};
   const upload=async(dataUrl)=>{
     if(infer){active();const name='native-ui-'+randomUUID();nativeImages.set(name,dataUrl);return name;}

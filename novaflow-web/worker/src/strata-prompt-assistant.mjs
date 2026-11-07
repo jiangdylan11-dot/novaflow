@@ -233,7 +233,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       const base=String(raw).replace(/\/+$/,'');
       const queue=async()=>{
         try {const r=await fetchImpl(base+'/queue',{signal:AbortSignal.timeout(5000)}),q=await r.json();
-          if(!r.ok || !Array.isArray(q.queue_running) || !Array.isArray(q.queue_pending))throw Error('无法核对生成队列');
+          if(!r.ok || !Array.isArray(q.queue_running) || !Array.isArray(q.queue_pending))throw Error('无法确认生成队列');
           return {idle:q.queue_running.length+q.queue_pending.length===0};
         }catch(error){if(String(error?.cause?.code || error?.code)==='ECONNREFUSED')return {offline:true};throw error;}
       };

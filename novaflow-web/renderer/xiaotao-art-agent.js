@@ -2663,7 +2663,7 @@
     }
     function cancelFoartImageReview(){
       const review=pendingFoartImageReview;if(!review||state.pending||state.applying||state.generating)return false;
-      if(root.NovaFlowFoartTools?.cancelImageReview?.(review.id)!==true){state.error='审核取消未确认，请重新打开绘图界面核对。';notify();return false;}
+      if(root.NovaFlowFoartTools?.cancelImageReview?.(review.id)!==true){state.error='审核取消未确认，请重新打开绘图界面查看。';notify();return false;}
       pendingFoartImageReview=null;
       state.proposal=null;state.proposalSnapshot=null;state.applied=false;state.error='';state.status='已取消审核，未写入绘图。';notify();return true;
     }

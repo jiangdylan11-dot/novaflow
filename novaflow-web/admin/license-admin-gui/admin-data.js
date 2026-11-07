@@ -3384,16 +3384,16 @@ async function upsertAdminSystemSetting(payload) {
               "foart_update_feature_credit_config_candidate_v1", { p_expected: payload.expected_config, p_next: next }
             );
           } catch (_) {
-            throw new Error("小桃策略更新结果未确认，请先重新读取配置核对，勿重复提交");
+            throw new Error("小桃策略更新结果未确认，请先重新读取配置确认，勿重复提交");
           }
           const { data: record, error: casError } = rpcResult || {};
           if (casError) {
             if (casError.code === "40001") throw new Error("积分配置已变化，请重新读取后再修改");
             if (casError.code === "PGRST202") throw new Error("小桃策略的原子更新接口尚未安装，未提交修改");
-            throw new Error("小桃策略更新结果未确认，请先重新读取配置核对，勿重复提交");
+            throw new Error("小桃策略更新结果未确认，请先重新读取配置确认，勿重复提交");
           }
           if (!record || record.key !== parsed.key || !isDeepStrictEqual(record.value, next)) {
-            throw new Error("小桃计费配置更新结果无法确认，请重新读取核对");
+            throw new Error("小桃计费配置更新结果无法确认，请重新读取确认");
           }
           return { source:"supabase", status:"connected", configured:true, operation, ok:true,
             durationMs:Date.now()-startedAt, record };
@@ -3859,16 +3859,16 @@ async function saveFeatureCreditAdmin(payload) {
     try {
       rpcResult = await client.rpc("foart_update_feature_credit_config_candidate_v1", { p_expected: original, p_next: config });
     } catch (_) {
-      throw new Error("积分汇率更新结果未确认，请重新读取配置核对，勿重复提交");
+      throw new Error("积分汇率更新结果未确认，请重新读取配置确认，勿重复提交");
     }
     const { data: record, error: casError } = rpcResult || {};
     if (casError) {
       if (casError.code === "40001") throw new Error("积分配置已变化，请刷新后重试");
       if (casError.code === "PGRST202") throw new Error("积分汇率的原子更新接口尚未安装，未提交修改");
-      throw new Error("积分汇率更新结果未确认，请重新读取配置核对，勿重复提交");
+      throw new Error("积分汇率更新结果未确认，请重新读取配置确认，勿重复提交");
     }
     if (!record || record.key !== key || !isDeepStrictEqual(record.value, config)) {
-      throw new Error("积分汇率更新结果无法确认，请重新读取核对");
+      throw new Error("积分汇率更新结果无法确认，请重新读取确认");
     }
     return getFeatureCreditAdmin();
   }

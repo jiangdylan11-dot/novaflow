@@ -1061,7 +1061,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
         if(imageBinding(rt)!==imageReviewUndo.binding)throw Error('drawing changed');
         rt.restoreAgentPrepared(imageReviewUndo.undoToken);
         rt.state.prompt=previous.prompt;rt.state.negativePrompt=previous.negativePrompt;imageReviewUndo=null;
-      }catch{reviewUncertain('审核稿可能已写入且状态发生变化，请先核对绘图界面。');}
+      }catch{reviewUncertain('审核稿可能已写入且状态发生变化，请先查看绘图界面。');}
       fail('显示审核稿失败，本次写入已撤销。');
     }
     return {phase:'applied',reviewId};

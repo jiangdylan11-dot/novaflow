@@ -28,7 +28,7 @@ export function createXiaotaoV2CreditPorts(rpc,{expectedConfig,expectedCap,polic
           // A confirmed new hold with unexpected terms must never reach the
           // provider. Return it through the existing idempotent release path.
           try {const released=await legacy.release({userId,feature,usageKey,reason:'pricing snapshot mismatch'});if(released?.status!=='released')throw Error('release not confirmed');}
-          catch {throw Object.assign(new Error('未调用模型，但积分预留释放未确认，请稍后核对'),{statusCode:503,code:'xiaotao_reservation_release_unconfirmed'});}
+          catch {throw Object.assign(new Error('未调用模型，但积分预留释放未确认，本次未完成，稍后再试一次'),{statusCode:503,code:'xiaotao_reservation_release_unconfirmed'});}
           throw Object.assign(new Error('计费预留与报价不一致，本次未调用模型'),{statusCode:409,code:'xiaotao_pricing_snapshot_changed'});
         }
         return {status:row?.status,idempotent:row?.idempotent===true,

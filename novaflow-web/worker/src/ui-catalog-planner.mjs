@@ -407,7 +407,7 @@ export async function planUiCatalog({ baseUrl, payload, cpu, infer, fetchImpl = 
     }
     await idle();dispatchClientId='novaflow-ui-catalog-'+randomUUID();
     const sent=await json('/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({client_id:dispatchClientId,prompt:graph})});
-    if(!sent.prompt_id)throw new Error('UI分析提交状态未确认；请先核对运行时，本次不重复提交');
+    if(!sent.prompt_id)throw new Error('UI分析提交状态未确认；请先查看运行时，本次不重复提交');
     promptIds.push(sent.prompt_id);const start=Date.now();
     while(Date.now()-start<timeoutMs){
       const history=(await json('/history/'+sent.prompt_id))[sent.prompt_id];
@@ -415,7 +415,7 @@ export async function planUiCatalog({ baseUrl, payload, cpu, infer, fetchImpl = 
       if(history?.status?.completed)return history;
       await sleep(pollMs);
     }
-    throw new Error('UI分析等待超时；请先核对任务 '+sent.prompt_id+' 的状态，勿重复提交');
+    throw new Error('UI分析等待超时；请先查看任务 '+sent.prompt_id+' 的状态，勿重复提交');
   }
   const output=(history,id)=>{const text=history.outputs?.[id]?.text;return Array.isArray(text)?text.join(''):String(text||'');};
   async function analyze(system,context,refs,{resumeId='',finalId='',expectedKeys=null,observation=false,maxLength=6144}={}){

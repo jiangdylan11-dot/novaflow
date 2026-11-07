@@ -437,7 +437,7 @@ export async function readImagePoolAccount(config, fetchImpl = fetch) {
     headers:authHeaders(config.apiKey,{'Content-Type':'application/json'}),body:JSON.stringify({apikey:config.apiKey})
   });
   const result = await response.json();
-  if (!response.ok || result?.code !== 0 || !result?.data || Array.isArray(result.data)) throw Object.assign(new Error('无法核对云服务账户，请检查后台 RunningHub 配置'),{statusCode:503});
+  if (!response.ok || result?.code !== 0 || !result?.data || Array.isArray(result.data)) throw Object.assign(new Error('无法确认云服务账户，请检查后台 RunningHub 配置'),{statusCode:503});
   const raw=result.data.remainMoney;
   return {balance:{money:raw!==null&&raw!==undefined&&raw!==''&&Number.isFinite(Number(raw))?Number(raw):null}};
 }
