@@ -21,7 +21,7 @@
   }
   // 小桃 opens on 豆包; a user without credits is told to switch to the free
   // local model or ask the admin to top up.
-  const DEFAULT_XIAOTAO_MODEL_ID = 'bytedance/doubao-seed-2.1-lite';
+  const DEFAULT_XIAOTAO_MODEL_ID = 'deepseek/deepseek-v4.1-flash';
   const CREDIT_SHORTAGE_REPLY = '你的积分不足，这次没有完成。可以在上方模型选择里切换到免费的本地模型（Qwen3.5 9B）继续对话和优化提示词，或联系管理员充值后再使用在线模型。';
   const isCreditShortage = text => /积分不足|insufficient_credits/i.test(String(text || '')) && !/计费池/.test(String(text || ''));
   const LOCAL_CHAT_ONLY_NOTICE = '本地模型只支持对话和提示词优化，不能操作软件。需要操作时请切换到在线模型。';
