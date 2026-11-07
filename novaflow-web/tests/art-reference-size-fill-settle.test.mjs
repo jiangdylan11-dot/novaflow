@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const source = readFileSync(new URL('../renderer/novaflow-brand-runtime.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../renderer/novaflow-brand-runtime.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const pick = (name) => {
   const start = source.indexOf(`\n  function ${name}(`);
   assert.ok(start >= 0, name);

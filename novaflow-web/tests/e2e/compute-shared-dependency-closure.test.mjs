@@ -54,7 +54,7 @@ test('every shared module the shipped worker reaches is packaged, and so are the
 test('generated UI rules match the current renderer sources',async()=>{
   const {sourceHashes}=await import(new URL('xiaotao-ui-professional.generated.mjs',shared));
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js']){
-    const content=await readFile(new URL(`../../renderer/${name}`,import.meta.url));
+    const content=(await readFile(new URL(`../../renderer/${name}`,import.meta.url),'utf8')).replace(/\r\n/g, '\n');
     const sha=createHash('sha256').update(content).digest('hex');
     assert.equal(sha,sourceHashes[name],`generated UI rule is stale: ${name}`);
   }
