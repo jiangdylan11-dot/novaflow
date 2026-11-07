@@ -26,7 +26,7 @@ genre: flat_cel, painterly, glossy, soft or watercolour. line: none, thin_unifor
 - pigment bleeding on rough paper, white paper showing: watercolour, pencil, wash, paper, washed, wash, paper
 style_description: under 20 words on anything special about the drawing the choices above miss, or an empty string. No colour words, and no character, object or scenery from the style image(s).
 hair_colour: the person's hair in <image1> as one plain word: black, dark_brown, brown, light_brown, reddish_brown, blonde, red, grey or white. Brown hair with a red or copper tint is reddish_brown. Only vivid red hair is red.
-light: how the style image(s) are lit, one closest value each. key: hard, soft or diffuse. direction: above, side, back or front. contrast: high, medium or low. shadow: cool, warm or neutral. skin: matte, satin, glossy or translucent. hair_depth: flat, two or layered. glow: none, soft_glow or bloom. If the darkest areas are close to black, contrast is high; if they stay mid-grey, low. A clear lit side and dark side mean a hard key. Skin with no visible shine is matte; satin only with a soft sheen; glossy only with bright reflections. hair_depth is layered only if separate locks can be counted; large plain shapes are flat or two. glow is soft_glow when window light or sunlight has a soft halo or haze around edges and highlights, as in a bright anime sky scene with gentle light flares; bloom when highlights flare strongly; none for clean hard-edged cel art with no halo.
+light: how the style image(s) are lit, one closest value each. key: hard, soft or diffuse. direction: above, side, back or front. contrast: high, medium or low. shadow: cool, warm or neutral. skin: matte, satin, glossy or translucent. hair_depth: flat, two or layered. If the darkest areas are close to black, contrast is high; if they stay mid-grey, low. A clear lit side and dark side mean a hard key. Skin with no visible shine is matte; satin only with a soft sheen; glossy only with bright reflections. hair_depth is layered only if separate locks can be counted; large plain shapes are flat or two.
 mood_description: under 15 words: the time of day, then any sky shown with its colours. Short hard shadows mean midday; golden hour only if a low sun is actually visible. Name no object or scenery from the style image(s).
 content_description: 450-600 characters describing <image1>: the person, the exact hair colour in a plain word such as brown, dark brown, black or blonde (never auburn or copper) and the hair style, expression including any wink, each facial mark once as a single point such as one small mole on the left cheek, clothing, held objects, pose and framing, and the place in detail: each visible scene object with its material and colour, such as seats, ceiling, floor, signs and window frames. Never state its time of day, sky, lighting or what shows through its windows: the style image(s) decide those. Ground every claim in <image1>. Carry through any request in current_instruction and requested_changes, such as a new pose or background, by describing the requested result; leave out what only asks for this style change. Refer to the pictures by what they show, never by tags or __NF...__ placeholders.
 time_of_day: one of midday, afternoon, golden_hour, dusk, night, overcast. sun_visible and sky_visible: true only if a low sun or open sky actually appears in the style image(s).`;
@@ -70,8 +70,7 @@ const STYLE_LIGHT=Object.freeze({
   contrast:{high:'very high contrast with deep shadow masses',medium:'moderate contrast',low:'low contrast with open shadows'},
   shadow:{cool:'cool blue-violet shadows',warm:'warm brown shadows',neutral:'neutral grey shadows'},
   skin:{matte:'matte skin',satin:'softly lit satin skin',glossy:'glossy skin with bright sheen',translucent:'translucent glowing skin'},
-  hair_depth:{flat:'hair kept to one flat tone',two:'hair in two clear tones',layered:'hair in many layered strands with deep darks between them'},
-  glow:{none:'',soft_glow:'a soft glow around the light',bloom:'strong light bloom'}
+  hair_depth:{flat:'hair kept to one flat tone',two:'hair in two clear tones',layered:'hair in many layered strands with deep darks between them'}
 });
 const STYLE_HAIR_COLOURS=Object.freeze({black:'black',dark_brown:'dark brown',brown:'brown',light_brown:'light brown',reddish_brown:'reddish-brown',blonde:'blonde',red:'red',grey:'grey',white:'white'});
 const STYLE_HAIR_WORDS=/\b(?:(?:reddish|auburn|copper|chestnut|ginger|russet)(?:[- ](?:brown|red|gold))?|(?:dark |light )?brown|black|blonde?|red|grey|gray|white)(?= hair\b)/iu;
@@ -84,7 +83,7 @@ const STYLE_DRAWING_MIN=3;
 // Picked light comes before the brain's mood text, which then only adds what the choices cannot say.
 export function buildStyleLight(light,mood=''){
   const key=STYLE_LIGHT.key[light?.key],direction=STYLE_LIGHT.direction[light?.direction];
-  const picked=[key&&direction?`${key} ${direction}`:key,...['contrast','shadow','skin','hair_depth','glow'].map(field=>STYLE_LIGHT[field][light?.[field]])].filter(Boolean);
+  const picked=[key&&direction?`${key} ${direction}`:key,...['contrast','shadow','skin','hair_depth'].map(field=>STYLE_LIGHT[field][light?.[field]])].filter(Boolean);
   return picked.length<STYLE_DRAWING_MIN?styleSlot(mood):[styleSlot(mood),picked.join(', ')].filter(Boolean).join('. ');
 }
 export function buildStyleDrawing(drawing,notes=''){
@@ -124,12 +123,11 @@ const STYLE_COLOUR_WORDS=/(?<![-\w])(?:warm-toned|cool-toned|warm|cool|golden|pa
 const styleText=value=>typeof value==='string'?value.replace(/<image\d+>|__NF[A-Za-z0-9_]+__/g,'the picture').replace(/\s+/g,' ').trim().slice(0,1500):'';
 const styleTechnique=text=>text.replace(STYLE_COLOUR_WORDS,'').replace(/\s+([,.;])/g,'$1').replace(/([,;]\s*){2,}/g,', ').replace(/^[\s,.;]+|[\s,;]+$/g,'').replace(/\s{2,}/g,' ');
 // A bright daytime flat-cel reference reads flat and dull when drawn as flat cel; Dylan chose the softer, glowing look (2026-11-07).
-// Only when the reference itself glows: clean hard-edged cel art keeps its flat look. Front light keeps the windows and the sky bright.
-// Night or dark flat-cel references and every other genre stay as picked.
+// Front light keeps the windows and the sky bright. Night or dark flat-cel references and every other genre stay as picked.
 const STYLE_DAYTIME=new Set(['midday','afternoon','golden_hour','overcast']);
 const STYLE_GLOW=' Sunlight glows through the edges of the hair as translucent strands, with a soft bloom on the skin and the window light.';
 export function styleBrightFlat(value){
-  if(value?.drawing?.genre!=='flat_cel'||!STYLE_DAYTIME.has(value.time_of_day)||!['soft_glow','bloom'].includes(value.light?.glow))return value;
+  if(value?.drawing?.genre!=='flat_cel'||!STYLE_DAYTIME.has(value.time_of_day))return value;
   return {...value,style_description:'',glow:true,
     drawing:{genre:'soft',line:'thin_uniform',shading:'soft_gradient',highlight:'bloom',hair:'fine',colour_layout:'gradient',surface:'smooth'},
     light:{key:'soft',direction:'front',contrast:'medium',shadow:'cool',skin:'translucent',hair_depth:'layered'}};

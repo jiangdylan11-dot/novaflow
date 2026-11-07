@@ -48,8 +48,7 @@ await test('a long style prompt reaches the workflow whole',()=>{
 });
 await test('a bright daytime flat reference is drawn soft with a glow; night, dark and other genres stay as picked',()=>{
   const flat={genre:'flat_cel',line:'thin_uniform',shading:'two_step',highlight:'angular',hair:'ribbon',colour_layout:'flat',surface:'smooth'};
-  const light={key:'hard',direction:'above',contrast:'high',shadow:'cool',skin:'satin',hair_depth:'layered',glow:'soft_glow'};
-  assert.equal(styleBrightFlat({drawing:flat,light:{...light,glow:'none'},time_of_day:'midday'}).drawing.genre,'flat_cel','clean cel art without a glow stays flat');
+  const light={key:'hard',direction:'above',contrast:'high',shadow:'cool',skin:'satin',hair_depth:'layered'};
   const day=styleBrightFlat({drawing:flat,light,time_of_day:'midday',style_description:'x'});
   assert.equal(day.drawing.genre,'soft');assert.equal(day.light.direction,'front');assert.equal(day.glow,true);
   for(const time of ['dusk','night'])assert.equal(styleBrightFlat({drawing:flat,light,time_of_day:time}).drawing.genre,'flat_cel');
