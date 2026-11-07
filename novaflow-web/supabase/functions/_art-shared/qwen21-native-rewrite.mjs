@@ -29,7 +29,7 @@ style_description: under 20 words on anything special about the drawing the choi
 hair_colour: the person's hair in <image1> as one plain word: black, dark_brown, brown, light_brown, blonde, red, grey or white. Only hair that is plainly red is red.
 light: how the style image(s) are lit, one closest value each. key: hard, soft or diffuse. direction: above, side, back or front. contrast: high, medium or low. shadow: cool, warm or neutral. skin: matte, satin, glossy or translucent. hair_depth: flat, two or layered. If the darkest areas are close to black, contrast is high; if they stay mid-grey, low. A clear lit side and dark side mean a hard key. Skin with no visible shine is matte; satin only with a soft sheen; glossy only with bright reflections. hair_depth is layered only if separate locks can be counted; large plain shapes are flat or two.
 mood_description: under 15 words: the time of day, then any sky shown with its colours. Short hard shadows mean midday; golden hour only if a low sun is actually visible. Name no object or scenery from the style image(s).
-content_description: 40-80 words describing <image1>: the person, the exact hair colour in a plain word such as brown, dark brown, black or blonde (never auburn or copper) and the hair style, expression including any wink, facial marks and where they are, clothing, held objects, pose and framing, and the place with its structure and objects. Never state its time of day, sky, lighting or what shows through its windows: the style image(s) decide those. Ground every claim in <image1>. Carry through any request in current_instruction and requested_changes, such as a new pose or background, by describing the requested result; leave out what only asks for this style change. Refer to the pictures by what they show, never by tags or __NF...__ placeholders.
+content_description: 40-80 words describing <image1>: the person, the exact hair colour in a plain word such as brown, dark brown, black or blonde (never auburn or copper) and the hair style, expression including any wink, each facial mark once as a single point such as one small mole on the left cheek, clothing, held objects, pose and framing, and the place with its structure and objects. Never state its time of day, sky, lighting or what shows through its windows: the style image(s) decide those. Ground every claim in <image1>. Carry through any request in current_instruction and requested_changes, such as a new pose or background, by describing the requested result; leave out what only asks for this style change. Refer to the pictures by what they show, never by tags or __NF...__ placeholders.
 time_of_day: one of midday, afternoon, golden_hour, dusk, night, overcast. sun_visible and sky_visible: true only if a low sun or open sky actually appears in the style image(s).`;
 // Only the lighting design comes from the reference. Colours stay the source's own: tinting the whole
 // picture is what reads as a colour filter.
@@ -39,6 +39,10 @@ export function buildStyleRelight(moodDescription,style='<image2>',facts={}){
 }
 // The finish every style redraw is held to, whatever the reference.
 export const STYLE_POLISH='Keep the face proportions and facial marks of <image1>. The whole picture, person and background alike, is rendered in this same drawing technique, carried out with care: refined attractive facial features, smooth clean skin, hair with fine strand detail, clothing folds and held objects drawn with care, crisp detail on the face, a clean finish with no rough or unfinished areas.';
+// "Smooth clean skin" pulls flat, painted and watercolour pictures back to glossy anime, so those keep only the drawing care.
+const STYLE_POLISH_DRAWN=STYLE_POLISH.replace('smooth clean skin, ','');
+const STYLE_DRAWN_GENRES=new Set(['flat_cel','painterly','watercolour']);
+const stylePolish=facts=>STYLE_DRAWN_GENRES.has(facts?.drawing?.genre)?STYLE_POLISH_DRAWN:STYLE_POLISH;
 const styleSlot=text=>String(text).trim().replace(/[.\s]+$/u,'');
 // The brain picks how the picture is drawn and the program words it: picking is what a small model does reliably, and the wording stays at the level of the hand-written trials.
 const STYLE_DRAWING=Object.freeze({
@@ -110,7 +114,7 @@ const styleText=value=>typeof value==='string'?value.replace(/<image\d+>|__NF[A-
 const styleTechnique=text=>text.replace(STYLE_COLOUR_WORDS,'').replace(/\s+([,.;])/g,'$1').replace(/([,;]\s*){2,}/g,', ').replace(/^[\s,.;]+|[\s,;]+$/g,'').replace(/\s{2,}/g,' ');
 export function buildStyleRedrawPrompt(styleDescription,moodDescription,contentDescription,referenceCount=2,facts={}){
   const style=Array.from({length:Math.max(1,referenceCount-1)},(_,index)=>`<image${index+2}>`).join(' and ');
-  return `Loosely based on <image1> (use it only for the person, pose and scene; do not keep its photographic rendering). An illustration in this style: ${styleSlot(styleDescription)}. ${styleSlot(contentDescription)}. ${buildStyleRelight(moodDescription,style,facts)} ${STYLE_POLISH}`;
+  return `Loosely based on <image1> (use it only for the person, pose and scene; do not keep its photographic rendering). An illustration in this style: ${styleSlot(styleDescription)}. ${styleSlot(contentDescription)}. ${buildStyleRelight(moodDescription,style,facts)} ${stylePolish(facts)}`;
 }
 export function buildQwen21NativeRewrite(input,model,referenceRoles=[]){
   const nativeEdit=input.promptContract===QWEN21_NATIVE_REWRITE&&input.qwenPromptMode==='img2img';
