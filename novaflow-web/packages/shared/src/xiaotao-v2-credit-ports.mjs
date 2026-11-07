@@ -42,7 +42,7 @@ export function createXiaotaoV2CreditPorts(rpc,{expectedConfig,expectedCap,polic
         if(error?.code==='P0001' && ['积分不足','计费池余额不足，请联系管理员','额度迁移维护中，请稍后再试','该功能积分单价未配置'].includes(error?.message))throw error;
         // A transport failure may occur after the DB commits; do not claim
         // that no hold exists or retry the provider with a new usage key.
-        throw Object.assign(new Error('未调用模型，积分预留状态待核对'),{statusCode:503,code:'xiaotao_reservation_status_unknown'});
+        throw Object.assign(new Error('未调用模型，积分预留状态未确认'),{statusCode:503,code:'xiaotao_reservation_status_unknown'});
       }
     },
     async settle({userId,feature,amount,usageKey,metadata,settledCredits,rhCostUsd,pricingSource}) {

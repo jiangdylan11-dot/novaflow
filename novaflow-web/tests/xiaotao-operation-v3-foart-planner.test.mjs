@@ -26,6 +26,10 @@ function ledger(){
       const stage=operation.stages.get(args.p_phase_id);if(stage.status!=='reserved')return {status:stage.status,first_dispatch:false};
       stage.status='dispatched';return {status:'dispatched',first_dispatch:true};
     }
+    if(name==='reject_xiaotao_operation_stage_v3'){
+      const stage=operation.stages.get(args.p_phase_id);if(stage.status!=='dispatched')return {status:stage.status};
+      stage.status='rejected';return {status:'rejected'};
+    }
     if(name==='record_xiaotao_operation_stage_usage_v3'){
       const stage=operation.stages.get(args.p_phase_id);if(stage.status!=='dispatched')throw Error('not dispatched');
       stage.status='recorded';stage.raw=args.p_raw_credits;return {status:'recorded'};
@@ -59,7 +63,7 @@ async function fixture(plans=[planOpen(),planDone()],initialContext=context(),op
   const selectedModel=options.model||model;
   const configured=options.provider||provider();
   const service=create({enabled:true,foartGeneralEnabled:options.general!==false,secret,loadProvider:async()=>configured,rpc:db.rpc,infer:async request=>{
-    assert.equal(request.maxRetries,0);assert.equal(request.model,selectedModel);options.onInfer?.(request);const next=plans[providerCalls++];if(next instanceof Error)throw next;return result(next,selectedModel);}});
+    assert.equal(request.maxRetries,0);assert.equal(request.model,selectedModel);options.onInfer?.(request);const next=plans[providerCalls++];if(next instanceof Error)throw next;if(next.noUsage)return {data:{model:selectedModel}};return result(next,selectedModel);}});
   const shared={actor,originalIntent:options.intent||intent(),initialContext,isCurrent:async()=>true};
   const prepared=await service.prepare({...shared,nonce,model:selectedModel});
   return {db,service,shared,prepared,get providerCalls(){return providerCalls;}};
@@ -113,12 +117,33 @@ test('a browser cancel cannot ask for a refund: the known stage is still charged
   const f=await fixture(),first=await f.service.start({...f.shared,operationToken:f.prepared.token});assert.equal(first.ok,true);
   const receipt=await f.service.cancel({...f.shared,operationToken:f.prepared.token,refund:true});assert.equal(receipt.outcome,'cancel');assert.equal(receipt.charged,1);
 });
-test('unknown provider outcome holds reservation and cannot be dispatched again',async()=>{
+test('a provider failure on the first plan releases the hold at once and is not dispatched again',async()=>{
   const f=await fixture([new Error('synthetic timeout')]);
+  const failed=await f.service.start({...f.shared,operationToken:f.prepared.token});
+  assert.equal(failed.ok,false);assert.equal(failed.errorCode,'provider-failed');assert.equal(failed.receipt.status,'settled');assert.equal(failed.receipt.charged,0);
+  const operation=[...f.db.operations.values()][0];assert.equal(operation.stages.get('foart_1').status,'rejected');assert.equal(operation.status,'settled');
   await assert.rejects(f.service.start({...f.shared,operationToken:f.prepared.token}),e=>e.code==='operation-status-unknown');
-  await assert.rejects(f.service.start({...f.shared,operationToken:f.prepared.token}),e=>e.code==='operation-status-unknown');
-  assert.equal(f.providerCalls,1);assert.equal([...f.db.operations.values()][0].stages.get('foart_1').status,'dispatched');
-  const pending=await f.service.cancel({...f.shared,operationToken:f.prepared.token});assert.equal(pending.status,'pending-reconciliation');assert.equal(f.providerCalls,1);
+  assert.equal(f.providerCalls,1);
+});
+test('a provider failure on a later plan keeps the phases already used, like a browser cancel',async()=>{
+  const f=await fixture([planOpen(),new Error('synthetic timeout')]);
+  const first=await f.service.start({...f.shared,operationToken:f.prepared.token});
+  const failed=await f.service.resume({...f.shared,operationToken:f.prepared.token,previousContext:f.shared.initialContext,continuationToken:first.continuationToken,receipt:{action:'open',surface:'animation',phase:'opened'},context:{...context(),surface:'animation'}});
+  assert.equal(failed.errorCode,'provider-failed');assert.equal(failed.receipt.outcome,'cancel');assert.ok(failed.receipt.charged>0);
+  assert.equal(f.db.calls.some(x=>x.name==='finalize_xiaotao_operation_v3_refund'),false);
+});
+test('a provider answer without usage closes the same way',async()=>{
+  const f=await fixture([{noUsage:true}]);
+  const failed=await f.service.start({...f.shared,operationToken:f.prepared.token});
+  assert.equal(failed.errorCode,'provider-failed');assert.equal(failed.receipt.charged,0);
+  assert.equal([...f.db.operations.values()][0].stages.get('foart_1').status,'rejected');
+});
+test('a stale hold is swept before the next plan, and a sweep failure blocks nothing',async()=>{
+  const f=await fixture([planOpen()]);
+  await f.service.start({...f.shared,operationToken:f.prepared.token});
+  const names=f.db.calls.map(x=>x.name);
+  assert.ok(names.indexOf('sweep_xiaotao_stale_dispatched_v3')>=0);
+  assert.ok(names.indexOf('sweep_xiaotao_stale_dispatched_v3')<names.indexOf('reserve_xiaotao_operation_stage_v3'));
 });
 test('general operation runs any validated tool one step at a time and settles once',async()=>{
   const initial={...context(),controls:[{id:'fixture-input',kind:'input'},{id:'fixture-other',kind:'input'}]};

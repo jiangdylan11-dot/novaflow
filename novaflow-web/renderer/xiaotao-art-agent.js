@@ -78,6 +78,16 @@
   }
   const cleanBillingNotices = rows => (Array.isArray(rows)?rows:[]).filter(row=>row && typeof row.id==='string' && row.id.length<=100 && CHAT_MODELS[row.modelId]?.provider==='api' && typeof row.unknown==='boolean' && (row.confirmed===null || creditUnits(row.confirmed)!==null) && (row.unknown || row.confirmed!==null) && (row.owner===undefined || typeof row.owner==='string' && /^[A-Za-z0-9_-]{1,128}$/.test(row.owner))).slice(-40).map(({id,modelId,confirmed,unknown,owner,turn})=>({id,modelId,confirmed,unknown,...(owner===undefined?{}:{owner}),...(Number.isSafeInteger(turn)&&turn>0?{turn}:{})}));
   const billingNoticeText=row=>`本次扣费 ${displayCredits(row.confirmed)} 积分`;
+  // A stage only knows its own bill; this drops its "no charge" words so the turn's real total can speak.
+  const NO_CHARGE_CLAIM=/[，,；;]?(?:本次)?未(?:上传|提交|切换)?或?扣(?:费|积分)/g;
+  const dropNoChargeClaim=text=>String(text).replace(NO_CHARGE_CLAIM,'');
+  // The failure text of a turn, told with what the turn really settled. amount is null when nothing settled at all.
+  function turnFailureText(text,{amount,plannerOnly,unknown}) {
+    const said=String(text),bare=dropNoChargeClaim(said),closed=value=>/[。！？]$/.test(value)?value:value+'。';
+    if(unknown)return bare;
+    if(amount>0)return closed(bare)+'本次已扣 '+displayCredits(amount)+' 积分'+(plannerOnly?'（规划费）':'')+'。';
+    return amount===0&&bare===said?closed(said)+'本次未扣费。':said;
+  }
   // This session's confirmed charge, online models only. Nothing outlives the page.
   const billingNoticeForView=(provider,rows)=>provider==='api'?rows.filter(row=>!row.unknown).at(-1)||null:null;
   // A charge stays with the turn that spent it, so every reply keeps its own amount.
@@ -862,12 +872,12 @@
         ? `各阶段按各自上限 ${online.message_cap_credits} 积分封顶后汇总，按${rounding}结算，成功操作最低 ${online.minimum_positive_credits} 积分；操作合计可超过单阶段上限。`
         : `非零金额${rounding}，最低 ${policy.config.token_billing.min_credits_per_image} 积分，再按每次小桃请求最高 ${online.message_cap_credits} 积分封顶。工具任务可能发起多次小桃请求，合计可超过该上限。`;
       const pricingBasis=(onlineOperationMinimumConfirmed() || onlineOperationDecimalConfirmed()) && online.operation_text_chat_v3===true
-        ? '按返回用量和上述费率快照计算，不使用币种尚未核实的接口金额；缓存用量缺失按线路规则处理。已提交但用量无法核实的请求保留预留待核对，不自动重试。'
+        ? '按返回用量和上述费率快照计算，不使用币种尚未核实的接口金额；缓存用量缺失按线路规则处理。已提交但用量无法核实的请求暂留预留，由服务器自动处理，不自动重试。'
         : '结算优先使用接口返回的金额；缺金额时按返回用量和上述费率快照估算，缓存用量缺失按线路规则处理。金额和用量都不足以计价时不扣积分，但供应商可能仍产生费用。';
       const zeroCost=onlineOperationDecimalConfirmed() && online.operation_text_chat_v3===true
-        ? '成功操作按实际用量结算；取消或失败按已确认用量处理，全程未派发不扣，未知用量待核对。'
+        ? '成功操作按实际用量结算；取消或失败按已确认用量处理，全程未派发不扣，未知用量由服务器自动处理。'
         : onlineOperationMinimumConfirmed() && online.operation_text_chat_v3===true
-        ? '成功操作即使用量成本为零也至少扣 1 积分；取消或失败按已确认用量和原取整规则结算，全程未派发不扣，未知用量待核对。'
+        ? '成功操作即使用量成本为零也至少扣 1 积分；取消或失败按已确认用量和原取整规则结算，全程未派发不扣，未知用量由服务器自动处理。'
         : '金额为零扣 0 积分；';
       return text+`\n${pricingBasis}多次请求分别判档后汇总；这不是供应商账单。\n${zeroCost}${settlement}其他收费工具另计。\n发送前为估算预留${onlineOperationDecimalConfirmed()?'':'（有内容时至少 1 积分）'}，结算多退少补；最终以回执实扣为准。`;
     }
@@ -1272,6 +1282,7 @@
       return billing&&!billing.unknown&&billing.confirmedCount?{status:'settled',settled_credits:billing.confirmed,billing_mode:'token',...(billing.allQuoted?{quote_estimated_credits:billing.quoted,quote_estimate_label:billing.confirmedCount>1?'各轮预留估算合计':'提交时估算预留'}:{})}:null;
     }
     function clearBillingNotice(billing) {if(billing)state.billingNotices=state.billingNotices.filter(item=>item.id!==billing.id);}
+    function turnCharge(billing) {const amount=billingByTurn(state.billingNotices).get(turnSeq)??null;return {amount,plannerOnly:!!billing?.confirmedCount&&amount===billing.confirmed,unknown:billing?.unknown===true};}
     function stopStatusPolling() {if (statusTimer !== null) {timers.clearTimeout(statusTimer); statusTimer = null;}}
     function updateLocalSession(session, pending = false) {
       if (state.modelId !== 'next') return;
@@ -1390,6 +1401,12 @@
     async function sendFoart(message,{recordMessage=true,requestMessage=message,intent,animationIntent=false}={}) {
       const tools=root.NovaFlowFoartTools,contract=root.NovaFlowFoartToolContract,operation=++serial;
       let foartOperationSession=null,foartPreviousContext=null;
+      const closeFoartOperation=async()=>{
+        if(!foartOperationSession||typeof api()?.foartOperationCancel!=='function')return;
+        const session=foartOperationSession;foartOperationSession=null;
+        try{const cancelled=await api().foartOperationCancel({session});if(cancelled?.billingConfirmed&&cancelled?.data?.quota?.status==='settled'){billing.unknown=false;collectBilling(billing,cancelled);}}
+        catch{/* An unconfirmed close shows no amount. */}
+      };
       const drawingPending=deferredDrawing;deferredDrawing=[];
       // A plain 图生图 step puts this turn's pictures on the page right before it runs, as the plan decided.
       const placeDrawingPending=async()=>{
@@ -1588,7 +1605,7 @@
           for(const [index,picture] of videoPictures.entries()){const seen=(await lookAt([picture],'用不超过六十字客观描述图片：人物朝向、姿势、服饰、场景和画风。只输出描述。')).trim();if(!seen)break;facts.push('图'+(index+1)+'：'+seen);}
           pictureFacts=facts.join('\n').slice(0,500);
         }
-        let planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
+        let pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
         const enhancementNames={split:'一键拆图',generativeSplit:'对象分离',imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
         const namedEnhancements=Object.keys(enhancementNames).filter(name=>positiveRequest.includes(enhancementNames[name]));
         for(let round=0;round<planningLimit;round++){
@@ -1637,6 +1654,8 @@
           // A prompt written through the online optimizer ends the run here; the pending operation settles in finally.
           const finishNow=receipts.some(r=>r?.plannerPrompt===true);
           const terminalFacts=receipts.filter(r=>r.phase==='completed'||r.action==='image_optimize'&&r.phase==='applied');
+          // Uploads and reading the pictures can outlast a 60 s price: take a fresh one before the turn starts.
+          const price=currentPricingPolicy();if(!finishNow&&!foartOperationSession&&state.provider==='api'&&(!price||price.expiresAt-Date.now()<8000))await refreshPricingPolicy();
           if(signal.aborted||operation!==serial||billing&&(state.provider!=='api'||state.modelId!==billing.modelId))return false;
           if(!finishNow&&billing){billing.inFlight=true;publishBilling(billing);}
           const plannerSource=imageSourceBinding(snapshot),plannerImages=images.map(item=>({role:item?.role||'reference',dataUrl:item?.dataUrl}));
@@ -1645,10 +1664,12 @@
               :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),message:planMessage,history:compactFoartHistory(previousHistory),promptLanguage:'en',foartContext:foartWireContext(snapshot),signal})
           if(!finishNow)startStatusPolling(operation,activeRequest);let response=await responsePromise;stopStatusPolling();
           // The tool already finished; a planner round that times out or outlives its ticket must not turn real work into an error.
-          if(response&&response.ok!==true&&response.errorCode!=='operation-planner-incomplete'&&receipts.at(-1)?.phase==='completed'){if(response.errorCode==='invalid-operation-ticket')foartOperationSession=null;response={ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:summarize(receipts.slice(-1)),operations:[]}}};billing.inFlight=false;billing.unknown=false;}
+          if(response&&response.ok!==true&&response.errorCode!=='operation-planner-incomplete'&&receipts.at(-1)?.phase==='completed'){if(response.errorCode==='invalid-operation-ticket')foartOperationSession=null;response={ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:summarize(receipts.slice(-1)),operations:[]},...(response.data?.quota?{quota:response.data.quota}:{})}};billing.inFlight=false;billing.unknown=false;}
           if(response?.data?.foartOperationSession||response?.session){foartOperationSession=response.data?.foartOperationSession||response.session;foartPreviousContext=foartWireContext(snapshot);billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
           else if(!finishNow){if(response?.data?.quota?.status==='settled'){billing.unknown=false;foartOperationSession=null;}collectBilling(billing,response);}
           if(signal.aborted||operation!==serial)return false;
+          // Refused on price before anything was sent: nothing is held, so take the current price and send once more. Only a second refusal is real.
+          if(response?.providerSubmitted===false&&['operation-billing-disabled','companion-pricing-changed'].includes(response?.errorCode)&&!pricingRetried){pricingRetried=true;await refreshPricingPolicy();if(signal.aborted||operation!==serial)return false;continue;}
           // The server settles a rejected plan; a fresh operation gets one more chance with the rules spelled out.
           if(response?.errorCode==='operation-planner-incomplete'&&invalidPlanRetries<2){invalidPlanRetries++;invalidPlanIssue=response.planIssue||'';foartOperationSession=null;foartPreviousContext=null;continue;}
           if(!response?.ok){handlePricingFailure(response);fail(response?.errorCode==='operation-planner-incomplete'?'小桃这一步没有给出可执行的方案，已完成的操作已保留，请换个说法再试。':response?.error||'Foart 工具规划未完成');}
@@ -1811,7 +1832,9 @@
         fail('本轮已到工具规划步数上限，已完成的操作已保留，请继续说明下一步');
       }catch(error){
         if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
-        if(operation===serial){state.error=plainFoartError(error);state.status=signal.aborted?'已停止等待；请按工具当前状态确认未结束任务':'工具操作未全部完成';
+        // The planner's fee settles when the operation closes, so close it first: the failure text then tells the turn's real charge.
+        await closeFoartOperation();
+        if(operation===serial){state.error=turnFailureText(plainFoartError(error),turnCharge(billing));state.status=signal.aborted?'已停止等待；请按工具当前状态确认未结束任务':'工具操作未全部完成';
           if(receipts.length){
             const meaningful=receipts.filter(row=>row.phase==='completed'||row.action==='set_control'||row.action==='draw'||row.action==='ui_layout'||row.action==='image_optimize'&&row.phase==='applied');
             const rows=[...new Map(meaningful.map(row=>[row.action+'|'+row.control+'|'+String(row.value)+'|'+row.id,row])).values()];
@@ -1820,9 +1843,7 @@
             state.messages.push({role:'assistant',content:facts,...(downloads.length?{downloads}:{})});state.history=[...previousHistory,{role:'user',content:message},{role:'assistant',content:'实际执行事实：'+JSON.stringify(receipts.map(compactFoartReceipt)).slice(-8000)+'\n未完成：'+state.error}].slice(-12);
           } else state.history=[...previousHistory,{role:'user',content:message},{role:'assistant',content:'未完成：'+state.error}].slice(-12);
         }return false;
-      }finally{if(foartOperationSession&&typeof api()?.foartOperationCancel==='function'){
-        try{const cancelled=await api().foartOperationCancel({session:foartOperationSession});if(cancelled?.billingConfirmed&&cancelled?.data?.quota?.status==='settled'){billing.unknown=false;collectBilling(billing,cancelled);}}
-        catch{/* Unknown billed state remains visible for reconciliation. */}}
+      }finally{await closeFoartOperation();
         if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}if(activeFoartBilling===billing)activeFoartBilling=null;if(operation===serial){root.NovaFlowAgentExportSession=null;stopStatusPolling();foartAbort=null;activeRequest='';state.pending=false;state.generating=false;state.operation=null;notify();}}
     }
     async function send(message, {includeResult = false, recordMessage = true} = {}) {
@@ -2520,7 +2541,7 @@
         const request=runRequest(run.prompt||prompt,subjectSlot,run.slots);
         state.status='正在生成第 '+(index+1)+'/'+runs.length+' 次…';notify();
         try{last=await plannerDrawingPrompt({action:'image_generate',generationMode:'img2img',useResult:false,prompt:request},ownWords||request,{rolesSet:true});outputs.push(...(last.outputs||[]));}
-        catch(error){if(signal?.aborted||runs.length===1)throw error;failed.push('第 '+(index+1)+' 次：'+String(error?.message||error));}
+        catch(error){if(signal?.aborted||runs.length===1)throw error;failed.push('第 '+(index+1)+' 次：'+dropNoChargeClaim(error?.message||error));}
       }
       if(!outputs.length)throw Error(failed.length>1?failed.join('；'):String(failed[0]||'未生成'));
       const summary=runs.length>1?'已按要求分 '+runs.length+' 次生成 '+outputs.length+' 张':last.message;
@@ -2590,7 +2611,7 @@
         if(selected.provider==='local'&&(handoff.analysisBackend!=='qwen-cpu'||handoff.modelIdentity?.id!=='qwen35-heretic'||!['server-model-id','server-weight-path'].includes(handoff.modelIdentity?.verification)||handoff.resourcesReleased!==true||handoff.generationReady!==true))throw Error('本地模型身份或资源释放未确认，结果未采用。');
         if(selected.provider==='api'&&(handoff.analysisBackend!=='runninghub'||handoff.modelIdentity?.id!==selected.modelId))throw Error('在线模型身份未确认，结果未采用。');
         const text=String(data?.prompt||'').trim();if(!text||text.length>4000)throw Error('音频文字改写没有返回有效内容。');
-        if(selected.provider==='api'&&(data.quota?.status!=='settled'||creditUnits(data.quota.settled_credits)===null||(data.quota.uncollected_credits||0)>0))throw Error('账单状态未确认，请勿重复提交。');
+        if(selected.provider==='api'&&(data.quota?.status!=='settled'||creditUnits(data.quota.settled_credits)===null||(data.quota.uncollected_credits||0)>0))throw Error('这次没有拿到在线结果，可以再试一次。');
         if(review)await applyOptimizedMediaPrompt({surface:'audio',prompt:text,snapshot:review,bindingCurrent});
         state.messages.push({role:'assistant',content:review?'音频提示词已优化并更新到输入框。':'音频提示词已优化：\n'+text,...(selected.provider==='api'?{receipts:['本次实扣 '+displayCredits(data.quota.settled_credits)+' 积分。']}:{})});
         state.status=review?'音频提示词已优化并更新。':'音频提示词已优化。';return true;
@@ -2653,7 +2674,7 @@
         const result=tools.undoImageReview(undo.id);if(result?.phase!=='undone'||result.reviewId!==undo.id)fail('撤销结果未确认。');
         foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;state.proposal=null;state.applied=false;
         state.error=String(result.warning||'');state.status='已撤销本次审核稿应用。';notify();return true;
-      }catch(error){foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;state.error=String(error?.message||error);state.status=error?.code==='foart-review-state-uncertain'?'撤销状态待核对':'未撤销，当前内容保持不变。';notify();return false;}
+      }catch(error){foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;state.error=String(error?.message||error);state.status=error?.code==='foart-review-state-uncertain'?'撤销状态未确认':'未撤销，当前内容保持不变。';notify();return false;}
     }
     async function apply({generate = false,event = null} = {}) {
       if (CHAT_MODELS[state.modelId]?.retired) return false;
@@ -2685,7 +2706,7 @@
           if(result?.phase!=='applied'||result.reviewId!==review.id)fail('审核稿应用未确认。');
           pendingFoartImageReview=null;foartImageReviewUndo={id:review.id};state.foartImageReviewCanUndo=true;state.applied=true;
           state.status=result.surface==='ui'?'已暂存下次 UI 生成方案，尚未生成；可撤销暂存。':'已应用审核稿，尚未生成；可撤销本次应用。';return true;
-        }catch(error){state.error=String(error?.message||error);state.status=error?.code==='foart-review-state-uncertain'?'审核状态待核对':'审核稿未应用';return false;}
+        }catch(error){state.error=String(error?.message||error);state.status=error?.code==='foart-review-state-uncertain'?'审核状态未确认':'审核稿未应用';return false;}
         finally{state.generating=false;state.applying=false;notify();}
       }
       return false;

@@ -11,7 +11,7 @@ import {estimateXiaotaoOnlineCredits} from './feature-credits.mjs';
 import {xiaotaoCreditAmountPolicy} from './xiaotao-decimal-usage.mjs';
 import {foartPlanResponseFormat,readFoartPlan} from './foart-tool-plan.mjs';
 import {createXiaotaoOperationV3Tickets} from './xiaotao-operation-v3-ticket.mjs';
-import {createXiaotaoOperationV3Ports} from './xiaotao-operation-v3-ports.mjs';
+import {createXiaotaoOperationV3Ports,closeProviderFailedStage} from './xiaotao-operation-v3-ports.mjs';
 import {createXiaotaoV3FoartJournal} from './xiaotao-operation-v3-foart-journal.mjs';
 import {canonicalizeXiaotaoV3FoartIntent,createXiaotaoV3FoartContinuation} from './xiaotao-operation-v3-foart-continuation.mjs';
 import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
@@ -67,12 +67,16 @@ export function createXiaotaoV3FoartPlanner({enabled=false,secret,loadProvider,r
     }
     const marked=await ports.markDispatched(stage);if(marked?.status!=='dispatched'||marked.first_dispatch!==true)fail('operation-status-unknown',503);
     if(signal?.aborted||!await session(isCurrent,trusted))fail('operation-status-unknown',503);
+    // The model failed and this server saw it: the phase's hold goes back and the operation closes. A first phase produced
+    // nothing, so it refunds; a later one keeps the phases already used, the same as a browser cancel would.
+    const closeFailed=async reason=>({ok:false,errorCode:'provider-failed',receipt:await closeProviderFailedStage(ports,stage,{reason,outcome:stage.sequence===1?'refund':'cancel'})});
     const compiled=companionInput(request);let posted;
     try{posted=await infer({body:{model:trusted.model,input:compiled.input,temperature:.4,reasoning:{effort:'low'},max_output_tokens:COMPANION_OUTPUT_TOKENS,
       text:{format:foartPlanResponseFormat(request.foartContext)}},model:trusted.model,signal,maxRetries:0,includeBillingIntegrity:true});}
-    catch{fail('operation-status-unknown',503);}
-    const data=posted?.data;if(!data||data.model!==trusted.model||!data.usage)fail('operation-status-unknown',503);
-    const recorded=await ports.recordAssessedUsage({...stage,usageRecords:[data.usage]});if(recorded?.status!=='recorded')fail('operation-status-unknown',503);
+    catch(error){return closeFailed(error?.code||error?.message);}
+    const data=posted?.data;if(!data||data.model!==trusted.model||!data.usage)return closeFailed('provider-answer-invalid');
+    let recorded;try{recorded=await ports.recordAssessedUsage({...stage,usageRecords:[data.usage]});}catch(error){return closeFailed(error?.code||'usage-unrecorded');}
+    if(recorded?.status!=='recorded')fail('operation-status-unknown',503);
     let plan,planIssue='';try{const text=outputText(data);if(!text)throw Error('方案没有完整返回');plan=readFoartPlan(text,request.foartContext);}catch(error){planIssue=String(error?.message||'').slice(0,200);}
     const current=await session(isCurrent,trusted);
     if(signal?.aborted||!current||!plan) {
@@ -117,6 +121,8 @@ export function createXiaotaoV3FoartPlanner({enabled=false,secret,loadProvider,r
         history:(checked.canonical.intent.history||[]).map(x=>x.content).join('\n'),system:checked.canonical.compiled.systemText,files:[],outputTokens:COMPANION_OUTPUT_TOKENS,
         config:policy.config,model:checked.trusted.model,promptLanguage:checked.canonical.intent.promptLanguage,
         ...(xiaotaoCreditAmountPolicy(policy.config)==='decimal-v1'?{amountPolicy:'decimal-v1'}:{})});
+      // A hold left by a worker that died goes back before new work starts; a sweep failure never blocks the turn.
+      if(typeof ports.sweepStale==='function'){try{await ports.sweepStale({userId:actor?.userId});}catch{/* best effort */}}
       const held=await ports.reserveStage({...stage,phaseKind:'planner',feature:'online_chat_turn',estimatedCredits:estimate.credits});
       if(held?.status!=='reserved'||held.idempotent!==false)fail('operation-status-unknown',503);
       return runReserved({trusted:checked.trusted,stage,request:checked.canonical.request,ports,originalIntent,initialContext,signal,isCurrent,generalEnabled:generalAllowed(policy)});

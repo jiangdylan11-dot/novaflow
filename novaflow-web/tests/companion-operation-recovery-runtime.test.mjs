@@ -16,7 +16,7 @@ function setup({storage=new Map(),owner=accountA,failStorage=false,execute,statu
   login(storage,owner);const calls=[];
   const localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>{if(failStorage&&key.startsWith(prefix))throw Error('synthetic storage failure');storage.set(key,value);},
     removeItem:key=>storage.delete(key),key:i=>[...storage.keys()][i]??null,get length(){return storage.size}};
-  const sandbox=createDomSandbox({Response,Request,Blob,FormData,AbortSignal,AbortController,Event,
+  const sandbox=createDomSandbox({setTimeout:(fn,ms)=>setTimeout(fn,ms<=10000?1:ms),clearTimeout,Response,Request,Blob,FormData,AbortSignal,AbortController,Event,
     crypto:{randomUUID:()=> 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'},location:{hash:'',pathname:'/',search:''},history:{replaceState(){}},
     localStorage,atob:s=>Buffer.from(s,'base64').toString('binary'),NovaFlowClientAuth:{hasPersistedSessionIdentity:()=>true},
     NOVAFLOW_WEB_CONFIG:{localAssistant:false,authUrl:'https://auth.test',controlUrl:'https://control.test'},
@@ -54,9 +54,18 @@ test('missing cache usage after dispatch is clearly pending and never retried or
     quote:()=>Response.json({ok:true,quote:{pricingVersion:version,quoteFingerprint:fingerprint,modelId:model,estimatedCredits:0.125}}),
     execute:()=>Response.json({ok:false,errorCode:'operation-usage-unknown',receipt:{status:'pending-reconciliation'}})});
   const result=await f.api.artAgentChat(payload());assert.equal(result.ok,false);assert.equal(result.providerSubmitted,true);assert.equal(result.billingUnknown,true);
-  assert.match(result.error,/已提交.*积分状态待核对.*勿重复发送/);assert.doesNotMatch(result.error,/免费|退款|未扣/);
+  assert.match(result.error,/可以再试一次/);assert.doesNotMatch(result.error,/待核|核对|勿重复|免费|退款|未扣/);
+  assert.equal(f.calls.filter(x=>x.path.endsWith('/operation/status')).length,3);
   assert.equal(f.calls.filter(x=>x.path.endsWith('/operation/execute')).length,1);
   assert.equal(storage.has(key),false);
+});
+test('a chat answer lost in flight reports what the server settled',async()=>{
+  const f=setup({
+    quote:()=>Response.json({ok:true,quote:{pricingVersion:version,quoteFingerprint:fingerprint,modelId:model,estimatedCredits:0.125}}),
+    execute:()=>new Response('cut off',{status:546}),
+    status:()=>Response.json({ok:true,operation:{operationId,status:'settled',outcome:'cancel',charged:0,uncollected:0}})});
+  const result=await f.api.artAgentChat(payload());
+  assert.equal(result.billingConfirmed,true);assert.equal(result.data.quota.settled_credits,0);assert.match(result.error,/本次未扣费/);
 });
 test('quote failure is not marked as submitted and nothing is stored',async()=>{
   const badQuote=setup({quote:()=>Response.json({error:'fixture'}, {status:503})});const second=await badQuote.api.artAgentChat(payload());

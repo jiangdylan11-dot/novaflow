@@ -83,7 +83,7 @@ export function createOnlineAiCharge({ reserve, settle, release, prices, pool, s
       dispatchAttempted=true;
       const marker=await markDispatched({userId,feature:featureId,usageKey,amount:granted,estimatedCredits:holdCredits,metadata:boundMetadata});
       if (!dispatchWindowOpen || dispatchTainted || marker?.status!=='dispatched' || marker.first_dispatch!==true)
-        throw Object.assign(new Error('派发状态未确认，请核对账单'), { code:'xiaotao_dispatch_status_unknown' });
+        throw Object.assign(new Error('派发状态未确认'), { code:'xiaotao_dispatch_status_unknown' });
       dispatchConfirmed=true;
     };
     try {
@@ -120,9 +120,9 @@ export function createOnlineAiCharge({ reserve, settle, release, prices, pool, s
     } catch (error) {
       dispatchWindowOpen=false;
       if (guardedDispatch === true && dispatchAttempted && !settling)
-        throw Object.assign(new Error('供应商派发或费用状态待核对，请勿重复提交'),{statusCode:503,code:'xiaotao_dispatch_status_unknown'});
+        throw Object.assign(new Error('在线请求结果未确认，可以稍后再试'),{statusCode:503,code:'xiaotao_dispatch_status_unknown'});
       if(strictSettlement && settling)
-        throw Object.assign(new Error('模型已请求，积分结算状态待核对；请勿重复提交'),{statusCode:503,code:'xiaotao_settlement_status_unknown'});
+        throw Object.assign(new Error('模型已请求，积分结算尚未确认，可以稍后再试'),{statusCode:503,code:'xiaotao_settlement_status_unknown'});
       if(strictSettlement && releasing)
         throw Object.assign(new Error('请求未完成，但积分预留释放未确认，请稍后核对'),{statusCode:503,code:'xiaotao_reservation_release_unconfirmed'});
       // Failure always releases the hold. Call sites cannot settle a failed or moderated request.

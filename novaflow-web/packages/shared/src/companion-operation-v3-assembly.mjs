@@ -9,6 +9,9 @@ import {createXiaotaoV3FoartPlanner} from './xiaotao-operation-v3-foart-planner.
 import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const MODELS=new Set(XIAOTAO_ONLINE_MODEL_IDS);
+// The edge runtime kills a worker about 88s after dispatch, before the failure could be closed (live 2.0.338: a planner hold
+// stayed reserved for minutes). A silent model is given up first, the same limit the art stages use.
+const ONLINE_MODEL_TIMEOUT_MS=80000;
 const unavailable=()=>{throw Object.assign(new Error('operation-billing-unavailable'),{code:'operation-billing-unavailable',statusCode:503});};
 
 // Only the server constructs this object; no request or database field can
@@ -31,8 +34,9 @@ export function createCompanionOperationV3Assembly({foartGeneralEnabled=false,en
       // automatically replay a request that may already have been charged.
       const infer=({body,model,signal})=>{
         if(!MODELS.has(model)||body?.model!==model)unavailable();
+        const bounded=signal&&typeof AbortSignal.any==='function'?AbortSignal.any([signal,AbortSignal.timeout(ONLINE_MODEL_TIMEOUT_MS)]):signal;
         return postRunningHubResponses({body,config:{apiKey:snapshot.apiKey,baseUrl,model},
-          ...(fetchImpl?{fetchImpl}:{}),signal,maxRetries:0,includeBillingIntegrity:true});
+          ...(fetchImpl?{fetchImpl}:{}),timeoutMs:ONLINE_MODEL_TIMEOUT_MS,signal:bounded,maxRetries:0,includeBillingIntegrity:true});
       };
       const foart=foartOpenEnabled===true?createXiaotaoV3FoartPlanner({...options,infer,foartGeneralEnabled:foartGeneralEnabled===true}):undefined;
       return Object.freeze({prepareXiaotaoOperationV3:createXiaotaoOperationV3Prepare(options),

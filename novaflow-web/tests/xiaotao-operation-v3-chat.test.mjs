@@ -26,6 +26,10 @@ function ledger(){
       if(operation.status!=='reserved')return {status:operation.status,first_dispatch:false};
       operation.status='dispatched';return {status:'dispatched',first_dispatch:true};
     }
+    if(name==='reject_xiaotao_operation_stage_v3'){
+      if(operation.status!=='dispatched')return {status:operation.status};
+      operation.status='rejected';return {status:'rejected'};
+    }
     if(name==='record_xiaotao_operation_stage_usage_v3'){
       if(operation.status!=='dispatched')throw Error('not dispatched');
       operation.status='recorded';operation.raw=args.p_raw_credits;return {status:'recorded',idempotent:false};
@@ -83,11 +87,11 @@ test('cancel before dispatch settles only an unspent reservation',async()=>{
   assert.equal(calls,0);assert.equal(f.db.events.at(-1),'finalize_xiaotao_operation_v3');
   assert.ok(!f.db.events.includes('mark_xiaotao_operation_stage_dispatched_v3'));
 });
-test('provider failure or bad usage after dispatch remains pending and is never replayed',async()=>{
+test('a provider failure releases the hold at no charge and is never replayed; unusable usage stays pending',async()=>{
   let calls=0;const f=await fixture({infer:async()=>{calls++;throw Error('timeout');}});
-  await assert.rejects(f.execute(),e=>e.code==='operation-status-unknown');
-  assert.equal(f.db.operations.get(f.prepared.operationId).status,'dispatched');
-  await assert.rejects(f.execute(),e=>e.code==='operation-status-unknown');assert.equal(calls,1);
+  const failed=await f.execute();assert.equal(failed.ok,false);assert.equal(failed.errorCode,'provider-failed');assert.equal(failed.receipt.charged,0);
+  assert.equal(f.db.operations.get(f.prepared.operationId).status,'settled');assert.ok(f.db.events.includes('reject_xiaotao_operation_stage_v3'));
+  await assert.rejects(f.execute());assert.equal(calls,1);
   const g=await fixture({infer:async()=>{const result=reply();delete result.data.usage.billing_token_usage_invalid;return result;}});
   await assert.rejects(g.execute(),e=>e.code==='operation-status-unknown');
   assert.equal(g.db.operations.get(g.prepared.operationId).status,'dispatched');

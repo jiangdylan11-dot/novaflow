@@ -85,7 +85,7 @@ export function createOnlineAiCharge({ reserve, settle, release, prices, pool, s
       return { ...outcome, quota };
     } catch (error) {
       if(strictSettlement && settling)
-        throw Object.assign(new Error('模型已请求，积分结算状态待核对；请勿重复提交'),{statusCode:503,code:'xiaotao_settlement_status_unknown'});
+        throw Object.assign(new Error('模型已请求，积分结算尚未确认，可以稍后再试'),{statusCode:503,code:'xiaotao_settlement_status_unknown'});
       if(strictSettlement && releasing)
         throw Object.assign(new Error('请求未完成，但积分预留释放未确认，请稍后核对'),{statusCode:503,code:'xiaotao_reservation_release_unconfirmed'});
       // Failure always releases the hold. Call sites cannot settle a failed or moderated request.

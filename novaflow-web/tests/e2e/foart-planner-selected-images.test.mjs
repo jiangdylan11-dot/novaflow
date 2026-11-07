@@ -48,7 +48,7 @@ test('each run puts the subject and its own pictures on the page, in the brain\'
   const start=source.indexOf('async function runImageRuns'),end=source.indexOf('async function prepareQwenCurrentDrawingPrompt');
   const seen=[];let page=[{name:'a',file:{n:'a'}},{name:'b',file:{n:'b'}},{name:'c',file:{n:'c'}}];
   const rt={references:()=>page,setReference(index,value){page[index]=value;},refreshReferences(){}};
-  const box={root:{__NovaFlowArtGenerate:rt,URL:{createObjectURL:file=>'blob:'+file.n}},state:{},notify(){},currentSubject:{name:'photo',file:{n:'photo'}},
+  const box={dropNoChargeClaim:String,root:{__NovaFlowArtGenerate:rt,URL:{createObjectURL:file=>'blob:'+file.n}},state:{},notify(){},currentSubject:{name:'photo',file:{n:'photo'}},
     async plannerDrawingPrompt(op,message,options){seen.push([page.filter(Boolean).map(ref=>ref.name+':'+ref.drawingRole+':'+ref.dataUrl).join(),op.useResult,message,options.rolesSet]);return {action:'image_generate',phase:'completed',outputs:[{id:String(seen.length)}],message:'done'};}};
   vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function runRequest'),source.indexOf('const pageLimitQuestion='))+'var run='+source.slice(start,end).trim().replace(/^async function runImageRuns/,'async function'),box);
   const styles=(count,subjectSlot=-1)=>Object.fromEntries(Array.from({length:count},(_,i)=>[i,i===subjectSlot?'subject':'style']));
@@ -82,7 +82,7 @@ test('one style picture failing does not drop the others; all failing or a stop 
   const make=fails=>{
     let page=[{name:'a',file:{n:'a'}},{name:'b',file:{n:'b'}},{name:'c',file:{n:'c'}}],calls=0;
     const rt={references:()=>page,setReference(index,value){page[index]=value;},refreshReferences(){}};
-    const box={root:{__NovaFlowArtGenerate:rt,URL:{createObjectURL:file=>'blob:'+file.n}},state:{},notify(){},currentSubject:{name:'photo',file:{n:'photo'}},
+    const box={dropNoChargeClaim:String,root:{__NovaFlowArtGenerate:rt,URL:{createObjectURL:file=>'blob:'+file.n}},state:{},notify(){},currentSubject:{name:'photo',file:{n:'photo'}},
       async plannerDrawingPrompt(){calls++;if(fails(calls))throw Error('在线模型这次没有返回结果');return {action:'image_generate',phase:'completed',outputs:[{id:String(calls)}],message:'done'};}};
     vm.createContext(box);vm.runInContext(source.slice(source.indexOf('function runRequest'),source.indexOf('const pageLimitQuestion='))+'var run='+source.slice(start,end).trim().replace(/^async function runImageRuns/,'async function'),box);
     return {box,calls:()=>calls,page:()=>page};

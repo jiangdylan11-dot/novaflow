@@ -11,6 +11,18 @@ import {Buffer} from 'node:buffer';
 import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
 const fail = (code, statusCode = 400) => { throw Object.assign(new Error(code), {code, statusCode}); };
+// A provider failure this server saw after dispatch: release the phase's hold, then close the operation.
+// Any unclear result stays held for the sweep; the SQL only rejects a phase that is still 'dispatched'.
+export async function closeProviderFailedStage(ports, stage, {reason, outcome = 'refund'} = {}) {
+  let receipt;
+  try {
+    const rejected = await ports.rejectDispatched({...stage, evidence:{reason:String(reason || 'provider-failed').slice(0, 120), stage:stage.phaseId}});
+    if (rejected?.status !== 'rejected') fail('operation-status-unknown', 503);
+    receipt = await ports.finalize({actor:stage.actor, operationId:stage.operationId, outcome});
+  } catch { fail('operation-status-unknown', 503); }
+  if (receipt?.status !== 'settled' || receipt.outcome !== 'cancel') fail('operation-status-unknown', 503);
+  return receipt;
+}
 const text = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max;
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const money = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;

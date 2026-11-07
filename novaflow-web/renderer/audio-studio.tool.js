@@ -1632,9 +1632,9 @@
   async function checkAssistantAudioTask(taskId){
     const owner=assistantAudioOwner(),row=pendingAssistantAudioTasks().find(item=>item.taskId===taskId);
     if(!owner||!row||owner.current()!==true)throw new Error('音频任务会话无效');
-    if(row.mode!=='shared')throw new Error('音频任务算力来源待核对');
+    if(row.mode!=='shared')throw new Error('音频任务算力来源未确认');
     const result=await window.NovaFlowWebRuntime.control('GET','/api/web/tasks/'+taskId,undefined,{assistantRecoveryMode:'shared'});
-    if(owner.current()!==true||result?.task?.id!==taskId||result.task.task_type!==row.taskType)throw new Error('音频任务状态待核对');
+    if(owner.current()!==true||result?.task?.id!==taskId||result.task.task_type!==row.taskType)throw new Error('音频任务状态未确认');
     return result.task;
   }
   async function acknowledgeAssistantAudioTask(taskId){
@@ -1702,7 +1702,7 @@
       Object.entries(parameters).every(([k,v])=>Object.hasOwn(task.parameters,k)&&JSON.stringify(task.parameters[k])===JSON.stringify(v));
     try {
       const result=await runtime.control('POST','/api/web/tasks',{task_type:taskType,parameters,assistant_task_id:taskId});
-      if(!stillCurrent()||!matches(result?.task))throw new Error('音频任务状态待核对，勿重复提交');
+      if(!stillCurrent()||!matches(result?.task))throw new Error('音频任务还没有确认，请稍后查看任务列表');
       return result;
     } catch(error) {
       const definitelyRejected=[400,401,402,403,422].includes(error?.status)||
@@ -1716,7 +1716,7 @@
         } catch {}
       }
       if(error?.status===409)throw error;
-      throw Object.assign(new Error('音频任务状态待核对，勿重复提交'),{code:'assistant-audio-status-unknown',taskId});
+      throw Object.assign(new Error('音频任务还没有确认，请稍后查看任务列表'),{code:'assistant-audio-status-unknown',taskId});
     }
   }
   async function submit(taskType, kind, label, parameters, { strict = false, signal, assistantTaskId, assistantSessionCurrent, assistantOwnerCurrent, assistantOutputCurrent } = {}) {

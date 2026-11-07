@@ -5,6 +5,7 @@ import {createContext,runInContext} from 'node:vm';
 
 const source=await readFile(new URL('../renderer/novaflow-web-runtime.js',import.meta.url),'utf8');
 const creditHelpers=source.slice(source.indexOf('  // Operation-v3 can use'),source.indexOf('  const XIAOTAO_ONLINE_ART_RELEASE_ENABLED'));
+const statusHelpers=source.slice(source.indexOf('  // Said when a request may have reached'),source.indexOf('  // Standalone text rewrite only.'));
 const begin=source.indexOf('  // Foart operation-level billing is default closed'),end=source.indexOf('  // ------------------------------------------------------- workflow intents',begin);
 assert.ok(begin>0&&end>begin);
 const plain=value=>JSON.parse(JSON.stringify(value));
@@ -25,11 +26,11 @@ function fixture(override={}) {
   '/api/web/companion/operation/foart/cancel':()=>({ok:true,status:'settled',outcome:'cancel',charged:1,uncollected:0})
  };
  const api=async(base,method,path,body,timeout,signal)=>{calls.push({base,method,path,body:plain(body)});assert.equal(method,'POST');assert.ok(signal);return (override[path]||defaults[path])(body,signal)};
- const scope={root,CONFIG:{companionUrl:'https://fixture.invalid'},AbortController,setTimeout,clearTimeout,Date,Number,Object,JSON,Error,Set,Map,WeakMap,
+ const scope={root,CONFIG:{companionUrl:'https://fixture.invalid'},AbortController,setTimeout:(fn,ms)=>setTimeout(fn,ms<=10000?1:ms),clearTimeout,Date,Number,Object,JSON,Error,Set,Map,WeakMap,
   foartSessionObservers:new Set(),companionCloudRequests:new Map(),companionCloudUsed:new Set(),api,
   companionPricing:async()=>({ok:true,policy:currentPolicy}),captureFoartSessionGuard:()=>guard,captureFoartBillingOwner:()=>({owner:'synthetic-user',current:guard}),
   validOperationId:id=>id==='cccccccc-cccc-4ccc-8ccc-cccccccccccc',notifyAccountBalance:(...args)=>events.push(args)};
- createContext(scope);runInContext(creditHelpers+source.slice(begin,end)+'\nglobalThis.start=foartOperationStart;globalThis.resume=foartOperationResume;globalThis.cancel=foartOperationCancel;',scope);
+ createContext(scope);runInContext(creditHelpers+statusHelpers+source.slice(begin,end)+'\nglobalThis.start=foartOperationStart;globalThis.resume=foartOperationResume;globalThis.cancel=foartOperationCancel;',scope);
  const startPayload=()=>({requestId:'request_123',modelId:model,pricingVersion:version,pricingExpiresAt:Date.now()+60000,message:'Open animation',history:[],promptLanguage:'zh-CN',foartContext:context()});
  return {scope,calls,events,startPayload,deny:()=>{valid=false},setPolicy:p=>{currentPolicy=p}};
 }

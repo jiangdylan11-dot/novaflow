@@ -13,6 +13,7 @@ import {companionPricingPolicy,COMPANION_OUTPUT_TOKENS} from './companion-pricin
 import {estimateXiaotaoOnlineCredits} from './feature-credits.mjs';
 import {hasXiaotaoDecimalV1,isXiaotaoCreditAmount} from './xiaotao-decimal-usage.mjs';
 import {createXiaotaoOperationV3Tickets} from './xiaotao-operation-v3-ticket.mjs';
+import {closeProviderFailedStage} from './xiaotao-operation-v3-ports.mjs';
 import {createXiaotaoOperationV3Ports} from './xiaotao-operation-v3-ports.mjs';
 import {XIAOTAO_ONLINE_MODEL_IDS} from './xiaotao-online-models.mjs';
 
@@ -73,9 +74,10 @@ async function executeCombinedStyle({intent,compiled,intentHash,model,policy,ver
     if(marked?.status!=='dispatched'||marked.first_dispatch!==true)fail('operation-status-unknown',503);
     if(signal?.aborted||!await sessionFresh())fail('operation-status-unknown',503);
     let posted;
+    const providerFailed=async reason=>({ok:false,errorCode:'provider-failed',receipt:await closeProviderFailedStage(ports,stage,{reason})});
     try {posted=await infer({body:{model,input:current.input,temperature:0.4,reasoning:{effort:'low'},max_output_tokens:current.outputTokens},model,signal,maxRetries:0,includeBillingIntegrity:true});}
-    catch {fail('operation-status-unknown',503);}
-    const data=posted?.data;if(!data||data.model!==model||!data.usage)fail('operation-status-unknown',503);
+    catch(error) {return providerFailed(error?.code||error?.message);}
+    const data=posted?.data;if(!data||data.model!==model||!data.usage)return providerFailed('provider-answer-invalid');
     let recorded;try {recorded=await ports.recordAssessedUsage({...stage,usageRecords:[data.usage]});}catch {fail('operation-status-unknown',503);}
     if(recorded?.status!=='recorded')fail('operation-status-unknown',503);
     const reply=actualReply(data);let parsed=null;
@@ -145,16 +147,16 @@ export function createXiaotaoOperationV3Chat({enabled=false,visionEnabled=false,
     }
     const marked=await ports.markDispatched(stage);
     if(marked?.status!=='dispatched'||marked.first_dispatch!==true)fail('operation-status-unknown',503);
-    // Once the marker commits, cancellation and uncertain provider results stay
-    // held for reconciliation, even if this process has not seen a response.
+    // Once the marker commits, a request this process stops seeing stays held for
+    // reconciliation. A provider failure it does see is closed below at no charge.
     if(signal?.aborted || await isCurrent(actor)!==true)fail('operation-status-unknown',503);
     let posted;
     try {posted=await infer({body:{model,input:compiled.input,temperature:audioRewrite?.5:.4,reasoning:{effort:'low'},max_output_tokens:outputTokens,
       ...(videoRewrite?{text:{format:xiaotaoVideoResponseFormat(intent.h3Mode)}}:{})},
       model,signal,maxRetries:0,includeBillingIntegrity:true});}
-    catch {fail('operation-status-unknown',503);}
+    catch(error) {return {ok:false,errorCode:'provider-failed',receipt:await closeProviderFailedStage(ports,stage,{reason:error?.code||error?.message})};}
     const data=posted?.data;
-    if(!data||data.model!==model||!data.usage)fail('operation-status-unknown',503);
+    if(!data||data.model!==model||!data.usage)return {ok:false,errorCode:'provider-failed',receipt:await closeProviderFailedStage(ports,stage,{reason:'provider-answer-invalid'})};
     let recorded;
     try {recorded=await ports.recordAssessedUsage({...stage,usageRecords:[data.usage]});}
     catch {fail('operation-status-unknown',503);}

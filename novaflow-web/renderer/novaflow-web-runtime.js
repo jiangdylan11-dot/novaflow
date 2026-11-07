@@ -135,7 +135,7 @@
     // say the compute was closed. A dropped heartbeat or worker abort by
     // itself is ambiguous and must keep its existing message.
     if (task && ['failed','cancelled','expired'].includes(task.status) && task.error_code === 'compute_closed_confirmed') return '算力已关闭';
-    if (task && task.status === 'failed' && task.error_code === 'h3_result_unknown') return '任务结果与扣费状态待核，请勿重复提交';
+    if (task && task.status === 'failed' && task.error_code === 'h3_result_unknown') return '任务结果还没有确认，请稍后查看任务列表';
     if (task && task.status === 'failed' && task.error_code === 'compute_lease_expired') return '算力连接已失效，任务已中断';
     if (task && task.status === 'cancelled') return '任务已中止';
     if (task && task.status === 'expired') return '任务超时，请重试';
@@ -538,9 +538,25 @@
     finally {if(timer!==null)root.clearTimeout(timer);unsubscribe?.();root.removeEventListener('novaflow:compute-node',cancel);foartSessionObservers.delete(sessionChanged);payload.signal?.removeEventListener('abort',cancel);}
   }
 
+  // Said when a request may have reached the model and no settlement came back: no amount is claimed and nothing is asked of the person.
+  const ONLINE_RESULT_UNCONFIRMED='这次没有拿到在线结果，可以再试一次。';
+  const ONLINE_MODEL_NO_ANSWER='在线模型这次没有返回结果，本次未扣费，可以再试一次。';
+  // A lost response is not a lost settlement: the server may have closed the operation, so read it a few times before saying anything about money.
+  async function settledOperation(base,operationId,isCurrent,decimal,waits=[0,2000,4000]) {
+    for(const wait of waits){
+      if(wait)await new Promise(done=>setTimeout(done,wait));
+      if(!isCurrent())return null;
+      try {
+        const status=await api(base,'POST','/api/web/companion/operation/status',{operationId},10000),op=status?.ok===true?status.operation:null;
+        if(op?.operationId===operationId&&op.status==='settled'&&validCreditAmount(op.charged,decimal)&&(op.uncollected===undefined||validCreditAmount(op.uncollected,decimal)))return op;
+      }catch{/* the next look decides */}
+    }
+    return null;
+  }
+
   // Standalone text rewrite only. Never call this inside a multi-step tool operation.
   function incompleteSettlementMessage(receipt) {
-    return `本次已扣 ${receipt.charged} 积分，另有 ${receipt.uncollected} 积分未结算，请核对账单。`;
+    return `本次已扣 ${receipt.charged} 积分，另有 ${receipt.uncollected} 积分未结算。`;
   }
   async function selectedQwenStyleAnalysis(payload,selected,controller) {
     const no=(errorCode,error)=>({ok:false,errorCode,error});
@@ -687,13 +703,13 @@
       if(!current())return no('assistant-selection-changed','请求状态已变化，未执行。');
       submitted=true;companionCloudUsed.add(id);
       const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
-      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
+      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，本次结果未显示。');
       if(!validOperationReceipt(receipt,terms))
-        return no('operation-status-unknown','账单状态待核对，请勿重复提交。');
+        return no('operation-status-unknown',ONLINE_RESULT_UNCONFIRMED);
       const quota={status:'settled',settled_credits:receipt.charged,quote_estimated_credits:op.estimatedCredits,...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
       if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
       let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
-      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
+      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算，但这次的账单提示没有更新。',{quota});
       if(!current())return no('assistant-selection-changed','模型或视频内容已变化，草稿未显示。',{quota});
       const draft=result?.videoDraft;
       if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0||!draft||draft.textOnly!==!hasImages||draft.h3Mode!==intent.h3Mode||draft.durationSeconds!==intent.durationSeconds||
@@ -708,7 +724,7 @@
         return no('video-draft-incomplete',message,{quota,draftIssue:String(result?.draftIssue||'').slice(0,200)});
       }
       return {ok:true,draft:{displayPrompt:draft.displayPrompt,modelPrompt:draft.modelPrompt,h3Mode:draft.h3Mode,durationSeconds:draft.durationSeconds,textOnly:!hasImages,status:'preview-only',applyAvailable:false},modelIdentity:{id:selected.modelId},quota};
-    }catch{return no('operation-unknown',submitted?'请求结果待核对，请勿重复提交。':'请求未执行，请稍后重试。');}
+    }catch{return no('operation-unknown',submitted?ONLINE_RESULT_UNCONFIRMED:'请求未执行，请稍后重试。');}
     finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
 
@@ -755,18 +771,18 @@
       if(!current())return no('assistant-selection-changed','上下文已变化，未执行。');
       submitted=true;companionCloudUsed.add(id);
       const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
-      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
+      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，本次结果未显示。');
       if(!validOperationReceipt(receipt,terms))
-        return no('operation-status-unknown','账单状态待核对，请勿重复提交。');
+        return no('operation-status-unknown',ONLINE_RESULT_UNCONFIRMED);
       const quota={status:'settled',settled_credits:receipt.charged,quote_estimated_credits:op.estimatedCredits,...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
       if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
       let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
-      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单提示未更新，请核对账单。',{quota});
+      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算，但这次的账单提示没有更新。',{quota});
       if(!current())return no('assistant-selection-changed','模型或 UI 已变化，草稿未显示。',{quota});
       if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0||result.uiDraft?.status!=='preview-only'||result.uiDraft?.applyAvailable!==false)
         return no('ui-draft-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'草稿未完成，请核对实际结算。',{quota});
       return {ok:true,draft:result.uiDraft,modelIdentity:{id:selected.modelId},quota};
-    } catch {return no('operation-unknown',submitted?'请求结果待核对，请勿重复提交。':'请求未执行，请稍后再试。');}
+    } catch {return no('operation-unknown',submitted?ONLINE_RESULT_UNCONFIRMED:'请求未执行，请稍后再试。');}
     finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
 
@@ -834,13 +850,13 @@
       if(!current())return no('assistant-selection-changed','上下文已变化，未执行。');
       submitted=true;companionCloudUsed.add(id);
       const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},180000,abort.signal),receipt=result?.receipt;
-      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，请核对账单。');
+      if(!owner.current()||!guard())return no('assistant-session-unavailable','会话已变化，本次结果未显示。');
       if(!validOperationReceipt(receipt,terms))
-        return no('operation-status-unknown','账单状态待核对，请勿重复提交。');
+        return no('operation-status-unknown',ONLINE_RESULT_UNCONFIRMED);
       const quota={status:'settled',settled_credits:receipt.charged,quote_estimated_credits:op.estimatedCredits,...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
       if(receipt.uncollected===0)settled=true;notifyAccountBalance(undefined,'companion-operation');
       let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
-      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
+      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算，但这次的账单提示没有更新。',{quota});
       if(!current())return no('assistant-selection-changed','模型或素材已变化，结果未显示。',{quota});
       if(result.ok!==true||result.model!==selected.modelId||receipt.outcome!=='success'||receipt.uncollected>0)
         return no('style-analysis-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'分析未完成，请核对实际结算。',{quota});
@@ -850,7 +866,7 @@
       if(combined&&only(value,['material','rawMaterial','supplement'])&&text(value.supplement,600)&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,supplement:value.supplement,model:selected.modelId,quota};
       if(kind==='aifx-material'&&only(value,['material','rawMaterial'])&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,model:selected.modelId,quota};
       return no('style-analysis-incomplete','分析结果不符合所需格式，请核对实际结算。',{quota});
-    }catch{return no('operation-unknown',submitted?'结果和账单待核对，请勿重复提交。':'请求未执行，请稍后重试。');}
+    }catch{return no('operation-unknown',submitted?ONLINE_RESULT_UNCONFIRMED:'请求未执行，请稍后重试。');}
     finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
   async function selectedOnlineAudioRewrite(payload,selected,controller) {
@@ -898,25 +914,27 @@
       if(!current())return no('assistant-selection-changed','会话已变，未提交。');
       submitted=true;companionCloudUsed.add(id);
       const result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},65000,abort.signal),receipt=result?.receipt;
-      if(!current())return no('assistant-selection-changed','会话已变，请核对账单，请勿重复提交。');
+      if(!current())return no('assistant-selection-changed','会话已变，本次结果未显示。');
       if(!validOperationReceipt(receipt,terms))
-        return no('operation-status-unknown','结算状态待核对，请勿重复提交。');
+        return no('operation-status-unknown',ONLINE_RESULT_UNCONFIRMED);
       notifyAccountBalance(undefined,'companion-operation');
       const quota={status:'settled',settled_credits:receipt.charged,quote_estimated_credits:op.estimatedCredits,...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
       if(receipt.uncollected===0)finalReceipt=true;
       let noted=false;try{noted=payload.onBillingNotice({requestId:id,modelId:selected.modelId,submitted:true,quota,unknown:receipt.uncollected>0})===true;}catch{}
-      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算但账单显示未更新，请核对账单。',{quota});
+      if(!noted)return no('billing-record-unavailable',receipt.uncollected>0?incompleteSettlementMessage(receipt):'已结算，但这次的账单提示没有更新。',{quota});
       if(!current())return no('assistant-selection-changed','模型或会话已变化，结果未应用。',{quota});
       if(result.ok!==true||receipt.outcome!=='success'||receipt.uncollected>0||result.model!==selected.modelId||typeof result.reply!=='string'||!result.reply.trim()||result.reply.length>4000)
-        return no('operation-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):`本次改写未完成或身份待核对，实际扣 ${receipt.charged} 积分。`,{quota});
+        return no('operation-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):`本次改写未完成，实际扣 ${receipt.charged} 积分。`,{quota});
       return {ok:true,result:{prompt:result.reply,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota}};
-    }catch(error){return no('operation-unknown',submitted?'结果待核对，请勿重复提交。':'请求未提交，请稍后再试。');}
+    }catch(error){return no('operation-unknown',submitted?ONLINE_RESULT_UNCONFIRMED:'请求未提交，请稍后再试。');}
     finally {clearTimeout(timer);clearTimeout(expiry);unsubscribe();foartSessionObservers.delete(onChange);payload.signal?.removeEventListener?.('abort',onChange);companionCloudRequests.delete(id);}
   }
 
   // Online art is intentionally closed until billing and real-page acceptance.
   // The person picks the model. When its line answers nothing, a style redraw's one retry goes through this one.
   const STYLE_REDRAW_BACKUP_MODEL='deepseek/deepseek-v4.1-flash';
+  // A style redraw cut off mid-call is sent once more by the tool layer; that send goes straight to the backup line.
+  let styleLineInterruptedAt=0;
   async function selectedOnlineBusinessPrompt(action,payload,selected,controller) {
     const no=(errorCode,error)=>({ok:false,errorCode,error});
     const textOnly=payload.currentDrawingTextOnly===true && typeof XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED!=='undefined' && XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED===true;
@@ -1010,6 +1028,8 @@
         (payload.currentDrawingVisionOnly===true&&(operationTerms.operation_vision_chat_v3!==true||!images.length)) ||
         !Array.isArray(policy.models) || !policy.models.some(m=>m.id===artModel&&m.available===true))
         return no('online-business-unavailable','\u5728\u7ebf\u7f8e\u5de5\u8ba1\u8d39\u7b56\u7565\u672a\u5f00\u901a\uff0c\u672a\u63d0\u4ea4\u6216\u6263\u8d39\u3002');
+      if(styleRun&&Date.now()-styleLineInterruptedAt<30000&&policy.models.some(m=>m.id===STYLE_REDRAW_BACKUP_MODEL&&m.available===true))artModel=STYLE_REDRAW_BACKUP_MODEL;
+      styleLineInterruptedAt=0;
       if(images.length){
         const accepted=await payload.confirmImageUpload({count:images.length,images});
         if(!current())return no('assistant-selection-changed','模型或会话已变，未提交。');
@@ -1073,7 +1093,7 @@
         }
         if(result?.ok!==true||!settled){
           console.warn('[NovaFlow] Xiaotao art phase rejected',stage,result?.errorCode||'assistant-business-invalid-result',result?.validationIssue||'');
-          const message=({'structure-invalid':'模型返回的绘图提示词未通过完整性校验。','english-invalid':'模型返回的英文执行稿未通过校验。','provider-incomplete':'模型回复未完整返回。','provider-failed':'在线模型这次没有返回结果，本次未扣费，可以再试一次。'})[result?.errorCode]||'本阶段未完成。';
+          const message=({'structure-invalid':'模型返回的绘图提示词未通过完整性校验。','english-invalid':'模型返回的英文执行稿未通过校验。','provider-incomplete':'模型回复未完整返回。','provider-failed':ONLINE_MODEL_NO_ANSWER})[result?.errorCode]||'本阶段未完成。';
           return no(result?.errorCode||'assistant-business-invalid-result',message,{...(quota?{quota}:{}),billingUnknown:!settled});
         }
         if(stage==='structure'){
@@ -1081,7 +1101,7 @@
             if(result.releaseEligible!==true||result.reviewRequired!==true||result.targetEngine!=='qwen-2.1'||result.promptContract!==payload.promptContract||
               (result.modelPromptPolicy!==payload.promptContract&&!(nativeEdit&&result.modelPromptPolicy==='qwen21-style-redraw-v1'))||(nativeEdit?!['zh','en'].includes(result.modelPromptLanguage):result.modelPromptLanguage!=='en')||result.translationValidation!==(nativeEdit?'native-edit-and-literals':'paired-prose-and-literals')||
               typeof result.displayPrompt!=='string'||!result.displayPrompt.trim()||typeof result.modelPrompt!=='string'||!result.modelPrompt.trim())
-              return no('assistant-business-invalid-result','绘图提示词未通过验证，请查看实际扣费。',{quota});
+              return no('assistant-business-invalid-result','绘图提示词未通过验证。',{quota});
             console.info('[NovaFlow] Qwen 2.1 rewrite timing',JSON.stringify(result.timings||{}));
             return {...result,prompt:result.displayPrompt,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota};
           }
@@ -1089,7 +1109,7 @@
             if(result.releaseEligible!==true||result.reviewRequired!==true||result.targetEngine!=='gpt-image-2.5'||
               result.promptContract!=='gpt-image-semantic-fusion-v1'||typeof result.displayPrompt!=='string'||!result.displayPrompt.trim()||
               result.modelPrompt!==result.displayPrompt)
-              return no('assistant-business-invalid-result','绘图提示词未通过验证，请查看实际扣费。',{quota});
+              return no('assistant-business-invalid-result','绘图提示词未通过验证。',{quota});
             return {...result,prompt:result.displayPrompt,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota};
           }
           if(typeof result.stageToken!=='string'||!result.stageToken)return no('assistant-business-invalid-result','结构化结果无效。',{...(quota?{quota}:{}),billingUnknown:!settled});
@@ -1099,7 +1119,7 @@
             result.editContract!=='structured-recompile-v1'||result.promptSchema!=='nf.art.prompt.v1'||
             result.modelPromptLanguage!=='en'||typeof result.modelPrompt!=='string'||!result.modelPrompt.trim()||
             typeof result.displayPrompt!=='string'||!result.displayPrompt.trim())
-            return no('assistant-business-invalid-result','英文结果尚未完成验证，请查看实际扣费。',{...(quota?{quota}:{})});
+            return no('assistant-business-invalid-result','英文结果尚未完成验证。',{...(quota?{quota}:{})});
           return {...result,prompt:result.displayPrompt,analysisBackend:'runninghub',modelIdentity:{id:selected.modelId},quota};
         }
       }
@@ -1108,16 +1128,11 @@
       if(!pendingId)return no(error?.code||'assistant-business-unavailable',String(error?.message||'在线美工暂不可用，未提交当前阶段。'),{...(lastQuota?{quota:lastQuota}:{})});
       // The request died in flight (gateway cut, network, our own timer). The server settles the hold on its own; read that
       // settlement instead of guessing, so the person sees what happened and the ledger shows no open hold.
-      let closed=null;
-      if(recoveryId&&sessionGuard()===true&&currentSession()?.token===session){
-        try{const status=await api(base,'POST','/api/web/companion/operation/status',{operationId:recoveryId},10000);
-          const op=status?.ok===true?status.operation:null;
-          if(op?.operationId===recoveryId&&op.status==='settled'&&validCreditAmount(op.charged,decimalCreditPolicy(operationTerms)))closed={charged:op.charged};
-        }catch{/* unknown stays unknown */}
-      }
+      if(styleRun&&!cancelled)styleLineInterruptedAt=Date.now();
+      const closed=recoveryId?await settledOperation(base,recoveryId,()=>sessionGuard()===true&&currentSession()?.token===session,decimalCreditPolicy(operationTerms),cancelled?[0]:undefined):null;
       if(closed){
         const quota={status:'settled',settled_credits:closed.charged};notice(pendingId,quota,false);pendingId='';v3FinalSettled=true;
-        return no(closed.charged===0?'provider-failed':'assistant-business-interrupted',closed.charged===0?'在线模型这次没有返回结果，本次未扣费，可以再试一次。':'在线请求中断，本次未完成，可以再试一次。',{quota});
+        return no(closed.charged===0?'provider-failed':'assistant-business-interrupted',closed.charged===0?ONLINE_MODEL_NO_ANSWER:'在线请求中断，本次未完成，可以再试一次。',{quota});
       }
       // Not settled yet: the worker may have been killed mid-call. The caller may try once more; the next quote sweeps this hold.
       return no('assistant-business-interrupted','在线请求中断，本次未完成，可以再试一次。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:true});
@@ -1753,7 +1768,7 @@
       return {ok:false,errorCode:'companion-pricing-changed',error:'在线积分价格已过期，请刷新价格后重新发送；本次未扣积分'};
     const accountOwner=operationV3?captureFoartBillingOwner():null;
     if(operationV3&&(!accountOwner||!accountOwner.current()))return {ok:false,providerSubmitted:false,errorCode:'assistant-selection-unavailable',error:'无法确认当前账户，操作未提交。'};
-    const controller = new AbortController();let providerSubmitted=false;
+    const controller = new AbortController();let providerSubmitted=false,chatRecovery=null;
     const onFoartSessionChange=()=>controller.abort();
     if(guardedImages)foartSessionObservers.add(onFoartSessionChange);
     let timer;
@@ -1796,18 +1811,18 @@
         const intent={mode:'chat',requestId:id,message:payload.message,history,...(payload.promptLanguage!==undefined?{promptLanguage:payload.promptLanguage}:{}),
           ...(guardedImages?{images:requestImages.map(({dataUrl,role,source})=>({dataUrl,...(role!==undefined?{role}:{}),...(source!==undefined?{source}:{})}))}:{})};
         const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:payload.expectedModelId,intent},65000,controller.signal);
-        const op=prepared?.operation;
+        const op=prepared?.operation;chatRecovery={base,operationId:op?.operationId,quote:pricingQuote};
         if(prepared?.ok!==true||op?.model!==payload.expectedModelId||op?.policyVersion!==payload.pricingVersion||!validOperationId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096)
           throw Object.assign(Error('操作级计费信息不匹配，本次未提交。'),{code:'companion-pricing-changed'});
         if(controller.signal.aborted||Date.now()>=payload.pricingExpiresAt)throw Object.assign(Error('在线积分价格已过期，本次未提交。'),{code:'companion-pricing-changed'});
         if(!accountOwner.current()||controller.signal.aborted)throw Object.assign(Error('登录会话已变化，本次未提交。'),{code:'assistant-selection-changed'});
         providerSubmitted=true;
         result=await api(base,'POST','/api/web/companion/operation/execute',{operationToken:op.token,intent},65000,controller.signal);
-        if(!accountOwner.current())throw Object.assign(Error('登录会话已变化，请核对原账户账单。'),{code:'assistant-selection-changed'});
+        if(!accountOwner.current())throw Object.assign(Error('登录会话已变化，本次结果未显示。'),{code:'assistant-selection-changed'});
         const receipt=result?.receipt;
         if(receipt?.status!=='settled'||!['success','cancel'].includes(receipt.outcome)||!validCreditAmount(receipt.charged,true)||
           !validCreditAmount(receipt.uncollected,true))
-          throw Object.assign(Error('结算状态待核对，请勿重复提交。'),{code:'operation-status-unknown'});
+          throw Object.assign(Error(ONLINE_RESULT_UNCONFIRMED),{code:'operation-status-unknown'});
         const quota={status:'settled',settled_credits:receipt.charged,billing_mode:'token',
           ...(pricingQuote?{quote_estimated_credits:pricingQuote.estimatedCredits}:{}),...(receipt.uncollected>0?{uncollected_credits:receipt.uncollected}:{})};
         // A v3 receipt does not contain a balance. Ask the account component
@@ -1815,14 +1830,14 @@
         notifyAccountBalance(undefined,'companion-operation');
         if(result.ok!==true||receipt.outcome!=='success'||receipt.uncollected>0){
           return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result.errorCode||'operation-incomplete',
-            error:receipt.uncollected>0?incompleteSettlementMessage(receipt):'本次回复未完成，已按实际用量结算。'};
+            error:receipt.uncollected>0?incompleteSettlementMessage(receipt):receipt.charged===0&&result.errorCode==='provider-failed'?ONLINE_MODEL_NO_ANSWER:'本次回复未完成，已按实际用量结算。'};
         }
         result={...result,quota};
       } else {
         providerSubmitted=true;
         result=await api(base, 'POST', '/api/web/companion/chat', chatRequest, 65000, controller.signal);
       }
-      if(!safeImageCurrent())throw Object.assign(Error('会话或参考素材已变化，请核对已提交请求的账单。'),{code:'assistant-selection-changed'});
+      if(!safeImageCurrent())throw Object.assign(Error('会话或参考素材已变化，本次结果未显示。'),{code:'assistant-selection-changed'});
       if (result?.ok !== true || typeof result.reply !== 'string' || !result.reply.trim()) throw Error('在线回复未完成，本次未自动重试');
       const hasMedia = Boolean(payload.images?.length || uploads.length);
       return { ok: true, data: { mode: payload.mode, provider: 'api', reply: result.reply,...(result.toolPlan?{toolPlan:result.toolPlan}:{}),
@@ -1831,7 +1846,14 @@
         model: result.model || '云端API', toolTrace: [], capabilities: { textOnly: !hasMedia, vision: hasMedia, tools: payload.mode==='foart' },
         ...(result.billingSample ? {billingSample:result.billingSample} : {}), quota: pricingQuote ? {...result.quota,quote_estimated_credits:pricingQuote.estimatedCredits} : result.quota } };
     } catch (error) {
-      if(operationV3&&providerSubmitted)return {ok:false,providerSubmitted:true,billingUnknown:true,errorCode:error.code||'operation-status-unknown',error:'模型请求已提交，积分状态待核对，请勿重复发送。'};
+      if(operationV3&&providerSubmitted){
+        const closed=validOperationId(chatRecovery?.operationId)?await settledOperation(chatRecovery.base,chatRecovery.operationId,()=>accountOwner.current()===true,true,payload.signal?.aborted?[0]:undefined):null;
+        if(closed){
+          notifyAccountBalance(undefined,'companion-operation');
+          return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota:{status:'settled',settled_credits:closed.charged,billing_mode:'token',...(chatRecovery.quote?{quote_estimated_credits:chatRecovery.quote.estimatedCredits}:{})}},errorCode:'operation-incomplete',error:closed.charged===0?ONLINE_MODEL_NO_ANSWER:'本次回复未完成，已按实际用量结算。'};
+        }
+        return {ok:false,providerSubmitted:true,billingUnknown:true,errorCode:error.code||'operation-status-unknown',error:ONLINE_RESULT_UNCONFIRMED};
+      }
       return { ok: false, ...((guardedImages||operationV3)&&!providerSubmitted?{providerSubmitted:false}:{}), ...(error.code ? {errorCode:error.code} : {}), error: controller.signal.aborted ? ((!guardedImages&&!operationV3)||providerSubmitted?'本次在线回复等待已结束；用量以服务器实际结算为准':'本次请求已停止，尚未提交模型。') : String(error.message || error) };
     }
     finally { clearTimeout(timer); companionCloudRequests.delete(id);if(guardedImages)foartSessionObservers.delete(onFoartSessionChange); }
@@ -1898,7 +1920,7 @@
     if(quota){
       notifyAccountBalance(undefined,'companion-operation');
       if(result?.ok!==true||(result.receipt||result).outcome!=='success'||(result.receipt||result).uncollected>0)
-        return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result?.errorCode||'operation-incomplete',planIssue:String(result?.planIssue||'').slice(0,200),error:(result.receipt||result).uncollected>0?incompleteSettlementMessage(result.receipt||result):'操作未完成，请查看实际扣分。'};
+        return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:result?.errorCode||'operation-incomplete',planIssue:String(result?.planIssue||'').slice(0,200),error:(result.receipt||result).uncollected>0?incompleteSettlementMessage(result.receipt||result):result?.errorCode==='provider-failed'?ONLINE_MODEL_NO_ANSWER:'操作未完成。'};
       return {ok:true,data:{toolPlan:result.toolPlan,quota}};
     }
     const plan=result?.toolPlan,action=foartOperationAction(plan);
@@ -1907,7 +1929,15 @@
       const session=foartOperationHandle({...record,sequence:result.sequence,surface:action.surface,actionKind:action.kind},result.continuationToken,previousContext);
       return {ok:true,data:{toolPlan:plan,foartOperationSession:session}};
     }
-    throw Object.assign(Error('操作账单状态待核对，请勿重复提交。'),{code:'operation-status-unknown'});
+    throw Object.assign(Error(ONLINE_RESULT_UNCONFIRMED),{code:'operation-status-unknown'});
+  }
+  // The answer never arrived but the server closed the operation: report what it settled.
+  async function foartClosedOperation(record,signal) {
+    const closed=await settledOperation(record.base,record.operationId,record.guard,decimalCreditPolicy(record.creditTerms),signal?.aborted?[0]:undefined);
+    const quota=closed&&foartOperationQuota({status:'settled',outcome:closed.outcome,charged:closed.charged,uncollected:closed.uncollected??0},record.quote,record.creditTerms);
+    if(!quota)return null;
+    notifyAccountBalance(undefined,'companion-operation');
+    return {ok:false,providerSubmitted:true,billingConfirmed:true,data:{quota},errorCode:'provider-failed',error:closed.charged===0?ONLINE_MODEL_NO_ANSWER:'在线请求中断，本次未完成，可以再试一次。'};
   }
   function foartOperationRequest(id,signal,guard) {
     if(typeof id!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(id)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
@@ -1955,23 +1985,26 @@
       if(prepared?.ok!==true||prepared.model!==payload.modelId||prepared.policyVersion!==payload.pricingVersion||!validOperationId(prepared.operationId)||typeof prepared.token!=='string'||prepared.token.length>4096)
         throw Object.assign(Error('操作票据与报价不一致，未提交。'),{code:'companion-pricing-changed'});
       if(!guard()||!accountOwner.current())throw Object.assign(Error('登录会话已变化，未提交操作。'),{code:'assistant-selection-changed'});
-      record={base,guard,modelId:payload.modelId,originalIntent,initialContext,operationToken:prepared.token,quote:pricingQuote,
+      record={base,guard,operationId:prepared.operationId,modelId:payload.modelId,originalIntent,initialContext,operationToken:prepared.token,quote:pricingQuote,
         creditTerms:policy.policy.config.xiaotao_online,
       };
       session=foartOperationHandle(record,'',initialContext,'unknown');
       if(!guard()||request.controller.signal.aborted||Date.now()>=payload.pricingExpiresAt)throw Object.assign(Error('会话或报价已变化，未提交操作。'),{code:'assistant-selection-changed'});
       providerSubmitted=true;
       const result=await api(base,'POST','/api/web/companion/operation/foart/start',{operationToken:record.operationToken,originalIntent,initialContext},65000,request.controller.signal);
-      if(!guard())throw Object.assign(Error('登录会话已变化，账单状态待核对。'),{code:'assistant-selection-changed'});
+      if(!guard())throw Object.assign(Error('登录会话已变化，本次结果未显示。'),{code:'assistant-selection-changed'});
       return foartOperationResult(result,record,initialContext);
     } catch(error) {
-      return {ok:false,providerSubmitted,billingUnknown:providerSubmitted,...(providerSubmitted&&session?{session}:{}),errorCode:error?.code||'operation-unavailable',error:providerSubmitted?(FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message]||'操作结果或账单状态待核对，请勿重复提交。'):foartOperationMessage(error)};
+      const known=FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message];
+      const closed=providerSubmitted&&record&&!known?await foartClosedOperation(record,payload.signal):null;
+      if(closed)return closed;
+      return {ok:false,providerSubmitted,billingUnknown:providerSubmitted,...(providerSubmitted&&session?{session}:{}),errorCode:error?.code||'operation-unavailable',error:providerSubmitted?(known||ONLINE_RESULT_UNCONFIRMED):foartOperationMessage(error)};
     } finally {request?.close();}
   }
   async function foartOperationResume(payload={}) {
     const record=payload.session&&foartOperationSessions.get(payload.session);
-    if(!record||record.state!=='pending')return {ok:false,providerSubmitted:false,errorCode:'operation-session-unavailable',error:'操作会话不可用，请核对账单。'};
-    if(!record.guard())return {ok:false,providerSubmitted:false,billingUnknown:true,session:payload.session,errorCode:'operation-session-unavailable',error:'登录会话已变化，请核对未结算账单。'};
+    if(!record||record.state!=='pending')return {ok:false,providerSubmitted:false,errorCode:'operation-session-unavailable',error:'操作会话不可用。'};
+    if(!record.guard())return {ok:false,providerSubmitted:false,billingUnknown:true,session:payload.session,errorCode:'operation-session-unavailable',error:'登录会话已变化，本次结果未显示。'};
     let request,providerSubmitted=false;
     try {
       const previousContext=foartOperationCopy(payload.previousContext),context=foartOperationCopy(payload.context),incoming=payload.receipt;
@@ -1984,18 +2017,21 @@
       providerSubmitted=true;
       const result=await api(record.base,'POST','/api/web/companion/operation/foart/resume',{operationToken:record.operationToken,originalIntent:record.originalIntent,
         initialContext:record.initialContext,previousContext:record.previousContext,continuationToken:record.continuationToken,receipt,context},65000,request.controller.signal);
-      if(!record.guard())throw Object.assign(Error('登录会话已变化，账单状态待核对。'),{code:'assistant-selection-changed'});
+      if(!record.guard())throw Object.assign(Error('登录会话已变化，本次结果未显示。'),{code:'assistant-selection-changed'});
       const value=foartOperationResult(result,record,context);record.state='closed';return value;
     } catch(error) {
       record.state=providerSubmitted?'unknown':'pending';
-      return {ok:false,providerSubmitted,billingUnknown:true,session:payload.session,errorCode:error?.code||'operation-unavailable',error:providerSubmitted?(FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message]||'操作结果或账单状态待核对，请勿重复提交。'):foartOperationMessage(error)};
+      const known=FOART_OPERATION_MESSAGES[error?.code]||FOART_OPERATION_MESSAGES[error?.message];
+      const closed=providerSubmitted&&!known?await foartClosedOperation(record,payload.signal):null;
+      if(closed){record.state='closed';return closed;}
+      return {ok:false,providerSubmitted,billingUnknown:true,session:payload.session,errorCode:error?.code||'operation-unavailable',error:providerSubmitted?(known||ONLINE_RESULT_UNCONFIRMED):foartOperationMessage(error)};
     } finally {request?.close();}
   }
   async function foartOperationCancel(payload={}) {
     const record=payload.session&&foartOperationSessions.get(payload.session);
-    if(!record||!['pending','unknown'].includes(record.state))return {ok:false,providerSubmitted:false,errorCode:'operation-session-unavailable',error:'操作会话不可用，请核对账单。'};
-    if(!record.guard())return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-session-unavailable',error:'登录会话已变化，请核对未结算账单。'};
-    if(companionCloudRequests.size)return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-busy',error:'操作仍在处理中，请核对账单。'};
+    if(!record||!['pending','unknown'].includes(record.state))return {ok:false,providerSubmitted:false,errorCode:'operation-session-unavailable',error:'操作会话不可用。'};
+    if(!record.guard())return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-session-unavailable',error:'登录会话已变化，本次结果未显示。'};
+    if(companionCloudRequests.size)return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-busy',error:'操作仍在处理中。'};
     let request;
     try {
       if(typeof root.crypto?.randomUUID!=='function')throw Error('操作不可用');
@@ -2008,7 +2044,7 @@
       record.state='closed';notifyAccountBalance(undefined,'companion-operation');
       if(result.uncollected>0)return {ok:false,billingConfirmed:true,data:{quota},errorCode:'operation-incomplete',error:incompleteSettlementMessage(result)};
       return {ok:true,billingConfirmed:true,data:{quota}};
-    } catch(error){record.state='unknown';return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-status-unknown',error:'操作账单状态待核对，请勿重复提交。'};}
+    } catch(error){record.state='unknown';return {ok:false,billingUnknown:true,session:payload.session,errorCode:'operation-status-unknown',error:ONLINE_RESULT_UNCONFIRMED};}
     finally{request?.close();}
   }
 
@@ -2535,7 +2571,7 @@
     const guard = captureFoartSessionGuard(), nodeEpoch = computeNodeEpoch, nodeId = computeNode?.id || '';
     const billingOwner = captureFoartBillingOwner();
     if (!billingOwner || !billingOwner.current()) throw new Error('登录状态无法验证，未提交。');
-    if (uncertainH3Owners.has(billingOwner.owner)) throw new Error('上一次视频任务状态待核，请勿重复提交。');
+    if (uncertainH3Owners.has(billingOwner.owner)) throw new Error('上一次视频任务还没有确认，请稍后再试。');
     if (typeof guard !== 'function' || !guard()) throw new Error('登录状态无法验证，未提交视频任务。');
     const studio = root.NovaFlowAudioStudio, gen = root.NovaFlowAiSequenceGeneration;
     const route = root.__NovaFlowArtGenerate?.captureContext?.()?.routeRevision;
@@ -2551,7 +2587,7 @@
           root.NovaFlowAudioStudio !== studio || studio.routeRevision?.() !== mediaRoute || studio.isOpen?.() !== true || studio.sub?.() !== 'video' ||
           root.__NovaFlowArtGenerate?.captureContext?.()?.routeRevision !== route ||
           root.NovaFlowAiSequenceGeneration?.boardIdentity?.() !== board || JSON.stringify(root.NovaFlowAiSequenceGeneration?.capture?.()) !== expectedSnapshot)
-        throw new Error('账号、节点或视频画板已变化；如任务已提交，请勿重复提交。');
+        throw new Error('账号、节点或视频画板已变化；已提交的任务请到任务列表查看。');
     };
     const originals = intent.options?.images;
     if (!Array.isArray(originals) || originals.length !== 2 || originals.some(name => typeof name !== 'string' || !name) || originals[0] === originals[1])
@@ -2585,7 +2621,7 @@
     const fingerprint = JSON.stringify({options, nodeId, refs: staged.map(item => ({name:item.original, bytes:item.bytes.byteLength, sha256:item.sha256}))});
     let operation = pendingH3Submission;
     if (operation) {
-      throw new Error(operation.busy ? '视频任务正在提交，请稍候。' : '上一次视频任务状态待核，请勿重复提交。');
+      throw new Error(operation.busy ? '视频任务正在提交，请稍候。' : '上一次视频任务还没有确认，请稍后再试。');
     } else {
       const id = String(root.crypto.randomUUID()).toLowerCase();
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) throw new Error('无法创建安全的视频任务标识。');
@@ -2626,7 +2662,7 @@
         catch (error) {
           operation.current();
           if (error?.status && ![502,503,504].includes(error.status)) throw error;
-          throw new Error('视频任务状态待核，请勿重复提交。');
+          throw new Error('视频任务还没有确认，请稍后查看任务列表。');
         }
         if (!result?.task || result.task.id !== operation.id) throw new Error('视频任务返回的标识不匹配，未继续上传。');
         operation.task = result.task;
@@ -2638,14 +2674,14 @@
         operation.current();
         let res;
         try { res = await control('GET', '/api/web/tasks/' + operation.id); }
-        catch { operation.current(); throw new Error('视频任务状态待核，请勿重复提交。'); }
+        catch { operation.current(); throw new Error('视频任务还没有确认，请稍后查看任务列表。'); }
         operation.current();
         assigned = res.task || {};
         if (assigned.id !== operation.id) throw new Error('视频任务状态不匹配，已停止上传。');
         tasks.set(operation.id, assigned);
         if (assigned.status === 'completed') return finish(assigned);
         if (['failed','cancelled','expired'].includes(assigned.status)) {
-          if (assigned.error_code === 'h3_result_unknown') throw new Error('视频任务结果与扣费状态待核，请勿重复提交。');
+          if (assigned.error_code === 'h3_result_unknown') throw new Error('视频任务结果还没有确认，请稍后查看任务列表。');
           // The server has positively identified the same request as terminal.
           // Keep the staged inputs for an explicit new submission; never retry
           // a new task automatically or modify the old task's accounting.
@@ -2657,7 +2693,7 @@
           if (nodeId && assigned.assigned_worker_id !== nodeId) throw new Error('视频任务分配节点已变化，未上传素材。');
           break;
         }
-        if (Date.now() - started > 120000) throw new Error('视频任务状态待核，请勿重复提交。');
+        if (Date.now() - started > 120000) throw new Error('视频任务还没有确认，请稍后查看任务列表。');
         await new Promise(resolve => setTimeout(resolve, 700));
       }
       operation.current();
@@ -2673,9 +2709,9 @@
           res = await fetch(base + '/gw/tasks/' + operation.id + '/input/' + encodeURIComponent(ref.name), {
             method:'PUT', headers:{'content-type':item.held.mimeType || mimeFor(ref.name),'x-novaflow-grant':grant.token}, body:item.bytes
           });
-        } catch { operation.current(); throw new Error('视频素材上传状态待核，请勿重复提交。'); }
+        } catch { operation.current(); throw new Error('视频素材上传还没有确认，请稍后再试。'); }
         operation.current();
-        if (!res.ok) throw new Error('视频素材上传状态待核，请勿重复提交。');
+        if (!res.ok) throw new Error('视频素材上传还没有确认，请稍后再试。');
       }
       operation.current();
       return finish(assigned);
@@ -2769,7 +2805,7 @@
       throw error;
     }
 
-    if (artBinding && task?.task?.id !== artBinding.taskId) { discardArtImageBinding(artBinding.ticket); throw new Error('任务创建结果待核对，请勿重复提交。'); }
+    if (artBinding && task?.task?.id !== artBinding.taskId) { discardArtImageBinding(artBinding.ticket); throw new Error('任务创建还没有确认，请稍后查看任务列表。'); }
     const promptId = task.task.id;
     tasks.set(promptId, task.task);
     taskOrigins.set(promptId, originOf(baseUrl));
@@ -2798,7 +2834,7 @@
           let cancelled=false;
           if (artBinding.sessionCurrent()) try { const value=await control('POST', '/api/web/tasks/' + promptId + '/cancel'); cancelled=value?.task?.status==='cancelled'; } catch {}
           discardArtImageBinding(artBinding.ticket);
-          if (!cancelled) throw new Error('任务停止状态待核对，未继续上传');
+          if (!cancelled) throw new Error('任务停止还没有确认，未继续上传');
         } else await control('POST', '/api/web/tasks/' + promptId + '/cancel').catch(() => {});
         throw new Error('参考图上传失败：' + String(error.message || error));
       }

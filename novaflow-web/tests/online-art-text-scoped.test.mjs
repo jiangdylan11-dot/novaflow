@@ -7,6 +7,7 @@ import {createContext,runInContext} from 'node:vm';
 // synthetic fixtures, not a real provider or production database.
 const source=await readFile(new URL('../renderer/novaflow-web-runtime.js',import.meta.url),'utf8');
 const helpers=source.slice(source.indexOf('  // Operation-v3 can use'),source.indexOf('  const XIAOTAO_ONLINE_ART_RELEASE_ENABLED'));
+const statusHelpers=source.slice(source.indexOf('  // Said when a request may have reached'),source.indexOf('  // Standalone text rewrite only.'))+'let styleLineInterruptedAt=0;\n';
 const start=source.indexOf('  async function selectedOnlineBusinessPrompt('),end=source.indexOf('  async function localPromptAssistant(',start);
 assert.ok(start>0&&end>start);
 
@@ -17,7 +18,7 @@ function fixture({decimal=true,artV3=true,textRelease=true,globalRelease=false,v
   const controller={businessModelSnapshot:()=>({...selection}),subscribeBusinessModel(fn){listeners.add(fn);return()=>listeners.delete(fn);}};
   const root={NovaFlowXiaotaoArtAgent:{panel:{controller}}};
   const terms={billing_scope:'operation',minimum_positive_credits:decimal?0:1,operation_art_v3:artV3,operation_vision_chat_v3:visionPolicy,...(decimal?{credit_amount_policy:'decimal-v1',credit_precision:6,credit_rounding:'ceil'}:{})};
-  const scope={root,Date,JSON,Object,String,Number,Array,Error,Promise,RegExp,AbortController,setTimeout,clearTimeout,
+  const scope={root,Date,JSON,Object,String,Number,Array,Error,Promise,RegExp,AbortController,setTimeout:(fn,ms)=>setTimeout(fn,ms<=10000?1:ms),clearTimeout,
     CONFIG:{companionUrl:'https://example.invalid',authUrl:'https://example.invalid'},
     XIAOTAO_ONLINE_ART_RELEASE_ENABLED:globalRelease,XIAOTAO_ONLINE_TEXT_ART_RELEASE_ENABLED:textRelease,XIAOTAO_ONLINE_VISION_ART_RELEASE_ENABLED:visionRelease,foartSessionObservers:new Set(),
     companionPricing:async()=>({ok:true,policy:{version:'sha256:'+'c'.repeat(64),expiresAt:Date.now()+60000,models:[{id:model,available:true}],config:{xiaotao_online:terms}}}),
@@ -31,7 +32,7 @@ function fixture({decimal=true,artV3=true,textRelease=true,globalRelease=false,v
       if(path.endsWith('/execute')){events.push('execute');if(onExecute)await onExecute();return {ok:true,releaseEligible:true,reviewRequired:true,targetEngine:'gpt-image-2.5',promptContract:'gpt-image-semantic-fusion-v1',displayPrompt:'safe draft',modelPrompt:'safe draft',settlement:{requestId:'a'.repeat(64),status:'settled',settledCredits:0.000001}};}
       throw Error('unexpected synthetic path');
     }};
-  createContext(scope);runInContext(helpers+source.slice(start,end)+'\nglobalThis.invoke=selectedOnlineBusinessPrompt;',scope);
+  createContext(scope);runInContext(helpers+statusHelpers+source.slice(start,end)+'\nglobalThis.invoke=selectedOnlineBusinessPrompt;',scope);
   const payload={requestId,assistantSelectionScope:'xiaotao',assistantProvider:'api',assistantModelId:model,assistantSelectionEpoch:0,currentDrawingTextOnly:true,
     surface:'art',purpose:'optimize',prompt:'synthetic landscape',currentPrompt:'synthetic landscape',requirements:'',targetEngine:'gpt-image-2.5',qwenPromptMode:'txt2img',supportsNegativePrompt:false,nsfw:false,images:[],isImageInputCurrent:()=>true,
     onPricingQuote:()=>events.push('show'),confirmPricingQuote:async()=>{events.push('confirm');return confirm;},onBillingNotice:()=>true};

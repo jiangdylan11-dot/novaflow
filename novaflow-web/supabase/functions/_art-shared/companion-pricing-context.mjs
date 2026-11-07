@@ -73,7 +73,7 @@ function validateEffectiveOnlinePrices(raw, online) {
 // reservation RPC, and its cap is persisted in the ledger for settlement.
 export async function createCompanionPricingContext({liveRates=null,provider,dbSnapshot,envOnline,legacyCharge,rpc,fetchImpl,artBusiness,operationV3}={}) {
   const operationRequired=operationV3?.enabled===true;
-  const legacyUnavailable=()=>{throw Object.assign(new Error('在线计费已升级，请更新页面后重新发起；未提交的新阶段不会扣费，已提交的请求请核对账单。'),{status:409,code:'operation-billing-required'});};
+  const legacyUnavailable=()=>{throw Object.assign(new Error('在线计费已升级，请更新页面后重新发起；未提交的新阶段不会扣费。'),{status:409,code:'operation-billing-required'});};
   const raw=dbSnapshot?.config == null ? dbSnapshot?.config : structuredClone(dbSnapshot.config);
   const cap=dbSnapshot?.message_cap_credits;
   const ready=dbSnapshot?.protocol === 'xiaotao-pricing-v2' && raw && typeof raw==='object' && !Array.isArray(raw)
@@ -82,7 +82,7 @@ export async function createCompanionPricingContext({liveRates=null,provider,dbS
   const overlay=envOnline && typeof envOnline==='object' && !Array.isArray(envOnline) ? envOnline : {};
   if(overlay[INVALID_ONLINE_OVERLAY])invalidPricingConfig();
   if(!ready) {
-    if(operationRequired)throw Object.assign(new Error('操作级计费状态暂不可用，请稍后重试并核对账单。'),{status:503,code:'operation-billing-unavailable'});
+    if(operationRequired)throw Object.assign(new Error('操作级计费状态暂不可用，请稍后重试。'),{status:503,code:'operation-billing-unavailable'});
     const service=createCompanionChat({provider:{...provider,creditConfig:{xiaotao_online:overlay},pricingSnapshotReady:false},charge:legacyCharge,fetchImpl});
     const art=await createCompanionArtBusiness();
     service.artQuote=request=>art.quote(request);

@@ -5,6 +5,7 @@ import {createContext,runInContext} from 'node:vm';
 
 const source=await readFile(new URL('../renderer/novaflow-web-runtime.js',import.meta.url),'utf8');
 const creditHelpers=source.slice(source.indexOf('  // Operation-v3 can use'),source.indexOf('  const XIAOTAO_ONLINE_ART_RELEASE_ENABLED'));
+const statusHelpers=source.slice(source.indexOf('  // Said when a request may have reached'),source.indexOf('  // Standalone text rewrite only.'))+'let styleLineInterruptedAt=0;\n';
 const start=source.indexOf('  async function selectedOnlineBusinessPrompt('),end=source.indexOf('  async function localPromptAssistant(',start);
 assert.ok(start>0&&end>start);
 function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,serverSuccess=false,unknownSecond=false,gptResult=false,pricingSource='token_rate_estimate',cacheKnown=false,operationV3=true,mutateQuote=null,storageFail=false,decimal=true,status=null,failStructure=null}={}){
@@ -13,7 +14,7 @@ function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,ser
  let token='session-a',calls=0,onExecute=null;
  const controller={businessModelSnapshot:()=>({...selection}),subscribeBusinessModel(fn){listeners.add(fn);return()=>listeners.delete(fn);}};
  const root={NovaFlowXiaotaoArtAgent:{panel:{controller}}},requestId='0d2aa225-e027-4d20-8ef3-7b5d1a9bbfee';
- const scope={root,Date,JSON,Object,String,Number,Array,Error,Promise,RegExp,AbortController,setTimeout,clearTimeout,crypto:globalThis.crypto,
+ const scope={root,Date,JSON,Object,String,Number,Array,Error,Promise,RegExp,AbortController,setTimeout:(fn,ms)=>setTimeout(fn,ms<=10000?1:ms),clearTimeout,crypto:globalThis.crypto,
   CONFIG:{companionUrl:'https://example.invalid',authUrl:'https://example.invalid'},
   XIAOTAO_ONLINE_ART_RELEASE_ENABLED:artEnabled,foartSessionObservers:new Set(),
   companionPricing:async()=>({ok:true,policy:{version:'sha256:'+'c'.repeat(64),expiresAt:Date.now()+60000,...(decimal?{models:[{id:selection.modelId,available:true}]}:{}),config:{xiaotao_online:{...(operationV3?{operation_art_v3:true}:{}),...(decimal?{billing_scope:'operation',minimum_positive_credits:0,credit_amount_policy:'decimal-v1',credit_precision:6,credit_rounding:'ceil'}:{})}}}}),
@@ -39,7 +40,7 @@ function harness({artEnabled=true,settlementFailure=false,confirmSecond=true,ser
     displayPrompt:'review draft',modelPrompt:'[Style]\nA safe synthetic example.',modelPromptLanguage:'en',settlement};
    return serverSuccess?{ok:true,modelPrompt:'untrusted english',settlement}:{ok:false,errorCode:'semantic-verification-pending',settlement};
   }};
- createContext(scope);runInContext(creditHelpers+source.slice(start,end)+'\nglobalThis.invoke=selectedOnlineBusinessPrompt;',scope);
+ createContext(scope);runInContext(creditHelpers+statusHelpers+source.slice(start,end)+'\nglobalThis.invoke=selectedOnlineBusinessPrompt;',scope);
  const payload={requestId,assistantSelectionScope:'xiaotao',assistantProvider:'api',assistantModelId:selection.modelId,
   assistantSelectionEpoch:0,surface:'art',purpose:'optimize',prompt:'safe text',currentPrompt:'safe text',requirements:'',
   targetEngine:'qwen-2.1',qwenPromptMode:'txt2img',agentModelLanguage:'en',supportsNegativePrompt:false,promptSchema:'nf.art.prompt.v1',nsfw:false,

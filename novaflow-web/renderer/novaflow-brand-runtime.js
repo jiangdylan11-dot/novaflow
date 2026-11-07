@@ -87133,7 +87133,7 @@
     if(Date.now()>=q.quote.expiresAt) fail('art-quote-expired');
     boundRun.dispatched=true;
     const sent=await api.runningHubGptImage({...request,contract:'confirmed-reference-v1',token:q.token},{signal:boundRun?.controller?.signal});
-    if(sent?.ok!==true) throw Object.assign(new Error('生图请求结果或扣费尚待核对，请勿重复提交。'),{code:'art-generation-outcome-unknown',billingUnknown:true});
+    if(sent?.ok!==true) throw Object.assign(new Error('这次生图请求没有确认结果，请稍后到结果列表查看。'),{code:'art-generation-outcome-unknown',billingUnknown:true});
     return sent;
   }
 
