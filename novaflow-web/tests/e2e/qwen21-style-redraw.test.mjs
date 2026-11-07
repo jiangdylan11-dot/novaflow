@@ -43,6 +43,7 @@ await test('daytime with no sky in view drops every sky phrase whole',()=>{
 await test('the picked hair word replaces a warm colour, and an unknown pick changes nothing',()=>{
   assert.equal(styleHairColour('long wavy reddish-brown hair, smiling','brown'),'long wavy brown hair, smiling');
   assert.equal(styleHairColour('copper-red hair','dark_brown'),'dark brown hair');
+  assert.equal(styleHairColour('long wavy red hair','reddish_brown'),'long wavy reddish-brown hair');
   assert.equal(styleHairColour('auburn hair','other'),'auburn hair');
   assert.equal(styleHairColour('a red scarf and black hair','brown'),'a red scarf and brown hair','only the word before hair changes');
 });
@@ -52,6 +53,8 @@ await test('hand-drawn media drop only the words that fight them',()=>{
   assert.doesNotMatch(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre:'watercolour'}}),/key visual/u);
   assert.match(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre:'glossy'}}),/strong contrast/u);
   assert.match(buildStyleRedrawPrompt('d','m','c'),/rich saturated/u);
+  for(const genre of ['flat_cel','watercolour'])assert.doesNotMatch(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre}}),/rich strand detail|real depth and atmosphere|high overall completion|deep and rich/u);
+  for(const genre of ['painterly','glossy','soft'])assert.match(buildStyleRedrawPrompt('d','m','c',2,{drawing:{genre}}),/rich strand detail[\s\S]*real depth and atmosphere[\s\S]*high overall completion/u);
 });
 await test('a cut never leaves stubs when the light choices remain',()=>{
   const light={key:'hard',direction:'side',contrast:'high',shadow:'warm',skin:'satin',hair_depth:'layered'};
