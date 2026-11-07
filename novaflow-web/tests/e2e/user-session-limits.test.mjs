@@ -83,6 +83,28 @@ section('limit 2: the third login pushes out only the oldest');
   checkEqual('password change signs out everywhere', (await me(c.token)).status, 401);
 }
 
+section('two logins in the same clock tick: the newer one keeps the seat');
+{
+  // Before 20261107060000 a session was stamped with now() and ties went to
+  // the random uuid, so when two logins landed in the same tick (PGlite's
+  // clock ticks in milliseconds) the one that had just happened was pushed
+  // out about half the time. Inside one transaction now() is identical, so
+  // this reproduces the tie on every run instead of by chance.
+  const user = await seedUser(db, { email: 'limits-same-tick@test.local' });
+  for (let round = 0; round < 10; round += 1) {
+    const [older, newer] = await db.transaction(async (tx) => {
+      const open = async () => (await tx.query("select public.novaflow_open_user_session($1, 'test-agent') as id", [user.id])).rows[0].id;
+      const first = await open();
+      return [first, await open()];
+    });
+    const live = await liveSessions(user.id);
+    checkEqual(`round ${round + 1}: only the newer login is live`, live.join(','), newer);
+    check(`round ${round + 1}: the older login was pushed out`, !live.includes(older), live);
+  }
+  const stamps = (await db.query('select count(distinct created_at)::int as distinct_stamps, count(*)::int as total from public.user_sessions where user_id = $1', [user.id])).rows[0];
+  checkEqual('no two sessions share a timestamp', stamps.distinct_stamps, stamps.total);
+}
+
 section('validity period');
 {
   const user = await seedUser(db, { email: 'limits-expiry@test.local' });
