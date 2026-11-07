@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
 import {sanitizeWorkflowOptions,validateTaskParameters} from '../../packages/shared/src/control-plane.mjs';
-import {styleHairColour,buildStyleLight,buildStyleDrawing,decideStyleTime,buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
+import {styleBrightFlat,styleHairColour,buildStyleLight,buildStyleDrawing,decideStyleTime,buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
 
 let passed=0,failed=0;
 async function test(name,fn){
@@ -45,6 +45,20 @@ await test('a long style prompt reaches the workflow whole',()=>{
   const long='x'.repeat(5000);
   assert.equal(sanitizeWorkflowOptions(long).length,5000);
   assert.equal(validateTaskParameters('audio_music',{prompt:long}).prompt.length,5000);
+});
+await test('a bright daytime flat reference is drawn soft with a glow; night, dark and other genres stay as picked',()=>{
+  const flat={genre:'flat_cel',line:'thin_uniform',shading:'two_step',highlight:'angular',hair:'ribbon',colour_layout:'flat',surface:'smooth'};
+  const light={key:'hard',direction:'above',contrast:'high',shadow:'cool',skin:'satin',hair_depth:'layered'};
+  const day=styleBrightFlat({drawing:flat,light,time_of_day:'midday',style_description:'x'});
+  assert.equal(day.drawing.genre,'soft');assert.equal(day.light.direction,'front');assert.equal(day.glow,true);
+  for(const time of ['dusk','night'])assert.equal(styleBrightFlat({drawing:flat,light,time_of_day:time}).drawing.genre,'flat_cel');
+  for(const genre of ['painterly','glossy','soft','watercolour'])assert.equal(styleBrightFlat({drawing:{...flat,genre},light,time_of_day:'midday'}).drawing.genre,genre);
+  const prepared=buildQwen21NativeRewrite(input,'model',['subject','style']);
+  const answer={drawing:flat,light,hair_colour:'brown',style_description:'',mood_description:'Bright midday, vivid blue sky',content_description:content,time_of_day:'midday',sun_visible:false,sky_visible:true};
+  const result=compileQwen21NativeRewrite({output_text:JSON.stringify(answer)},prepared);
+  assert.match(result.modelPrompt,/soft anime illustration/u);assert.match(result.modelPrompt,/Sunlight glows through the edges of the hair/u);assert.match(result.modelPrompt,/from the front/u);
+  const night=compileQwen21NativeRewrite({output_text:JSON.stringify({...answer,time_of_day:'night',mood_description:'Night'})},prepared);
+  assert.match(night.modelPrompt,/bright flat cel anime illustration/u);assert.doesNotMatch(night.modelPrompt,/Sunlight glows/u);
 });
 await test('the picked hair word replaces a warm colour, and an unknown pick changes nothing',()=>{
   assert.equal(styleHairColour('long wavy reddish-brown hair, smiling','brown'),'long wavy brown hair, smiling');
