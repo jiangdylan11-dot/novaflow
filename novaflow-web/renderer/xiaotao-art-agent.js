@@ -1404,8 +1404,10 @@
       const closeFoartOperation=async()=>{
         if(!foartOperationSession||typeof api()?.foartOperationCancel!=='function')return;
         const session=foartOperationSession;foartOperationSession=null;
-        try{const cancelled=await api().foartOperationCancel({session});if(cancelled?.billingConfirmed&&cancelled?.data?.quota?.status==='settled'){billing.unknown=false;collectBilling(billing,cancelled);}}
-        catch{/* An unconfirmed close shows no amount. */}
+        const close=async()=>{try{const cancelled=await api().foartOperationCancel({session});if(cancelled?.billingConfirmed&&cancelled?.data?.quota?.status==='settled'){billing.unknown=false;collectBilling(billing,cancelled);return true;}}catch{}return false;};
+        // A plan still being written cannot close yet (live 2.0.341: the close came 4 s early and the hold stayed open).
+        // Keep trying past the server's 80 s model limit, without holding up the turn.
+        if(!(await close()))void (async()=>{for(const wait of [5000,15000,30000,45000]){await new Promise(done=>root.setTimeout(done,wait));if(await close())return;}})();
       };
       const drawingPending=deferredDrawing;deferredDrawing=[];
       // A plain 图生图 step puts this turn's pictures on the page right before it runs, as the plan decided.
@@ -2127,7 +2129,8 @@
       if(result?.phase!=='applied'||result.reviewId!==receipt.reviewId)throw Error('绘图提示词更新未能确认。');
       pendingFoartImageReview=null;foartImageReviewUndo=null;state.foartImageReviewCanUndo=false;state.proposal=null;state.proposalSnapshot=null;state.applied=true;
       const quota=receipt.optimization?.quota;
-      if(state.provider==='api'&&quota?.status==='settled'&&creditUnits(quota.settled_credits)!==null)publishBilling({id:'prompt-'+receipt.reviewId,modelId:state.modelId,owner:billingOwner(),confirmed:quota.settled_credits,confirmedCount:1,unknown:false,inFlight:false});
+      // An operation-billed draft was already published by its own billing notice; publishing it again counted it twice (live 2.0.341).
+      if(state.provider==='api'&&quota?.status==='settled'&&creditUnits(quota.settled_credits)!==null&&currentPricingPolicy()?.config?.xiaotao_online?.operation_art_v3!==true)publishBilling({id:'prompt-'+receipt.reviewId,modelId:state.modelId,owner:billingOwner(),confirmed:quota.settled_credits,confirmedCount:1,unknown:false,inFlight:false});
     }
     async function applyMediaPromptReview(event) {
       const review=pendingMediaPromptReview;if(!review||state.pending||state.applying)return false;

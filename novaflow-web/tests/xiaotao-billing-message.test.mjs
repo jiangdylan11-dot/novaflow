@@ -16,7 +16,7 @@ const png=name=>'data:image/png;base64,'+Buffer.from(name).toString('base64');
 
 // ---- the turn: planner fee + a writing step that failed
 async function turn({cancelled,toolError=NO_ANSWER,start,before}) {
-  const root={console,crypto:webcrypto,AbortController,setTimeout,clearTimeout,btoa:value=>Buffer.from(value,'binary').toString('base64')};
+  const root={console,crypto:webcrypto,AbortController,setTimeout:(fn,ms)=>setTimeout(fn,ms>=5000?1:ms),clearTimeout,btoa:value=>Buffer.from(value,'binary').toString('base64')};
   root.window=root;createContext(root);
   runInContext(read('xiaotao-prompt-source.js'),root);runInContext(read('xiaotao-upload.js'),root);runInContext(read('xiaotao-art-agent.js'),root);
   const refs=[{drawingRole:'subject',dataUrl:png('a'),name:'a.png'}],rtState={active:true,prompt:'',mode:'img2img'};
@@ -38,8 +38,10 @@ async function turn({cancelled,toolError=NO_ANSWER,start,before}) {
   assert.equal(c.setModel('xai/grok-4.7'),true);await c.refreshPricingPolicy();
   before?.(c);const readsBefore=pricingReads;
   await c.send('把图1高清放大');
-  return {state:c.state,pricingReads:pricingReads-readsBefore};
+  await new Promise(done=>setTimeout(done,30));
+  return {state:c.state,pricingReads:pricingReads-readsBefore,charges:()=>[...billingTotals(c.state.billingNotices).values()]};
 }
+const billingTotals=rows=>{const totals=new Map();for(const row of rows||[])if(!row.unknown&&row.confirmed!=null)totals.set(row.turn,(totals.get(row.turn)||0)+row.confirmed);return totals;};
 const settledCancel=charged=>async()=>({ok:true,billingConfirmed:true,data:{quota:{status:'settled',settled_credits:charged,billing_mode:'token'}}});
 
 test('a planner fee already settled shows the real amount, never 未扣费',async()=>{
@@ -47,6 +49,11 @@ test('a planner fee already settled shows the real amount, never 未扣费',asyn
   assert.match(c.state.error,/本次已扣 0\.425809 积分（规划费）/);
   assert.doesNotMatch(c.state.error,/未扣费/);assert.doesNotMatch(c.state.error,NOT_ALLOWED);
   assert.match(c.state.error,/可以再试一次/);
+});
+test('a close sent while the plan is still being written is retried until it settles',async()=>{
+  let calls=0;
+  const c=await turn({cancelled:async()=>++calls<3?{ok:false,billingUnknown:true,errorCode:'operation-status-unknown',error:'x'}:{ok:true,billingConfirmed:true,data:{quota:{status:'settled',settled_credits:0.4,billing_mode:'token'}}}});
+  assert.equal(calls,3);assert.deepEqual(c.charges(),[0.4]);
 });
 test('a turn that settled nothing keeps 未扣费',async()=>{
   const c=await turn({cancelled:settledCancel(0)});
@@ -89,7 +96,7 @@ const statusHelpers=between('  // Said when a request may have reached','  // St
 const version='sha256:'+'a'.repeat(64);
 const terms={billing_scope:'operation',credit_amount_policy:'decimal-v1',credit_precision:6,credit_rounding:'ceil',minimum_positive_credits:0,operation_text_chat_v3:true,operation_foart_general_v3:true,operation_art_v3:true,operation_vision_chat_v3:true};
 const policy=()=>({version,expiresAt:Date.now()+60000,models:[{id:MODEL,available:true},{id:BACKUP,available:true}],config:{xiaotao_online:terms}});
-const instant=(fn,wait)=>wait<=10000?(fn(),0):0;
+const instant=(fn,wait)=>wait<=30000?(fn(),0):0;
 function runtimeScope(handlers) {
   const calls=[],guard=()=>true;
   const api=async(base,method,path,body,timeout,signal)=>{calls.push({path,body});const answer=handlers[path];if(!answer)throw Object.assign(Error('no route'),{status:404});return answer(body,signal);};
@@ -138,7 +145,7 @@ test('a provider failure the server closed is told from its receipt',async()=>{
 });
 
 // ---- the writing stage: a cut-off style redraw goes to the backup line once
-function artRuntime({execute,status}) {
+function artRuntime({execute,status,notices=[]}) {
   const seen=[],controller={businessModelSnapshot:()=>({provider:'api',modelId:MODEL,epoch:1}),subscribeBusinessModel:()=>()=>{}};
   const f=runtimeScope({
     '/api/web/companion/art/quote':body=>{seen.push(body.modelId);return {ok:true,quote:{stage:'structure',model:body.modelId,requestId:'request_'+seen.length,pricingVersion:version,estimatedCredits:0.4,maxOutputTokens:2048,quoteToken:'t',imageCount:2,billingScope:'operation-v3',recoveryOperationId:OP}};},
@@ -148,7 +155,7 @@ function artRuntime({execute,status}) {
   const begin=runtimeSource.indexOf('  // The person picks the model.'),end=runtimeSource.indexOf('  async function localPromptAssistant');
   runInContext(creditHelpers+statusHelpers+'function incompleteSettlementMessage(r){return "partial";}\n'+runtimeSource.slice(begin,end)+'\nglobalThis.art=selectedOnlineArtBusiness;',f.scope);
   const run=confirm=>f.scope.art({requestId:webcrypto.randomUUID(),currentDrawingVisionOnly:true,currentPrompt:'x',requirements:'',targetEngine:'qwen-2.1',promptContract:'qwen21-native-rewrite-v3',qwenPromptMode:'img2img',
-    images:[{role:'subject',dataUrl:png('a')},{role:'style',dataUrl:png('b')}],confirmImageUpload:async()=>true,isImageInputCurrent:()=>true,onPricingQuote(){},confirmPricingQuote:async()=>confirm,onBillingNotice:()=>true},{provider:'api',modelId:MODEL,epoch:1},controller);
+    images:[{role:'subject',dataUrl:png('a')},{role:'style',dataUrl:png('b')}],confirmImageUpload:async()=>true,isImageInputCurrent:()=>true,onPricingQuote(){},confirmPricingQuote:async()=>confirm,onBillingNotice:row=>{notices.push(row);return true;}},{provider:'api',modelId:MODEL,epoch:1},controller);
   return {...f,seen,run};
 }
 test('a cut-off style redraw is resent straight on the backup line, once',async()=>{
@@ -157,6 +164,17 @@ test('a cut-off style redraw is resent straight on the backup line, once',async(
   assert.equal(first.errorCode,'assistant-business-interrupted');assert.doesNotMatch(first.error,NOT_ALLOWED);
   await f.run(false);await f.run(false);
   assert.deepEqual(f.seen,[MODEL,BACKUP,MODEL],'the backup line is used for the one resend only');
+});
+test('a dropped stage that settles after the looks still reaches the bill',async()=>{
+  let looks=0;const notices=[];
+  const f=artRuntime({execute:lost,status:()=>++looks<=3?{ok:true,operation:{operationId:OP,status:'in-progress'}}:{ok:true,operation:{operationId:OP,status:'settled',outcome:'cancel',charged:0.103164,uncollected:0}},notices});
+  const r=await f.run(true);
+  assert.equal(r.errorCode,'assistant-business-interrupted');assert.doesNotMatch(r.error,NOT_ALLOWED);
+  await new Promise(done=>setTimeout(done,20));
+  assert.deepEqual(notices.map(n=>n.quota.settled_credits),[0.103164]);
+});
+test('an operation-billed draft is not published twice',()=>{
+  assert.match(read('xiaotao-art-agent.js'),/operation_art_v3!==true\)publishBilling\(\{id:'prompt-'/);
 });
 test('an interrupted stage the server settled at zero reads the status and says 未扣费',async()=>{
   let looks=0;

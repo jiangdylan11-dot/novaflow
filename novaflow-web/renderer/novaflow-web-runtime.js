@@ -1134,7 +1134,11 @@
         const quota={status:'settled',settled_credits:closed.charged};notice(pendingId,quota,false);pendingId='';v3FinalSettled=true;
         return no(closed.charged===0?'provider-failed':'assistant-business-interrupted',closed.charged===0?ONLINE_MODEL_NO_ANSWER:'在线请求中断，本次未完成，可以再试一次。',{quota});
       }
-      // Not settled yet: the worker may have been killed mid-call. The caller may try once more; the next quote sweeps this hold.
+      // Not settled yet: the worker may have been killed mid-call, or the model is still answering a request the browser dropped
+      // (live 2.0.341: settled 69 s later). Look again past the server's model limit so a late charge still reaches the bill.
+      if(recoveryId&&pendingId){const lateId=pendingId,lateTerms=decimalCreditPolicy(operationTerms);
+        void settledOperation(base,recoveryId,()=>sessionGuard()===true&&currentSession()?.token===session,lateTerms,[30000,30000,30000]).then(op=>{if(op)notice(lateId,{status:'settled',settled_credits:op.charged},false);});}
+      // The caller may try once more; the next quote sweeps a hold a dead worker left.
       return no('assistant-business-interrupted','在线请求中断，本次未完成，可以再试一次。',{...(lastQuota?{quota:lastQuota}:{}),billingUnknown:true});
     } finally {
       // A known first stage can be closed without issuing another provider
