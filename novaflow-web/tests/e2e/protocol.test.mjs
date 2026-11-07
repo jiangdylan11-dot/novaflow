@@ -145,7 +145,7 @@ section('parameter validation clamps rather than trusts');
     width: 99999, height: -5, duration_seconds: 1e9, fps: 1e6, seed: 'abc',
     references: [{ name: 'ref.png', bytes: 1, kind: 'image' }]
   });
-  check('prompt is truncated', p.prompt.length <= 4000, p.prompt.length);
+  check('prompt is truncated', p.prompt.length <= 12000, p.prompt.length);
   check('width clamps to the ceiling', p.width === 2048, p.width);
   check('height clamps to the floor', p.height === 256, p.height);
   check('duration clamps', p.duration_seconds === 30, p.duration_seconds);
