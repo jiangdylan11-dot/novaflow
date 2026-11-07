@@ -1389,8 +1389,6 @@ function runtimeFor(modelId) {
 // Source: packages/shared/src/control-plane.mjs
 // Regenerate with: npm run sync:edge
 
-
-
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -1412,16 +1410,8 @@ function runtimeFor(modelId) {
 //   * Credits are computed here from validated parameters and settled here.
 //     The worker reports success/failure and execution metadata, nothing else.
 
-
-
-
-
-
-
-
-
 const MAX_BODY_BYTES = 256 * 1024;
-const MAX_PROMPT_CHARS = 4000;
+const MAX_PROMPT_CHARS = 12000;
 const UI_CPU_CAPABILITY = 'foart-ui-cpu-compiler-v1';
 const QWEN21_NATIVE_REWRITE_V3_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-native-rewrite-v3';
 const QWEN_PLAN_SCOPE = 'qwen-foart-plan-v1';
@@ -1460,8 +1450,6 @@ function randomChunk() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Parameter validation. Everything a browser sends is clamped to a range we
 // are willing to run; nothing is passed through to a workflow unexamined.
@@ -1469,8 +1457,6 @@ function randomChunk() {
 function sanitizeText(value, max) {
   return String(value == null ? '' : value).slice(0, max);
 }
-
-
 
 function validateTaskParameters(taskType, raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -1645,7 +1631,6 @@ function validateTaskParameters(taskType, raw) {
 
   throw bad('unsupported task type: ' + String(taskType));
 }
-
 
 // ---------------------------------------------------------------------------
 // Renderer-workflow options.

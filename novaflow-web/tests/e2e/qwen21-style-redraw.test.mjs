@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
+import {sanitizeWorkflowOptions,validateTaskParameters} from '../../packages/shared/src/control-plane.mjs';
 import {styleHairColour,buildStyleLight,buildStyleDrawing,decideStyleTime,buildQwen21NativeRewrite,buildStyleRedrawPrompt,buildStyleRelight,compileQwen21NativeRewrite,isStyleRedrawRoles,QWEN21_NATIVE_REWRITE,QWEN21_STYLE_REDRAW_POLICY,STYLE_NEGATIVE,STYLE_POLISH} from '../../packages/shared/src/qwen21-native-rewrite.mjs';
 
 let passed=0,failed=0;
@@ -39,6 +40,11 @@ await test('daytime with no sky in view drops every sky phrase whole',()=>{
   assert.equal(decideStyleTime(seen,{time_of_day:'midday',sun_visible:false,sky_visible:false}).mood,'Midday light with a strong key from the upper left, casting short hard shadows. Contrast is high.');
   const cut=decideStyleTime('Golden hour lighting, with warm sunlight casting soft shadows, the sky is deep dark blue, with bright highlights. Gentle contrast.',{time_of_day:'golden_hour',sun_visible:false,sky_visible:false}).mood;
   assert.doesNotMatch(cut,/dark blue|\bsky\b/iu);assert.match(cut,/Gentle contrast/u);
+});
+await test('a long style prompt reaches the workflow whole',()=>{
+  const long='x'.repeat(5000);
+  assert.equal(sanitizeWorkflowOptions(long).length,5000);
+  assert.equal(validateTaskParameters('audio_music',{prompt:long}).prompt.length,5000);
 });
 await test('the picked hair word replaces a warm colour, and an unknown pick changes nothing',()=>{
   assert.equal(styleHairColour('long wavy reddish-brown hair, smiling','brown'),'long wavy brown hair, smiling');
@@ -116,7 +122,7 @@ await test('style mode is chosen only for one subject first followed by style re
 
 await test('the style system asks only for the three texts and bans the wording that darkens the result',()=>{
   const text=system(buildQwen21NativeRewrite(input,'model',['subject','style']));
-  for(const needle of ['40-80 words','pick the one closest value for each field','genre: flat_cel, painterly, glossy, soft or watercolour','shading: soft_gradient, two_step, three_step, brush, hatching or wash','deciding in this order','Flat colour areas with hard-edged shadows is flat_cel','under 20 words on anything special','key: hard, soft or diffuse','when unsure between glossy and another, pick the other','Skin with no visible shine is matte','layered only if separate locks can be counted','hair_depth: flat, two or layered','under 15 words','Short hard shadows mean midday','golden hour only if a low sun is actually visible','Never state its time of day, sky, lighting or what shows through its windows','exact hair colour','any wink','one small mole on the left cheek','requested_changes','never by tags or __NF...__ placeholders'])
+  for(const needle of ['450-600 characters','each visible scene object with its material and colour','pick the one closest value for each field','genre: flat_cel, painterly, glossy, soft or watercolour','shading: soft_gradient, two_step, three_step, brush, hatching or wash','deciding in this order','Flat colour areas with hard-edged shadows is flat_cel','under 20 words on anything special','key: hard, soft or diffuse','when unsure between glossy and another, pick the other','Skin with no visible shine is matte','layered only if separate locks can be counted','hair_depth: flat, two or layered','under 15 words','Short hard shadows mean midday','golden hour only if a low sun is actually visible','Never state its time of day, sky, lighting or what shows through its windows','exact hair colour','any wink','one small mole on the left cheek','requested_changes','never by tags or __NF...__ placeholders'])
     assert.ok(text.includes(needle),needle);
   assert.doesNotMatch(text,/rendering medium|rewritten_prompt/);
   assert.match(system(buildQwen21NativeRewrite(input,'model',['subject'])),/rendering medium/,'ordinary edits keep their own rule');

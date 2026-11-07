@@ -75,7 +75,7 @@ import { isAllowedWorkflowCall, workflowModule, workflowModelId, QWEN21_EDIT_LOR
 import { MODEL_MANIFEST, QWEN21_MODEL_ID, RETIRED_MODEL_IDS, findModel } from './model-manifest.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
-const MAX_PROMPT_CHARS = 4000;
+const MAX_PROMPT_CHARS = 12000;
 const UI_CPU_CAPABILITY = 'foart-ui-cpu-compiler-v1';
 const QWEN21_NATIVE_REWRITE_V3_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-native-rewrite-v3';
 const QWEN_PLAN_SCOPE = 'qwen-foart-plan-v1';
