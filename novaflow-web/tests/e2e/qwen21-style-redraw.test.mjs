@@ -40,6 +40,11 @@ await test('daytime with no sky in view drops every sky phrase whole',()=>{
   const cut=decideStyleTime('Golden hour lighting, with warm sunlight casting soft shadows, the sky is deep dark blue, with bright highlights. Gentle contrast.',{time_of_day:'golden_hour',sun_visible:false,sky_visible:false}).mood;
   assert.doesNotMatch(cut,/dark blue|\bsky\b/iu);assert.match(cut,/Gentle contrast/u);
 });
+await test('a cut never leaves stubs when the light choices remain',()=>{
+  const light={key:'hard',direction:'side',contrast:'high',shadow:'warm',skin:'satin',hair_depth:'layered'};
+  const mood=decideStyleTime(buildStyleLight(light,'Afternoon, warm sunlight with deep shadow and no open sky'),{time_of_day:'afternoon',sun_visible:false,sky_visible:false}).mood;
+  assert.ok(mood.startsWith('A hard direct key light from the side'));assert.doesNotMatch(mood,/no open|\bsky\b/iu);
+});
 await test('a time that stands keeps the brain sentence',()=>{
   const golden=decideStyleTime(liveR1,{time_of_day:'golden_hour',sun_visible:true,sky_visible:true});assert.equal(golden.time,'golden_hour');assert.equal(golden.mood,liveR1);
   const moon='Nighttime rainy scene lit by cool pale blue moonlight, a deep dark blue sky with thin clouds';
@@ -66,7 +71,7 @@ await test('the choices become the drawing words, with free text only as an addi
 await test('light choices follow the mood words, and too few valid ones keep the mood alone',()=>{
   const light={key:'hard',direction:'side',contrast:'high',shadow:'warm',skin:'satin',hair_depth:'layered'};
   assert.equal(buildStyleLight(light,'Bright midday'),'Bright midday. a hard direct key light from the side, very high contrast with deep shadow masses, warm brown shadows, softly lit satin skin, hair in many layered strands with deep darks between them');
-  const dropped=decideStyleTime(buildStyleLight(light,'Bright midday, no sky is shown'),{time_of_day:'midday',sun_visible:false,sky_visible:false}).mood;assert.match(dropped,/a hard direct key light/u);assert.doesNotMatch(dropped,/\bsky\b/iu);
+  const dropped=decideStyleTime(buildStyleLight(light,'Bright midday, no sky is shown'),{time_of_day:'midday',sun_visible:false,sky_visible:false}).mood;assert.match(dropped,/a hard direct key light/iu);assert.doesNotMatch(dropped,/\bsky\b/iu);
   assert.equal(buildStyleLight({key:'odd'},'Night.'),'Night');assert.equal(buildStyleLight(undefined,'Night'),'Night');
 });
 await test('the style brain reads the request, not the last picture\'s prompt',()=>{

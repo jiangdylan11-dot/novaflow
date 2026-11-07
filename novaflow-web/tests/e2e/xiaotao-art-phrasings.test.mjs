@@ -76,6 +76,11 @@ test('a folded 生图 panel does not switch the page off during a 小桃 run',()
   assert.match(brand,/if \(isArtGeneratePromptAssistantBusy\(\) && hasArtGenerateMountedSurface\(\)\) return false;/);
 });
 
+test('a lapsed quote at the same price refreshes and carries on',()=>{
+  assert.match(source,/const policy=currentPricingPolicy\(\)\|\|await refreshPricingPolicy\(\),terms=/);
+  assert.match(source,/if\(!currentPricingPolicy\(\)\|\|currentPricingPolicy\(\)\.version!==knownPrice\)\{state\.error=/);
+});
+
 test('internal check wording never reaches the panel',()=>{
   for(const text of ['Foart 工具含未知参数（image_generate）：x','模型返回的绘图提示词未通过完整性校验。'])assert.match(box.plainFoartError(Error(text)),/这一步没做成/);
   assert.equal(box.plainFoartError(Error('参考图尺寸仍在读取')),'参考图尺寸仍在读取');

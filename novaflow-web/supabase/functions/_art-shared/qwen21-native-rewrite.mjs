@@ -77,6 +77,7 @@ const STYLE_TIME_WORDS=[['golden_hour',/golden[- ]hour|sunset|sunrise/iu],['nigh
 const STYLE_NOT_DAY=/\b(?:late afternoon\s+)?(?:golden[- ]hour|sunset|sunrise|dusk|twilight|evening|night(?:time)?)\b\s*/giu;
 const STYLE_LOW_SUN=[[/\b(?:golden|honey(?:-gold)?|amber)\b/giu,'white-gold'],[/\blow(?:[- ]side)?[- ]angle\b/giu,'high'],[/\bfrom the side\b/giu,'from above'],[/\b(?:elongated|long)\b/giu,'short']];
 const STYLE_NO_SKY=/\bno sky\b[^.]*\.?|(?:,\s*)?(?:and\s+)?(?:the\s+)?\bsky\b[^.;]*/giu;
+const STYLE_TIME_OR_SKY=/golden[- ]hour|sunset|sunrise|\bdusk|twilight|evening|\bnight|\bsky\b/iu;
 const STYLE_LAYOUT='The layout, walls, ceiling and openings of <image1> stay exactly as they are.';
 export function decideStyleTime(mood,facts={}){
   const said=STYLE_TIMES[facts.time_of_day]?facts.time_of_day:STYLE_TIME_WORDS.find(([,words])=>words.test(mood))?.[0];
@@ -84,6 +85,9 @@ export function decideStyleTime(mood,facts={}){
   const noSun=facts.sun_visible===false,time=said==='golden_hour'&&noSun||said==='dusk'&&noSun&&facts.sky_visible===false?'midday':said,noSky=facts.sky_visible===false||time!==said;
   const day=time==='midday'||time==='afternoon'||time==='overcast';
   let text=String(mood);
+  // Whole sentences go when something else remains, so a cut never leaves stubs such as "no open".
+  const kept=day&&(noSky||time!==said)?text.split(/(?<=\.)\s+/u).filter(part=>!STYLE_TIME_OR_SKY.test(part)):[];
+  if(kept.length)text=kept.join(' ');
   if(day)text=text.replace(STYLE_NOT_DAY,'').replace(/^[\s,.;]+|[\s,;]+$/gu,'').replace(/^./u,letter=>letter.toUpperCase());
   // Any sky wording left in a daytime text with no sky in view brings back the photo's dark windows.
   if(day&&noSky)text=text.replace(STYLE_NO_SKY,'').replace(/[\s,;]+$/u,'');

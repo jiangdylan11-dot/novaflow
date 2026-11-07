@@ -1862,9 +1862,10 @@
       if(promptSelection?.stop)return false;
       if(explicitDrawingGeneration&&promptSelection)promptSelection={...promptSelection,message,generateAfterReview:true};
       if(state.provider==='api' && !currentPricingPolicy()) {
-        const selected=state.modelId,operation=serial;await refreshPricingPolicy();
+        const selected=state.modelId,operation=serial,knownPrice=state.pricingPolicy?.version;await refreshPricingPolicy();
         if(state.modelId!==selected || serial!==operation || state.pending || state.generating || state.applying)return false;
-        state.error=state.pricingError || '积分价格已刷新，请确认后重新发送';state.status='未提交，不扣积分';notify();return false;
+        // A quote lapsing after 60 s with the same price is no reason to stop the person; only a real change asks them.
+        if(!currentPricingPolicy()||currentPricingPolicy().version!==knownPrice){state.error=state.pricingError || '积分价格已刷新，请确认后重新发送';state.status='未提交，不扣积分';notify();return false;}
       }
       if (!modelAvailable(state.modelId)) {state.error = state.modelId==='qwen3.5-9b-heretic' ? (state.qwen35CpuTrialChecked===true?'当前算力节点没有可用的 Qwen3.5 9B 本地服务，未提交任务。':'本地模型设备待检测，请稍后重试；未提交任务。')+CHAT_MODELS[state.modelId].detail : CHAT_MODELS[state.modelId]?.detail || '所选模型尚未接入'; state.status = '未提交，不扣积分'; notify(); return false;}
       if(promptSelection){
@@ -2272,7 +2273,7 @@
     }
     async function prepareOnlineCurrentDrawingPrompt(message,{recordMessage=true,source,generateAfterReview=false}={}) {
       const tools=root.NovaFlowFoartTools,rt=root.__NovaFlowArtGenerate,client=api();
-      const policy=currentPricingPolicy(),terms=policy?.config?.xiaotao_online;
+      const policy=currentPricingPolicy()||await refreshPricingPolicy(),terms=policy?.config?.xiaotao_online;
       const pageRefs=Array.from(rt?.references?.()||[]).filter(Boolean),staged=source?.stagedItems||[];
       let referenceSource=staged.length?'uploads':'page';
       if(staged.length&&pageRefs.length){
