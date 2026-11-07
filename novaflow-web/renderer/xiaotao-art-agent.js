@@ -1755,7 +1755,7 @@
             const quota=billingReceipt(billing);
             const downloads=receipts.flatMap(r=>(r.outputs||[]).map(output=>output.downloadId).filter(Boolean));
             state.messages.push({role:'assistant',content,...(downloads.length?{downloads}:{}),...(quota?{receipt:creditReceipt(quota)}:{})});
-            if(quota)clearBillingNotice(billing);
+            // The turn's charge line is the only place the amount shows; the reply's receipt field is not drawn (live 2.0.342 R9: 0.389846 shown nowhere).
             state.history=[...previousHistory,{role:'user',content:message},{role:'assistant',content:content+'\n实际工具回执：'+JSON.stringify(receipts.map(compactFoartReceipt)).slice(-8000)}].slice(-12);state.conversationId='';
             const mediaFacts=receipts.flatMap(r=>r.results||[]),lastMedia=mediaFacts.at(-1),generatedMedia=mediaFacts.findLast(r=>r.action?.startsWith('generate_'));
             const nativeVideoResult=receipts.some(r=>r.resources?.some(v=>/\.(mp4|webm)$/i.test(v.name||'')));

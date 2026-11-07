@@ -77,6 +77,10 @@ test('a first send refused on price takes the current price and goes through onc
   const c=await turn({cancelled:settledCancel(0),start:payload=>{seen.push(payload.pricingVersion);return answers.shift();}});
   assert.equal(seen.length,2);assert.equal(c.pricingReads,1);assert.equal(c.state.error,'');
 });
+test('a planner that answers directly still shows its charge under the reply',async()=>{
+  const c=await turn({cancelled:settledCancel(0),start:()=>answered});
+  assert.equal(c.state.error,'');assert.deepEqual(c.charges(),[0.2]);
+});
 test('a turn that really is not open says so after the one retry',async()=>{
   let starts=0;
   const c=await turn({cancelled:settledCancel(0),start:()=>{starts++;return refused;}});
