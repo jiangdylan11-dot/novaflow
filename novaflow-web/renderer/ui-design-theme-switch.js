@@ -6,22 +6,22 @@
 ;(function (root) {
   'use strict'
 
-  const STORE_KEY = 'foart.ui.theme-library.v1'
+  const STORE_KEY = 'foart.ui.theme-library.v2'
   const PICK_KEY = 'foart.ui.theme-picks.v1'
   const DEFAULT_THEMES = Object.freeze([
-    ['东方仙侠', '青绿山水与云海背景，白玉、鎏金、祥云纹与卷轴边框，仙侠人物衣袂飘逸，水墨晕染与金色辉光'],
-    ['赛博朋克', '霓虹雨夜都市，紫青霓虹灯管、全息面板、碳纤维与拉丝金属，义体改造人物，湿地面反光'],
-    ['埃及神话', '金字塔与沙漠神庙，黄金、青金石、砂岩浮雕与象形文字边框，法老与神祇人物，烈日暖光'],
-    ['海盗冒险', '海港与帆船，旧木板、铆钉铁件、麻绳与藏宝图羊皮纸，海盗人物，金币与宝箱点缀'],
-    ['糖果乐园', '糖果城堡与奶油云朵，果冻、糖霜与彩色硬糖质感，圆润可爱人物，明快粉蓝配色'],
-    ['暗黑哥特', '古堡与月夜，黑铁、暗金、哥特尖拱与雕刻石材，吸血鬼与骑士人物，冷月光与烛光'],
-    ['太空科幻', '星云与空间站，白色装甲面板、蓝色能量光与全息投影，宇航员与机甲人物，冷色未来感'],
-    ['北欧神话', '雪山峡湾，符文石、铁与皮革、狼毛与木雕，维京战士与神祇，极光冷光'],
-    ['日式和风', '樱花神社与灯笼，朱漆木、和纸、金箔与家纹，武士与巫女人物，柔和暖光'],
-    ['蒸汽朋克', '维多利亚工业城市，黄铜齿轮、铆钉、玻璃仪表与蒸汽，发明家与机械人物，暖棕金属色'],
-    ['丛林遗迹', '热带雨林与古代遗迹，藤蔓、石雕图腾、翡翠与黄金，探险家人物，阳光穿透薄雾'],
-    ['冰雪圣诞', '雪夜小镇，红绿丝带、金铃、冰晶与姜饼质感，圣诞人物，温暖窗光'],
-  ].map(([name, description]) => Object.freeze({ name, description })))
+    ['东方仙侠', '主色翡翠青绿配鎏金与朱红点缀，云海仙山、悬空楼阁与瀑布为背景，金色祥云和仙鹤穿梭；面板是白玉雕花嵌金边，按钮是玉璧与金环；符号做成玉佩、葫芦、仙丹、灵剑、莲花，字母用鎏金錾刻；人物着飘逸仙袍与发冠，周身仙气流光；画面布满金色光粒与灵气光带'],
+    ['赛博朋克', '主色电光紫、霓虹青配荧光粉，雨夜高楼与全息广告牌为背景；面板是黑色碳纤维嵌发光霓虹边，按钮是半透明全息玻璃；符号做成芯片、机械义眼、能量电池、霓虹徽章，字母是发光灯管字；人物是机械义体战士与黑客，带发光纹路；画面有扫描线、故障光效和地面霓虹倒影'],
+    ['埃及神话', '主色黄金配青金石蓝与绿松石，夕阳金字塔、神庙巨柱与尼罗河为背景；面板是黄金浮雕嵌宝石边框，满布象形文字与圣甲虫纹样；符号做成法老面具、荷鲁斯之眼、圣甲虫、安卡十字、眼镜蛇，字母为黄金镶宝石；人物是法老、艳后与胡狼神祭司，穿金饰与亚麻长袍；画面有金色神光和沙尘光束'],
+    ['海盗冒险', '主色深海蓝配金币黄与船木棕，暴风海面、骷髅旗大帆船与宝藏岛为背景；面板是旧船木加黄铜包角与麻绳；按钮是罗盘与舵轮；符号做成金币、宝箱、骷髅、弯刀、朗姆酒瓶、藏宝图，字母是黄铜铸字；人物是船长、女海盗与水手，戴三角帽与眼罩；画面有浪花飞溅和金币闪光'],
+    ['糖果乐园', '主色草莓粉、薄荷绿、柠檬黄的高饱和糖果色，糖果城堡、棒棒糖树与奶油云为背景；面板是果冻与糖霜质感嵌彩色糖粒；按钮是软糖与马卡龙；符号做成棒棒糖、甜甜圈、马卡龙、草莓蛋糕、彩虹糖，字母是透亮硬糖；人物换成可爱糖果精灵与甜点师，穿糖果色服装；画面有亮晶晶糖粉闪光'],
+    ['暗黑哥特', '主色暗红配黑铁与暗金，月下古堡、墓园与彩绘玻璃窗为背景；面板是黑铁雕花嵌红宝石，尖拱哥特边框；符号做成血月、蝙蝠、银十字、毒药瓶、玫瑰与骷髅，字母为暗金哥特体；人物是吸血鬼伯爵、女巫与圣骑士；画面有红色雾气、烛光和冷月光对比'],
+    ['太空科幻', '主色星际蓝配白色装甲与橙色警示光，星云、行星环与空间站舷窗为背景；面板是白色流线装甲嵌蓝色能量灯带；按钮是全息圆盘；符号做成星球、飞船、能量核心、外星晶体、机甲头盔，字母为发光金属；人物是宇航员、机甲驾驶员与外星使者；画面有能量光束和星尘粒子'],
+    ['北欧神话', '主色冰蓝配古铜与极光绿，雪山峡湾、世界树与长船为背景；面板是古铜与符文石雕刻，配狼毛与皮革；符号做成雷神之锤、维京头盔、符文石、渡鸦、角杯，字母为刻符古铜；人物是维京战士、女武神与雷神；画面有极光、雪花与闪电光效'],
+    ['日式和风', '主色朱红配墨黑与金箔，樱花神社、鸟居与灯笼夜景为背景；面板是朱漆木框嵌金箔与家纹；按钮是和纸扇与铜镜；符号做成招财猫、武士刀、折扇、樱花、狐面，字母为金箔书法体；人物是武士、巫女与狐仙；画面有樱花飘落和灯笼暖光'],
+    ['蒸汽朋克', '主色黄铜金配深棕皮革与暖橙光，齿轮巨钟塔与飞艇城市为背景；面板是黄铜铆钉框配玻璃仪表；按钮是压力表与齿轮；符号做成齿轮、怀表、护目镜、机械鸟、蒸汽阀，字母为黄铜铸字；人物是发明家、飞艇女船长与机械骑士；画面有蒸汽烟雾与暖色灯光'],
+    ['丛林遗迹', '主色翡翠绿配黄金与古石灰，热带雨林、瀑布与玛雅金字塔遗迹为背景；面板是长满藤蔓的石雕嵌黄金；符号做成黄金面具、翡翠头骨、豹子、羽蛇、宝石图腾，字母为黄金石刻；人物是探险家、部落祭司与女战士；画面有阳光光柱与萤火'],
+    ['冰雪圣诞', '主色圣诞红配松绿、金色与冰晶白，雪夜小镇、圣诞树与极光为背景；面板是冰晶边框配红丝带与金铃；按钮是礼物盒与雪花；符号做成礼物、铃铛、姜饼人、拐杖糖、雪人，字母为冰雕金边；人物是圣诞老人、精灵与雪之公主；画面有飘雪与暖色窗光'],
+].map(([name, description]) => Object.freeze({ name, description })))
 
   const text = value => String(value == null ? '' : value).trim()
   const copy = value => JSON.parse(JSON.stringify(value))
@@ -48,8 +48,9 @@
       keepText ? '所有文字和数字逐字保留，内容和位置不变，只把字体做成主题风格。' : '数字和按钮文字保留原位，标题和装饰文字可改成贴合主题的简短文字。',
       `原图中的每一个人物都换成「${name}」主题的人物：保持人数、位置、姿势和取景，但服装、发型、配饰和身份全部按新主题重做，一个人物都不能保留原来的衣服。`,
       `每一个符号格里的图案都重画成「${name}」主题的物件，字母和数字仍是同样的字母和数字但用主题材质制作，一个符号都不能保留原来的造型、颜色或发光效果。`,
-      `背景换成「${name}」场景；所有面板、边框、按钮和条栏用主题材质、纹样和光线重做。画面中不能残留任何原主题的美术。`,
-      '成品是完整的商业游戏界面美术：统一的画风和光源，材质丰富，边缘干净，控件清晰易读，细节丰富，画面锐利。',
+      `背景换成「${name}」场景；所有面板、边框、按钮和条栏用主题材质、纹样和光线重做，边框和底板要有层次丰富的浮雕、镶嵌和描金装饰，按钮要有厚度、高光和发光。画面中不能残留任何原主题的美术。`,
+      '要有创意：每个符号都设计成独特、有辨识度的主题物件，人物造型夸张有魅力，背景有纵深和故事感，空白处加入主题特效（光粒、光带、飘落物）。',
+      '成品是顶级手游的高品质主视觉：高饱和、强对比、色彩鲜艳浓郁，戏剧性的光影和轮廓光，宝石、金属、玉石等材质有真实反光，精修收尾，细节丰富，画面锐利，统一画风和光源，控件清晰易读。不要灰暗、不要素淡、不要平涂。',
       anchored ? `图2是同一套「${name}」主题已完成的界面：画风、配色、材质、边框、按钮和符号设计与图2保持一致，但不采用图2的布局。` : '',
       extra ? `用户补充要求：${extra}` : '',
     ].filter(Boolean).join('\n')
@@ -60,7 +61,8 @@
         ? 'Text lock: reproduce every readable word and number exactly as in Image 1, same language, same values, same places; only restyle the lettering to fit the theme.'
         : 'Text: keep every number and every control label in place; titles and decorative words may be rewritten to fit the new theme, short and readable.',
       `Redraw everything else for "${name}": the background becomes a ${name} scene; characters keep their count, position, pose and framing but become ${name} characters with new costumes and identity; every symbol and icon is redrawn as a ${name} object of the same size and role (letters and numbers stay the same letters and numbers, crafted in theme materials); panels, frames, buttons and bars are rebuilt with ${name} materials, ornaments and lighting. No art from the old theme may remain.`,
-      'Quality: finished commercial game UI art, one consistent art direction and light source across the whole screen, rich believable materials, crisp edges, clean readable controls, high detail, sharp focus. No watermark, no extra controls, no blank placeholders.',
+      'Be creative: every symbol becomes a distinctive, iconic theme object; characters are striking and charismatic; the background has depth and story; frames and panels carry layered relief, inlay and gilded ornament; buttons have thickness, highlights and glow; empty space carries theme effects (light particles, ribbons of light, falling petals or snow).',
+      'Quality: top-tier mobile game key art: saturated, high-contrast, rich vivid colour, dramatic lighting with rim light, real reflections on gems, metal and jade, polished finish, high detail, sharp focus, one consistent art direction and light source, clean readable controls. Never dull, washed-out or flat. No watermark, no extra controls, no blank placeholders.',
       anchored ? `Image 2 is a finished screen from this same "${name}" set: match its art style, palette, materials, frame, button and symbol designs exactly so both screens belong to one game. Take nothing from Image 2's layout.` : '',
       extra ? `Additional request from the user (follow it): ${extra}` : '',
     ].filter(Boolean).join('\n')
