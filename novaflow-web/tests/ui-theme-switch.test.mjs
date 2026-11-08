@@ -84,3 +84,11 @@ test('layout blocks for 布局编辑 stay inside the canvas and name every cell 
   for (const b of blocks) assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.width <= 704 && b.y + b.height <= 1536 && b.name && Number.isInteger(b.width));
   assert.match(blocks.at(-1).purpose, /“声音”/);
 });
+
+test('read boxes place layout blocks where the regions are on the source', () => {
+  const plan = api.sketchPlan('符号盘［2,1,96,40］：横向每行5个、纵向共4行\n角色区［0,42,100,34］：3个角色\n底部按钮栏［1,88,98,11］：从左到右为“菜单”、“极速”、旋转按钮（图标，无文字）、“自动”、“声音”');
+  const blocks = api.sketchBlocks(plan, 1000, 2000);
+  const cast = blocks.find(b => b.name === '角色区');
+  assert.deepEqual([cast.x, cast.y, cast.width, cast.height], [0, 840, 1000, 680]);
+  assert.equal(blocks.filter(b => b.name.startsWith('符号格')).length, 20);
+});

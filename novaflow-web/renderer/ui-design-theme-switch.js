@@ -123,14 +123,18 @@
     const lines = text(inventory).split(/\n+/).map(text).filter(Boolean)
     const bands = []
     for (const line of lines) {
-      const share = Number((/约占[^%0-9]{0,6}(\d{1,3})\s*%/.exec(line) || [])[1])
+      // A region's real place on the source: ［左,上,宽,高］ in percent of the screen.
+      const boxMatch = /[［\[]\s*(\d{1,3})\s*[,，]\s*(\d{1,3})\s*[,，]\s*(\d{1,3})\s*[,，]\s*(\d{1,3})\s*[］\]]/.exec(line)
+      const box = boxMatch ? boxMatch.slice(1, 5).map(Number) : null
+      const validBox = box && box[2] > 0 && box[3] > 0 && box[0] + box[2] <= 101 && box[1] + box[3] <= 101 ? box : null
+      const share = validBox ? validBox[3] : Number((/约占[^%0-9]{0,6}(\d{1,3})\s*%/.exec(line) || [])[1])
       if (!(share > 0)) continue
       const grid = /横向每行\s*(\d{1,2})\s*个[^纵]{0,8}纵向共?\s*(\d{1,2})\s*行/.exec(line)
       const items = /从左到右/.test(line) ? line.split(/从左到右[为是：:]?/)[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]/).filter(item => text(item)).length : 0
       const kind = grid ? 'grid' : /角色|人物区/.test(line) && !/按钮/.test(line) ? 'cast' : items > 1 ? 'row' : 'bar'
-      const label = text(line.split(/[（(：:]/)[0]).slice(0, 20) || '区域'
+      const label = text(line.split(/[（(：:［\[]/)[0]).slice(0, 20) || '区域'
       const list = items ? line.split(/从左到右[为是：:]?/)[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]/).map(text).filter(Boolean) : []
-      bands.push({ share, kind, label, text: line.slice(0, 200), items: list, cols: grid ? Number(grid[1]) : items, rows: grid ? Number(grid[2]) : 1 })
+      bands.push({ share, box: validBox, kind, label, text: line.replace(/[［\[][^］\]]*[］\]]/, '').slice(0, 200), items: list, cols: grid ? Number(grid[1]) : items, rows: grid ? Number(grid[2]) : 1 })
     }
     return bands.length >= 2 ? bands : null
   }
@@ -139,19 +143,23 @@
     const total = plan.reduce((sum, band) => sum + band.share, 0), blocks = []
     const pad = Math.round(width * .04), gap = Math.max(4, Math.round(width * .012)), top = Math.round(height * .02), usable = height - top * 2
     const add = (name, purpose, x, y, w, h) => blocks.push({ name, purpose, x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)), width: Math.max(32, Math.round(w)), height: Math.max(24, Math.round(h)) })
+    const placed = plan.every(band => band.box)
     let y = top
     for (const band of plan) {
-      const h = Math.round(usable * band.share / total), inner = h - gap
+      const h = Math.round(usable * band.share / total)
+      // Read boxes put each region where it is on the source; otherwise stack by share.
+      const [bx, by, bw, bh] = placed ? [band.box[0] / 100 * width, band.box[1] / 100 * height, band.box[2] / 100 * width, band.box[3] / 100 * height] : [pad, y, width - pad * 2, h - gap]
       if (band.kind === 'grid') {
-        const cw = (width - pad * 2 - gap * (band.cols + 1)) / band.cols, ch = (inner - gap * (band.rows + 1)) / band.rows
-        for (let r = 0; r < band.rows; r++) for (let c = 0; c < band.cols; c++) add(`符号格 ${r + 1}-${c + 1}`, `符号盘第 ${r + 1} 行第 ${c + 1} 个符号`, pad + gap + c * (cw + gap), y + gap + r * (ch + gap), cw, ch)
+        const cw = (bw - gap * (band.cols + 1)) / band.cols, ch = (bh - gap * (band.rows + 1)) / band.rows
+        for (let r = 0; r < band.rows; r++) for (let c = 0; c < band.cols; c++) add(`符号格 ${r + 1}-${c + 1}`, `符号盘第 ${r + 1} 行第 ${c + 1} 个符号`, bx + gap + c * (cw + gap), by + gap + r * (ch + gap), cw, ch)
       } else if (band.kind === 'row') {
-        const cw = (width - pad * 2 - gap * (band.cols - 1)) / band.cols
-        for (let c = 0; c < band.cols; c++) add(`${band.label} ${c + 1}`, `${band.label}从左到右第 ${c + 1} 个：${band.items[c] || ''}`, pad + c * (cw + gap), y, cw, inner)
-      } else add(band.label, band.text, pad, y, width - pad * 2, inner)
+        const cw = (bw - gap * (band.cols - 1)) / band.cols
+        for (let c = 0; c < band.cols; c++) add(`${band.label} ${c + 1}`, `${band.label}从左到右第 ${c + 1} 个：${band.items[c] || ''}`, bx + c * (cw + gap), by, cw, bh)
+      } else add(band.label, band.text, bx, by, bw, bh)
       y += h
     }
-    return blocks.filter(block => block.x + block.width <= width && block.y + block.height <= height).slice(0, 40)
+    return blocks.map(block => ({ ...block, width: Math.min(block.width, width - block.x), height: Math.min(block.height, height - block.y) }))
+      .filter(block => block.width >= 32 && block.height >= 24).slice(0, 40)
   }
   function drawSketch(plan, width, height, documentRef = root.document) {
     const canvas = documentRef.createElement('canvas'); canvas.width = width; canvas.height = height
@@ -176,6 +184,10 @@
     return editorLayout(rt)
   }
 
+  function gridOf(inventory) {
+    const match = /横向每行\s*(\d{1,2})\s*个[^纵]{0,8}纵向共?\s*(\d{1,2})\s*行/.exec(text(inventory))
+    return match ? { cols: Number(match[1]), rows: Number(match[2]) } : null
+  }
   // The function list comes from 小桃's selected online brain (default 豆包), billed by text use.
   async function readInventory(screen, signal) {
     const api = root.electronAPI, controller = root.NovaFlowXiaotaoArtAgent?.panel?.controller
@@ -272,11 +284,24 @@
         if (!sketch && plan) sketch = drawSketch(plan, sketchSize.width, sketchSize.height)
         const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen), sketched: Boolean(sketch) })
         const uiPrepared = await preparedFor(rt, { screen, anchor, prompt, keepLayout, sketch })
-        const before = rt.selectedResult?.()?.id || ''
-        await rt.run({ uiPrepared })
-        await waitIdle(rt, signal)
-        const result = rt.selectedResult?.()
-        if (result && result.id !== before && (result.imageUrl || result.dataUrl)) {
+        const wanted = gridOf(inventories.get(screen))
+        let result = null
+        // 小桃 checks its own work: a result whose grid does not match the source is read
+        // back and redrawn once, so nobody has to fix boxes by hand.
+        for (let attempt = 0; attempt < 2 && !signal.aborted; attempt++) {
+          const before = rt.selectedResult?.()?.id || ''
+          await rt.run({ uiPrepared })
+          await waitIdle(rt, signal)
+          const current = rt.selectedResult?.()
+          result = current && current.id !== before && (current.imageUrl || current.dataUrl) ? current : null
+          if (!result || keepLayout || !wanted || attempt) break
+          onProgress?.(`${theme.name} · 正在检查成品`)
+          let got = null
+          try { got = gridOf(await readInventory({ name: 'result.png', dataUrl: await asDataUrl(result.imageUrl || result.dataUrl) }, signal)) } catch { break }
+          if (!got || (got.cols === wanted.cols && got.rows === wanted.rows)) break
+          onProgress?.(`${theme.name} · 格子数不对（${got.cols}×${got.rows}），自动重画`)
+        }
+        if (result) {
           done += 1
           if (!anchor && screens.length > 1) anchor = await asDataUrl(result.imageUrl || result.dataUrl)
         } else {
