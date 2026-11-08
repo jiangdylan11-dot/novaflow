@@ -128,32 +128,52 @@
       const grid = /横向每行\s*(\d{1,2})\s*个[^纵]{0,8}纵向共?\s*(\d{1,2})\s*行/.exec(line)
       const items = /从左到右/.test(line) ? line.split(/从左到右[为是：:]?/)[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]/).filter(item => text(item)).length : 0
       const kind = grid ? 'grid' : /角色|人物区/.test(line) && !/按钮/.test(line) ? 'cast' : items > 1 ? 'row' : 'bar'
-      bands.push({ share, kind, cols: grid ? Number(grid[1]) : items, rows: grid ? Number(grid[2]) : 1 })
+      const label = text(line.split(/[（(：:]/)[0]).slice(0, 20) || '区域'
+      const list = items ? line.split(/从左到右[为是：:]?/)[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]/).map(text).filter(Boolean) : []
+      bands.push({ share, kind, label, text: line.slice(0, 200), items: list, cols: grid ? Number(grid[1]) : items, rows: grid ? Number(grid[2]) : 1 })
     }
     return bands.length >= 2 ? bands : null
   }
-  function drawSketch(plan, width, height, documentRef = root.document) {
-    const canvas = documentRef.createElement('canvas'); canvas.width = width; canvas.height = height
-    const ctx = canvas.getContext('2d'), total = plan.reduce((sum, band) => sum + band.share, 0)
-    const pad = Math.round(width * .04), gap = Math.max(4, Math.round(width * .012))
-    ctx.fillStyle = '#7a7a7a'; ctx.fillRect(0, 0, width, height)
-    const box = (x, y, w, h, shade) => { ctx.fillStyle = shade; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, Math.min(w, h) * .12) : ctx.rect(x, y, w, h); ctx.fill() }
-    let y = Math.round(height * .02)
-    const usable = height - y * 2
+  // Blocks for 布局编辑: one per grid cell, button and bar, plus the character panel.
+  function sketchBlocks(plan, width, height) {
+    const total = plan.reduce((sum, band) => sum + band.share, 0), blocks = []
+    const pad = Math.round(width * .04), gap = Math.max(4, Math.round(width * .012)), top = Math.round(height * .02), usable = height - top * 2
+    const add = (name, purpose, x, y, w, h) => blocks.push({ name, purpose, x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)), width: Math.max(32, Math.round(w)), height: Math.max(24, Math.round(h)) })
+    let y = top
     for (const band of plan) {
       const h = Math.round(usable * band.share / total), inner = h - gap
       if (band.kind === 'grid') {
-        box(pad, y, width - pad * 2, inner, '#5c5c5c')
         const cw = (width - pad * 2 - gap * (band.cols + 1)) / band.cols, ch = (inner - gap * (band.rows + 1)) / band.rows
-        for (let r = 0; r < band.rows; r++) for (let c = 0; c < band.cols; c++) box(pad + gap + c * (cw + gap), y + gap + r * (ch + gap), cw, ch, '#9a9a9a')
+        for (let r = 0; r < band.rows; r++) for (let c = 0; c < band.cols; c++) add(`符号格 ${r + 1}-${c + 1}`, `符号盘第 ${r + 1} 行第 ${c + 1} 个符号`, pad + gap + c * (cw + gap), y + gap + r * (ch + gap), cw, ch)
       } else if (band.kind === 'row') {
         const cw = (width - pad * 2 - gap * (band.cols - 1)) / band.cols
-        for (let c = 0; c < band.cols; c++) box(pad + c * (cw + gap), y, cw, inner, '#9a9a9a')
-      } else if (band.kind === 'cast') box(pad, y, width - pad * 2, inner, '#868686')
-      else box(pad, y, width - pad * 2, inner, '#9a9a9a')
+        for (let c = 0; c < band.cols; c++) add(`${band.label} ${c + 1}`, `${band.label}从左到右第 ${c + 1} 个：${band.items[c] || ''}`, pad + c * (cw + gap), y, cw, inner)
+      } else add(band.label, band.text, pad, y, width - pad * 2, inner)
       y += h
     }
+    return blocks.filter(block => block.x + block.width <= width && block.y + block.height <= height).slice(0, 40)
+  }
+  function drawSketch(plan, width, height, documentRef = root.document) {
+    const canvas = documentRef.createElement('canvas'); canvas.width = width; canvas.height = height
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#7a7a7a'; ctx.fillRect(0, 0, width, height)
+    for (const block of sketchBlocks(plan, width, height)) {
+      ctx.fillStyle = /角色/.test(block.name) ? '#868686' : '#9a9a9a'; ctx.beginPath()
+      ctx.roundRect ? ctx.roundRect(block.x, block.y, block.width, block.height, Math.min(block.width, block.height) * .12) : ctx.rect(block.x, block.y, block.width, block.height); ctx.fill()
+    }
     return canvas.toDataURL('image/png')
+  }
+  // The layout lives in 布局编辑: a layout the user already has there is used as it is;
+  // otherwise the screen's function list is turned into editable blocks there first.
+  function editorLayout(rt) {
+    const ref = (rt.references?.() || []).find(item => item?.uiLayoutId && item.dataUrl)
+    return ref ? { dataUrl: ref.dataUrl, width: ref.width, height: ref.height } : null
+  }
+  function layoutIntoEditor(rt, plan, size) {
+    const bridge = root.NovaFlowUiDesignBridge
+    if (typeof bridge?.applyAgentLayout !== 'function') return null
+    bridge.applyAgentLayout({ width: size.width, height: size.height, blocks: sketchBlocks(plan, size.width, size.height) })
+    return editorLayout(rt)
   }
 
   // The function list comes from 小桃's selected online brain (default 豆包), billed by text use.
@@ -242,7 +262,14 @@
         const plan = !keepLayout && useSketch ? sketchPlan(inventories.get(screen)) : null
         const natural = screen.width && screen.height ? { width: screen.width, height: screen.height } : await imageSize(screen.dataUrl)
         const sketchSize = outputSize(provider, natural.width, natural.height)
-        const sketch = plan ? drawSketch(plan, sketchSize.width, sketchSize.height) : ''
+        let sketch = ''
+        if (!keepLayout && useSketch && screens.length === 1) {
+          // One screen: its layout is the one in 布局编辑, where the user can move every block.
+          let layout = editorLayout(rt)
+          if (!layout && plan) { try { layout = layoutIntoEditor(rt, plan, sketchSize) } catch { layout = null } }
+          sketch = layout?.dataUrl || ''
+        }
+        if (!sketch && plan) sketch = drawSketch(plan, sketchSize.width, sketchSize.height)
         const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen), sketched: Boolean(sketch) })
         const uiPrepared = await preparedFor(rt, { screen, anchor, prompt, keepLayout, sketch })
         const before = rt.selectedResult?.()?.id || ''
@@ -413,5 +440,5 @@
     return { sync, destroy() { destroyed = true; busy?.abort(); leftHost.removeEventListener('click', onOtherPanel, true); panel.remove() } }
   }
 
-  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, buildPrompt, outputSize, sketchPlan, drawSketch, readInventory, runBatch, mount })
+  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, buildPrompt, outputSize, sketchPlan, sketchBlocks, drawSketch, readInventory, runBatch, mount })
 })(typeof window !== 'undefined' ? window : globalThis)
