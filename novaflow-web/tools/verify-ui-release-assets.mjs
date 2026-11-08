@@ -2,7 +2,7 @@ import { readFile, access } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const UI_BROWSER_DEPENDENCIES = ['ui-smart-split.core.js', 'ui-design.smart-split.js', 'ui-design-style-reference.js', 'ui-design.drawing.js'];
+export const UI_BROWSER_DEPENDENCIES = ['ui-smart-split.core.js', 'ui-design.smart-split.js', 'ui-design-style-reference.js', 'ui-design-theme-switch.js', 'ui-design.drawing.js'];
 
 export async function verifyScriptReferences(webRoot, entry = 'index.html') {
   const html = await readFile(join(webRoot, entry), 'utf8');
@@ -46,6 +46,7 @@ export async function verifyUiReleaseAssets({ webRoot, workerSrcRoot, workerRend
   before('ui-smart-split.core.js', 'ui-design.smart-split.js');
   before('ui-design.smart-split.js', 'ui-design.drawing.js');
   before('ui-design-style-reference.js', 'ui-design.drawing.js');
+  before('ui-design-theme-switch.js', 'ui-design.drawing.js');
   const service = await readFile(join(desktopRoot, 'prompt-assistant-service.py'), 'utf8');
   const native = await readFile(join(workerRendererRoot, 'spine-split-runtime.js'), 'utf8');
   const transport = await readFile(join(workerSrcRoot, 'prompt-assistant.mjs'), 'utf8');
