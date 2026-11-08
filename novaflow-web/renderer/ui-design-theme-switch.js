@@ -53,10 +53,10 @@
   // The instruction the picture model gets for one screen and one theme.
   // The local engine reads Chinese best and keeps people and symbols unless every one is named
   // as changed, so its wording counts them out ("every ... none left").
-  function buildPrompt({ theme, keepText = true, keepLayout = false, note = '', anchored = false, provider = 'gpt', inventory = '' } = {}) {
+  function buildPrompt({ theme, keepText = true, keepLayout = false, note = '', anchored = false, provider = 'gpt', inventory = '', sketched = false } = {}) {
     const name = text(theme?.name), description = text(theme?.description), extra = text(note)
     if (!name) throw new Error('请选择主题')
-    if (!keepLayout) return redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider })
+    if (!keepLayout) return redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider, sketched })
     if (provider === 'local') return [
       `把图1这张游戏界面整体换成「${name}」主题${description ? `：${description}` : ''}。`,
       '布局完全不变：画布比例、每个面板、按钮、条栏、网格、符号格、人物区、横幅和文字块的位置与大小不变，行数、列数、按钮数和重复元素数量不变。',
@@ -87,9 +87,10 @@
   // exact text) and each theme designs a whole new screen from that list. No source picture goes
   // to the picture model, so nothing of its composition, characters or poses can carry over.
   // anchored: Image 1 is a finished screen of the same theme set, for look only.
-  function redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider }) {
+  function redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider, sketched = false }) {
     const list = text(inventory)
     if (!list) throw new Error('缺少界面功能清单')
+    const style = sketched ? 2 : 1
     if (provider === 'local') return [
       `为「${name}」主题从零设计一张全新的游戏界面${description ? `：${description}` : ''}。`,
       `界面功能清单（只决定有哪些功能、数量和文字，不决定外观）：\n${list}`,
@@ -97,7 +98,8 @@
       keepText ? '只把清单中引号里的原文文字和数字写进画面，逐字照抄；区域名、说明和括号里的注释不要写进画面；标为“图标，无文字”的按钮只画图标。' : '数字和按钮文字按清单写；标题和装饰文字可按主题改写；区域名和注释不要写进画面。',
       `整屏构图、符号盘框体、面板与按钮造型、角色设定和姿态全部根据「${name}」主题创作：符号盘装进主题造型的大框体，顶部是不带文字的主题徽记，面板和按钮是有厚度的主题异形雕刻件，不是矩形圆角块；角色是为主题原创、有魅力的人物，动态姿势，融入有纵深的主题场景；每个符号都是独特的主题物件。`,
       ...QUALITY_ZH,
-      anchored ? `图1是同一套「${name}」主题已完成的另一张界面：画风、配色、材质、框体、按钮和符号设计与图1保持一致，但功能和布局按本清单，不照搬图1的布局。` : '',
+      sketched ? '图1是灰色布局草图：只按它的区块位置、大小、格子行列数和按钮个数排版，灰色块只是占位，最终画面里不能出现灰色块，全部画成完整的主题美术。' : '',
+      anchored ? `图${style}是同一套「${name}」主题已完成的另一张界面：画风、配色、材质、框体、按钮和符号设计与它保持一致，但功能和布局按本清单，不照搬它的布局。` : '',
       extra ? `用户补充要求：${extra}` : '',
     ].filter(Boolean).join('\n')
     return [
@@ -107,9 +109,51 @@
       keepText ? 'Write on the screen only the quoted words and numbers from the list, copied exactly; never write region names, notes or bracketed remarks; a button marked as icon-only gets an icon and no words.' : 'Write numbers and button labels from the list; titles and decorative words may be rewritten for the theme; never write region names or notes.',
       `Composition, the grid frame, panel and button shapes, characters and their poses are all designed for "${name}": the grid sits inside a large theme-shaped frame, a theme emblem without lettering at the top, panels and buttons are thick sculpted theme pieces, not rounded rectangles; characters are original, charismatic, in dynamic poses inside a deep theme scene; every symbol is a distinctive theme object.`,
       ...QUALITY_EN,
-      anchored ? `Image 1 is another finished screen of this same "${name}" set: match its art style, palette, materials, frames, buttons and symbol designs, but follow this list for functions and layout.` : '',
+      sketched ? 'Image 1 is a grey layout sketch: place regions, sizes, grid rows and columns and button counts exactly as it shows; the grey boxes are placeholders only and must all become finished theme art, no grey box may remain.' : '',
+      anchored ? `Image ${style} is another finished screen of this same "${name}" set: match its art style, palette, materials, frames, buttons and symbol designs, but follow this list for functions and layout.` : '',
       extra ? `Additional request from the user (follow it): ${extra}` : '',
     ].filter(Boolean).join('\n')
+  }
+
+  // A neutral grey layout sketch drawn from the function list: region bands at their listed
+  // share of the height, the grid as N x M cells, button rows as one box per listed item, the
+  // character area as an empty panel. It carries counts and positions only - no face, pose,
+  // colour or style of the source - so img2img can lock the layout while the theme draws.
+  function sketchPlan(inventory) {
+    const lines = text(inventory).split(/\n+/).map(text).filter(Boolean)
+    const bands = []
+    for (const line of lines) {
+      const share = Number((/约占[^%0-9]{0,6}(\d{1,3})\s*%/.exec(line) || [])[1])
+      if (!(share > 0)) continue
+      const grid = /横向每行\s*(\d{1,2})\s*个[^纵]{0,8}纵向共?\s*(\d{1,2})\s*行/.exec(line)
+      const items = /从左到右/.test(line) ? line.split(/从左到右[为是：:]?/)[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]/).filter(item => text(item)).length : 0
+      const kind = grid ? 'grid' : /角色|人物区/.test(line) && !/按钮/.test(line) ? 'cast' : items > 1 ? 'row' : 'bar'
+      bands.push({ share, kind, cols: grid ? Number(grid[1]) : items, rows: grid ? Number(grid[2]) : 1 })
+    }
+    return bands.length >= 2 ? bands : null
+  }
+  function drawSketch(plan, width, height, documentRef = root.document) {
+    const canvas = documentRef.createElement('canvas'); canvas.width = width; canvas.height = height
+    const ctx = canvas.getContext('2d'), total = plan.reduce((sum, band) => sum + band.share, 0)
+    const pad = Math.round(width * .04), gap = Math.max(4, Math.round(width * .012))
+    ctx.fillStyle = '#7a7a7a'; ctx.fillRect(0, 0, width, height)
+    const box = (x, y, w, h, shade) => { ctx.fillStyle = shade; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, Math.min(w, h) * .12) : ctx.rect(x, y, w, h); ctx.fill() }
+    let y = Math.round(height * .02)
+    const usable = height - y * 2
+    for (const band of plan) {
+      const h = Math.round(usable * band.share / total), inner = h - gap
+      if (band.kind === 'grid') {
+        box(pad, y, width - pad * 2, inner, '#5c5c5c')
+        const cw = (width - pad * 2 - gap * (band.cols + 1)) / band.cols, ch = (inner - gap * (band.rows + 1)) / band.rows
+        for (let r = 0; r < band.rows; r++) for (let c = 0; c < band.cols; c++) box(pad + gap + c * (cw + gap), y + gap + r * (ch + gap), cw, ch, '#9a9a9a')
+      } else if (band.kind === 'row') {
+        const cw = (width - pad * 2 - gap * (band.cols - 1)) / band.cols
+        for (let c = 0; c < band.cols; c++) box(pad + c * (cw + gap), y, cw, inner, '#9a9a9a')
+      } else if (band.kind === 'cast') box(pad, y, width - pad * 2, inner, '#868686')
+      else box(pad, y, width - pad * 2, inner, '#9a9a9a')
+      y += h
+    }
+    return canvas.toDataURL('image/png')
   }
 
   // The function list comes from 小桃's selected online brain (default 豆包), billed by text use.
@@ -144,7 +188,7 @@
   }
 
   const STATE_KEYS = ['mode', 'provider', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'localTextQuality', 'localEditStrength', 'localQwen21Variant', 'localDrawEngine', 'googleResolution']
-  async function preparedFor(rt, { screen, anchor, prompt, keepLayout = false }) {
+  async function preparedFor(rt, { screen, anchor, prompt, keepLayout = false, sketch = '' }) {
     const context = rt.captureContext(), source = context.state
     const state = copy(Object.fromEntries(STATE_KEYS.filter(key => source[key] !== undefined).map(key => [key, source[key]])))
     const provider = root.NovaFlowArtGenerateModels?.normalizeProvider?.(state.provider) || 'local'
@@ -155,7 +199,8 @@
     const references = keepLayout
       ? [{ id: screen.id || 'ui-theme-screen', name: screen.name || '界面.png', dataUrl: screen.dataUrl, width: natural.width, height: natural.height, role: 'layout' },
         ...(anchor ? [{ id: 'ui-theme-anchor', name: '同主题成品.png', dataUrl: anchor, role: 'style' }] : [])]
-      : anchor ? [{ id: 'ui-theme-anchor', name: '同主题成品.png', dataUrl: anchor, role: 'style' }] : []
+      : [...(sketch ? [{ id: 'ui-theme-sketch', name: '布局草图.png', dataUrl: sketch, width: size.width, height: size.height, role: 'layout' }] : []),
+        ...(anchor ? [{ id: 'ui-theme-anchor', name: '同主题成品.png', dataUrl: anchor, role: 'style' }] : [])]
     const mode = references.length ? 'img2img' : 'txt2img'
     Object.assign(state, {
       mode, provider, count: 1, nsfw: false, negativePrompt: '', width: size.width, height: size.height,
@@ -175,7 +220,7 @@
 
   // Runs screens x themes one at a time through the normal generation path, so
   // billing, the results list and canvas placement stay the same as 生图.
-  async function runBatch({ screens, themes, keepText, keepLayout = false, note, signal, onProgress }) {
+  async function runBatch({ screens, themes, keepText, keepLayout = false, useSketch = true, note, signal, onProgress }) {
     const rt = root.__NovaFlowArtGenerate
     if (!rt?.run || !rt.captureContext) throw new Error('生图组件未就绪，请刷新页面')
     if (rt.state.running) throw new Error('已有生图正在进行，请稍候')
@@ -194,8 +239,12 @@
         if (signal.aborted) return { done, failed, total, stopped: true }
         onProgress?.(`${theme.name} · 第 ${done + failed + 1}/${total} 张`)
         const provider = root.NovaFlowArtGenerateModels?.normalizeProvider?.(rt.captureContext().state.provider) || "local"
-        const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen) })
-        const uiPrepared = await preparedFor(rt, { screen, anchor, prompt, keepLayout })
+        const plan = !keepLayout && useSketch ? sketchPlan(inventories.get(screen)) : null
+        const natural = screen.width && screen.height ? { width: screen.width, height: screen.height } : await imageSize(screen.dataUrl)
+        const sketchSize = outputSize(provider, natural.width, natural.height)
+        const sketch = plan ? drawSketch(plan, sketchSize.width, sketchSize.height) : ''
+        const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen), sketched: Boolean(sketch) })
+        const uiPrepared = await preparedFor(rt, { screen, anchor, prompt, keepLayout, sketch })
         const before = rt.selectedResult?.()?.id || ''
         await rt.run({ uiPrepared })
         await waitIdle(rt, signal)
@@ -364,5 +413,5 @@
     return { sync, destroy() { destroyed = true; busy?.abort(); leftHost.removeEventListener('click', onOtherPanel, true); panel.remove() } }
   }
 
-  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, buildPrompt, outputSize, readInventory, runBatch, mount })
+  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, buildPrompt, outputSize, sketchPlan, drawSketch, readInventory, runBatch, mount })
 })(typeof window !== 'undefined' ? window : globalThis)

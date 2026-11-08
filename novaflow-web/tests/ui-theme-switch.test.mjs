@@ -67,3 +67,12 @@ test('server reads a screen into a Chinese function list (ui-inventory)', async 
   assert.equal(inventory, '界面类型：竖屏老虎机\n符号盘：横向每行5个、纵向共4行');
   assert.throws(() => inspectXiaotaoV3StyleReply({ kind: 'ui-inventory', reply: 'slot machine, 5x4' }));
 });
+
+test('layout sketch plan reads bands, grid and button rows from the function list', () => {
+  const plan = api.sketchPlan('符号盘（约占屏幕高度40%）：横向每行5个、纵向共4行\n角色区（约占35%）：3个角色\n底部按钮栏（约占12%）：从左到右为“菜单”、“极速”、旋转按钮（图标，无文字，最大，居中）、“自动”、“声音”');
+  assert.deepEqual(plan.map(b => [b.kind, b.cols, b.rows]), [['grid', 5, 4], ['cast', 0, 1], ['row', 5, 1]]);
+  assert.equal(api.sketchPlan('界面类型：竖屏'), null);
+  const sketched = api.buildPrompt({ theme: { name: '糖果乐园' }, provider: 'local', inventory: '符号盘：5', sketched: true, anchored: true });
+  assert.match(sketched, /图1是灰色布局草图/);
+  assert.match(sketched, /图2是同一套「糖果乐园」主题已完成的另一张界面/);
+});
