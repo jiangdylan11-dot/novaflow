@@ -82,7 +82,7 @@ test('layout blocks for 布局编辑 stay inside the canvas and name every cell 
   const blocks = api.sketchBlocks(plan, 704, 1536);
   assert.equal(blocks.length, 26);
   for (const b of blocks) assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.width <= 704 && b.y + b.height <= 1536 && b.name && Number.isInteger(b.width));
-  assert.match(blocks.at(-1).purpose, /“声音”/);
+  assert.match(blocks.at(-1).purpose, /声音$/);
 });
 
 test('read boxes place layout blocks where the regions are on the source', () => {
@@ -91,4 +91,15 @@ test('read boxes place layout blocks where the regions are on the source', () =>
   const cast = blocks.find(b => b.name === '角色区');
   assert.deepEqual([cast.x, cast.y, cast.width, cast.height], [0, 840, 1000, 680]);
   assert.equal(blocks.filter(b => b.name.startsWith('符号格')).length, 20);
+});
+
+test('多种排版: each arrangement names its composition; a screen without a grid gets no grid wording', () => {
+  assert.equal(api.ARRANGEMENTS.length, 3);
+  const lobby = '玩家信息［1,1,22,12］：昵称“星海旅人”\n左侧活动入口［1,17,8,58］：从上到下“签到”“首充”\n角色区［35,12,30,88］：1个主角全身立绘';
+  const prompt = api.buildPrompt({ theme: { name: '赛博朋克' }, provider: 'local', inventory: lobby, arrangement: api.ARRANGEMENTS[0] });
+  assert.match(prompt, /排版方式：主角色大幅立于画面一侧/);
+  assert.match(prompt, /不要出现清单之外的格子/);
+  assert.doesNotMatch(prompt, /符号/);
+  const plan = api.sketchPlan(lobby);
+  assert.deepEqual(plan.map(b => [b.kind, b.rows]), [['bar', 1], ['column', 2], ['cast', 1]]);
 });

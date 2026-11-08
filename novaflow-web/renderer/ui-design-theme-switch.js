@@ -37,6 +37,13 @@
     'Precision: clean sharp lines and edges, crisp icon silhouettes, complete legible lettering, symmetric pieces mirror exactly, buttons and cells of one kind share size and alignment, rich detail without mush, no warping, misalignment or stray parts.',
     'Overall: top-tier mobile game key art, rich vivid colour, strong contrast, polished finish. Never dull, washed-out, flat or plastic.',
   ])
+  // 多种排版: besides following the source layout, each theme is also drawn in these
+  // compositions. They name no genre, so they fit lobbies, shops and HUDs as well as slots.
+  const ARRANGEMENTS = Object.freeze([
+    Object.freeze({ name: '角色在侧', zh: '排版方式：主角色大幅立于画面一侧，约占一侧三分之一宽、从上到下贯穿；功能区、面板和按钮集中在另一侧与底部，形成不对称、有动势的构图。', en: 'Arrangement: the main character stands large along one side, about a third of the width, top to bottom; the functional panels and buttons gather on the other side and along the bottom in an asymmetric, dynamic composition.' }),
+    Object.freeze({ name: '主视觉在上', zh: '排版方式：上方约三分之一是大幅主题主视觉（角色群像、场景和不带文字的徽记），下方是整齐紧凑的功能区，功能区上沿用主题边框与主视觉衔接。', en: 'Arrangement: the top third is a large theme key visual (character group, scene and an emblem without lettering); below it the functional area sits compact and orderly, joined to the key visual by a theme border.' }),
+    Object.freeze({ name: '中心舞台', zh: '排版方式：功能区居中，四周由主题建筑、道具和装饰组成华丽的环绕框体，角色分布在左右两侧和框体上，像一座舞台。', en: 'Arrangement: the functional area sits in the centre inside an ornate surround of theme architecture, props and ornament; characters stand on both sides and on the frame, like a stage.' }),
+  ])
   const text = value => String(value == null ? '' : value).trim()
   const copy = value => JSON.parse(JSON.stringify(value))
   function read(key, fallback) {
@@ -53,10 +60,10 @@
   // The instruction the picture model gets for one screen and one theme.
   // The local engine reads Chinese best and keeps people and symbols unless every one is named
   // as changed, so its wording counts them out ("every ... none left").
-  function buildPrompt({ theme, keepText = true, keepLayout = false, note = '', anchored = false, provider = 'gpt', inventory = '', sketched = false } = {}) {
+  function buildPrompt({ theme, keepText = true, keepLayout = false, note = '', anchored = false, provider = 'gpt', inventory = '', sketched = false, arrangement = null } = {}) {
     const name = text(theme?.name), description = text(theme?.description), extra = text(note)
     if (!name) throw new Error('请选择主题')
-    if (!keepLayout) return redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider, sketched })
+    if (!keepLayout) return redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider, sketched, arrangement })
     if (provider === 'local') return [
       `把图1这张游戏界面整体换成「${name}」主题${description ? `：${description}` : ''}。`,
       '布局完全不变：画布比例、每个面板、按钮、条栏、网格、符号格、人物区、横幅和文字块的位置与大小不变，行数、列数、按钮数和重复元素数量不变。',
@@ -87,33 +94,41 @@
   // exact text) and each theme designs a whole new screen from that list. No source picture goes
   // to the picture model, so nothing of its composition, characters or poses can carry over.
   // anchored: Image 1 is a finished screen of the same theme set, for look only.
-  function redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider, sketched = false }) {
+  function redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider, sketched = false, arrangement = null }) {
     const list = text(inventory)
     if (!list) throw new Error('缺少界面功能清单')
     const style = sketched ? 2 : 1
+    // Grid wording only when the screen has a grid: a lobby must not grow a symbol board.
+    const hasGrid = /横向每行\s*\d+\s*个/.test(list)
+    const hasCast = /角色区|人物区|立绘|个角色|主角/.test(list)
     if (provider === 'local') return [
       `为「${name}」主题从零设计一张全新的游戏界面${description ? `：${description}` : ''}。`,
       `界面功能清单（只决定有哪些功能、数量和文字，不决定外观）：\n${list}`,
-      '各区域从上到下的顺序和大致占比按清单；符号盘严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）；角色区单独存在，角色不要塞进符号盘；清单里的每个按钮、信息条和数值都要有。',
+      arrangement
+        ? `${arrangement.zh}清单只决定有哪些功能、数量和文字，方括号里的原图位置不用照搬；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格的每行个数和行数仍按清单。' : '画面里不要出现清单之外的格子、背包格或物品网格。'}`
+        : `各区域的位置和大小按清单方括号里的原图位置；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）。' : ''}${hasCast && hasGrid ? '角色区单独存在，角色不要塞进网格。' : ''}`,
       keepText ? '只把清单中引号里的原文文字和数字写进画面，逐字照抄；区域名、说明和括号里的注释不要写进画面；标为“图标，无文字”的按钮只画图标。' : '数字和按钮文字按清单写；标题和装饰文字可按主题改写；区域名和注释不要写进画面。',
-      `整屏构图、符号盘框体、面板与按钮造型、角色设定和姿态全部根据「${name}」主题创作：符号盘装进主题造型的大框体，顶部是不带文字的主题徽记，面板和按钮是有厚度的主题异形雕刻件，不是矩形圆角块；角色是为主题原创、有魅力的人物，动态姿势，融入有纵深的主题场景；每个符号都是独特的主题物件。`,
+      `整屏构图、面板与按钮造型${hasCast ? '、角色设定和姿态' : ''}全部根据「${name}」主题创作：面板和按钮是有厚度的主题异形雕刻件，不是矩形圆角块，边框和装饰结构按主题设计${hasGrid ? '；网格装进主题造型的大框体，每个格子里的符号都是独特的主题物件' : ''}；${hasCast ? '角色是为主题原创、有魅力的人物，动态姿势，' : ''}融入有纵深的主题场景。`,
       ...QUALITY_ZH,
       sketched ? '图1是灰色布局草图：只按它的区块位置、大小、格子行列数和按钮个数排版，灰色块只是占位，最终画面里不能出现灰色块，全部画成完整的主题美术。' : '',
-      anchored ? `图${style}是同一套「${name}」主题已完成的另一张界面：画风、配色、材质、框体、按钮和符号设计与它保持一致，但功能和布局按本清单，不照搬它的布局。` : '',
+      anchored ? `图${style}是同一套「${name}」主题已完成的另一张界面：画风、配色、材质、框体和按钮设计与它保持一致，但功能和布局按本清单，不照搬它的布局。` : '',
       extra ? `用户补充要求：${extra}` : '',
     ].filter(Boolean).join('\n')
     return [
       `Design a completely new game UI screen from zero in the theme "${name}"${description ? `: ${description}` : ''}.`,
       `Function list of the screen (it decides only which functions, counts and words exist, never the look):\n${list}`,
-      'Regions follow the list from top to bottom with about the listed share of the height; the symbol grid has exactly the listed symbols per row and number of rows (count them); the character area is its own region, characters never fill the grid; every button, info bar and value in the list is present.',
+      arrangement
+        ? `${arrangement.en} The list decides only which functions, counts and words exist; ignore the source positions in square brackets; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids keep the listed per-row count and rows.' : ' No grid, inventory slots or item board that the list does not name.'}`
+        : `Regions take the positions and sizes in the square brackets of the list; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids have exactly the listed per-row count and rows (count them).' : ''}${hasCast && hasGrid ? ' The character area is its own region; characters never fill the grid.' : ''}`,
       keepText ? 'Write on the screen only the quoted words and numbers from the list, copied exactly; never write region names, notes or bracketed remarks; a button marked as icon-only gets an icon and no words.' : 'Write numbers and button labels from the list; titles and decorative words may be rewritten for the theme; never write region names or notes.',
-      `Composition, the grid frame, panel and button shapes, characters and their poses are all designed for "${name}": the grid sits inside a large theme-shaped frame, a theme emblem without lettering at the top, panels and buttons are thick sculpted theme pieces, not rounded rectangles; characters are original, charismatic, in dynamic poses inside a deep theme scene; every symbol is a distinctive theme object.`,
+      `Composition, panel and button shapes${hasCast ? ', characters and their poses' : ''} are all designed for "${name}": panels and buttons are thick sculpted theme pieces, not rounded rectangles, with borders and ornament structures of the theme${hasGrid ? '; the grid sits inside a large theme-shaped frame and every cell holds a distinctive theme object' : ''}; ${hasCast ? 'characters are original, charismatic, in dynamic poses, ' : ''}inside a deep theme scene.`,
       ...QUALITY_EN,
       sketched ? 'Image 1 is a grey layout sketch: place regions, sizes, grid rows and columns and button counts exactly as it shows; the grey boxes are placeholders only and must all become finished theme art, no grey box may remain.' : '',
-      anchored ? `Image ${style} is another finished screen of this same "${name}" set: match its art style, palette, materials, frames, buttons and symbol designs, but follow this list for functions and layout.` : '',
+      anchored ? `Image ${style} is another finished screen of this same "${name}" set: match its art style, palette, materials, frames and buttons, but follow this list for functions and layout.` : '',
       extra ? `Additional request from the user (follow it): ${extra}` : '',
     ].filter(Boolean).join('\n')
   }
+
 
   // A neutral grey layout sketch drawn from the function list: region bands at their listed
   // share of the height, the grid as N x M cells, button rows as one box per listed item, the
@@ -130,11 +145,13 @@
       const share = validBox ? validBox[3] : Number((/约占[^%0-9]{0,6}(\d{1,3})\s*%/.exec(line) || [])[1])
       if (!(share > 0)) continue
       const grid = /横向每行\s*(\d{1,2})\s*个[^纵]{0,8}纵向共?\s*(\d{1,2})\s*行/.exec(line)
-      const items = /从左到右/.test(line) ? line.split(/从左到右[为是：:]?/)[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]/).filter(item => text(item)).length : 0
-      const kind = grid ? 'grid' : /角色|人物区/.test(line) && !/按钮/.test(line) ? 'cast' : items > 1 ? 'row' : 'bar'
+      // Item lists run left to right (a row) or top to bottom (a column of buttons).
+      const order = /从左到右/.test(line) ? '从左到右' : /从上到下/.test(line) ? '从上到下' : ''
+      const list = order ? line.split(new RegExp(order + '[为是：:]?'))[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]|”\s*“/).map(item => text(item).replace(/^[“”"]+|[“”"]+$/g, '')).filter(Boolean) : []
+      const items = list.length
+      const kind = grid ? 'grid' : items > 1 ? (order === '从上到下' ? 'column' : 'row') : /角色区|人物区|立绘|个角色|主角/.test(line) && !/按钮/.test(line) ? 'cast' : 'bar'
       const label = text(line.split(/[（(：:［\[]/)[0]).slice(0, 20) || '区域'
-      const list = items ? line.split(/从左到右[为是：:]?/)[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]/).map(text).filter(Boolean) : []
-      bands.push({ share, box: validBox, kind, label, text: line.replace(/[［\[][^］\]]*[］\]]/, '').slice(0, 200), items: list, cols: grid ? Number(grid[1]) : items, rows: grid ? Number(grid[2]) : 1 })
+      bands.push({ share, box: validBox, kind, label, text: line.replace(/[［\[][^］\]]*[］\]]/, '').slice(0, 200), items: list, cols: grid ? Number(grid[1]) : kind === 'column' ? 1 : items, rows: grid ? Number(grid[2]) : kind === 'column' ? items : 1 })
     }
     return bands.length >= 2 ? bands : null
   }
@@ -155,6 +172,9 @@
       } else if (band.kind === 'row') {
         const cw = (bw - gap * (band.cols - 1)) / band.cols
         for (let c = 0; c < band.cols; c++) add(`${band.label} ${c + 1}`, `${band.label}从左到右第 ${c + 1} 个：${band.items[c] || ''}`, bx + c * (cw + gap), by, cw, bh)
+      } else if (band.kind === 'column') {
+        const ch = (bh - gap * (band.rows - 1)) / band.rows
+        for (let r = 0; r < band.rows; r++) add(`${band.label} ${r + 1}`, `${band.label}从上到下第 ${r + 1} 个：${band.items[r] || ''}`, bx, by + r * (ch + gap), bw, ch)
       } else add(band.label, band.text, bx, by, bw, bh)
       y += h
     }
@@ -173,6 +193,10 @@
   }
   // The layout lives in 布局编辑: a layout the user already has there is used as it is;
   // otherwise the screen's function list is turned into editable blocks there first.
+  // Which layout this panel built, and for which screen; kept across reloads so an old
+  // automatic layout is never taken for one the user made.
+  const AUTO_LAYOUT_KEY = 'foart.ui.theme-auto-layout.v1'
+  const fingerprint = value => value ? value.length + ':' + value.slice(-64) : ''
   function editorLayout(rt) {
     const ref = (rt.references?.() || []).find(item => item?.uiLayoutId && item.dataUrl)
     return ref ? { dataUrl: ref.dataUrl, width: ref.width, height: ref.height } : null
@@ -249,11 +273,12 @@
 
   // Runs screens x themes one at a time through the normal generation path, so
   // billing, the results list and canvas placement stay the same as 生图.
-  async function runBatch({ screens, themes, keepText, keepLayout = false, useSketch = true, note, signal, onProgress }) {
+  async function runBatch({ screens, themes, keepText, keepLayout = false, variety = false, useSketch = true, note, signal, onProgress }) {
     const rt = root.__NovaFlowArtGenerate
     if (!rt?.run || !rt.captureContext) throw new Error('生图组件未就绪，请刷新页面')
     if (rt.state.running) throw new Error('已有生图正在进行，请稍候')
-    const total = screens.length * themes.length
+    const styles = [null, ...(variety && !keepLayout ? ARRANGEMENTS : [])]
+    const total = screens.length * themes.length * styles.length
     let done = 0, failed = 0
     const inventories = new Map()
     if (!keepLayout) for (const screen of screens) {
@@ -262,24 +287,31 @@
       try { inventories.set(screen, await readInventory(screen, signal)) }
       catch (error) { return { done, failed, total, stopped: true, error: text(error?.message || error) } }
     }
-    for (const theme of themes) {
+    for (const theme of themes) for (const arrangement of styles) {
       let anchor = ''
       for (const screen of screens) {
         if (signal.aborted) return { done, failed, total, stopped: true }
-        onProgress?.(`${theme.name} · 第 ${done + failed + 1}/${total} 张`)
+        onProgress?.(`${theme.name}${arrangement ? ' · ' + arrangement.name : ''} · 第 ${done + failed + 1}/${total} 张`)
         const provider = root.NovaFlowArtGenerateModels?.normalizeProvider?.(rt.captureContext().state.provider) || "local"
-        const plan = !keepLayout && useSketch ? sketchPlan(inventories.get(screen)) : null
+        // A named arrangement draws its own composition: no layout guide for it.
+        const plan = !keepLayout && useSketch && !arrangement ? sketchPlan(inventories.get(screen)) : null
         const natural = screen.width && screen.height ? { width: screen.width, height: screen.height } : await imageSize(screen.dataUrl)
         const sketchSize = outputSize(provider, natural.width, natural.height)
         let sketch = ''
-        if (!keepLayout && useSketch && screens.length === 1) {
+        if (!keepLayout && useSketch && !arrangement && screens.length === 1) {
           // One screen: its layout is the one in 布局编辑, where the user can move every block.
+          // A layout this panel built for another screen is stale for this one: draw this
+          // screen's own sketch instead. A layout the user made stays in charge.
           let layout = editorLayout(rt)
-          if (!layout && plan) { try { layout = layoutIntoEditor(rt, plan, sketchSize) } catch { layout = null } }
+          const auto = read(AUTO_LAYOUT_KEY, {}) || {}
+          if (layout && auto.guide === fingerprint(layout.dataUrl) && auto.owner !== fingerprint(screen.dataUrl)) layout = null
+          else if (!layout && plan) {
+            try { layout = layoutIntoEditor(rt, plan, sketchSize); if (layout) write(AUTO_LAYOUT_KEY, { owner: fingerprint(screen.dataUrl), guide: fingerprint(layout.dataUrl) }) } catch { layout = null }
+          }
           sketch = layout?.dataUrl || ''
         }
         if (!sketch && plan) sketch = drawSketch(plan, sketchSize.width, sketchSize.height)
-        const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen), sketched: Boolean(sketch) })
+        const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen), sketched: Boolean(sketch), arrangement })
         const uiPrepared = await preparedFor(rt, { screen, anchor, prompt, keepLayout, sketch })
         // The first version has to look good; small slips are left for the user to touch up,
         // so a result is never redrawn automatically (Dylan, 2026-11-08).
@@ -329,10 +361,13 @@
     const keepRow = make('label'); Object.assign(keepRow.style, { display: 'flex', alignItems: 'center', gap: '6px', color: '#bbb', fontSize: '12px', cursor: 'pointer' })
     const keep = make('input', '', { type: 'checkbox' }); keep.checked = read('foart.ui.theme-keep-text.v1', true) !== false
     keepRow.append(keep, make('span', '保留原文字和数字'))
-    const layoutRow = make('label'); Object.assign(layoutRow.style, { display: 'flex', alignItems: 'center', gap: '6px', color: '#bbb', fontSize: '12px', cursor: 'pointer' })
-    const keepLayout = make('input', '', { type: 'checkbox' }); keepLayout.checked = read('foart.ui.theme-keep-layout.v1', false) === true
-    layoutRow.append(keepLayout, make('span', '保持原布局（只换皮）'))
-    keepLayout.addEventListener('change', () => write('foart.ui.theme-keep-layout.v1', keepLayout.checked))
+    const layoutRow = make('label'); Object.assign(layoutRow.style, { display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr)', alignItems: 'center', gap: '8px', color: '#bbb', fontSize: '12px' })
+    const layoutMode = make('select', '', { 'aria-label': '排版', 'data-novaflow-art-generate-select-field': '1' })
+    Object.assign(layoutMode.style, { width: '100%', minWidth: '0', height: '30px', boxSizing: 'border-box', background: '#292929', color: '#ddd', border: '1px solid #444', borderRadius: '5px', padding: '5px 8px', fontSize: '12px' })
+    for (const [value, label] of [['follow', '跟随原图布局'], ['variety', `多种排版（每个主题 ${ARRANGEMENTS.length + 1} 种）`], ['reskin', '保持原图，只换皮']]) { const option = make('option', label); option.value = value; layoutMode.append(option) }
+    layoutMode.value = ['follow', 'variety', 'reskin'].includes(read('foart.ui.theme-layout-mode.v1', 'follow')) ? read('foart.ui.theme-layout-mode.v1', 'follow') : 'follow'
+    layoutRow.append(make('span', '排版'), layoutMode)
+    layoutMode.addEventListener('change', () => { write('foart.ui.theme-layout-mode.v1', layoutMode.value); render() })
     const note = field('补充要求（可选），如：人物换成女性、整体更亮', true)
     const status = make('div', ''); Object.assign(status.style, { color: '#aaa', fontSize: '11px', lineHeight: '1.5', minHeight: '16px' })
     const actions = make('div'); Object.assign(actions.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })
@@ -417,7 +452,7 @@
       editor.style.display = editing ? 'grid' : 'none'
       if (editing) editor.replaceChildren(...library.map(editorRow), button('恢复默认主题', () => { library = DEFAULT_THEMES.map(item => ({ ...item })); picks = new Set([...picks].filter(name => library.some(item => item.name === name))); save(); render() }))
       manage.textContent = editing ? '完成' : '编辑主题'
-      const count = screens().length * picks.size
+      const count = screens().length * picks.size * (layoutMode.value === 'variety' ? ARRANGEMENTS.length + 1 : 1)
       go.textContent = busy ? '停止' : count ? `生成 ${count} 张` : '生成'
       go.setAttribute('data-foart-action', busy ? 'neutral' : 'primary')
     }
@@ -428,7 +463,7 @@
       if (!themes.length) throw new Error('请至少选择一个主题')
       busy = new AbortController(); render()
       try {
-        const outcome = await runBatch({ screens: list, themes, keepText: keep.checked, keepLayout: keepLayout.checked, note: note.value, signal: busy.signal, onProgress: value => message(value) })
+        const outcome = await runBatch({ screens: list, themes, keepText: keep.checked, keepLayout: layoutMode.value === 'reskin', variety: layoutMode.value === 'variety', note: note.value, signal: busy.signal, onProgress: value => message(value) })
         message(outcome.stopped ? `已生成 ${outcome.done}/${outcome.total} 张，已停止${outcome.error ? '：' + outcome.error : ''}` : `已生成 ${outcome.done} 张，已放入结果列表`, outcome.failed > 0)
       } finally { busy = null; render() }
     }
@@ -452,5 +487,5 @@
     return { sync, destroy() { destroyed = true; busy?.abort(); leftHost.removeEventListener('click', onOtherPanel, true); panel.remove() } }
   }
 
-  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, buildPrompt, outputSize, sketchPlan, sketchBlocks, drawSketch, readInventory, runBatch, mount })
+  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, ARRANGEMENTS, buildPrompt, outputSize, sketchPlan, sketchBlocks, drawSketch, readInventory, runBatch, mount })
 })(typeof window !== 'undefined' ? window : globalThis)
