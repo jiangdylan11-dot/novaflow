@@ -39,9 +39,10 @@
   // The instruction the picture model gets for one screen and one theme.
   // The local engine reads Chinese best and keeps people and symbols unless every one is named
   // as changed, so its wording counts them out ("every ... none left").
-  function buildPrompt({ theme, keepText = true, note = '', anchored = false, provider = 'gpt' } = {}) {
+  function buildPrompt({ theme, keepText = true, keepLayout = false, note = '', anchored = false, provider = 'gpt' } = {}) {
     const name = text(theme?.name), description = text(theme?.description), extra = text(note)
     if (!name) throw new Error('请选择主题')
+    if (!keepLayout) return redesignPrompt({ name, description, keepText, extra, anchored, provider })
     if (provider === 'local') return [
       `把图1这张游戏界面整体换成「${name}」主题${description ? `：${description}` : ''}。`,
       '布局完全不变：画布比例、每个面板、按钮、条栏、网格、符号格、人物区、横幅和文字块的位置与大小不变，行数、列数、按钮数和重复元素数量不变。',
@@ -68,6 +69,31 @@
     ].filter(Boolean).join('\n')
   }
 
+  // 重新设计: the screen is a function list, not a look. Counts, controls and text survive;
+  // composition, frame and button shapes, characters and scene are designed anew for the theme.
+  function redesignPrompt({ name, description, keepText, extra, anchored, provider }) {
+    if (provider === 'local') return [
+      `以图1为功能参考，按「${name}」主题重新设计一整套全新的游戏界面${description ? `（${description}）` : ''}。这是重新设计，不是换皮。`,
+      '只保留功能：符号盘的列数和行数、人物数量、每一个按钮和功能条都还在，画布比例不变。',
+      keepText ? '所有文字和数字逐字保留，但字体、字牌和摆放方式按主题重新设计。' : '数字和按钮文字保留，标题和装饰文字可按主题改写。',
+      `其余全部重新设计，不要沿用图1的外观和版式：整体构图按「${name}」重新编排；符号盘装进主题造型的大框体（如神殿门框、仙山云台、糖果城墙），顶部加入主题标题徽标；面板和按钮做成主题造型的异形结构，不再是矩形圆角块；边框、分隔和装饰结构全部按主题设计；背景是全新的、有纵深的主题场景。`,
+      `人物按「${name}」重新创作，造型、服装、姿态和站位都可以重新设计，要更有气势并融入场景；每个符号都是独特的主题物件，字母和数字用主题材质制作。`,
+      '成品是顶级手游的高品质主视觉：高饱和、强对比、色彩鲜艳浓郁，戏剧性的光影和轮廓光，宝石、金属、玉石等材质有真实反光，精修收尾，细节丰富，画面锐利，控件清晰易读。不要灰暗、不要素淡、不要平涂。',
+      anchored ? `图2是同一套「${name}」主题已完成的界面：画风、配色、材质、框体、按钮和符号设计与图2保持一致。` : '',
+      extra ? `用户补充要求：${extra}` : '',
+    ].filter(Boolean).join('\n')
+    return [
+      `Use Image 1 only as a functional reference and design a completely new game UI screen in the theme "${name}"${description ? `: ${description}` : ''}. This is a redesign, not a reskin.`,
+      'Keep only the function: the same symbol grid columns and rows, the same number of characters, every button and every info bar still present, the same canvas aspect ratio.',
+      keepText ? 'Keep every word and number exactly, but redesign the lettering, plaques and placement for the theme.' : 'Keep numbers and button labels; titles and decorative words may be rewritten for the theme.',
+      `Redesign everything else and do not reuse Image 1's look or composition: recompose the screen for "${name}"; set the symbol grid inside a large theme-shaped frame structure and add a theme title logo at the top; panels and buttons become theme-shaped sculpted pieces, not rounded rectangles; borders, dividers and ornament structures are designed for the theme; the background is a new deep theme scene.`,
+      `Characters are newly created for "${name}" with new costume, pose and placement that feel heroic and part of the scene; every symbol is a distinctive theme object; letters and numbers are crafted in theme materials.`,
+      'Quality: top-tier mobile game key art: saturated, high-contrast, rich vivid colour, dramatic lighting with rim light, real reflections on gems, metal and jade, polished finish, high detail, sharp focus, clean readable controls. Never dull, washed-out or flat.',
+      anchored ? `Image 2 is a finished screen from this same "${name}" set: match its art style, palette, materials, frames, buttons and symbol designs.` : '',
+      extra ? `Additional request from the user (follow it): ${extra}` : '',
+    ].filter(Boolean).join('\n')
+  }
+
   async function imageSize(dataUrl) {
     return await new Promise((resolve, reject) => {
       const image = new root.Image()
@@ -85,7 +111,7 @@
   }
 
   const STATE_KEYS = ['mode', 'provider', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'localTextQuality', 'localEditStrength', 'localQwen21Variant', 'localDrawEngine', 'googleResolution']
-  async function preparedFor(rt, { screen, anchor, prompt }) {
+  async function preparedFor(rt, { screen, anchor, prompt, keepLayout = false }) {
     const context = rt.captureContext(), source = context.state
     const state = copy(Object.fromEntries(STATE_KEYS.filter(key => source[key] !== undefined).map(key => [key, source[key]])))
     const provider = root.NovaFlowArtGenerateModels?.normalizeProvider?.(state.provider) || 'local'
@@ -94,7 +120,7 @@
     Object.assign(state, {
       mode: 'img2img', provider, count: 1, nsfw: false, negativePrompt: '', width: size.width, height: size.height,
       gptQualityImg2img: 'high', gptSize: 'Custom', gptCustomWidth: size.width, gptCustomHeight: size.height,
-      localEditStrength: 'enhanced', uiPreserveLayout: true, uiLayoutMode: 'preserve', uiRunIntent: 'redesign',
+      localEditStrength: 'enhanced', uiPreserveLayout: keepLayout, uiLayoutMode: keepLayout ? 'preserve' : 'reflow', uiRunIntent: 'redesign',
     })
     state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.(provider, 'img2img', state)?.engine || state.localDrawEngine || ''
     const references = [{ id: screen.id || 'ui-theme-screen', name: screen.name || '界面.png', dataUrl: screen.dataUrl, width: natural.width, height: natural.height, role: 'layout' }]
@@ -111,7 +137,7 @@
 
   // Runs screens x themes one at a time through the normal generation path, so
   // billing, the results list and canvas placement stay the same as 生图.
-  async function runBatch({ screens, themes, keepText, note, signal, onProgress }) {
+  async function runBatch({ screens, themes, keepText, keepLayout = false, note, signal, onProgress }) {
     const rt = root.__NovaFlowArtGenerate
     if (!rt?.run || !rt.captureContext) throw new Error('生图组件未就绪，请刷新页面')
     if (rt.state.running) throw new Error('已有生图正在进行，请稍候')
@@ -123,8 +149,8 @@
         if (signal.aborted) return { done, failed, total, stopped: true }
         onProgress?.(`${theme.name} · 第 ${done + failed + 1}/${total} 张`)
         const provider = root.NovaFlowArtGenerateModels?.normalizeProvider?.(rt.captureContext().state.provider) || "local"
-        const prompt = buildPrompt({ theme, keepText, note, anchored: Boolean(anchor), provider })
-        const uiPrepared = await preparedFor(rt, { screen, anchor, prompt })
+        const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider })
+        const uiPrepared = await preparedFor(rt, { screen, anchor, prompt, keepLayout })
         const before = rt.selectedResult?.()?.id || ''
         await rt.run({ uiPrepared })
         await waitIdle(rt, signal)
@@ -170,6 +196,10 @@
     const keepRow = make('label'); Object.assign(keepRow.style, { display: 'flex', alignItems: 'center', gap: '6px', color: '#bbb', fontSize: '12px', cursor: 'pointer' })
     const keep = make('input', '', { type: 'checkbox' }); keep.checked = read('foart.ui.theme-keep-text.v1', true) !== false
     keepRow.append(keep, make('span', '保留原文字和数字'))
+    const layoutRow = make('label'); Object.assign(layoutRow.style, { display: 'flex', alignItems: 'center', gap: '6px', color: '#bbb', fontSize: '12px', cursor: 'pointer' })
+    const keepLayout = make('input', '', { type: 'checkbox' }); keepLayout.checked = read('foart.ui.theme-keep-layout.v1', false) === true
+    layoutRow.append(keepLayout, make('span', '保持原布局（只换皮）'))
+    keepLayout.addEventListener('change', () => write('foart.ui.theme-keep-layout.v1', keepLayout.checked))
     const note = field('补充要求（可选），如：人物换成女性、整体更亮', true)
     const status = make('div', ''); Object.assign(status.style, { color: '#aaa', fontSize: '11px', lineHeight: '1.5', minHeight: '16px' })
     const actions = make('div'); Object.assign(actions.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })
@@ -187,7 +217,7 @@
     customRow.append(custom, addCustom)
     const go = button('生成', start, true), manage = button('编辑主题', () => { editing = !editing; render() })
     actions.append(go, manage)
-    body.append(hint, chips, customRow, editor, keepRow, note, actions, status)
+    body.append(hint, chips, customRow, editor, keepRow, layoutRow, note, actions, status)
     custom.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addCustom.click() } })
     keep.addEventListener('change', () => write('foart.ui.theme-keep-text.v1', keep.checked))
 
@@ -265,7 +295,7 @@
       if (!themes.length) throw new Error('请至少选择一个主题')
       busy = new AbortController(); render()
       try {
-        const outcome = await runBatch({ screens: list, themes, keepText: keep.checked, note: note.value, signal: busy.signal, onProgress: value => message(value) })
+        const outcome = await runBatch({ screens: list, themes, keepText: keep.checked, keepLayout: keepLayout.checked, note: note.value, signal: busy.signal, onProgress: value => message(value) })
         message(outcome.stopped ? `已生成 ${outcome.done}/${outcome.total} 张，已停止${outcome.error ? '：' + outcome.error : ''}` : `已生成 ${outcome.done} 张，已放入结果列表`, outcome.failed > 0)
       } finally { busy = null; render() }
     }
