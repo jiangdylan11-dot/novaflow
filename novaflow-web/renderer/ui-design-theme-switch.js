@@ -23,6 +23,20 @@
     ['冰雪圣诞', '主色圣诞红配松绿、金色与冰晶白，雪夜小镇、圣诞树与极光为背景；面板是冰晶边框配红丝带与金铃；按钮是礼物盒与雪花；符号做成礼物、铃铛、姜饼人、拐杖糖、雪人，字母为冰雕金边；人物是圣诞老人、精灵与雪之公主；画面有飘雪与暖色窗光'],
 ].map(([name, description]) => Object.freeze({ name, description })))
 
+  // 质感、氛围感、精度 each get their own concrete line (Dylan, 2026-11-08); a single
+  // "high quality" sentence left results plain.
+  const QUALITY_ZH = Object.freeze([
+    '质感：每种材质都要画出真实可信的表面——金属有拉丝或錾刻纹理和锐利高光，宝石和玉石通透有内部折射和高光点，木、石、织物有清晰纹理和磨损，珐琅、玻璃、糖霜等有各自的光泽；面板和按钮有厚度、倒角、多层浮雕和描边，不是平涂色块。',
+    '氛围感：整屏一个统一的主光源和明确的冷暖对比，背景有纵深、雾气和体积光，前景有主题粒子、光尘或飘落物，角色和关键元素有轮廓光；画面有情绪和故事感，像游戏宣传主视觉。',
+    '精度：线条和边缘干净锐利，图标轮廓清楚，文字笔画完整清晰，对称件左右一致，同类按钮和格子大小统一、对齐整齐，细节丰富但不糊不脏，没有扭曲、错位和多余的零件。',
+    '整体是顶级手游的高品质主视觉：色彩鲜艳浓郁、对比强烈、精修收尾。不要灰暗、不要素淡、不要平涂、不要塑料感。',
+  ])
+  const QUALITY_EN = Object.freeze([
+    'Material quality: every material has a believable surface - metal with brushed or engraved texture and crisp speculars, gems and jade translucent with inner refraction and glints, wood, stone and cloth with clear grain and wear, enamel, glass and frosting with their own sheen; panels and buttons have thickness, bevels, layered relief and trims, never flat fills.',
+    'Atmosphere: one key light with a clear warm/cool contrast across the screen, depth, haze and volumetric light in the background, theme particles, light dust or falling things in the foreground, rim light on characters and key elements; the screen carries mood and story like game key art.',
+    'Precision: clean sharp lines and edges, crisp icon silhouettes, complete legible lettering, symmetric pieces mirror exactly, buttons and cells of one kind share size and alignment, rich detail without mush, no warping, misalignment or stray parts.',
+    'Overall: top-tier mobile game key art, rich vivid colour, strong contrast, polished finish. Never dull, washed-out, flat or plastic.',
+  ])
   const text = value => String(value == null ? '' : value).trim()
   const copy = value => JSON.parse(JSON.stringify(value))
   function read(key, fallback) {
@@ -51,7 +65,7 @@
       `每一个符号格里的图案都重画成「${name}」主题的物件，字母和数字仍是同样的字母和数字但用主题材质制作，一个符号都不能保留原来的造型、颜色或发光效果。`,
       `背景换成「${name}」场景；所有面板、边框、按钮和条栏用主题材质、纹样和光线重做，边框和底板要有层次丰富的浮雕、镶嵌和描金装饰，按钮要有厚度、高光和发光。画面中不能残留任何原主题的美术。`,
       '要有创意：每个符号都设计成独特、有辨识度的主题物件，人物造型夸张有魅力，背景有纵深和故事感，空白处加入主题特效（光粒、光带、飘落物）。',
-      '成品是顶级手游的高品质主视觉：高饱和、强对比、色彩鲜艳浓郁，戏剧性的光影和轮廓光，宝石、金属、玉石等材质有真实反光，精修收尾，细节丰富，画面锐利，统一画风和光源，控件清晰易读。不要灰暗、不要素淡、不要平涂。',
+      ...QUALITY_ZH,
       anchored ? `图2是同一套「${name}」主题已完成的界面：画风、配色、材质、边框、按钮和符号设计与图2保持一致，但不采用图2的布局。` : '',
       extra ? `用户补充要求：${extra}` : '',
     ].filter(Boolean).join('\n')
@@ -63,7 +77,7 @@
         : 'Text: keep every number and every control label in place; titles and decorative words may be rewritten to fit the new theme, short and readable.',
       `Redraw everything else for "${name}": the background becomes a ${name} scene; characters keep their count, position, pose and framing but become ${name} characters with new costumes and identity; every symbol and icon is redrawn as a ${name} object of the same size and role (letters and numbers stay the same letters and numbers, crafted in theme materials); panels, frames, buttons and bars are rebuilt with ${name} materials, ornaments and lighting. No art from the old theme may remain.`,
       'Be creative: every symbol becomes a distinctive, iconic theme object; characters are striking and charismatic; the background has depth and story; frames and panels carry layered relief, inlay and gilded ornament; buttons have thickness, highlights and glow; empty space carries theme effects (light particles, ribbons of light, falling petals or snow).',
-      'Quality: top-tier mobile game key art: saturated, high-contrast, rich vivid colour, dramatic lighting with rim light, real reflections on gems, metal and jade, polished finish, high detail, sharp focus, one consistent art direction and light source, clean readable controls. Never dull, washed-out or flat. No watermark, no extra controls, no blank placeholders.',
+      ...QUALITY_EN,
       anchored ? `Image 2 is a finished screen from this same "${name}" set: match its art style, palette, materials, frame, button and symbol designs exactly so both screens belong to one game. Take nothing from Image 2's layout.` : '',
       extra ? `Additional request from the user (follow it): ${extra}` : '',
     ].filter(Boolean).join('\n')
@@ -82,7 +96,7 @@
       '各区域从上到下的顺序和大致占比按清单；符号盘严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）；角色区单独存在，角色不要塞进符号盘；清单里的每个按钮、信息条和数值都要有。',
       keepText ? '只把清单中引号里的原文文字和数字写进画面，逐字照抄；区域名、说明和括号里的注释不要写进画面；标为“图标，无文字”的按钮只画图标。' : '数字和按钮文字按清单写；标题和装饰文字可按主题改写；区域名和注释不要写进画面。',
       `整屏构图、符号盘框体、面板与按钮造型、角色设定和姿态全部根据「${name}」主题创作：符号盘装进主题造型的大框体，顶部是不带文字的主题徽记，面板和按钮是有厚度的主题异形雕刻件，不是矩形圆角块；角色是为主题原创、有魅力的人物，动态姿势，融入有纵深的主题场景；每个符号都是独特的主题物件。`,
-      '成品是顶级手游的高品质主视觉：高饱和、强对比、色彩鲜艳浓郁，戏剧性的光影和轮廓光，宝石、金属、玉石等材质有真实反光，精修收尾，细节丰富，画面锐利，控件清晰易读。不要灰暗、不要素淡、不要平涂。',
+      ...QUALITY_ZH,
       anchored ? `图1是同一套「${name}」主题已完成的另一张界面：画风、配色、材质、框体、按钮和符号设计与图1保持一致，但功能和布局按本清单，不照搬图1的布局。` : '',
       extra ? `用户补充要求：${extra}` : '',
     ].filter(Boolean).join('\n')
@@ -92,7 +106,7 @@
       'Regions follow the list from top to bottom with about the listed share of the height; the symbol grid has exactly the listed symbols per row and number of rows (count them); the character area is its own region, characters never fill the grid; every button, info bar and value in the list is present.',
       keepText ? 'Write on the screen only the quoted words and numbers from the list, copied exactly; never write region names, notes or bracketed remarks; a button marked as icon-only gets an icon and no words.' : 'Write numbers and button labels from the list; titles and decorative words may be rewritten for the theme; never write region names or notes.',
       `Composition, the grid frame, panel and button shapes, characters and their poses are all designed for "${name}": the grid sits inside a large theme-shaped frame, a theme emblem without lettering at the top, panels and buttons are thick sculpted theme pieces, not rounded rectangles; characters are original, charismatic, in dynamic poses inside a deep theme scene; every symbol is a distinctive theme object.`,
-      'Quality: top-tier mobile game key art: saturated, high-contrast, rich vivid colour, dramatic lighting with rim light, real reflections on gems, metal and jade, polished finish, high detail, sharp focus, clean readable controls. Never dull, washed-out or flat.',
+      ...QUALITY_EN,
       anchored ? `Image 1 is another finished screen of this same "${name}" set: match its art style, palette, materials, frames, buttons and symbol designs, but follow this list for functions and layout.` : '',
       extra ? `Additional request from the user (follow it): ${extra}` : '',
     ].filter(Boolean).join('\n')
