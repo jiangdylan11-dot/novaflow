@@ -12,6 +12,9 @@ const EFFECT_MATERIAL_DEFAULT_ARRANGEMENT = "A bright main stroke of light runs 
 const EFFECT_SUPPLEMENT_SYSTEM_TEXT = "You translate short Chinese requests from VFX artists into plain English. Reply with the English only.";
 const EFFECT_SUPPLEMENT_QUESTION = "Translate this request about a game VFX element into one plain English phrase, every word in English. Keep its meaning exactly: every object, amount, place and motion it names, and nothing added. Colours: 彩带, 彩色 or 五彩 means multicoloured (red, blue, green and purple); 彩虹 is a rainbow (red, orange, yellow, green, blue and purple); a named colour stays that colour; when no colour is named, name none. Examples: 绕一圈星星 -> a ring of stars circling around it; 多点火星飞溅 -> more sparks flying out; 拖出彩虹光尾 -> trailing a rainbow (red, orange, yellow, green, blue and purple) light tail; 多点彩带飘落 -> more multicoloured (red, blue, green and purple) ribbons falling. Request: ";
 
+// 主题切换 reads a game screen as a function list so each theme can be designed from zero.
+const UI_INVENTORY_SYSTEM_TEXT = "你是游戏 UI 分析师，只读图，不做设计。用简体中文回答，只输出清单正文，不要前言、标题符号、Markdown 或 JSON。";
+const UI_INVENTORY_QUESTION = "读这张游戏界面截图，写出它的功能清单，供美术按新主题从零重新设计。按从上到下的顺序逐区写，每区一行，格式为：区域名（约占屏幕高度的百分之几）：内容。必须写清：第一行写界面类型和横竖屏；符号盘或网格写成“横向每行N个、纵向共M行、共K格”（数清楚，不要写几列几行）以及里面出现的符号种类，人物头像类符号写“人物头像符号”；角色区写有几个角色、占多大；每一个按钮、信息条、数值框的功能和上面的原文文字与数字（原文照抄，加引号）；同一行有几个按钮写清从左到右的顺序；没有文字的图标按钮写出它的功能，例如“旋转按钮（图标，无文字）”。不要描述颜色、材质、画风、人物长相和背景，不要写建议。";
 const fail=()=>{throw Object.assign(new Error('operation-style-invalid'),{code:'operation-style-invalid',statusCode:400});};
 const flat=value=>String(value||'').replace(/\s+/g,' ').trim();
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -57,7 +60,7 @@ function validateStyleImageSize(dataUrl) {
   if(!pixels||pixels.length!==expected||(result.engine&&result.engine.bytesWritten!==input.length))fail();
   for(let row=0;row<h;row++)if(pixels[row*(1+w*channels)]>4)fail();
 }
-export const STYLE_OUTPUT_TOKENS=Object.freeze({style:120,'aifx-material':300,'aifx-supplement':120});
+export const STYLE_OUTPUT_TOKENS=Object.freeze({style:120,'aifx-material':300,'aifx-supplement':120,'ui-inventory':700});
 const codepoints=(value,max)=>Array.from(value).slice(0,max).join('');
 const cleanText=value=>String(value||'').trim().replace(/^```(?:json|text)?/i,'').trim().replace(/```$/,'').trim();
 const quoteStrip=value=>value.replace(/^[\s\"'“”]+|[\s\"'“”]+$/g,'');
@@ -71,13 +74,14 @@ export function canonicalizeXiaotaoV3StyleIntent(raw) {
     const intentHash=hash({schema:'nf.xiaotao.operation.style-material-supplement.v1',materialIntentHash:material.intentHash,supplementIntentHash:supplement.intentHash});
     return {intent,intentHash,compiled:{stages,imageCount:1,textOnly:false,outputTokens:stages[0].outputTokens+stages[1].outputTokens}};
   }
-  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['mode','requestId','kind','images','supplement'].includes(k))||raw.mode!=='style-analysis'||!/^[A-Za-z0-9_-]{8,128}$/.test(raw.requestId||'')||!['style','aifx-material','aifx-supplement'].includes(raw.kind))fail();
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['mode','requestId','kind','images','supplement'].includes(k))||raw.mode!=='style-analysis'||!/^[A-Za-z0-9_-]{8,128}$/.test(raw.requestId||'')||!['style','aifx-material','aifx-supplement','ui-inventory'].includes(raw.kind))fail();
+  const imageRole=raw.kind==='style'?'style':raw.kind==='ui-inventory'?'reference':'material';
   const textOnly=raw.kind==='aifx-supplement';
   if(textOnly ? (Object.hasOwn(raw,'images')||typeof raw.supplement!=='string'||!flat(raw.supplement)||raw.supplement.length>12000) :
-    (Object.hasOwn(raw,'supplement')||!Array.isArray(raw.images)||raw.images.length!==1||!raw.images[0]||Object.keys(raw.images[0]).some(k=>!['role','dataUrl'].includes(k))||raw.images[0].role!==(raw.kind==='style'?'style':'material')))fail();
+    (Object.hasOwn(raw,'supplement')||!Array.isArray(raw.images)||raw.images.length!==1||!raw.images[0]||Object.keys(raw.images[0]).some(k=>!['role','dataUrl'].includes(k))||raw.images[0].role!==imageRole))fail();
   const intent=textOnly?{mode:raw.mode,requestId:raw.requestId,kind:raw.kind,supplement:codepoints(flat(raw.supplement),400)}:{mode:raw.mode,requestId:raw.requestId,kind:raw.kind,images:[{role:raw.images[0].role,dataUrl:raw.images[0].dataUrl}]};
-  const systemText=textOnly?EFFECT_SUPPLEMENT_SYSTEM_TEXT:raw.kind==='style'?ART_STYLE_SYSTEM_TEXT:EFFECT_MATERIAL_SYSTEM_TEXT;
-  const userText=textOnly?EFFECT_SUPPLEMENT_QUESTION+'「'+intent.supplement+'」':raw.kind==='style'?ART_STYLE_QUESTION:EFFECT_MATERIAL_QUESTION;
+  const systemText=textOnly?EFFECT_SUPPLEMENT_SYSTEM_TEXT:raw.kind==='style'?ART_STYLE_SYSTEM_TEXT:raw.kind==='ui-inventory'?UI_INVENTORY_SYSTEM_TEXT:EFFECT_MATERIAL_SYSTEM_TEXT;
+  const userText=textOnly?EFFECT_SUPPLEMENT_QUESTION+'「'+intent.supplement+'」':raw.kind==='style'?ART_STYLE_QUESTION:raw.kind==='ui-inventory'?UI_INVENTORY_QUESTION:EFFECT_MATERIAL_QUESTION;
   let content=[{type:'input_text',text:userText}];
   if(!textOnly) {
     // Reuse native bounded image and magic-byte validation. The validated original
@@ -85,7 +89,7 @@ export function canonicalizeXiaotaoV3StyleIntent(raw) {
     const validated=companionInput({mode:'chat',requestId:raw.requestId,message:userText,images:[{role:raw.kind==='style'?'style':'reference',dataUrl:intent.images[0].dataUrl}]});
     content=validated.input.at(-1).content;
     // The purpose is assigned by the client, not inferred or renamed by the model.
-    content[1]={type:'input_text',text:raw.kind==='style'?'Image 1: style reference.':'Image 1: effect material reference.'};
+    content[1]={type:'input_text',text:raw.kind==='style'?'Image 1: style reference.':raw.kind==='ui-inventory'?'Image 1: game UI screen to read.':'Image 1: effect material reference.'};
     validateStyleImageSize(intent.images[0].dataUrl);
   }
   const compiled={input:[{role:'system',content:[{type:'input_text',text:systemText}]},{role:'user',content}],imageCount:textOnly?0:1,textOnly,systemText,userText,outputTokens:STYLE_OUTPUT_TOKENS[raw.kind]};
@@ -107,6 +111,7 @@ export function inspectXiaotaoV3StyleReply({kind,reply}) {
     if(rest.length&&/\b(?:photo\w*|hyper-?realistic|realistic\s+(?:3d|cg))/i.test(medium)) {const marks=[...new Set(rest.join(':').replace(/[.\s]+$/,'').split(/[,;]/).map(x=>/\b(?:flat|uniform)\b/i.test(x)?'true-to-life fine surface detail':x.trim()).filter(Boolean))];if(marks.length)value=medium+': '+marks.join(', ')+'.';}
     value=flat(value);if(!value||/[\u3400-\u9fff]/.test(value))fail();return {style:codepoints(value[0].toUpperCase()+value.slice(1),400),rawStyle};
   }
+  if(kind==='ui-inventory') {const inventory=cleanText(reply).split(/\r?\n/).map(flat).filter(Boolean).join('\n');if(!/[\u3400-\u9fff]/.test(inventory))fail();return {inventory:codepoints(inventory,1500),rawInventory:codepoints(flat(reply),2000)};}
   if(kind==='aifx-supplement') {const supplement=flat(reply).replace(/^[\s"'“”]+|[\s"'“”]+$/g,'');if(!supplement||/[\u3400-\u9fff]/.test(supplement))fail();return {supplement:codepoints(supplement,600)};}
   if(kind!=='aifx-material')fail();
   let parsed;try {const match=reply.match(/\{[\s\S]*\}/);parsed=JSON.parse(match?.[0]);}catch{fail();}

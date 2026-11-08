@@ -45,12 +45,25 @@ test('local engine gets Chinese wording that counts every person and symbol out'
   assert.match(prompt, /图2是同一套「东方仙侠」主题已完成的界面/);
 });
 
-test('default is a redesign: only function and text are kept, composition and shapes are new', () => {
-  const local = api.buildPrompt({ theme: { name: '埃及神话' }, provider: 'local' });
-  assert.match(local, /这是重新设计，不是换皮/);
-  assert.match(local, /只保留功能/);
-  assert.match(local, /不再是矩形圆角块/);
-  const online = api.buildPrompt({ theme: { name: '埃及神话' } });
-  assert.match(online, /This is a redesign, not a reskin/);
+test('default is a redesign from the screen function list, never from the picture', () => {
+  const inventory = '符号盘：5列4行\n底部按钮：“菜单”、旋转按钮（图标，无文字）';
+  const local = api.buildPrompt({ theme: { name: '埃及神话' }, provider: 'local', inventory });
+  assert.match(local, /^为「埃及神话」主题从零设计一张全新的游戏界面/);
+  assert.match(local, /符号盘：5列4行/);
+  assert.match(local, /区域名、说明和括号里的注释不要写进画面/);
+  assert.doesNotMatch(local, /图1/);
+  const anchored = api.buildPrompt({ theme: { name: '埃及神话' }, provider: 'local', inventory, anchored: true });
+  assert.match(anchored, /图1是同一套「埃及神话」主题已完成的另一张界面/);
+  const online = api.buildPrompt({ theme: { name: '埃及神话' }, inventory });
+  assert.match(online, /Design a completely new game UI screen from zero/);
   assert.doesNotMatch(online, /Layout lock/);
+  assert.throws(() => api.buildPrompt({ theme: { name: '埃及神话' } }), /缺少界面功能清单/);
+});
+
+test('server reads a screen into a Chinese function list (ui-inventory)', async () => {
+  const { inspectXiaotaoV3StyleReply, STYLE_OUTPUT_TOKENS } = await import('../packages/shared/src/xiaotao-style-framework-v3.mjs');
+  assert.equal(STYLE_OUTPUT_TOKENS['ui-inventory'], 700);
+  const { inventory } = inspectXiaotaoV3StyleReply({ kind: 'ui-inventory', reply: '界面类型：竖屏老虎机\n\n符号盘：横向每行5个、纵向共4行' });
+  assert.equal(inventory, '界面类型：竖屏老虎机\n符号盘：横向每行5个、纵向共4行');
+  assert.throws(() => inspectXiaotaoV3StyleReply({ kind: 'ui-inventory', reply: 'slot machine, 5x4' }));
 });

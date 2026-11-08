@@ -813,13 +813,13 @@
        typeof payload.onPricingQuote!=='function'||typeof payload.confirmPricingQuote!=='function'||typeof payload.onBillingNotice!=='function'||typeof payload.isInputCurrent!=='function'||typeof controller?.subscribeBusinessModel!=='function')
       return no('style-analysis-unavailable','风格分析确认或状态检查不可用，未提交。');
     const id=payload.requestId,kind=payload.purpose||'style',hasImage=kind!=='aifx-supplement',combined=kind==='aifx-material-supplement';
-    if(!validOperationId(id)||!['style','aifx-material','aifx-supplement','aifx-material-supplement'].includes(kind)||!onlineOperationModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
+    if(!validOperationId(id)||!['style','aifx-material','aifx-supplement','aifx-material-supplement','ui-inventory'].includes(kind)||!onlineOperationModel(selected.modelId)||companionCloudRequests.size||companionCloudUsed.has(id)||companionCloudUsed.size>=1024)
       return no('invalid-request','风格分析请求或模型不可用，未提交。');
     if(hasImage&&(typeof payload.confirmImageUpload!=='function'||typeof payload.dataUrl!=='string'||payload.dataUrl.length>Math.ceil(20*1024*1024/3)*4+128||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(payload.dataUrl)||typeof payload.name!=='string'||payload.name.length>120||(!combined&&payload.supplement!==undefined)))
       return no('style-reference-invalid','请选择一张有效的 PNG、JPEG 或 WebP 参考图，未提交。');
     if((!hasImage||combined)&&((!hasImage&&(payload.dataUrl!==undefined||payload.name!==undefined))||typeof payload.supplement!=='string'||!payload.supplement.trim()||payload.supplement.length>20000))
       return no('invalid-request','补充说明无效，未提交。');
-    const intent={mode:'style-analysis',requestId:id,kind,...(hasImage?{images:[{role:kind==='style'?'style':'material',dataUrl:payload.dataUrl}]}:{}),...(!hasImage||combined?{supplement:Array.from(payload.supplement.replace(/\s+/g,' ').trim()).slice(0,400).join('')}:{})};
+    const intent={mode:'style-analysis',requestId:id,kind,...(hasImage?{images:[{role:kind==='style'?'style':kind==='ui-inventory'?'reference':'material',dataUrl:payload.dataUrl}]}:{}),...(!hasImage||combined?{supplement:Array.from(payload.supplement.replace(/\s+/g,' ').trim()).slice(0,400).join('')}:{})};
     const owner=captureFoartBillingOwner(),guard=captureFoartSessionGuard();
     if(!owner||!guard||!owner.current()||!guard())return no('assistant-session-unavailable','登录状态不可用，未提交。');
     const abort=new AbortController();let cancelled=false;
@@ -843,7 +843,7 @@
       const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
       const prepared=await api(base,'POST','/api/web/companion/operation/prepare',{nonce:root.crypto.randomUUID(),model:selected.modelId,intent},65000,abort.signal),op=prepared?.operation;
       if(!current()||prepared?.ok!==true||op?.model!==selected.modelId||op?.policyVersion!==policy.version||!validOperationId(op?.operationId)||typeof op?.token!=='string'||op.token.length>4096||
-         !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==(combined?420:kind==='aifx-material'?300:120)||Date.now()>=policy.expiresAt)
+         !/^[a-f0-9]{64}$/.test(op.intentHash||'')||!validOperationQuote(op.estimatedCredits,terms)||op.outputTokens!==(combined?420:kind==='aifx-material'?300:kind==='ui-inventory'?700:120)||Date.now()>=policy.expiresAt)
         return no('companion-pricing-changed','报价或模型状态已变化，未执行。');
       const quote={requestId:id,estimatedCredits:op.estimatedCredits,outputTokens:op.outputTokens};payload.onPricingQuote(quote);
       if(!current()||await payload.confirmPricingQuote(quote)!==true||!current()||Date.now()>=policy.expiresAt)return no('assistant-business-quote-declined','已取消报价或状态已变化，未执行。');
@@ -862,6 +862,7 @@
         return no('style-analysis-incomplete',receipt.uncollected>0?incompleteSettlementMessage(receipt):'分析未完成。',{quota});
       const value=result.styleResult,only=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).every(k=>keys.includes(k)),text=(v,max)=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
       if(kind==='style'&&only(value,['style','rawStyle'])&&text(value.style,400)&&typeof value.rawStyle==='string')return {ok:true,style:value.style,rawStyle:value.rawStyle,model:selected.modelId,quota};
+      if(kind==='ui-inventory'&&only(value,['inventory','rawInventory'])&&text(value.inventory,1500)&&typeof value.rawInventory==='string')return {ok:true,inventory:value.inventory,model:selected.modelId,quota};
       if(kind==='aifx-supplement'&&only(value,['supplement'])&&text(value.supplement,600))return {ok:true,supplement:value.supplement,model:selected.modelId,quota};
       if(combined&&only(value,['material','rawMaterial','supplement'])&&text(value.supplement,600)&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,supplement:value.supplement,model:selected.modelId,quota};
       if(kind==='aifx-material'&&only(value,['material','rawMaterial'])&&typeof value.rawMaterial==='string'&&only(value.material,['name','material','elements','colours','breakup'])&&['name','material','elements','colours','breakup'].every(k=>typeof value.material[k]==='string'&&value.material[k].length<=1000)&&(value.material.material.trim()||value.material.elements.trim()))return {ok:true,material:value.material,rawMaterial:value.rawMaterial,model:selected.modelId,quota};

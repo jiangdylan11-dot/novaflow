@@ -39,10 +39,10 @@
   // The instruction the picture model gets for one screen and one theme.
   // The local engine reads Chinese best and keeps people and symbols unless every one is named
   // as changed, so its wording counts them out ("every ... none left").
-  function buildPrompt({ theme, keepText = true, keepLayout = false, note = '', anchored = false, provider = 'gpt' } = {}) {
+  function buildPrompt({ theme, keepText = true, keepLayout = false, note = '', anchored = false, provider = 'gpt', inventory = '' } = {}) {
     const name = text(theme?.name), description = text(theme?.description), extra = text(note)
     if (!name) throw new Error('请选择主题')
-    if (!keepLayout) return redesignPrompt({ name, description, keepText, extra, anchored, provider })
+    if (!keepLayout) return redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider })
     if (provider === 'local') return [
       `把图1这张游戏界面整体换成「${name}」主题${description ? `：${description}` : ''}。`,
       '布局完全不变：画布比例、每个面板、按钮、条栏、网格、符号格、人物区、横幅和文字块的位置与大小不变，行数、列数、按钮数和重复元素数量不变。',
@@ -69,29 +69,48 @@
     ].filter(Boolean).join('\n')
   }
 
-  // 重新设计: the screen is a function list, not a look. Counts, controls and text survive;
-  // composition, frame and button shapes, characters and scene are designed anew for the theme.
-  function redesignPrompt({ name, description, keepText, extra, anchored, provider }) {
+  // 重新设计: the uploaded screen is read once into a function list (grid size, controls, their
+  // exact text) and each theme designs a whole new screen from that list. No source picture goes
+  // to the picture model, so nothing of its composition, characters or poses can carry over.
+  // anchored: Image 1 is a finished screen of the same theme set, for look only.
+  function redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider }) {
+    const list = text(inventory)
+    if (!list) throw new Error('缺少界面功能清单')
     if (provider === 'local') return [
-      `以图1为功能参考，按「${name}」主题重新设计一整套全新的游戏界面${description ? `（${description}）` : ''}。这是重新设计，不是换皮。`,
-      '只保留功能：符号盘的列数和行数与图1完全相同（逐行逐列数清楚，一行都不能少），每一个按钮和功能条都还在，画布比例不变。',
-      keepText ? '所有文字和数字逐字保留，但字体、字牌和摆放方式按主题重新设计。' : '数字和按钮文字保留，标题和装饰文字可按主题改写。',
-      `其余全部重新设计，不要沿用图1的外观和版式：整体构图按「${name}」重新编排；符号盘装进主题造型的大框体（如神殿门框、仙山云台、糖果城墙），顶部加入不带文字的主题徽记装饰（只用图形，不写任何字）；面板和按钮做成主题造型的异形结构，不再是矩形圆角块；边框、分隔和装饰结构全部按主题设计；背景是全新的、有纵深的主题场景。`,
-      `人物是为「${name}」全新创作的原创角色，不是图1里的人：脸型、五官、肤色、发型、体型、年龄、性别搭配和人数都按主题重新设计，不得出现图1人物的脸，符号格里的人物头像也要换成新角色；姿势、动作、站位、朝向和人物区构图必须和图1明显不同（不能三人并排站立，可改为一位主角大幅前景配从属角色、或角色从场景中跃出、施法、持武器等动态姿势），造型夸张有魅力并融入场景（如仙侠的剑仙与仙女、埃及的法老与艳后、糖果乐园的糖果精灵）。每个符号都是独特的主题物件，字母和数字用主题材质制作。`,
+      `为「${name}」主题从零设计一张全新的游戏界面${description ? `：${description}` : ''}。`,
+      `界面功能清单（只决定有哪些功能、数量和文字，不决定外观）：\n${list}`,
+      '各区域从上到下的顺序和大致占比按清单；符号盘严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）；角色区单独存在，角色不要塞进符号盘；清单里的每个按钮、信息条和数值都要有。',
+      keepText ? '只把清单中引号里的原文文字和数字写进画面，逐字照抄；区域名、说明和括号里的注释不要写进画面；标为“图标，无文字”的按钮只画图标。' : '数字和按钮文字按清单写；标题和装饰文字可按主题改写；区域名和注释不要写进画面。',
+      `整屏构图、符号盘框体、面板与按钮造型、角色设定和姿态全部根据「${name}」主题创作：符号盘装进主题造型的大框体，顶部是不带文字的主题徽记，面板和按钮是有厚度的主题异形雕刻件，不是矩形圆角块；角色是为主题原创、有魅力的人物，动态姿势，融入有纵深的主题场景；每个符号都是独特的主题物件。`,
       '成品是顶级手游的高品质主视觉：高饱和、强对比、色彩鲜艳浓郁，戏剧性的光影和轮廓光，宝石、金属、玉石等材质有真实反光，精修收尾，细节丰富，画面锐利，控件清晰易读。不要灰暗、不要素淡、不要平涂。',
-      anchored ? `图2是同一套「${name}」主题已完成的界面：画风、配色、材质、框体、按钮和符号设计与图2保持一致。` : '',
+      anchored ? `图1是同一套「${name}」主题已完成的另一张界面：画风、配色、材质、框体、按钮和符号设计与图1保持一致，但功能和布局按本清单，不照搬图1的布局。` : '',
       extra ? `用户补充要求：${extra}` : '',
     ].filter(Boolean).join('\n')
     return [
-      `Use Image 1 only as a functional reference and design a completely new game UI screen in the theme "${name}"${description ? `: ${description}` : ''}. This is a redesign, not a reskin.`,
-      'Keep only the function: exactly the same symbol grid columns and rows as Image 1 (count them, no row may be lost), every button and every info bar still present, the same canvas aspect ratio.',
-      keepText ? 'Keep every word and number exactly, but redesign the lettering, plaques and placement for the theme.' : 'Keep numbers and button labels; titles and decorative words may be rewritten for the theme.',
-      `Redesign everything else and do not reuse Image 1's look or composition: recompose the screen for "${name}"; set the symbol grid inside a large theme-shaped frame structure and add a theme emblem ornament at the top (pure graphics, no lettering); panels and buttons become theme-shaped sculpted pieces, not rounded rectangles; borders, dividers and ornament structures are designed for the theme; the background is a new deep theme scene.`,
-      `Characters are original new characters created for "${name}", not the people in Image 1: new faces, features, skin tone, hair, build, age and gender mix, and a cast size that suits the theme; no face from Image 1 may appear. Their poses, actions, placement, facing and the character-area composition must clearly differ from Image 1 (never a row of people standing side by side; e.g. one large hero in the foreground with supporting figures, characters leaping out of the scene, casting, wielding weapons). They are striking, heroic and part of the scene. Every symbol is a distinctive theme object; letters and numbers are crafted in theme materials.`,
+      `Design a completely new game UI screen from zero in the theme "${name}"${description ? `: ${description}` : ''}.`,
+      `Function list of the screen (it decides only which functions, counts and words exist, never the look):\n${list}`,
+      'Regions follow the list from top to bottom with about the listed share of the height; the symbol grid has exactly the listed symbols per row and number of rows (count them); the character area is its own region, characters never fill the grid; every button, info bar and value in the list is present.',
+      keepText ? 'Write on the screen only the quoted words and numbers from the list, copied exactly; never write region names, notes or bracketed remarks; a button marked as icon-only gets an icon and no words.' : 'Write numbers and button labels from the list; titles and decorative words may be rewritten for the theme; never write region names or notes.',
+      `Composition, the grid frame, panel and button shapes, characters and their poses are all designed for "${name}": the grid sits inside a large theme-shaped frame, a theme emblem without lettering at the top, panels and buttons are thick sculpted theme pieces, not rounded rectangles; characters are original, charismatic, in dynamic poses inside a deep theme scene; every symbol is a distinctive theme object.`,
       'Quality: top-tier mobile game key art: saturated, high-contrast, rich vivid colour, dramatic lighting with rim light, real reflections on gems, metal and jade, polished finish, high detail, sharp focus, clean readable controls. Never dull, washed-out or flat.',
-      anchored ? `Image 2 is a finished screen from this same "${name}" set: match its art style, palette, materials, frames, buttons and symbol designs.` : '',
+      anchored ? `Image 1 is another finished screen of this same "${name}" set: match its art style, palette, materials, frames, buttons and symbol designs, but follow this list for functions and layout.` : '',
       extra ? `Additional request from the user (follow it): ${extra}` : '',
     ].filter(Boolean).join('\n')
+  }
+
+  // The function list comes from 小桃's selected online brain (default 豆包), billed by text use.
+  async function readInventory(screen, signal) {
+    const api = root.electronAPI, controller = root.NovaFlowXiaotaoArtAgent?.panel?.controller
+    const selected = controller?.businessModelSnapshot?.()
+    if (typeof api?.promptAssistantDescribeArtStyle !== 'function' || typeof controller?.onlineBusinessUi !== 'function') throw new Error('读图功能未就绪，请刷新页面后重试')
+    if (!selected || selected.provider !== 'api') throw new Error('重新设计要先读懂界面：请在小桃里选择一个在线模型（默认豆包），再点生成')
+    const result = await api.promptAssistantDescribeArtStyle({
+      requestId: root.crypto.randomUUID(), name: String(screen.name || 'screen.png').slice(0, 120), purpose: 'ui-inventory', dataUrl: screen.dataUrl,
+      assistantSelectionScope: 'xiaotao', assistantProvider: 'api', assistantModelId: selected.modelId, assistantSelectionEpoch: selected.epoch,
+      signal, isInputCurrent: () => !signal.aborted, ...controller.onlineBusinessUi(selected.modelId), onBillingNotice: () => true,
+    })
+    if (!result?.ok || !text(result.inventory)) throw new Error(text(result?.error) || '界面读取失败，未生成')
+    return text(result.inventory)
   }
 
   async function imageSize(dataUrl) {
@@ -117,14 +136,19 @@
     const provider = root.NovaFlowArtGenerateModels?.normalizeProvider?.(state.provider) || 'local'
     const natural = screen.width && screen.height ? { width: screen.width, height: screen.height } : await imageSize(screen.dataUrl)
     const size = outputSize(provider, natural.width, natural.height)
+    // 只换皮 edits the screen itself; 重新设计 draws from the function list, with only a finished
+    // screen of the same theme (when there is one) as the picture to match.
+    const references = keepLayout
+      ? [{ id: screen.id || 'ui-theme-screen', name: screen.name || '界面.png', dataUrl: screen.dataUrl, width: natural.width, height: natural.height, role: 'layout' },
+        ...(anchor ? [{ id: 'ui-theme-anchor', name: '同主题成品.png', dataUrl: anchor, role: 'style' }] : [])]
+      : anchor ? [{ id: 'ui-theme-anchor', name: '同主题成品.png', dataUrl: anchor, role: 'style' }] : []
+    const mode = references.length ? 'img2img' : 'txt2img'
     Object.assign(state, {
-      mode: 'img2img', provider, count: 1, nsfw: false, negativePrompt: '', width: size.width, height: size.height,
-      gptQualityImg2img: 'high', gptSize: 'Custom', gptCustomWidth: size.width, gptCustomHeight: size.height,
+      mode, provider, count: 1, nsfw: false, negativePrompt: '', width: size.width, height: size.height,
+      gptQualityImg2img: 'high', gptQualityTxt2img: 'high', gptSize: 'Custom', gptCustomWidth: size.width, gptCustomHeight: size.height,
       localEditStrength: 'enhanced', uiPreserveLayout: keepLayout, uiLayoutMode: keepLayout ? 'preserve' : 'reflow', uiRunIntent: 'redesign',
     })
-    state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.(provider, 'img2img', state)?.engine || state.localDrawEngine || ''
-    const references = [{ id: screen.id || 'ui-theme-screen', name: screen.name || '界面.png', dataUrl: screen.dataUrl, width: natural.width, height: natural.height, role: 'layout' }]
-    if (anchor) references.push({ id: 'ui-theme-anchor', name: '同主题成品.png', dataUrl: anchor, role: 'style' })
+    state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.(provider, mode, state)?.engine || state.localDrawEngine || ''
     return { uiThemeSwitch: true, promptOwnsReferenceRoles: true, state, references, originalPrompt: prompt, optimizedPrompt: prompt, promptSnapshot: { prompt, negativePrompt: '' } }
   }
 
@@ -143,13 +167,20 @@
     if (rt.state.running) throw new Error('已有生图正在进行，请稍候')
     const total = screens.length * themes.length
     let done = 0, failed = 0
+    const inventories = new Map()
+    if (!keepLayout) for (const screen of screens) {
+      if (signal.aborted) return { done, failed, total, stopped: true }
+      onProgress?.(`正在读取界面 ${inventories.size + 1}/${screens.length}`)
+      try { inventories.set(screen, await readInventory(screen, signal)) }
+      catch (error) { return { done, failed, total, stopped: true, error: text(error?.message || error) } }
+    }
     for (const theme of themes) {
       let anchor = ''
       for (const screen of screens) {
         if (signal.aborted) return { done, failed, total, stopped: true }
         onProgress?.(`${theme.name} · 第 ${done + failed + 1}/${total} 张`)
         const provider = root.NovaFlowArtGenerateModels?.normalizeProvider?.(rt.captureContext().state.provider) || "local"
-        const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider })
+        const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen) })
         const uiPrepared = await preparedFor(rt, { screen, anchor, prompt, keepLayout })
         const before = rt.selectedResult?.()?.id || ''
         await rt.run({ uiPrepared })
@@ -187,7 +218,7 @@
     const body = make('div', '', { class: 'nf-panel-body' }); Object.assign(body.style, accordion.bodyStyle(false))
     panel.append(header, body)
 
-    const hint = make('div', '添加一张或多张界面图，选几个主题，一次生成全部。同一主题的多张界面画风统一。'); Object.assign(hint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
+    const hint = make('div', '添加一张或多张界面图，选几个主题，一次生成全部。默认按主题从零重新设计（由小桃所选在线模型先读出界面功能）；同一主题的多张界面画风统一。'); Object.assign(hint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
     const chips = make('div', '', { 'data-foart-ui-theme-chips': '1' }); Object.assign(chips.style, { display: 'flex', flexWrap: 'wrap', gap: '6px' })
     const editor = make('div', '', { 'data-foart-ui-theme-editor': '1' }); Object.assign(editor.style, { display: 'none', gap: '8px' })
     const customRow = make('div'); Object.assign(customRow.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })
@@ -319,5 +350,5 @@
     return { sync, destroy() { destroyed = true; busy?.abort(); leftHost.removeEventListener('click', onOtherPanel, true); panel.remove() } }
   }
 
-  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, buildPrompt, outputSize, runBatch, mount })
+  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, buildPrompt, outputSize, readInventory, runBatch, mount })
 })(typeof window !== 'undefined' ? window : globalThis)
