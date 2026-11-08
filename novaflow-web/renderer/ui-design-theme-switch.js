@@ -184,10 +184,6 @@
     return editorLayout(rt)
   }
 
-  function gridOf(inventory) {
-    const match = /横向每行\s*(\d{1,2})\s*个[^纵]{0,8}纵向共?\s*(\d{1,2})\s*行/.exec(text(inventory))
-    return match ? { cols: Number(match[1]), rows: Number(match[2]) } : null
-  }
   // The function list comes from 小桃's selected online brain (default 豆包), billed by text use.
   async function readInventory(screen, signal) {
     const api = root.electronAPI, controller = root.NovaFlowXiaotaoArtAgent?.panel?.controller
@@ -211,7 +207,8 @@
       image.src = dataUrl
     })
   }
-  // GPT reads the size as an aspect ratio plus a 2K tier; a local run keeps a size it can draw.
+  // GPT reads the size as an aspect ratio plus a 2K tier. The local engine stays at 1536: at 2048
+  // it repeated grid rows and crowded out the character area (2026-11-08 A/B).
   function outputSize(provider, width, height) {
     const longEdge = provider === 'gpt' ? 2048 : 1536
     const scale = longEdge / Math.max(width, height)
@@ -284,23 +281,13 @@
         if (!sketch && plan) sketch = drawSketch(plan, sketchSize.width, sketchSize.height)
         const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen), sketched: Boolean(sketch) })
         const uiPrepared = await preparedFor(rt, { screen, anchor, prompt, keepLayout, sketch })
-        const wanted = gridOf(inventories.get(screen))
-        let result = null
-        // 小桃 checks its own work: a result whose grid does not match the source is read
-        // back and redrawn once, so nobody has to fix boxes by hand.
-        for (let attempt = 0; attempt < 2 && !signal.aborted; attempt++) {
-          const before = rt.selectedResult?.()?.id || ''
-          await rt.run({ uiPrepared })
-          await waitIdle(rt, signal)
-          const current = rt.selectedResult?.()
-          result = current && current.id !== before && (current.imageUrl || current.dataUrl) ? current : null
-          if (!result || keepLayout || !wanted || attempt) break
-          onProgress?.(`${theme.name} · 正在检查成品`)
-          let got = null
-          try { got = gridOf(await readInventory({ name: 'result.png', dataUrl: await asDataUrl(result.imageUrl || result.dataUrl) }, signal)) } catch { break }
-          if (!got || (got.cols === wanted.cols && got.rows === wanted.rows)) break
-          onProgress?.(`${theme.name} · 格子数不对（${got.cols}×${got.rows}），自动重画`)
-        }
+        // The first version has to look good; small slips are left for the user to touch up,
+        // so a result is never redrawn automatically (Dylan, 2026-11-08).
+        const before = rt.selectedResult?.()?.id || ''
+        await rt.run({ uiPrepared })
+        await waitIdle(rt, signal)
+        const current = rt.selectedResult?.()
+        const result = current && current.id !== before && (current.imageUrl || current.dataUrl) ? current : null
         if (result) {
           done += 1
           if (!anchor && screens.length > 1) anchor = await asDataUrl(result.imageUrl || result.dataUrl)
