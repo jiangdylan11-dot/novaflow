@@ -74,20 +74,20 @@
   function redesignPrompt({ name, description, keepText, extra, anchored, provider }) {
     if (provider === 'local') return [
       `以图1为功能参考，按「${name}」主题重新设计一整套全新的游戏界面${description ? `（${description}）` : ''}。这是重新设计，不是换皮。`,
-      '只保留功能：符号盘的列数和行数、人物数量、每一个按钮和功能条都还在，画布比例不变。',
+      '只保留功能：符号盘的列数和行数与图1完全相同（逐行逐列数清楚，一行都不能少），每一个按钮和功能条都还在，画布比例不变。',
       keepText ? '所有文字和数字逐字保留，但字体、字牌和摆放方式按主题重新设计。' : '数字和按钮文字保留，标题和装饰文字可按主题改写。',
-      `其余全部重新设计，不要沿用图1的外观和版式：整体构图按「${name}」重新编排；符号盘装进主题造型的大框体（如神殿门框、仙山云台、糖果城墙），顶部加入主题标题徽标；面板和按钮做成主题造型的异形结构，不再是矩形圆角块；边框、分隔和装饰结构全部按主题设计；背景是全新的、有纵深的主题场景。`,
-      `人物按「${name}」重新创作，造型、服装、姿态和站位都可以重新设计，要更有气势并融入场景；每个符号都是独特的主题物件，字母和数字用主题材质制作。`,
+      `其余全部重新设计，不要沿用图1的外观和版式：整体构图按「${name}」重新编排；符号盘装进主题造型的大框体（如神殿门框、仙山云台、糖果城墙），顶部加入不带文字的主题徽记装饰（只用图形，不写任何字）；面板和按钮做成主题造型的异形结构，不再是矩形圆角块；边框、分隔和装饰结构全部按主题设计；背景是全新的、有纵深的主题场景。`,
+      `人物是为「${name}」全新创作的原创角色，不是图1里的人：脸型、五官、肤色、发型、体型、年龄、性别搭配和人数都按主题重新设计，不得出现图1人物的脸，符号格里的人物头像也要换成新角色；造型夸张有魅力，姿态有气势并融入场景（如仙侠的剑仙与仙女、埃及的法老与艳后、糖果乐园的糖果精灵）。每个符号都是独特的主题物件，字母和数字用主题材质制作。`,
       '成品是顶级手游的高品质主视觉：高饱和、强对比、色彩鲜艳浓郁，戏剧性的光影和轮廓光，宝石、金属、玉石等材质有真实反光，精修收尾，细节丰富，画面锐利，控件清晰易读。不要灰暗、不要素淡、不要平涂。',
       anchored ? `图2是同一套「${name}」主题已完成的界面：画风、配色、材质、框体、按钮和符号设计与图2保持一致。` : '',
       extra ? `用户补充要求：${extra}` : '',
     ].filter(Boolean).join('\n')
     return [
       `Use Image 1 only as a functional reference and design a completely new game UI screen in the theme "${name}"${description ? `: ${description}` : ''}. This is a redesign, not a reskin.`,
-      'Keep only the function: the same symbol grid columns and rows, the same number of characters, every button and every info bar still present, the same canvas aspect ratio.',
+      'Keep only the function: exactly the same symbol grid columns and rows as Image 1 (count them, no row may be lost), every button and every info bar still present, the same canvas aspect ratio.',
       keepText ? 'Keep every word and number exactly, but redesign the lettering, plaques and placement for the theme.' : 'Keep numbers and button labels; titles and decorative words may be rewritten for the theme.',
-      `Redesign everything else and do not reuse Image 1's look or composition: recompose the screen for "${name}"; set the symbol grid inside a large theme-shaped frame structure and add a theme title logo at the top; panels and buttons become theme-shaped sculpted pieces, not rounded rectangles; borders, dividers and ornament structures are designed for the theme; the background is a new deep theme scene.`,
-      `Characters are newly created for "${name}" with new costume, pose and placement that feel heroic and part of the scene; every symbol is a distinctive theme object; letters and numbers are crafted in theme materials.`,
+      `Redesign everything else and do not reuse Image 1's look or composition: recompose the screen for "${name}"; set the symbol grid inside a large theme-shaped frame structure and add a theme emblem ornament at the top (pure graphics, no lettering); panels and buttons become theme-shaped sculpted pieces, not rounded rectangles; borders, dividers and ornament structures are designed for the theme; the background is a new deep theme scene.`,
+      `Characters are original new characters created for "${name}", not the people in Image 1: new faces, features, skin tone, hair, build, age and gender mix, and a cast size that suits the theme; no face from Image 1 may appear. They are striking, heroic and part of the scene. Every symbol is a distinctive theme object; letters and numbers are crafted in theme materials.`,
       'Quality: top-tier mobile game key art: saturated, high-contrast, rich vivid colour, dramatic lighting with rim light, real reflections on gems, metal and jade, polished finish, high detail, sharp focus, clean readable controls. Never dull, washed-out or flat.',
       anchored ? `Image 2 is a finished screen from this same "${name}" set: match its art style, palette, materials, frames, buttons and symbol designs.` : '',
       extra ? `Additional request from the user (follow it): ${extra}` : '',
