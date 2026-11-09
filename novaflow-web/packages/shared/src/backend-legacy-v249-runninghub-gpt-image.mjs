@@ -55,6 +55,10 @@ const SIZE_PRESETS = Object.freeze({
   '2160x3840': { aspectRatio: '9:16', resolution: '4k' }
 });
 
+// The 2.5 image-to-image endpoint only accepts these ratios; anything else is
+// refused with business code 1007 before a task exists.
+export const I2I_25_ASPECT_RATIOS = Object.freeze(['1:1', '2:3', '3:2', '4:5', '5:4', '4:3', '3:4', '16:9', '9:16', '21:9']);
+
 const ENDPOINT_PATH = /^\/openapi\/v2\/[a-zA-Z0-9_./-]+$/;
 const RELEASE_CODES = ['invalid_prompt', 'content_policy_violation', 'content_policy', 'content_filter', 'moderation_rejected', 'moderation', 'sensitive_content', 'sensitive'];
 const MISSING_ENDPOINT_MESSAGE = '出图接口不存在（1001），本次未扣积分';
@@ -300,11 +304,11 @@ export function formatChargedRemaining(charged, remaining) {
   return `${spentText}，剩余 ${left}`;
 }
 
-function closestAspect(width, height) {
+function closestAspect(width, height, choices = ASPECT_RATIOS) {
   const ratio = Math.max(1, width) / Math.max(1, height);
   let best = '1:1';
   let bestDelta = Infinity;
-  for (const item of ASPECT_RATIOS) {
+  for (const item of choices) {
     const [w, h] = item.split(':').map(Number);
     const delta = Math.abs(Math.log(ratio) - Math.log(w / h));
     if (delta < bestDelta) {
@@ -344,9 +348,14 @@ export function mapGptImageParams({ mode = 'txt2img', prompt, settings = {}, ima
   if (refs.length > limit) {
     throw Object.assign(new Error(`当前模型最多 ${limit} 张参考图，请先移除多余图片`), { statusCode: 400 });
   }
+  let aspectRatio = mapped.aspectRatio;
+  if (normalizedMode === 'img2img' && path.includes('/rhart-image-g-2.5/') && !I2I_25_ASPECT_RATIOS.includes(aspectRatio)) {
+    const [w, h] = String(aspectRatio).split(':').map(Number);
+    aspectRatio = w > 0 && h > 0 ? closestAspect(w, h, I2I_25_ASPECT_RATIOS) : '1:1';
+  }
   const body = {
     prompt: text,
-    aspectRatio: mapped.aspectRatio,
+    aspectRatio,
     resolution: mapped.resolution,
     quality: mapped.quality
   };
@@ -392,7 +401,12 @@ export function describeImageFailure(httpStatus, data) {
 
 function imageError(httpStatus, data) {
   const described = describeImageFailure(httpStatus, data);
-  return Object.assign(new Error(described.message), {
+  const business = businessErrorCode(data);
+  // Keep the provider code visible; a bare generic message hid every cause behind "云端出图未完成".
+  const message = business > 0 && described.message === '在线模型未完成请求'
+    ? `云端出图未完成（RunningHub ${business}），本次未扣积分`
+    : described.message;
+  return Object.assign(new Error(message), {
     statusCode: described.statusCode,
     moderation: described.moderation === true,
     retryable: described.retryable === true,

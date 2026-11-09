@@ -358,3 +358,38 @@ test('an empty taskId with no fallback left releases the hold and says so in Chi
     ['release', 'gpt_image_2_official', 1]
   ]);
 });
+
+test('image-to-image on the 2.5 endpoint only sends ratios that endpoint accepts', () => {
+  const tall = { customWidth: 512, customHeight: 1024 };
+  const edit = mapGptImageParams({ mode: 'img2img', prompt: '换背景', images: ['https://cdn.example/in.png'], settings: tall });
+  assert.equal(edit.endpoint, DEFAULT_GPT_IMAGE_I2I_ENDPOINT);
+  assert.equal(edit.body.aspectRatio, '9:16');
+  const wide = mapGptImageParams({ mode: 'img2img', prompt: '换背景', images: ['https://cdn.example/in.png'], settings: { customWidth: 1536, customHeight: 512 } });
+  assert.equal(wide.body.aspectRatio, '21:9');
+  const kept = mapGptImageParams({ mode: 'img2img', prompt: '换背景', images: ['https://cdn.example/in.png'], settings: { size: '1024x1536' } });
+  assert.equal(kept.body.aspectRatio, '2:3');
+  const text = mapGptImageParams({ mode: 'txt2img', prompt: '夜景', settings: tall });
+  assert.equal(text.body.aspectRatio, '1:2');
+});
+
+test('a refused image-to-image submit names the provider code and charges nothing', async () => {
+  const cfg = config('');
+  let submitted;
+  const fetchImpl = async (url, init) => {
+    if (String(url).includes(DEFAULT_GPT_IMAGE_I2I_ENDPOINT)) {
+      submitted = JSON.parse(init.body);
+      return { ok: true, status: 200, json: async () => ({ taskId: '', status: '', errorCode: '1007', errorMessage: 'field aspectRatio not allowed' }) };
+    }
+    throw new Error('unexpected ' + url);
+  };
+  const { charge, events } = chargeProbe();
+  await assert.rejects(
+    runChargedGptImage({
+      charge, config: cfg, fetchImpl, sleep: async () => {},
+      request: { userId: 'user-1', usageKey: 'img-1007', count: 1, mode: 'img2img', prompt: '夜景', images: ['https://cdn.example/in.png'], settings: { customWidth: 512, customHeight: 1024 } }
+    }),
+    (error) => /RunningHub 1007/.test(error.message) && /出图/.test(error.message)
+  );
+  assert.equal(submitted.aspectRatio, '9:16');
+  assert.deepEqual(events.map((item) => item[0]), ['reserve', 'release']);
+});
