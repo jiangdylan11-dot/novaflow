@@ -322,6 +322,28 @@
     return { uiThemeSwitch: true, promptOwnsReferenceRoles: true, state, references, originalPrompt: prompt, optimizedPrompt: prompt, promptSnapshot: { prompt, negativePrompt: state.negativePrompt || '' } }
   }
 
+  // Second local pass: the first picture is redrawn at 2K with full edit strength, same layout,
+  // finer materials and light. Faithful strength only copied the picture; enhanced strength
+  // added engraving, layered frames and real glass (A/B 2026-11-10). Roughly doubles the time.
+  const LOCAL_REFINE_LONG_EDGE = 2048
+  function refinePrompt(themeName) {
+    return `把图1这张「${themeName}」主题的游戏界面重画成顶级手游的精修成稿：布局、每个格子的内容、人物的位置和姿势、所有文字和数字保持一致，不增减元素；但材质、光影和细节全部重新精细绘制——金属拉丝与錾刻高光、宝石玉石通透折射、织物石木纹理、统一主光源与轮廓光、柔和内发光与投影、锐利干净的边缘、丰富细节、鲜艳统一的色彩，文字笔画清晰。`
+  }
+  async function refinePrepared(rt, { themeName, dataUrl, width, height }) {
+    const source = rt.captureContext().state
+    const state = copy(Object.fromEntries(STATE_KEYS.filter(key => source[key] !== undefined).map(key => [key, source[key]])))
+    const scale = LOCAL_REFINE_LONG_EDGE / Math.max(width, height), snap = value => Math.max(256, Math.round(value * scale / 16) * 16)
+    Object.assign(state, {
+      mode: 'img2img', provider: 'local', count: 1, nsfw: false, width: snap(width), height: snap(height),
+      negativePrompt: LOCAL_THEME_NEGATIVE + '，改变布局', localEditStrength: 'enhanced',
+      samplingOverrides: { ...(state.samplingOverrides || {}), 'qwen-2.1-turbo:img2img': { cfg: LOCAL_THEME_CFG } },
+      uiPreserveLayout: true, uiLayoutMode: 'preserve', uiRunIntent: 'redesign',
+    })
+    state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.('local', 'img2img', state)?.engine || state.localDrawEngine || ''
+    const prompt = refinePrompt(themeName)
+    return { uiThemeSwitch: true, uiThemeRefine: true, promptOwnsReferenceRoles: true, state, references: [{ id: 'ui-theme-draft', name: '初稿.png', dataUrl, width, height, role: 'layout' }], originalPrompt: prompt, optimizedPrompt: prompt, promptSnapshot: { prompt, negativePrompt: state.negativePrompt } }
+  }
+
   async function waitIdle(rt, signal) {
     while (rt.state.running) {
       if (signal.aborted) return
@@ -390,7 +412,19 @@
         await rt.run({ uiPrepared })
         await waitIdle(rt, signal)
         const current = rt.selectedResult?.()
-        const result = current && current.id !== before && (current.imageUrl || current.dataUrl) ? current : null
+        let result = current && current.id !== before && (current.imageUrl || current.dataUrl) ? current : null
+        if (result && provider === 'local' && !keepLayout && !signal.aborted) {
+          onProgress?.(`${theme.name} · 精修中`)
+          try {
+            const draft = await asDataUrl(result.imageUrl || result.dataUrl)
+            const size = await imageSize(draft)
+            const refinedBefore = result.id
+            await rt.run({ uiPrepared: await refinePrepared(rt, { themeName: theme.name, dataUrl: draft, width: size.width, height: size.height }) })
+            await waitIdle(rt, signal)
+            const refined = rt.selectedResult?.()
+            if (refined && refined.id !== refinedBefore && (refined.imageUrl || refined.dataUrl)) result = refined
+          } catch { /* the first pass stands */ }
+        }
         if (result) {
           done += 1
           if (!anchor && screens.length > 1) anchor = await asDataUrl(result.imageUrl || result.dataUrl)
@@ -558,5 +592,5 @@
     return { sync, destroy() { destroyed = true; busy?.abort(); leftHost.removeEventListener('click', onOtherPanel, true); panel.remove() } }
   }
 
-  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, ARRANGEMENTS, buildPrompt, outputSize, sketchPlan, sketchBlocks, drawSketch, readInventory, runBatch, mount })
+  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, ARRANGEMENTS, buildPrompt, refinePrompt, outputSize, sketchPlan, sketchBlocks, drawSketch, readInventory, runBatch, mount })
 })(typeof window !== 'undefined' ? window : globalThis)
