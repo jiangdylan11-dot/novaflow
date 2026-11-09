@@ -293,6 +293,10 @@
     return { width: snap(width), height: snap(height) }
   }
 
+  // Local runs: CFG 2.5 with a negative prompt was the one knob that lifted finish without
+  // breaking the layout (A/B 2026-11-09: 2048 px broke grids, CFG 1 stayed flat).
+  const LOCAL_THEME_CFG = 2.5
+  const LOCAL_THEME_NEGATIVE = '模糊，脏污，灰暗，平涂，塑料感，扭曲，错位，多余的格子，多余的边框，文字乱码'
   const STATE_KEYS = ['mode', 'provider', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'localTextQuality', 'localEditStrength', 'localQwen21Variant', 'localDrawEngine', 'googleResolution']
   async function preparedFor(rt, { screen, anchor, prompt, keepLayout = false, sketch = '' }) {
     const context = rt.captureContext(), source = context.state
@@ -309,12 +313,13 @@
         ...(anchor ? [{ id: 'ui-theme-anchor', name: '同主题成品.png', dataUrl: anchor, role: 'style' }] : [])]
     const mode = references.length ? 'img2img' : 'txt2img'
     Object.assign(state, {
-      mode, provider, count: 1, nsfw: false, negativePrompt: '', width: size.width, height: size.height,
+      mode, provider, count: 1, nsfw: false, negativePrompt: provider === 'local' ? LOCAL_THEME_NEGATIVE : '', width: size.width, height: size.height,
+      ...(provider === 'local' ? { samplingOverrides: { ...(state.samplingOverrides || {}), 'qwen-2.1-turbo:img2img': { cfg: LOCAL_THEME_CFG }, 'qwen-2.1-turbo:txt2img': { cfg: LOCAL_THEME_CFG } } } : {}),
       gptQualityImg2img: 'high', gptQualityTxt2img: 'high', gptSize: 'Custom', gptCustomWidth: size.width, gptCustomHeight: size.height,
       localEditStrength: 'enhanced', uiPreserveLayout: keepLayout, uiLayoutMode: keepLayout ? 'preserve' : 'reflow', uiRunIntent: 'redesign',
     })
     state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.(provider, mode, state)?.engine || state.localDrawEngine || ''
-    return { uiThemeSwitch: true, promptOwnsReferenceRoles: true, state, references, originalPrompt: prompt, optimizedPrompt: prompt, promptSnapshot: { prompt, negativePrompt: '' } }
+    return { uiThemeSwitch: true, promptOwnsReferenceRoles: true, state, references, originalPrompt: prompt, optimizedPrompt: prompt, promptSnapshot: { prompt, negativePrompt: state.negativePrompt || '' } }
   }
 
   async function waitIdle(rt, signal) {
