@@ -110,12 +110,12 @@
       `界面功能清单（只决定有哪些功能、数量和文字，不决定外观）：\n${list}`,
       arrangement
         ? `${arrangement.zh}清单只决定有哪些功能、数量和文字，方括号里的原图位置不用照搬；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格的每行个数和行数仍按清单。' : '画面里不要出现清单之外的格子、背包格或物品网格。'}`
-        : `各区域的位置和大小按清单方括号里的原图位置；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）。' : ''}${hasCast ? '角色区是一整块连续的场景画面，画完整的角色立绘，绝不分成格子或头像框。' : ''}`,
+        : `各区域的位置和大小按清单方括号里的原图位置；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）。' : ''}${hasCast ? '角色直接站在背景场景里，画完整的角色立绘，角色区不加边框、不做面板，也绝不分成格子或头像框；整屏只有功能区有框。' : ''}`,
       keepText ? '只把清单中引号里的原文文字和数字写进画面，逐字照抄；区域名、说明和括号里的注释不要写进画面；标为“图标，无文字”的按钮只画图标。' : '数字和按钮文字按清单写；标题和装饰文字可按主题改写；区域名和注释不要写进画面。',
       '清单里标【显示】的信息条、数值框、公告栏画成嵌在面板里的扁平显示区（凹槽、铭牌或横幅），不能画成按钮；只有标【按钮】的才画成可点击、有厚度和高光的按钮；【按钮】【显示】只是类型标注，不要写进画面。',
       `整屏构图、面板与按钮造型${hasCast ? '、角色设定和姿态' : ''}全部根据「${name}」主题创作：面板和按钮是有厚度的主题异形雕刻件，不是矩形圆角块，边框和装饰结构按主题设计${hasGrid ? '；网格装进主题造型的大框体，每个格子里的符号都是独特的主题物件' : ''}；${hasCast ? '角色是为主题原创、有魅力的人物，动态姿势，' : ''}融入有纵深的主题场景。`,
       ...QUALITY_ZH,
-      sketched ? '图1是灰色布局草图：只按它的区块位置、大小、格子行列数和按钮个数排版，灰色块只是占位，最终画面里不能出现灰色块，全部画成完整的主题美术。' : '',
+      sketched ? '图1是灰色布局草图：只按它的区块位置、大小、格子行列数和按钮个数排版，块里的白字就是该处要写的原文；人形剪影处画完整的角色立绘，站在开阔的背景场景里，不加框、不做面板、不画格子。灰色块只是占位，最终画面里不能出现灰色块，全部画成完整的主题美术。' : '',
       anchored ? `图${style}是同一套「${name}」主题已完成的另一张界面：画风、配色、材质、框体和按钮设计与它保持一致，但功能和布局按本清单，不照搬它的布局。` : '',
       extra ? `用户补充要求：${extra}` : '',
     ].filter(Boolean).join('\n')
@@ -124,12 +124,12 @@
       `Function list of the screen (it decides only which functions, counts and words exist, never the look):\n${list}`,
       arrangement
         ? `${arrangement.en} The list decides only which functions, counts and words exist; ignore the source positions in square brackets; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids keep the listed per-row count and rows.' : ' No grid, inventory slots or item board that the list does not name.'}`
-        : `Regions take the positions and sizes in the square brackets of the list; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids have exactly the listed per-row count and rows (count them).' : ''}${hasCast ? ' The character area is one continuous scene with full character art, never split into cells or portrait frames.' : ''}`,
+        : `Regions take the positions and sizes in the square brackets of the list; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids have exactly the listed per-row count and rows (count them).' : ''}${hasCast ? ' Characters stand directly in the background scene as full character art; their area has no frame or panel and is never split into cells or portrait frames; only the functional areas are framed.' : ''}`,
       keepText ? 'Write on the screen only the quoted words and numbers from the list, copied exactly; never write region names, notes or bracketed remarks; a button marked as icon-only gets an icon and no words.' : 'Write numbers and button labels from the list; titles and decorative words may be rewritten for the theme; never write region names or notes.',
       'Items tagged 【显示】 (info bars, value boxes, notice banners) are flat read-outs set into the panel (recessed slots, plaques or banners), never buttons; only items tagged 【按钮】 are clickable buttons with thickness and highlights; the tags themselves are never written on the screen.',
       `Composition, panel and button shapes${hasCast ? ', characters and their poses' : ''} are all designed for "${name}": panels and buttons are thick sculpted theme pieces, not rounded rectangles, with borders and ornament structures of the theme${hasGrid ? '; the grid sits inside a large theme-shaped frame and every cell holds a distinctive theme object' : ''}; ${hasCast ? 'characters are original, charismatic, in dynamic poses, ' : ''}inside a deep theme scene.`,
       ...QUALITY_EN,
-      sketched ? 'Image 1 is a grey layout sketch: place regions, sizes, grid rows and columns and button counts exactly as it shows; the grey boxes are placeholders only and must all become finished theme art, no grey box may remain.' : '',
+      sketched ? 'Image 1 is a grey layout sketch: place regions, sizes, grid rows and columns and button counts exactly as it shows; the white words in a box are the text that goes there; the figure silhouettes mark where full characters stand in an open background scene, with no frame, panel or cells there. The grey boxes are placeholders only and must all become finished theme art, no grey box may remain.' : '',
       anchored ? `Image ${style} is another finished screen of this same "${name}" set: match its art style, palette, materials, frames and buttons, but follow this list for functions and layout.` : '',
       extra ? `Additional request from the user (follow it): ${extra}` : '',
     ].filter(Boolean).join('\n')
@@ -198,12 +198,28 @@
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = '#7a7a7a'; ctx.fillRect(0, 0, width, height)
     for (const block of blocks) {
-      ctx.fillStyle = /角色/.test(block.name) ? '#868686' : /不是按钮/.test(block.purpose) ? '#636363' : '#a8a8a8'; ctx.beginPath()
+      // Characters stand in the open scene: a panel drawn for them came back as a second frame,
+      // and an empty area came back filled with more grid cells. Simple figure silhouettes say
+      // "people stand here" without a frame. 布局编辑 blocks carry the name only in purpose.
+      const label = `${block.name || ''} ${block.purpose || ''}`
+      if (/角色区|人物区|立绘|个角色|主角/.test(label)) {
+        const count = Math.max(1, Math.min(6, Number((/(\d)\s*个角色/.exec(label) || [])[1]) || 1))
+        const slot = block.width / count, figureH = block.height * .92, headR = Math.min(slot * .18, figureH * .09)
+        ctx.fillStyle = '#8e8e8e'
+        for (let k = 0; k < count; k++) {
+          const cx = block.x + slot * (k + .5), top = block.y + block.height - figureH
+          ctx.beginPath(); ctx.arc(cx, top + headR, headR, 0, Math.PI * 2); ctx.fill()
+          const bodyW = Math.min(slot * .62, headR * 4.2), bodyTop = top + headR * 2.2
+          ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx - bodyW / 2, bodyTop, bodyW, block.y + block.height - bodyTop, headR) : ctx.rect(cx - bodyW / 2, bodyTop, bodyW, block.y + block.height - bodyTop); ctx.fill()
+        }
+        continue
+      }
+      ctx.fillStyle = /不是按钮/.test(block.purpose) ? '#636363' : '#a8a8a8'; ctx.beginPath()
       ctx.roundRect ? ctx.roundRect(block.x, block.y, block.width, block.height, Math.min(block.width, block.height) * .12) : ctx.rect(block.x, block.y, block.width, block.height); ctx.fill()
       // The block's own words are written into it, so the picture model copies them instead
       // of guessing what a blank box says (blank boxes came out as garbled text).
       const words = [...String(block.purpose || '').matchAll(/“([^”]{1,40})”/g)].map(match => match[1]).join(' ')
-      if (!words || /角色/.test(block.name)) continue
+      if (!words) continue
       let size = Math.max(10, Math.min(block.height * .42, block.width * .9 / Math.max(2, words.length * .62)))
       ctx.font = `bold ${Math.round(size)}px sans-serif`
       while (size > 10 && ctx.measureText(words).width > block.width * .88) { size -= 1; ctx.font = `bold ${Math.round(size)}px sans-serif` }
