@@ -25,9 +25,10 @@ test('a theme without a name is refused', () => {
   assert.throws(() => api.buildPrompt({ theme: { name: ' ' } }), /请选择主题/);
 });
 
-test('output keeps the screen aspect ratio: 2K long edge online, 1536 local, multiples of 16', () => {
+test('output keeps the screen aspect ratio: 2K long edge, 1536 for a layout-locked local run, multiples of 16', () => {
   assert.deepEqual(api.outputSize('gpt', 1512, 3276), { width: 944, height: 2048 });
-  const local = api.outputSize('local', 1920, 1080);
+  assert.equal(api.outputSize('local', 1920, 1080).width, 2048);
+  const local = api.outputSize('local', 1920, 1080, true);
   assert.equal(local.width, 1536);
   assert.equal(local.height % 16, 0);
 });
