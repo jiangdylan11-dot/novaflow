@@ -108,6 +108,7 @@
         ? `${arrangement.zh}清单只决定有哪些功能、数量和文字，方括号里的原图位置不用照搬；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格的每行个数和行数仍按清单。' : '画面里不要出现清单之外的格子、背包格或物品网格。'}`
         : `各区域的位置和大小按清单方括号里的原图位置；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）。' : ''}${hasCast && hasGrid ? '角色区单独存在，角色不要塞进网格。' : ''}`,
       keepText ? '只把清单中引号里的原文文字和数字写进画面，逐字照抄；区域名、说明和括号里的注释不要写进画面；标为“图标，无文字”的按钮只画图标。' : '数字和按钮文字按清单写；标题和装饰文字可按主题改写；区域名和注释不要写进画面。',
+      '清单里标【显示】的信息条、数值框、公告栏画成嵌在面板里的扁平显示区（凹槽、铭牌或横幅），不能画成按钮；只有标【按钮】的才画成可点击、有厚度和高光的按钮；【按钮】【显示】只是类型标注，不要写进画面。',
       `整屏构图、面板与按钮造型${hasCast ? '、角色设定和姿态' : ''}全部根据「${name}」主题创作：面板和按钮是有厚度的主题异形雕刻件，不是矩形圆角块，边框和装饰结构按主题设计${hasGrid ? '；网格装进主题造型的大框体，每个格子里的符号都是独特的主题物件' : ''}；${hasCast ? '角色是为主题原创、有魅力的人物，动态姿势，' : ''}融入有纵深的主题场景。`,
       ...QUALITY_ZH,
       sketched ? '图1是灰色布局草图：只按它的区块位置、大小、格子行列数和按钮个数排版，灰色块只是占位，最终画面里不能出现灰色块，全部画成完整的主题美术。' : '',
@@ -121,6 +122,7 @@
         ? `${arrangement.en} The list decides only which functions, counts and words exist; ignore the source positions in square brackets; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids keep the listed per-row count and rows.' : ' No grid, inventory slots or item board that the list does not name.'}`
         : `Regions take the positions and sizes in the square brackets of the list; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids have exactly the listed per-row count and rows (count them).' : ''}${hasCast && hasGrid ? ' The character area is its own region; characters never fill the grid.' : ''}`,
       keepText ? 'Write on the screen only the quoted words and numbers from the list, copied exactly; never write region names, notes or bracketed remarks; a button marked as icon-only gets an icon and no words.' : 'Write numbers and button labels from the list; titles and decorative words may be rewritten for the theme; never write region names or notes.',
+      'Items tagged 【显示】 (info bars, value boxes, notice banners) are flat read-outs set into the panel (recessed slots, plaques or banners), never buttons; only items tagged 【按钮】 are clickable buttons with thickness and highlights; the tags themselves are never written on the screen.',
       `Composition, panel and button shapes${hasCast ? ', characters and their poses' : ''} are all designed for "${name}": panels and buttons are thick sculpted theme pieces, not rounded rectangles, with borders and ornament structures of the theme${hasGrid ? '; the grid sits inside a large theme-shaped frame and every cell holds a distinctive theme object' : ''}; ${hasCast ? 'characters are original, charismatic, in dynamic poses, ' : ''}inside a deep theme scene.`,
       ...QUALITY_EN,
       sketched ? 'Image 1 is a grey layout sketch: place regions, sizes, grid rows and columns and button counts exactly as it shows; the grey boxes are placeholders only and must all become finished theme art, no grey box may remain.' : '',
@@ -147,7 +149,7 @@
       const grid = /横向每行\s*(\d{1,2})\s*个[^纵]{0,8}纵向共?\s*(\d{1,2})\s*行/.exec(line)
       // Item lists run left to right (a row) or top to bottom (a column of buttons).
       const order = /从左到右/.test(line) ? '从左到右' : /从上到下/.test(line) ? '从上到下' : ''
-      const list = order ? line.split(new RegExp(order + '[为是：:]?'))[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]|”\s*“/).map(item => text(item).replace(/^[“”"]+|[“”"]+$/g, '')).filter(Boolean) : []
+      const list = order ? line.split(new RegExp(order + '[为是：:]?'))[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]|”\s*“|(?=【)/).map(item => text(item).replace(/^[“”"]+|[“”"]+$/g, '')).filter(item => item && !/^【[^】]*】$/.test(item)) : []
       const items = list.length
       const kind = grid ? 'grid' : items > 1 ? (order === '从上到下' ? 'column' : 'row') : /角色区|人物区|立绘|个角色|主角/.test(line) && !/按钮/.test(line) ? 'cast' : 'bar'
       const label = text(line.split(/[（(：:［\[]/)[0]).slice(0, 20) || '区域'
@@ -155,6 +157,9 @@
     }
     return bands.length >= 2 ? bands : null
   }
+  // 【显示】 items are read-outs (balances, banners, notices), never buttons.
+  const isDisplay = item => /【显示】/.test(item || '') || /^(?:显示|信息|数值|公告)/.test(text(item))
+  const itemPurpose = item => { const clean = text(item).replace(/【[^】]*】|[“”"]/g, ''); return isDisplay(item) ? `${clean}（显示框，不是按钮）` : `${clean}（按钮）` }
   // Blocks for 布局编辑: one per grid cell, button and bar, plus the character panel.
   function sketchBlocks(plan, width, height) {
     const total = plan.reduce((sum, band) => sum + band.share, 0), blocks = []
@@ -171,11 +176,11 @@
         for (let r = 0; r < band.rows; r++) for (let c = 0; c < band.cols; c++) add(`符号格 ${r + 1}-${c + 1}`, `符号盘第 ${r + 1} 行第 ${c + 1} 个符号`, bx + gap + c * (cw + gap), by + gap + r * (ch + gap), cw, ch)
       } else if (band.kind === 'row') {
         const cw = (bw - gap * (band.cols - 1)) / band.cols
-        for (let c = 0; c < band.cols; c++) add(`${band.label} ${c + 1}`, `${band.label}从左到右第 ${c + 1} 个：${band.items[c] || ''}`, bx + c * (cw + gap), by, cw, bh)
+        for (let c = 0; c < band.cols; c++) add(`${band.label} ${c + 1}`, `${band.label}从左到右第 ${c + 1} 个：${itemPurpose(band.items[c])}`, bx + c * (cw + gap), by, cw, bh)
       } else if (band.kind === 'column') {
         const ch = (bh - gap * (band.rows - 1)) / band.rows
-        for (let r = 0; r < band.rows; r++) add(`${band.label} ${r + 1}`, `${band.label}从上到下第 ${r + 1} 个：${band.items[r] || ''}`, bx, by + r * (ch + gap), bw, ch)
-      } else add(band.label, band.text, bx, by, bw, bh)
+        for (let r = 0; r < band.rows; r++) add(`${band.label} ${r + 1}`, `${band.label}从上到下第 ${r + 1} 个：${itemPurpose(band.items[r])}`, bx, by + r * (ch + gap), bw, ch)
+      } else add(band.label, /【显示】/.test(band.text) && !/【按钮】/.test(band.text) ? `${band.text}（显示区，不是按钮）` : band.text, bx, by, bw, bh)
       y += h
     }
     return blocks.map(block => ({ ...block, width: Math.min(block.width, width - block.x), height: Math.min(block.height, height - block.y) }))
@@ -186,7 +191,7 @@
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = '#7a7a7a'; ctx.fillRect(0, 0, width, height)
     for (const block of sketchBlocks(plan, width, height)) {
-      ctx.fillStyle = /角色/.test(block.name) ? '#868686' : '#9a9a9a'; ctx.beginPath()
+      ctx.fillStyle = /角色/.test(block.name) ? '#868686' : /不是按钮/.test(block.purpose) ? '#636363' : '#a8a8a8'; ctx.beginPath()
       ctx.roundRect ? ctx.roundRect(block.x, block.y, block.width, block.height, Math.min(block.width, block.height) * .12) : ctx.rect(block.x, block.y, block.width, block.height); ctx.fill()
     }
     return canvas.toDataURL('image/png')
