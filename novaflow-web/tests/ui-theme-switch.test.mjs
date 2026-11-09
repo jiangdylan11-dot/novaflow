@@ -82,7 +82,7 @@ test('layout blocks for 布局编辑 stay inside the canvas and name every cell 
   const blocks = api.sketchBlocks(plan, 704, 1536);
   assert.equal(blocks.length, 26);
   for (const b of blocks) assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.width <= 704 && b.y + b.height <= 1536 && b.name && Number.isInteger(b.width));
-  assert.match(blocks.at(-1).purpose, /声音$/);
+  assert.match(blocks.at(-1).purpose, /“声音”$/);
 });
 
 test('read boxes place layout blocks where the regions are on the source', () => {
@@ -107,6 +107,6 @@ test('多种排版: each arrangement names its composition; a screen without a g
 test('read-outs tagged 【显示】 become display blocks, never buttons', () => {
   const plan = api.sketchPlan('角色区［0,40,100,40］：3个角色\n投注栏［2,83,96,4］：从左到右为【显示】余额“¥1000”、【按钮】减号“−”、【显示】下注额“¥1000”');
   const purposes = api.sketchBlocks(plan, 704, 1536).map(b => b.purpose).slice(1);
-  assert.deepEqual(purposes, ['投注栏从左到右第 1 个：余额¥1000（显示框，不是按钮）', '投注栏从左到右第 2 个：减号−', '投注栏从左到右第 3 个：下注额¥1000（显示框，不是按钮）']);
+  assert.deepEqual(purposes, ['投注栏从左到右第 1 个：余额“¥1000”（显示框，不是按钮）', '投注栏从左到右第 2 个：减号“−”', '投注栏从左到右第 3 个：下注额“¥1000”（显示框，不是按钮）']);
   assert.match(api.buildPrompt({ theme: { name: '埃及神话' }, provider: 'local', inventory: '投注栏：【显示】“¥1000”' }), /标【显示】的信息条、数值框、公告栏画成嵌在面板里的扁平显示区/);
 });

@@ -153,7 +153,7 @@
       const grid = /横向每行\s*(\d{1,2})\s*个[^纵]{0,8}纵向共?\s*(\d{1,2})\s*行/.exec(line)
       // Item lists run left to right (a row) or top to bottom (a column of buttons).
       const order = /从左到右/.test(line) ? '从左到右' : /从上到下/.test(line) ? '从上到下' : ''
-      const list = order ? line.split(new RegExp(order + '[为是：:]?'))[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]|”\s*“|(?=【)/).map(item => text(item).replace(/^[“”"]+|[“”"]+$/g, '')).filter(item => item && !/^【[^】]*】$/.test(item)) : []
+      const list = order ? line.split(new RegExp(order + '[为是：:]?'))[1].replace(/（[^）]*）|\([^)]*\)/g, '').split(/[、，,]|(?<=”)\s*(?=[“【])|(?=【)/).map(text).filter(item => item && !/^【[^】]*】$/.test(item)) : []
       const items = list.length
       const kind = grid ? 'grid' : items > 1 ? (order === '从上到下' ? 'column' : 'row') : /角色区|人物区|立绘|个角色|主角/.test(line) && !/按钮/.test(line) ? 'cast' : 'bar'
       const label = text(line.split(/[（(：:［\[]/)[0]).slice(0, 20) || '区域'
@@ -163,7 +163,7 @@
   }
   // 【显示】 items are read-outs (balances, banners, notices), never buttons.
   const isDisplay = item => /【显示】/.test(item || '') || /^(?:显示|信息|数值|公告)/.test(text(item))
-  const itemPurpose = item => { const clean = text(item).replace(/【[^】]*】|[“”"]/g, ''); return isDisplay(item) ? `${clean}（显示框，不是按钮）` : clean }
+  const itemPurpose = item => { const clean = text(item).replace(/【[^】]*】/g, ''); return isDisplay(item) ? `${clean}（显示框，不是按钮）` : clean }
   // Blocks for 布局编辑: one per grid cell, button and bar, plus the character panel.
   function sketchBlocks(plan, width, height) {
     const total = plan.reduce((sum, band) => sum + band.share, 0), blocks = []
@@ -200,6 +200,15 @@
     for (const block of blocks) {
       ctx.fillStyle = /角色/.test(block.name) ? '#868686' : /不是按钮/.test(block.purpose) ? '#636363' : '#a8a8a8'; ctx.beginPath()
       ctx.roundRect ? ctx.roundRect(block.x, block.y, block.width, block.height, Math.min(block.width, block.height) * .12) : ctx.rect(block.x, block.y, block.width, block.height); ctx.fill()
+      // The block's own words are written into it, so the picture model copies them instead
+      // of guessing what a blank box says (blank boxes came out as garbled text).
+      const words = [...String(block.purpose || '').matchAll(/“([^”]{1,40})”/g)].map(match => match[1]).join(' ')
+      if (!words || /角色/.test(block.name)) continue
+      let size = Math.max(10, Math.min(block.height * .42, block.width * .9 / Math.max(2, words.length * .62)))
+      ctx.font = `bold ${Math.round(size)}px sans-serif`
+      while (size > 10 && ctx.measureText(words).width > block.width * .88) { size -= 1; ctx.font = `bold ${Math.round(size)}px sans-serif` }
+      ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(words, block.x + block.width / 2, block.y + block.height / 2)
     }
     return canvas.toDataURL('image/png')
   }
@@ -227,7 +236,7 @@
   }
   function editorLayout(rt) {
     const ref = (rt.references?.() || []).find(item => item?.uiLayoutId && item.dataUrl)
-    return ref ? { dataUrl: ref.dataUrl, width: ref.width, height: ref.height } : null
+    return ref ? { dataUrl: ref.dataUrl, width: ref.width, height: ref.height, structure: ref.uiStructure || null } : null
   }
   function layoutIntoEditor(rt, plan, size) {
     const bridge = root.NovaFlowUiDesignBridge
@@ -344,7 +353,12 @@
               if (layout) write(AUTO_LAYOUT_KEY, { owner: fingerprint(screen.dataUrl), guide: fingerprint(layout.dataUrl), blocks: projectLayout()?.key || '' })
             } catch { layout = null }
           }
-          sketch = sketch || layout?.dataUrl || ''
+          // Draw the guide ourselves from the 布局编辑 blocks, with their words written in.
+          if (!sketch && layout) {
+            const regions = layout.structure?.regions
+            const blocks = Array.isArray(regions) && regions.length ? { blocks: regions, width: layout.structure.width, height: layout.structure.height } : projectLayout()
+            sketch = blocks?.blocks?.length ? drawBlocks(scaledBlocks(blocks, sketchSize.width, sketchSize.height), sketchSize.width, sketchSize.height) : layout.dataUrl
+          }
         }
         if (!sketch && plan) sketch = drawSketch(plan, sketchSize.width, sketchSize.height)
         const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen), sketched: Boolean(sketch), arrangement })
