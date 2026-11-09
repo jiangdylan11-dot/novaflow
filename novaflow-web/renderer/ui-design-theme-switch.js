@@ -29,13 +29,17 @@
     '质感：每种材质都要画出真实可信的表面——金属有拉丝或錾刻纹理和锐利高光，宝石和玉石通透有内部折射和高光点，木、石、织物有清晰纹理和磨损，珐琅、玻璃、糖霜等有各自的光泽；面板和按钮有厚度、倒角、多层浮雕和描边，不是平涂色块。',
     '氛围感：整屏一个统一的主光源和明确的冷暖对比，背景有纵深、雾气和体积光，前景有主题粒子、光尘或飘落物，角色和关键元素有轮廓光；画面有情绪和故事感，像游戏宣传主视觉。',
     '精度：线条和边缘干净锐利，图标轮廓清楚，文字笔画完整清晰，对称件左右一致，同类按钮和格子大小统一、对齐整齐，细节丰富但不糊不脏，没有扭曲、错位和多余的零件。',
-    '整体是顶级手游的高品质主视觉：色彩鲜艳浓郁、对比强烈、精修收尾。不要灰暗、不要素淡、不要平涂、不要塑料感。',
+    '配色：全屏一套统一的主题色板——主色约六成、辅色约三成、点缀色约一成，点缀色用于按钮高光、宝石和关键数值；同一类控件同色同质，暗部偏冷、亮部偏暖，局部用柔和渐变过渡，不出现与主题无关的杂色。',
+    '高级感与精致度：像一线大厂商业手游的正式美术稿——细描金线和多层倒角收边、精细的纹样与浮雕、柔和的内发光和投影、恰到好处的留白；装饰繁而不乱，层次分明，所有边角和细节都精修过。',
+    '整体是顶级手游的高品质主视觉：色彩鲜艳浓郁而统一、对比强烈、精修收尾。不要灰暗、不要素淡、不要平涂、不要塑料感、不要廉价的高饱和杂色。',
   ])
   const QUALITY_EN = Object.freeze([
     'Material quality: every material has a believable surface - metal with brushed or engraved texture and crisp speculars, gems and jade translucent with inner refraction and glints, wood, stone and cloth with clear grain and wear, enamel, glass and frosting with their own sheen; panels and buttons have thickness, bevels, layered relief and trims, never flat fills.',
     'Atmosphere: one key light with a clear warm/cool contrast across the screen, depth, haze and volumetric light in the background, theme particles, light dust or falling things in the foreground, rim light on characters and key elements; the screen carries mood and story like game key art.',
     'Precision: clean sharp lines and edges, crisp icon silhouettes, complete legible lettering, symmetric pieces mirror exactly, buttons and cells of one kind share size and alignment, rich detail without mush, no warping, misalignment or stray parts.',
-    'Overall: top-tier mobile game key art, rich vivid colour, strong contrast, polished finish. Never dull, washed-out, flat or plastic.',
+    'Colour: one unified theme palette across the screen - main colour about 60%, secondary about 30%, accent about 10% reserved for button highlights, gems and key values; controls of one kind share colour and material; cool shadows, warm lights, soft gradients, no stray colours outside the theme.',
+    'Premium finish: like the final art of a top-studio commercial mobile game - fine gilded lines and layered bevel trims, delicate patterns and relief, soft inner glow and drop shadows, deliberate breathing room; rich ornament that stays orderly, clear hierarchy, every corner and detail polished.',
+    'Overall: top-tier mobile game key art, rich vivid yet unified colour, strong contrast, polished finish. Never dull, washed-out, flat, plastic or cheaply oversaturated.',
   ])
   // 多种排版: besides following the source layout, each theme is also drawn in these
   // compositions. They name no genre, so they fit lobbies, shops and HUDs as well as slots.
@@ -106,7 +110,7 @@
       `界面功能清单（只决定有哪些功能、数量和文字，不决定外观）：\n${list}`,
       arrangement
         ? `${arrangement.zh}清单只决定有哪些功能、数量和文字，方括号里的原图位置不用照搬；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格的每行个数和行数仍按清单。' : '画面里不要出现清单之外的格子、背包格或物品网格。'}`
-        : `各区域的位置和大小按清单方括号里的原图位置；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）。' : ''}${hasCast && hasGrid ? '角色区单独存在，角色不要塞进网格。' : ''}`,
+        : `各区域的位置和大小按清单方括号里的原图位置；清单里的每个按钮、信息条和数值都要有，清单里没有的功能区不要添加。${hasGrid ? '网格严格按清单的每行个数和行数（横向每行几个、纵向共几行，数清楚，不多不少）。' : ''}${hasCast ? '角色区是一整块连续的场景画面，画完整的角色立绘，绝不分成格子或头像框。' : ''}`,
       keepText ? '只把清单中引号里的原文文字和数字写进画面，逐字照抄；区域名、说明和括号里的注释不要写进画面；标为“图标，无文字”的按钮只画图标。' : '数字和按钮文字按清单写；标题和装饰文字可按主题改写；区域名和注释不要写进画面。',
       '清单里标【显示】的信息条、数值框、公告栏画成嵌在面板里的扁平显示区（凹槽、铭牌或横幅），不能画成按钮；只有标【按钮】的才画成可点击、有厚度和高光的按钮；【按钮】【显示】只是类型标注，不要写进画面。',
       `整屏构图、面板与按钮造型${hasCast ? '、角色设定和姿态' : ''}全部根据「${name}」主题创作：面板和按钮是有厚度的主题异形雕刻件，不是矩形圆角块，边框和装饰结构按主题设计${hasGrid ? '；网格装进主题造型的大框体，每个格子里的符号都是独特的主题物件' : ''}；${hasCast ? '角色是为主题原创、有魅力的人物，动态姿势，' : ''}融入有纵深的主题场景。`,
@@ -120,7 +124,7 @@
       `Function list of the screen (it decides only which functions, counts and words exist, never the look):\n${list}`,
       arrangement
         ? `${arrangement.en} The list decides only which functions, counts and words exist; ignore the source positions in square brackets; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids keep the listed per-row count and rows.' : ' No grid, inventory slots or item board that the list does not name.'}`
-        : `Regions take the positions and sizes in the square brackets of the list; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids have exactly the listed per-row count and rows (count them).' : ''}${hasCast && hasGrid ? ' The character area is its own region; characters never fill the grid.' : ''}`,
+        : `Regions take the positions and sizes in the square brackets of the list; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids have exactly the listed per-row count and rows (count them).' : ''}${hasCast ? ' The character area is one continuous scene with full character art, never split into cells or portrait frames.' : ''}`,
       keepText ? 'Write on the screen only the quoted words and numbers from the list, copied exactly; never write region names, notes or bracketed remarks; a button marked as icon-only gets an icon and no words.' : 'Write numbers and button labels from the list; titles and decorative words may be rewritten for the theme; never write region names or notes.',
       'Items tagged 【显示】 (info bars, value boxes, notice banners) are flat read-outs set into the panel (recessed slots, plaques or banners), never buttons; only items tagged 【按钮】 are clickable buttons with thickness and highlights; the tags themselves are never written on the screen.',
       `Composition, panel and button shapes${hasCast ? ', characters and their poses' : ''} are all designed for "${name}": panels and buttons are thick sculpted theme pieces, not rounded rectangles, with borders and ornament structures of the theme${hasGrid ? '; the grid sits inside a large theme-shaped frame and every cell holds a distinctive theme object' : ''}; ${hasCast ? 'characters are original, charismatic, in dynamic poses, ' : ''}inside a deep theme scene.`,
@@ -159,7 +163,7 @@
   }
   // 【显示】 items are read-outs (balances, banners, notices), never buttons.
   const isDisplay = item => /【显示】/.test(item || '') || /^(?:显示|信息|数值|公告)/.test(text(item))
-  const itemPurpose = item => { const clean = text(item).replace(/【[^】]*】|[“”"]/g, ''); return isDisplay(item) ? `${clean}（显示框，不是按钮）` : `${clean}（按钮）` }
+  const itemPurpose = item => { const clean = text(item).replace(/【[^】]*】|[“”"]/g, ''); return isDisplay(item) ? `${clean}（显示框，不是按钮）` : clean }
   // Blocks for 布局编辑: one per grid cell, button and bar, plus the character panel.
   function sketchBlocks(plan, width, height) {
     const total = plan.reduce((sum, band) => sum + band.share, 0), blocks = []
@@ -187,10 +191,13 @@
       .filter(block => block.width >= 32 && block.height >= 24).slice(0, 40)
   }
   function drawSketch(plan, width, height, documentRef = root.document) {
+    return drawBlocks(sketchBlocks(plan, width, height), width, height, documentRef)
+  }
+  function drawBlocks(blocks, width, height, documentRef = root.document) {
     const canvas = documentRef.createElement('canvas'); canvas.width = width; canvas.height = height
     const ctx = canvas.getContext('2d')
     ctx.fillStyle = '#7a7a7a'; ctx.fillRect(0, 0, width, height)
-    for (const block of sketchBlocks(plan, width, height)) {
+    for (const block of blocks) {
       ctx.fillStyle = /角色/.test(block.name) ? '#868686' : /不是按钮/.test(block.purpose) ? '#636363' : '#a8a8a8'; ctx.beginPath()
       ctx.roundRect ? ctx.roundRect(block.x, block.y, block.width, block.height, Math.min(block.width, block.height) * .12) : ctx.rect(block.x, block.y, block.width, block.height); ctx.fill()
     }
@@ -202,6 +209,22 @@
   // automatic layout is never taken for one the user made.
   const AUTO_LAYOUT_KEY = 'foart.ui.theme-auto-layout.v1'
   const fingerprint = value => value ? value.length + ':' + value.slice(-64) : ''
+  // 布局编辑 keeps its blocks in the saved project, but its layout picture is only a reference
+  // of the current page; after a reload the blocks are there and the picture is not. Applying
+  // blocks again would add a second set, so the saved blocks are drawn instead.
+  function projectLayout() {
+    try {
+      const saved = JSON.parse(root.localStorage.getItem('novaflow-ui-design-project-v1') || 'null')
+      const node = saved?.project?.graph?.nodes?.find(item => item?.type === 'layout')
+      const blocks = Array.isArray(node?.data?.blocks) ? node.data.blocks : []
+      const size = node?.data?.canvasSize
+      return blocks.length && size?.width > 0 && size?.height > 0 ? { blocks, width: size.width, height: size.height, key: blocks.length + ':' + blocks.map(block => block.id).join(',').slice(0, 400) } : null
+    } catch { return null }
+  }
+  function scaledBlocks(layout, width, height) {
+    const sx = width / layout.width, sy = height / layout.height
+    return layout.blocks.map(block => ({ ...block, x: block.x * sx, y: block.y * sy, width: block.width * sx, height: block.height * sy }))
+  }
   function editorLayout(rt) {
     const ref = (rt.references?.() || []).find(item => item?.uiLayoutId && item.dataUrl)
     return ref ? { dataUrl: ref.dataUrl, width: ref.width, height: ref.height } : null
@@ -308,12 +331,20 @@
           // A layout this panel built for another screen is stale for this one: draw this
           // screen's own sketch instead. A layout the user made stays in charge.
           let layout = editorLayout(rt)
-          const auto = read(AUTO_LAYOUT_KEY, {}) || {}
-          if (layout && auto.guide === fingerprint(layout.dataUrl) && auto.owner !== fingerprint(screen.dataUrl)) layout = null
-          else if (!layout && plan) {
-            try { layout = layoutIntoEditor(rt, plan, sketchSize); if (layout) write(AUTO_LAYOUT_KEY, { owner: fingerprint(screen.dataUrl), guide: fingerprint(layout.dataUrl) }) } catch { layout = null }
+          const auto = read(AUTO_LAYOUT_KEY, {}) || {}, ours = auto.owner === fingerprint(screen.dataUrl)
+          const saved = layout ? null : projectLayout()
+          if (layout && auto.guide === fingerprint(layout.dataUrl) && !ours) layout = null
+          else if (!layout && saved) {
+            // Saved blocks: the user's own, or ours for this screen, are drawn; ours for another
+            // screen are stale and this screen's own sketch is used.
+            if (auto.blocks !== saved.key || ours) sketch = drawBlocks(scaledBlocks(saved, sketchSize.width, sketchSize.height), sketchSize.width, sketchSize.height)
+          } else if (!layout && plan) {
+            try {
+              layout = layoutIntoEditor(rt, plan, sketchSize)
+              if (layout) write(AUTO_LAYOUT_KEY, { owner: fingerprint(screen.dataUrl), guide: fingerprint(layout.dataUrl), blocks: projectLayout()?.key || '' })
+            } catch { layout = null }
           }
-          sketch = layout?.dataUrl || ''
+          sketch = sketch || layout?.dataUrl || ''
         }
         if (!sketch && plan) sketch = drawSketch(plan, sketchSize.width, sketchSize.height)
         const prompt = buildPrompt({ theme, keepText, keepLayout, note, anchored: Boolean(anchor), provider, inventory: inventories.get(screen), sketched: Boolean(sketch), arrangement })
