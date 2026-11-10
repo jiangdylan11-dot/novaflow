@@ -60,6 +60,7 @@ const SUITES = [
   { name: 'runninghub-gpt-image', file: 'e2e/runninghub-gpt-image.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'runninghub-cloud-image-models', file: 'e2e/runninghub-cloud-image-models.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'runninghub-gpt-image-two-step', file: 'e2e/runninghub-gpt-image-two-step.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'xiaotao-model-choice', file: 'xiaotao-model-choice.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'workflow-redaction', file: 'e2e/workflow-redaction.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'web-renderer-build', file: 'e2e/web-renderer-build.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'pages-gate', file: 'e2e/pages-gate.test.mjs', needs: [], timeoutMs: 60000 },

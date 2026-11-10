@@ -77,6 +77,37 @@
     Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
     ...CLOUD_IMAGE_MODELS.map((item) => Object.freeze({ value: item.id === DEFAULT_CLOUD_IMAGE_MODEL ? 'gpt' : `gpt:${item.id}`, label: item.label })),
   ])
+  // What 小桃 tells the user about each line when it asks which one to draw with (Dylan,
+  // 2026-11-10: "现在模型多可以让小桃问一下用户用什么"). Findings from the live comparison.
+  const MODEL_LINE_NOTES = Object.freeze({
+    local: '不扣积分，约半分钟，适合换皮和格子少的界面',
+    'gpt-image-2.5': '画质最高，等待一到两分钟',
+    'nano-banana-2.1': '结构和文字最稳，性价比高，约一分钟',
+    'gpt-image-2': '画质好，文生图最便宜，图生图较慢',
+    'grok-imagine': '最便宜最快，忠实度一般',
+  })
+  // One row per drawable line for the current mode: option value, label, credits a picture
+  // (0 local, null when billed by usage), note, and whether it is the selected one.
+  // `quote` is the browser price card's quoteGptImage; without it credits are unknown (null).
+  function modelLines(state, quote) {
+    const mode = normalizeMode(state?.mode)
+    const selected = providerSelection(state)
+    const credits = (id) => {
+      if (typeof quote !== 'function') return null
+      try {
+        const quoted = quote({ mode, model: id, count: 1 })
+        if (!quoted || quoted.billingMode === 'token') return null
+        return Number.isFinite(Number(quoted.credits)) ? Number(quoted.credits) : null
+      } catch { return null }
+    }
+    return Object.freeze([
+      Object.freeze({ value: 'local', label: 'Qwen（本地）', credits: 0, note: MODEL_LINE_NOTES.local, selected: selected === 'local' }),
+      ...CLOUD_IMAGE_MODELS.map((item) => {
+        const value = item.id === DEFAULT_CLOUD_IMAGE_MODEL ? 'gpt' : `gpt:${item.id}`
+        return Object.freeze({ value, label: item.label, credits: credits(item.id), note: MODEL_LINE_NOTES[item.id] || '', selected: selected === value })
+      }),
+    ])
+  }
 
   function preset(steps, cfg, samplerName, scheduler, lightning) {
     const value = {
@@ -371,6 +402,7 @@
     cloudImageModelFor,
     providerSelection,
     applyProviderSelection,
+    modelLines,
     getCapability,
     normalizeProvider,
     normalizeMode,
