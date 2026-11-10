@@ -6,6 +6,468 @@
 // module only shows up as a cold-start failure in production.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+// ===== lora-catalog.mjs ==============================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/lora-catalog.mjs
+// Regenerate with: npm run sync:edge
+// Advertise only selections supported by every node the scheduler can choose.
+// Older nodes and failed scans are unavailable, never an empty success.
+function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, engine = '' }) {
+  if (!rows.length) throw new Error('暂无在线算力可读取 LoRA');
+  const key = kind === 'qwen'
+    ? (engine === 'qwen-2.1' ? 'qwen21' : nsfw ? 'qwen_nsfw' : 'qwen')
+    : (mode === 'r2v' ? 'h3_ref' : 'h3');
+  const lists = rows.map(row => {
+    const report = row.detail?.lora_catalog;
+    if (report?.version !== 1) throw new Error('算力节点需要更新到 0.4.4 才能读取 LoRA');
+    if (Date.now() - Date.parse(report.updated_at) > 300000 || !Number.isFinite(Date.parse(report.updated_at))) throw new Error('LoRA 列表已过期，等待节点更新后重试');
+    const value = report[key];
+    if (!value?.ok || !Array.isArray(value.items)) throw new Error('算力节点读取 LoRA 失败，请检查节点的 models 目录与模型文件');
+    return value.items.filter(item => {
+      const name = String(item?.name || '');
+      if (!/\.safetensors$/i.test(name) || name.split(/[\\/]/).some(p => !p || p === '.' || p === '..' || p.includes(':'))) return false;
+      if (kind === 'qwen') return /^qwen[\\/]/i.test(name);
+      const family = mode === 'r2v' ? 'ref2va' : 'fl2va';
+      return item.kind === 'standard' && ['h3', family].includes(item.modelFamily) &&
+        (!item.supportedSteps || item.supportedSteps.includes(steps)) && typeof item.fingerprint === 'string';
+    }).map(item => kind === 'qwen' ? { name: item.name } : {
+      name: item.name, fingerprint: item.fingerprint, modelFamily: item.modelFamily,
+      kind: item.kind, supportedSteps: item.supportedSteps, strengthRange: item.strengthRange
+    });
+  });
+  return lists[0].filter(item => lists.slice(1).every(list => list.some(other =>
+    other.name === item.name && (kind !== 'h3' || other.fingerprint === item.fingerprint))));
+}
+
+// ===== release.mjs ===================================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/release.mjs
+// Regenerate with: npm run sync:edge
+// Application release identifier; protocol and model versions remain independent.
+const RELEASE_VERSION = "2.0.347";
+
+// ===== xiaotao-memory.mjs ============================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/xiaotao-memory.mjs
+// Regenerate with: npm run sync:edge
+// 小桃记忆: each account's own short preference list. Only preference text is
+// kept (never chat logs or pictures); a newer preference of the same kind
+// replaces the old one and an account keeps at most 20.
+const XIAOTAO_MEMORY_CATEGORIES = Object.freeze(['model','art','video','audio','ui','export','chat','avoid']);
+const XIAOTAO_MEMORY_LIMIT = 20;
+const SLOT = /^[a-z0-9_.:-]{1,64}$/;
+const UNSAFE = /data:|https?:\/\/|www\.|Bearer\s|nfw_|sk-[A-Za-z0-9]|@[A-Za-z0-9-]+\.[A-Za-z]/i;
+const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function cleanXiaotaoMemoryText(value) {
+  const text = String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return text && text.length <= 120 && !UNSAFE.test(text) ? text : '';
+}
+
+function createXiaotaoMemoryRoutes({ store, requireUser, HttpError }) {
+  const fail = (status, code, message) => { throw new HttpError(status, code, message); };
+  const plain = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(k => keys.includes(k));
+  const ready = () => { if (typeof store.listXiaotaoMemory !== 'function') fail(503, 'xiaotao-memory-unavailable', '记忆功能暂不可用'); };
+  return {
+    async handle({ method, path, headers, body }) {
+      if (path !== '/api/web/xiaotao/memory' && !path.startsWith('/api/web/xiaotao/memory/')) return null;
+      ready();
+      const user = await requireUser(headers);
+      if (method === 'GET' && path === '/api/web/xiaotao/memory') {
+        return { ok: true, enabled: await store.getXiaotaoMemoryEnabled(user.id), limit: XIAOTAO_MEMORY_LIMIT, items: await store.listXiaotaoMemory(user.id) };
+      }
+      if (method !== 'POST') fail(404, 'xiaotao-memory-route', '未知的记忆操作');
+      if (path === '/api/web/xiaotao/memory') {
+        if (!plain(body, ['category', 'slot', 'text', 'source'])) fail(400, 'xiaotao-memory-invalid', '记忆格式无效');
+        const text = cleanXiaotaoMemoryText(body.text);
+        if (!XIAOTAO_MEMORY_CATEGORIES.includes(body.category) || typeof body.slot !== 'string' || !SLOT.test(body.slot)
+          || !['explicit', 'adopted'].includes(body.source) || !text) fail(400, 'xiaotao-memory-invalid', '这条记忆不能保存');
+        if (!await store.getXiaotaoMemoryEnabled(user.id)) fail(409, 'xiaotao-memory-off', '记忆已关闭');
+        return { ok: true, item: await store.saveXiaotaoMemory(user.id, { category: body.category, slot: body.slot, text, source: body.source }) };
+      }
+      if (path === '/api/web/xiaotao/memory/delete') {
+        if (!plain(body, ['id', 'all']) || (body.all !== true && !(typeof body.id === 'string' && ID.test(body.id)))) fail(400, 'xiaotao-memory-invalid', '删除请求无效');
+        return { ok: true, deleted: await store.deleteXiaotaoMemory(user.id, body.all === true ? null : body.id) };
+      }
+      if (path === '/api/web/xiaotao/memory/settings') {
+        if (!plain(body, ['enabled']) || typeof body.enabled !== 'boolean') fail(400, 'xiaotao-memory-invalid', '设置无效');
+        await store.setXiaotaoMemoryEnabled(user.id, body.enabled);
+        return { ok: true, enabled: body.enabled };
+      }
+      fail(404, 'xiaotao-memory-route', '未知的记忆操作');
+    }
+  };
+}
+
+// Memory-only store for the local control plane and tests.
+function createMemoryXiaotaoMemoryStore() {
+  const rows = new Map(), off = new Set();
+  const list = userId => [...rows.values()].filter(r => r.userId === userId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.seq - a.seq);
+  let seq = 0;
+  const view = ({ id, category, slot, text, source, updatedAt }) => ({ id, category, slot, text, source, updatedAt });
+  return {
+    async listXiaotaoMemory(userId) { return list(userId).map(view); },
+    async getXiaotaoMemoryEnabled(userId) { return !off.has(userId); },
+    async setXiaotaoMemoryEnabled(userId, enabled) { if (enabled) off.delete(userId); else off.add(userId); },
+    async saveXiaotaoMemory(userId, item) {
+      const old = list(userId).find(r => r.category === item.category && r.slot === item.slot);
+      const row = { ...(old || { id: crypto.randomUUID(), userId }), ...item, updatedAt: new Date().toISOString(), seq: ++seq };
+      rows.set(row.id, row);
+      for (const extra of list(userId).slice(XIAOTAO_MEMORY_LIMIT)) rows.delete(extra.id);
+      return view(row);
+    },
+    async deleteXiaotaoMemory(userId, id) {
+      let n = 0;
+      for (const row of list(userId)) if (id === null || row.id === id) { rows.delete(row.id); n++; }
+      return n;
+    }
+  };
+}
+
+// ===== protocol.mjs ==================================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/protocol.mjs
+// Regenerate with: npm run sync:edge
+// NovaFlow Web - shared protocol.
+// One source of truth for task states, task types, token prefixes and the
+// worker/control-plane wire contract. Imported unchanged by the browser app,
+// the worker, the local control plane and the Supabase edge function, so a
+// contract drift becomes a test failure rather than a runtime mystery.
+
+const PROTOCOL_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// Task state machine (spec 15). Every transition carries a timestamp column.
+// ---------------------------------------------------------------------------
+const TASK_STATE = Object.freeze({
+  CREATED: 'created',
+  QUEUED: 'queued',
+  ASSIGNED: 'assigned',
+  UPLOADING: 'uploading',
+  PROCESSING: 'processing',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+  EXPIRED: 'expired'
+});
+
+const TERMINAL_TASK_STATES = Object.freeze([
+  TASK_STATE.COMPLETED,
+  TASK_STATE.FAILED,
+  TASK_STATE.CANCELLED,
+  TASK_STATE.EXPIRED
+]);
+
+// Allowed transitions. Anything not listed here is rejected by the control
+// plane, which is what keeps unexplainable intermediate states from existing.
+const TASK_TRANSITIONS = Object.freeze({
+  [TASK_STATE.CREATED]: [TASK_STATE.QUEUED, TASK_STATE.CANCELLED, TASK_STATE.FAILED],
+  [TASK_STATE.QUEUED]: [TASK_STATE.ASSIGNED, TASK_STATE.CANCELLED, TASK_STATE.EXPIRED, TASK_STATE.FAILED],
+  // ASSIGNED -> QUEUED is the requeue path used by heartbeat/assign timeout recovery.
+  [TASK_STATE.ASSIGNED]: [TASK_STATE.UPLOADING, TASK_STATE.PROCESSING, TASK_STATE.QUEUED, TASK_STATE.CANCELLED, TASK_STATE.FAILED, TASK_STATE.EXPIRED],
+  [TASK_STATE.UPLOADING]: [TASK_STATE.PROCESSING, TASK_STATE.QUEUED, TASK_STATE.CANCELLED, TASK_STATE.FAILED, TASK_STATE.EXPIRED],
+  [TASK_STATE.PROCESSING]: [TASK_STATE.COMPLETED, TASK_STATE.FAILED, TASK_STATE.CANCELLED, TASK_STATE.QUEUED, TASK_STATE.EXPIRED],
+  [TASK_STATE.COMPLETED]: [],
+  [TASK_STATE.FAILED]: [],
+  [TASK_STATE.CANCELLED]: [],
+  [TASK_STATE.EXPIRED]: []
+});
+
+function canTransition(from, to) {
+  const allowed = TASK_TRANSITIONS[String(from || '')];
+  return Array.isArray(allowed) && allowed.includes(String(to || ''));
+}
+
+function isTerminalState(state) {
+  return TERMINAL_TASK_STATES.includes(String(state || ''));
+}
+
+// ---------------------------------------------------------------------------
+// Worker lifecycle (spec 5).
+// ---------------------------------------------------------------------------
+const WORKER_STATUS = Object.freeze({
+  IDLE: 'idle',
+  BUSY: 'busy',
+  OFFLINE: 'offline',
+  MAINTENANCE: 'maintenance'
+});
+
+const WORKER_MODEL_STATUS = Object.freeze({
+  READY: 'ready',
+  MISSING: 'missing',
+  INVALID: 'invalid',
+  UPDATING: 'updating'
+});
+
+// Heartbeat cadence and the timeout the sweeper uses (spec 14).
+const HEARTBEAT_INTERVAL_SECONDS = 20;
+const HEARTBEAT_TIMEOUT_SECONDS = 75;
+// A task that is ASSIGNED but never picked up goes back to the queue.
+const ASSIGN_TIMEOUT_SECONDS = 120;
+// A task stuck in PROCESSING with no progress for this long is requeued once
+// and then failed.
+const PROCESSING_TIMEOUT_SECONDS = 1800;
+// How many times a task may be requeued after a worker dies under it.
+const MAX_TASK_ATTEMPTS = 3;
+
+// ---------------------------------------------------------------------------
+// A task's place in line (2026-10-15, user: 节点忙碌时弹框提示排队、已等多久、预计多久，能取消排队).
+// A task still waiting for a node gets `task.queue` from the control plane (or the
+// local queue); a node whose runtime is still drawing other prompts says so in its
+// progress note as "<note> [queue ahead=2 eta=180]". The page reads the marker into
+// task.queue and strips it, so no panel shows it.
+// ---------------------------------------------------------------------------
+const QUEUE_NOTE_RE = /\s*\[queue ahead=(\d+)(?: eta=(\d+))?\]\s*$/;
+
+function withQueueNote(note, { ahead, eta } = {}) {
+  const base = String(note || '').replace(QUEUE_NOTE_RE, '');
+  if (!Number.isFinite(Number(ahead)) || ahead === null) return base;
+  const seconds = eta === null || eta === undefined || !Number.isFinite(Number(eta)) ? '' : ' eta=' + Math.max(0, Math.round(eta));
+  return base + ' [queue ahead=' + Math.max(0, Math.round(ahead)) + seconds + ']';
+}
+
+/**
+ * Rough seconds until a waiting task starts: what the running ones still need plus one
+ * average run per task queued ahead, shared by the nodes that can take them. No recent
+ * run to go by: null (the page says it cannot estimate yet).
+ */
+function estimateQueueWait({ queuedAhead = 0, runningElapsed = [], averageSeconds = 0, workers = 1 } = {}) {
+  const average = Number(averageSeconds) || 0;
+  if (!(average > 0)) return null;
+  const left = runningElapsed.reduce((sum, elapsed) => sum + Math.max(average * 0.1, average - (Number(elapsed) || 0)), 0);
+  return Math.round((left + Math.max(0, Number(queuedAhead) || 0) * average) / Math.max(1, Number(workers) || 1));
+}
+
+// ---------------------------------------------------------------------------
+// Token prefixes. Each token type is a distinct namespace so a token can never
+// be replayed as a different kind of credential.
+// ---------------------------------------------------------------------------
+const TOKEN_PREFIX = Object.freeze({
+  SESSION: 'nfs_',   // user session, minted by the existing novaflow-backend
+  WORKER: 'nfw_',    // worker identity, minted by the control plane
+  GRANT: 'nfg_'      // short-lived browser<->worker file grant
+});
+
+const GRANT_OP = Object.freeze({
+  UPLOAD: 'upload',
+  DOWNLOAD: 'download'
+});
+
+const GRANT_TTL_SECONDS = 900;           // 15 min upload window
+const GRANT_DOWNLOAD_TTL_SECONDS = 3600; // 1 h result playback window
+
+// ---------------------------------------------------------------------------
+// Task types -> workflow files. The browser NEVER sees a ComfyUI graph; it
+// sends a task_type plus business parameters and the worker picks the graph
+// (spec 10).
+// ---------------------------------------------------------------------------
+const TASK_TYPE = Object.freeze({
+  H3_I2V: 'h3_i2v',
+  // 音频: game background music (looped) and sound effects, text to audio.
+  AUDIO_MUSIC: 'audio_music',
+  AUDIO_SFX: 'audio_sfx'
+});
+
+const TASK_TYPE_WORKFLOW = Object.freeze({
+  [TASK_TYPE.H3_I2V]: 'h3_i2v.json',
+  [TASK_TYPE.AUDIO_MUSIC]: 'audio_music.json',
+  [TASK_TYPE.AUDIO_SFX]: 'audio_sfx.json'
+});
+
+// 音频 limits, shared by the validator, the worker and the panel.
+const AUDIO_LIMITS = Object.freeze({
+  music: { minSeconds: 8, maxSeconds: 300, defaultSeconds: 30 },
+  sfx: { minSeconds: 1, maxSeconds: 30, defaultSeconds: 2 },
+  minCrossfadeMs: 100, maxCrossfadeMs: 4000, defaultCrossfadeMs: 800
+});
+const AUDIO_MUSIC_MODEL_ID = 'audio-music';
+const AUDIO_SFX_MODEL_ID = 'audio-sfx';
+
+// Which model each task type needs, and the VRAM floor the scheduler enforces
+// before it hands the task to a worker.
+// `billing` is the rule that decides whether a task costs credits at all.
+//
+//   'self_hosted' - it runs on a GPU in this pool: the owner's machine, a
+//     friend's, a rented one. Nobody is invoiced for it, so NovaFlow does not
+//     invoice for it either. Credits exist to meter what a third party bills
+//     for, not to tax someone's own hardware.
+//
+//   'provider' - it goes out to a paid API (Grok, GPT, Google). That is real
+//     money leaving, and that is what credits are for.
+//
+// Every task type NovaFlow Web runs today is self-hosted. The metered path is
+// kept wired, and priced, for the provider-backed types that will use it.
+const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'provider' });
+
+// 'video_matting' is deliberately absent from TASK_TYPE and
+// TASK_TYPE_WORKFLOW above. Membership there means "this type names a ComfyUI
+// graph file", which the worker's loadWorkflow() then insists on loading and
+// tests/e2e/protocol.test.mjs asserts exists. AI 抠图 runs BiRefNet in a
+// Python process and never opens ComfyUI at all, so it belongs only here -
+// isKnownTaskType() reads THIS table, which is what admits it to the queue.
+const MATTING_TASK_TYPE = 'video_matting';
+
+// Local Flash assistant (optimize / reverse / art-style description). The task
+// type string stays prompt_assistant so workers already in the field keep
+// dispatching it. Production inference is Flash/Strata; the Python service is
+// not an automatic fallback. On the shared pool the request still travels as
+// one uploaded JSON file and the reply comes back as one output file.
+const PROMPT_ASSISTANT_TASK_TYPE = 'prompt_assistant';
+const PROMPT_ASSISTANT_MODEL_ID = 'prompt-assistant';
+// A separate scheduler capability; legacy Next nodes cannot claim Qwen work.
+const PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID = 'qwen3.5-9b-heretic';
+// Distinct scheduler capability: chat-ready older nodes cannot claim business tasks.
+const PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY = 'qwen3.5-9b-heretic-business-v1';
+// Reserved for a future owner-bound candidate-only route; not advertised or enabled.
+const PROMPT_ASSISTANT_QWEN_ROTATION_CANDIDATE_SCOPE = 'qwen-foart-rotation-candidate-v1';
+const PROMPT_ASSISTANT_QWEN_ROTATION_CANDIDATE_CAPABILITY = 'qwen3.5-9b-heretic-foart-rotation-candidate-v1';
+const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style', 'rewrite-audio-prompt', 'art-agent-chat']);
+const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
+const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
+
+const TASK_TYPE_REQUIREMENTS = Object.freeze({
+  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED },
+  // 音频 is light: the music model peaks under 7 GB, the effects model under 3 GB.
+  [TASK_TYPE.AUDIO_MUSIC]: { modelId: AUDIO_MUSIC_MODEL_ID, minVramMb: 8000, kind: 'audio', label: '音乐', billing: BILLING.SELF_HOSTED },
+  [TASK_TYPE.AUDIO_SFX]: { modelId: AUDIO_SFX_MODEL_ID, minVramMb: 4000, kind: 'audio', label: '音效', billing: BILLING.SELF_HOSTED },
+  // Matting is segmentation, not generation: BiRefNet runs at a fixed
+  // 1024x1024 whatever the clip is, so the VRAM floor is far below the
+  // generation types and a machine that cannot draw can still cut out.
+  [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED },
+  // Local Flash. The node frees its drawing runtime's memory first.
+  [PROMPT_ASSISTANT_TASK_TYPE]: { modelId: PROMPT_ASSISTANT_MODEL_ID, minVramMb: 8000, kind: 'text', label: '本地 Flash 助手', billing: BILLING.SELF_HOSTED }
+});
+
+/** Does this task type cost the user credits? */
+function isMetered(taskType) {
+  const req = TASK_TYPE_REQUIREMENTS[String(taskType || '')];
+  return Boolean(req) && req.billing === BILLING.PROVIDER;
+}
+
+function requirementsFor(taskType) {
+  return TASK_TYPE_REQUIREMENTS[String(taskType || '')] || null;
+}
+
+function isKnownTaskType(taskType) {
+  return Object.prototype.hasOwnProperty.call(TASK_TYPE_REQUIREMENTS, String(taskType || ''));
+}
+
+// ---------------------------------------------------------------------------
+// Result TTL defaults (spec 13). Configurable per deployment; these are the
+// values the worker ships with.
+// ---------------------------------------------------------------------------
+const TTL_SECONDS = Object.freeze({
+  input: 24 * 3600,
+  image: 72 * 3600,
+  video: 48 * 3600,
+  audio: 72 * 3600
+});
+
+// ---------------------------------------------------------------------------
+// Control-plane routes. Written once so the worker, the browser and both
+// server implementations cannot disagree about a path.
+// ---------------------------------------------------------------------------
+const ROUTES = Object.freeze({
+  health: '/health',
+  // user-facing (needs a nfs_ session token)
+  createTask: '/api/web/tasks',
+  listTasks: '/api/web/tasks',
+  getTask: (id) => '/api/web/tasks/' + id,
+  cancelTask: (id) => '/api/web/tasks/' + id + '/cancel',
+  taskGrant: (id) => '/api/web/tasks/' + id + '/grant',
+  workers: '/api/web/workers',
+  capabilities: '/api/web/capabilities',
+  me: '/api/web/me',
+  // worker-facing (needs a nfw_ worker token, except register)
+  workerRegister: '/api/worker/register',
+  workerHeartbeat: '/api/worker/heartbeat',
+  workerClaim: '/api/worker/claim',
+  workerModels: '/api/worker/models',
+  workerProgress: (id) => '/api/worker/tasks/' + id + '/progress',
+  workerComplete: (id) => '/api/worker/tasks/' + id + '/complete',
+  workerFail: (id) => '/api/worker/tasks/' + id + '/fail',
+  // maintenance sweeper, callable by cron or by the local runner
+  sweep: '/api/maintenance/sweep'
+});
+
+// Worker gateway routes (served by the worker itself, reachable by browsers).
+const GATEWAY_ROUTES = Object.freeze({
+  health: '/gw/health',
+  upload: (taskId, name) => '/gw/tasks/' + taskId + '/input/' + name,
+  output: (taskId, name) => '/gw/tasks/' + taskId + '/output/' + name,
+  preview: (taskId, name) => '/gw/tasks/' + taskId + '/preview/' + name
+});
+
+// Account tiers. `users.plan` is what the administrator sets:
+//
+//   trial     普通账户  only the machine 启动NovaFlow opened; no pool node
+//   standard  中级账户  pool nodes marked 普通 (standard), not 高级 ones
+//   pro       高级账户  every pool node, 普通 and 高级 alike
+//   team      legacy alias, normalized to pro (same node access)
+//
+// Anything else reads as trial, so a typo in the database can only take
+// access away, never grant it.
+const PLAN_TIERS = Object.freeze(['trial', 'standard', 'pro']);
+const SHARED_COMPUTE_PLANS = Object.freeze(['standard', 'pro']);
+const PREMIUM_NODE_PLANS = Object.freeze(['pro']);
+
+function normalizePlan(plan) {
+  const key = String(plan || 'trial').trim().toLowerCase();
+  if (key === 'team') return 'pro';
+  return PLAN_TIERS.includes(key) ? key : 'trial';
+}
+
+function canUseSharedCompute(plan) {
+  return SHARED_COMPUTE_PLANS.includes(normalizePlan(plan));
+}
+
+function canUsePremiumNodes(plan) {
+  return PREMIUM_NODE_PLANS.includes(normalizePlan(plan));
+}
+
+// Node tiers. Every pool node is 普通 (standard) or 高级 (premium). The
+// registration code that admits a machine decides its tier, and the
+// administrator may change it afterwards; the scheduler and the picker both
+// read it from gpu_workers.tier.
+const NODE_TIERS = Object.freeze(['standard', 'premium']);
+
+function normalizeNodeTier(tier) {
+  return String(tier || '').trim().toLowerCase() === 'premium' ? 'premium' : 'standard';
+}
+
+/** May an account with this plan run work on a node of this tier? */
+function planAllowsNode(plan, tier) {
+  if (!canUseSharedCompute(plan)) return false;
+  return normalizeNodeTier(tier) === 'standard' || canUsePremiumNodes(plan);
+}
+
+const ERROR_CODE = Object.freeze({
+  UNAUTHORIZED: 'unauthorized',
+  FORBIDDEN: 'forbidden',
+  EXPIRED: 'token_expired',
+  SESSION_REPLACED: 'session_replaced',
+  ACCOUNT_EXPIRED: 'account_expired',
+  NOT_FOUND: 'not_found',
+  BAD_REQUEST: 'bad_request',
+  CONFLICT: 'conflict',
+  INSUFFICIENT_CREDITS: 'insufficient_credits',
+  PLAN_REQUIRED: 'plan_required',
+  NODE_TIER_REQUIRED: 'node_tier_required',
+  NO_WORKER: 'no_capable_worker',
+  RATE_LIMITED: 'rate_limited',
+  UNAVAILABLE: 'unavailable'
+});
+
+// Filenames the gateway will serve. Anything outside this shape is refused
+// before it ever reaches the filesystem.
+const SAFE_FILENAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+function isSafeFilename(name) {
+  const value = String(name || '');
+  if (!SAFE_FILENAME_RE.test(value)) return false;
+  return !value.includes('..');
+}
+
 // ===== tokens.mjs ====================================================
 // GENERATED COPY - do not edit here.
 // Source: packages/shared/src/tokens.mjs
@@ -384,499 +846,6 @@ function generateWorkerSecret() {
 function bearerToken(headerValue) {
   const auth = String(headerValue || '');
   return /^bearer\s+/i.test(auth) ? auth.replace(/^bearer\s+/i, '').trim() : '';
-}
-
-// ===== art-knowledge.mjs =============================================
-// GENERATED COPY - do not edit here.
-// Source: packages/shared/src/art-knowledge.mjs
-// Regenerate with: npm run sync:edge
-
-// Shared by the owner API and the read-only deployment report. Filtering does
-// not publish, infer quality from silence, or discard conflicting evidence.
-function filterArtCandidates({rows,active,skillId}) {
-  const normalized=v=>v.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu,'');
-  const scopeKey=scope=>JSON.stringify(['skillId','generationModel','variant','brain'].map(k=>scope[k]));
-  const known=new Set(active.methods.map(m=>scopeKey(m.scope)+'\n'+normalized(m.text))),excluded=[],eligible=[],monitor=[];
-  for(const row of rows.filter(c=>c.scope.skillId===skillId)) {
-    const reason=known.has(scopeKey(row.scope)+'\n'+normalized(row.method))?'already-published':row.published_before?'previously-withdrawn':Number(row.positive_count)<1?'no-positive-evidence':null;
-    if(reason==='already-published'&&Number(row.negative_count)>0)monitor.push(row);
-    if(reason)excluded.push({id:row.id,reason});
-    else eligible.push({...row,reviewNotes:[...(row.negative_count?['conflicting-feedback']:[]),...(row.positive_users<2?['single-user-evidence']:[]),'fixed-benchmark-and-owner-review-required']});
-  }
-  return {eligible,excluded,monitor};
-}
-// Brain-independent, method-only shared knowledge API. Source task records and
-// personal preferences are deliberately outside this protocol.
-function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError,management=false}) {
-  const fail=(status,message)=>{throw new HttpError(status,'art-knowledge-invalid',message);};
-  const shape=(value,keys)=>value && typeof value==='object' && !Array.isArray(value) && Object.keys(value).every(k=>keys.includes(k));
-  const scalar=value=>typeof value==='string' && /^[A-Za-z0-9*_.:-]{1,100}$/.test(value);
-  const skill=value=>['style-transfer','image-creation'].includes(value);
-  function candidate(value) {
-    if(!shape(value,['schema','key','scope','method','status','evidence']) || value.schema!=='nf.art.method-candidate.v1' || value.status!=='candidate'
-      || !shape(value.scope,['skillId','generationModel','variant','brain']) || Object.keys(value.scope).length!==4
-      || !skill(value.scope.skillId) || !Object.values(value.scope).every(scalar)
-      || typeof value.method!=='string' || !value.method.trim() || value.method.length>600
-      || /data:image\/|https?:\/\/|Bearer\s|我(?:个人)?(?:喜欢|偏好)|我的(?:照片|名字|账号)/i.test(value.method)
-      || !Array.isArray(value.evidence) || value.evidence.length<1 || value.evidence.length>20)fail(400,'only abstract professional methods and bounded evidence are accepted');
-    const evidence=value.evidence.map(item=>{
-      if(!shape(item,['taskId','parentTaskId','resultSHA256','previousResultSHA256','feedback','skillVersion','improvement'])
-        || typeof item.taskId!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(item.taskId)
-        || !/^[a-f0-9]{64}$/.test(item.resultSHA256||'') || !['satisfied','adopted','unsatisfied','revision'].includes(item.feedback)
-        || typeof item.improvement!=='boolean')fail(400,'invalid task-result evidence');
-      return {taskId:item.taskId,resultSHA256:item.resultSHA256,feedback:item.feedback,improvement:item.improvement};
-    });
-    return {scope:value.scope,method:value.method.trim(),evidence};
-  }
-  return {async handle({method,path,headers,query,body}) {
-    if(!path.startsWith('/api/web/art-knowledge'))return null;
-    const isRead=method==='GET' && path==='/api/web/art-knowledge';
-    const token=String(headers.authorization||headers.Authorization||'').replace(/^Bearer\s+/i,'');
-    // management is a trusted constructor capability used only inside the
-    // separately packaged admin tool. No user/session/header can enable it.
-    const principal=management?{id:null,role:'art-management'}:isRead && token.startsWith('nfw_')?await requireWorker(headers):await requireUser(headers);
-    if(typeof store.readArtKnowledge!=='function')fail(503,'shared art knowledge is not enabled');
-    if(isRead){if(!skill(query.skillId))fail(400,'invalid art skill');return {ok:true,...await store.readArtKnowledge(query.skillId,query.knownVersion)};}
-    if(method==='GET'&&path==='/api/web/art-knowledge/publisher')return {ok:true,publisher:management};
-    if(path==='/api/web/art-knowledge/consent') {
-      if(method==='GET')return {ok:true,allowed:await store.getArtLearningConsent(principal.id)};
-      if(method==='POST'&&shape(body,['allow'])&&typeof body.allow==='boolean'){await store.setArtLearningConsent(principal.id,body.allow);return {ok:true,allowed:body.allow};}
-      fail(400,'invalid sharing consent');
-    }
-    if(method==='POST'&&path==='/api/web/art-knowledge/outcomes'){
-      if(!shape(body,['schema','key','status','appliedMethodIds','evidence'])||body.schema!=='nf.art.method-outcome.v1'||body.status!=='candidate'
-        ||!Array.isArray(body.appliedMethodIds)||body.appliedMethodIds.length<1||body.appliedMethodIds.length>5||body.appliedMethodIds.some(id=>!/^[a-f0-9-]{36}$/i.test(id))
-        ||!shape(body.evidence,['taskId','resultSHA256','feedback','improvement'])||!/^[A-Za-z0-9_-]{1,128}$/.test(body.evidence.taskId||'')
-        ||!/^[a-f0-9]{64}$/.test(body.evidence.resultSHA256||'')||!['satisfied','adopted','unsatisfied','revision'].includes(body.evidence.feedback)||typeof body.evidence.improvement!=='boolean')fail(400,'invalid method outcome');
-      if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
-      try{return {ok:true,...await store.submitArtOutcome(principal.id,body)};}
-      catch(error){const message=String(error?.message||error);if(message.includes('method was never published'))fail(400,'only published method outcomes are accepted');if(message.includes('result identity changed'))fail(409,'task result identity cannot change');throw error;}
-    }
-    if(method==='POST' && path==='/api/web/art-knowledge/candidates') {
-      const input=candidate(body);if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
-      return {ok:true,...await store.submitArtMethod(principal.id,input)};
-    }
-    if(!management)fail(403,'review and publication require the backend management tool');
-    if(method==='GET'&&path==='/api/web/art-knowledge/releases')return {ok:true,releases:await store.listArtReleases()};
-    if(method==='GET'&&path==='/api/web/art-knowledge/review')return {ok:true,review:await store.getArtReview()};
-    if(method==='GET' && path==='/api/web/art-knowledge/candidates')return {ok:true,candidates:await store.listArtCandidates()};
-    if(method==='POST' && ['/api/web/art-knowledge/prepare','/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback'].includes(path)) {
-      const rollback=path.endsWith('/rollback'),prepare=path.endsWith('/prepare');
-      if(!shape(body,rollback?['skillId','version']:['skillId','version','candidateIds','validation','skill',...(prepare?[]:['approval'])]) || !skill(body.skillId)
-        || typeof body.version!=='string' || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(body.version))fail(400,'invalid skill release');
-      if(rollback)return {ok:true,...await store.rollbackArtKnowledge(principal.id,body)};
-      if(!shape(body.validation,['passed','benchmarkSHA256','cases']) || body.validation.passed!==true
-        || !/^[a-f0-9]{64}$/.test(body.validation.benchmarkSHA256||'') || !Number.isInteger(body.validation.cases)||body.validation.cases<1)fail(400,'fixed benchmark acceptance is required');
-      if(body.skill && (body.skill.schema!=='nf.art.skill.v1'||body.skill.status!=='stable'||body.skill.id!==body.skillId||body.skill.version!==body.version
-        ||body.skillId!=='style-transfer'||body.skill.applicability?.task!=='drawing'||body.skill.applicability?.generationModels?.join(',')!=='qwen-2.1'
-        ||!Array.isArray(body.skill.brainStrategies)||body.skill.brainStrategies.length>16||body.skill.brainStrategies.some(s=>typeof s.brain!=='string'||s.brain.length>240||!['none','low'].includes(s.reasoningEffort)||!Number.isInteger(s.reasoningBudgetTokens)||s.reasoningBudgetTokens<0||s.reasoningBudgetTokens>1024||s.reasoningEffort==='none'&&s.reasoningBudgetTokens!==0)
-        || typeof body.skill.systemPrompt!=='string'||body.skill.systemPrompt.length>=24000||!body.skill.systemPrompt.includes('Return ONLY JSON:')||await sha256Hex(body.skill.systemPrompt)!==body.skill.systemSHA256))fail(400,'invalid professional skill version');
-      const active=await store.readArtKnowledge(body.skillId),rows=(await store.listArtCandidates()).filter(c=>c.scope.skillId===body.skillId);
-      const {eligible,excluded,monitor}=filterArtCandidates({rows,active,skillId:body.skillId});
-      const ids=body.candidateIds??(prepare?eligible.slice(0,20).map(c=>c.id):null);
-      if(!Array.isArray(ids)||ids.length>20||ids.some(id=>!/^[a-f0-9-]{36}$/i.test(id))||new Set(ids).size!==ids.length)fail(400,'invalid candidate selection');
-      const selected=ids.map(id=>eligible.find(c=>c.id===id));
-      if(selected.some(c=>!c))fail(409,'selected candidates are no longer eligible; prepare a fresh review');
-      if(!prepare&&selected.length<1)fail(400,'nothing approved for publication');
-      const ordered=[...selected].sort((a,b)=>a.id.localeCompare(b.id));
-      const batch={skillId:body.skillId,version:body.version,baseVersion:active.version,
-        candidates:ordered.map(c=>({id:c.id,method:c.method,scope:c.scope,evidenceFingerprint:c.evidence_fingerprint})),
-        validation:body.validation,skill:body.skill||null};
-      const batchSHA256=await sha256Hex(JSON.stringify(batch));
-      if(prepare){const report={ok:true,status:'awaiting-owner-approval',batchSHA256,baseVersion:active.version,
-        selected:ordered,excluded,monitor,remaining:eligible.length-selected.length,
-        publishRequest:{skillId:body.skillId,version:body.version,candidateIds:ids,validation:body.validation,...(body.skill?{skill:body.skill}:{})}};await store.saveArtReview(principal.id,report);return report;}
-      if(!shape(body.approval,['approved','batchSHA256'])||body.approval.approved!==true||body.approval.batchSHA256!==batchSHA256)fail(409,'explicit owner approval for this exact unchanged batch is required');
-      return {ok:true,...await store.publishArtKnowledge(principal.id,{...body,candidateIds:ids,validation:{...body.validation,
-        baseVersion:active.version,evidenceFingerprints:Object.fromEntries(ordered.map(c=>[c.id,c.evidence_fingerprint])),
-        ownerApproved:true,approvedBy:'admin-tool',approvalSHA256:batchSHA256}})};
-    }
-    fail(404,'unknown shared art knowledge route');
-  }};
-}
-
-// ===== lora-catalog.mjs ==============================================
-// GENERATED COPY - do not edit here.
-// Source: packages/shared/src/lora-catalog.mjs
-// Regenerate with: npm run sync:edge
-// Advertise only selections supported by every node the scheduler can choose.
-// Older nodes and failed scans are unavailable, never an empty success.
-function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, engine = '' }) {
-  if (!rows.length) throw new Error('暂无在线算力可读取 LoRA');
-  const key = kind === 'qwen'
-    ? (engine === 'qwen-2.1' ? 'qwen21' : nsfw ? 'qwen_nsfw' : 'qwen')
-    : (mode === 'r2v' ? 'h3_ref' : 'h3');
-  const lists = rows.map(row => {
-    const report = row.detail?.lora_catalog;
-    if (report?.version !== 1) throw new Error('算力节点需要更新到 0.4.4 才能读取 LoRA');
-    if (Date.now() - Date.parse(report.updated_at) > 300000 || !Number.isFinite(Date.parse(report.updated_at))) throw new Error('LoRA 列表已过期，等待节点更新后重试');
-    const value = report[key];
-    if (!value?.ok || !Array.isArray(value.items)) throw new Error('算力节点读取 LoRA 失败，请检查节点的 models 目录与模型文件');
-    return value.items.filter(item => {
-      const name = String(item?.name || '');
-      if (!/\.safetensors$/i.test(name) || name.split(/[\\/]/).some(p => !p || p === '.' || p === '..' || p.includes(':'))) return false;
-      if (kind === 'qwen') return /^qwen[\\/]/i.test(name);
-      const family = mode === 'r2v' ? 'ref2va' : 'fl2va';
-      return item.kind === 'standard' && ['h3', family].includes(item.modelFamily) &&
-        (!item.supportedSteps || item.supportedSteps.includes(steps)) && typeof item.fingerprint === 'string';
-    }).map(item => kind === 'qwen' ? { name: item.name } : {
-      name: item.name, fingerprint: item.fingerprint, modelFamily: item.modelFamily,
-      kind: item.kind, supportedSteps: item.supportedSteps, strengthRange: item.strengthRange
-    });
-  });
-  return lists[0].filter(item => lists.slice(1).every(list => list.some(other =>
-    other.name === item.name && (kind !== 'h3' || other.fingerprint === item.fingerprint))));
-}
-
-// ===== release.mjs ===================================================
-// GENERATED COPY - do not edit here.
-// Source: packages/shared/src/release.mjs
-// Regenerate with: npm run sync:edge
-// Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.346";
-
-// ===== protocol.mjs ==================================================
-// GENERATED COPY - do not edit here.
-// Source: packages/shared/src/protocol.mjs
-// Regenerate with: npm run sync:edge
-// NovaFlow Web - shared protocol.
-// One source of truth for task states, task types, token prefixes and the
-// worker/control-plane wire contract. Imported unchanged by the browser app,
-// the worker, the local control plane and the Supabase edge function, so a
-// contract drift becomes a test failure rather than a runtime mystery.
-
-const PROTOCOL_VERSION = 1;
-
-// ---------------------------------------------------------------------------
-// Task state machine (spec 15). Every transition carries a timestamp column.
-// ---------------------------------------------------------------------------
-const TASK_STATE = Object.freeze({
-  CREATED: 'created',
-  QUEUED: 'queued',
-  ASSIGNED: 'assigned',
-  UPLOADING: 'uploading',
-  PROCESSING: 'processing',
-  COMPLETED: 'completed',
-  FAILED: 'failed',
-  CANCELLED: 'cancelled',
-  EXPIRED: 'expired'
-});
-
-const TERMINAL_TASK_STATES = Object.freeze([
-  TASK_STATE.COMPLETED,
-  TASK_STATE.FAILED,
-  TASK_STATE.CANCELLED,
-  TASK_STATE.EXPIRED
-]);
-
-// Allowed transitions. Anything not listed here is rejected by the control
-// plane, which is what keeps unexplainable intermediate states from existing.
-const TASK_TRANSITIONS = Object.freeze({
-  [TASK_STATE.CREATED]: [TASK_STATE.QUEUED, TASK_STATE.CANCELLED, TASK_STATE.FAILED],
-  [TASK_STATE.QUEUED]: [TASK_STATE.ASSIGNED, TASK_STATE.CANCELLED, TASK_STATE.EXPIRED, TASK_STATE.FAILED],
-  // ASSIGNED -> QUEUED is the requeue path used by heartbeat/assign timeout recovery.
-  [TASK_STATE.ASSIGNED]: [TASK_STATE.UPLOADING, TASK_STATE.PROCESSING, TASK_STATE.QUEUED, TASK_STATE.CANCELLED, TASK_STATE.FAILED, TASK_STATE.EXPIRED],
-  [TASK_STATE.UPLOADING]: [TASK_STATE.PROCESSING, TASK_STATE.QUEUED, TASK_STATE.CANCELLED, TASK_STATE.FAILED, TASK_STATE.EXPIRED],
-  [TASK_STATE.PROCESSING]: [TASK_STATE.COMPLETED, TASK_STATE.FAILED, TASK_STATE.CANCELLED, TASK_STATE.QUEUED, TASK_STATE.EXPIRED],
-  [TASK_STATE.COMPLETED]: [],
-  [TASK_STATE.FAILED]: [],
-  [TASK_STATE.CANCELLED]: [],
-  [TASK_STATE.EXPIRED]: []
-});
-
-function canTransition(from, to) {
-  const allowed = TASK_TRANSITIONS[String(from || '')];
-  return Array.isArray(allowed) && allowed.includes(String(to || ''));
-}
-
-function isTerminalState(state) {
-  return TERMINAL_TASK_STATES.includes(String(state || ''));
-}
-
-// ---------------------------------------------------------------------------
-// Worker lifecycle (spec 5).
-// ---------------------------------------------------------------------------
-const WORKER_STATUS = Object.freeze({
-  IDLE: 'idle',
-  BUSY: 'busy',
-  OFFLINE: 'offline',
-  MAINTENANCE: 'maintenance'
-});
-
-const WORKER_MODEL_STATUS = Object.freeze({
-  READY: 'ready',
-  MISSING: 'missing',
-  INVALID: 'invalid',
-  UPDATING: 'updating'
-});
-
-// Heartbeat cadence and the timeout the sweeper uses (spec 14).
-const HEARTBEAT_INTERVAL_SECONDS = 20;
-const HEARTBEAT_TIMEOUT_SECONDS = 75;
-// A task that is ASSIGNED but never picked up goes back to the queue.
-const ASSIGN_TIMEOUT_SECONDS = 120;
-// A task stuck in PROCESSING with no progress for this long is requeued once
-// and then failed.
-const PROCESSING_TIMEOUT_SECONDS = 1800;
-// How many times a task may be requeued after a worker dies under it.
-const MAX_TASK_ATTEMPTS = 3;
-
-// ---------------------------------------------------------------------------
-// A task's place in line (2026-10-15, user: 节点忙碌时弹框提示排队、已等多久、预计多久，能取消排队).
-// A task still waiting for a node gets `task.queue` from the control plane (or the
-// local queue); a node whose runtime is still drawing other prompts says so in its
-// progress note as "<note> [queue ahead=2 eta=180]". The page reads the marker into
-// task.queue and strips it, so no panel shows it.
-// ---------------------------------------------------------------------------
-const QUEUE_NOTE_RE = /\s*\[queue ahead=(\d+)(?: eta=(\d+))?\]\s*$/;
-
-function withQueueNote(note, { ahead, eta } = {}) {
-  const base = String(note || '').replace(QUEUE_NOTE_RE, '');
-  if (!Number.isFinite(Number(ahead)) || ahead === null) return base;
-  const seconds = eta === null || eta === undefined || !Number.isFinite(Number(eta)) ? '' : ' eta=' + Math.max(0, Math.round(eta));
-  return base + ' [queue ahead=' + Math.max(0, Math.round(ahead)) + seconds + ']';
-}
-
-/**
- * Rough seconds until a waiting task starts: what the running ones still need plus one
- * average run per task queued ahead, shared by the nodes that can take them. No recent
- * run to go by: null (the page says it cannot estimate yet).
- */
-function estimateQueueWait({ queuedAhead = 0, runningElapsed = [], averageSeconds = 0, workers = 1 } = {}) {
-  const average = Number(averageSeconds) || 0;
-  if (!(average > 0)) return null;
-  const left = runningElapsed.reduce((sum, elapsed) => sum + Math.max(average * 0.1, average - (Number(elapsed) || 0)), 0);
-  return Math.round((left + Math.max(0, Number(queuedAhead) || 0) * average) / Math.max(1, Number(workers) || 1));
-}
-
-// ---------------------------------------------------------------------------
-// Token prefixes. Each token type is a distinct namespace so a token can never
-// be replayed as a different kind of credential.
-// ---------------------------------------------------------------------------
-const TOKEN_PREFIX = Object.freeze({
-  SESSION: 'nfs_',   // user session, minted by the existing novaflow-backend
-  WORKER: 'nfw_',    // worker identity, minted by the control plane
-  GRANT: 'nfg_'      // short-lived browser<->worker file grant
-});
-
-const GRANT_OP = Object.freeze({
-  UPLOAD: 'upload',
-  DOWNLOAD: 'download'
-});
-
-const GRANT_TTL_SECONDS = 900;           // 15 min upload window
-const GRANT_DOWNLOAD_TTL_SECONDS = 3600; // 1 h result playback window
-
-// ---------------------------------------------------------------------------
-// Task types -> workflow files. The browser NEVER sees a ComfyUI graph; it
-// sends a task_type plus business parameters and the worker picks the graph
-// (spec 10).
-// ---------------------------------------------------------------------------
-const TASK_TYPE = Object.freeze({
-  H3_I2V: 'h3_i2v',
-  // 音频: game background music (looped) and sound effects, text to audio.
-  AUDIO_MUSIC: 'audio_music',
-  AUDIO_SFX: 'audio_sfx'
-});
-
-const TASK_TYPE_WORKFLOW = Object.freeze({
-  [TASK_TYPE.H3_I2V]: 'h3_i2v.json',
-  [TASK_TYPE.AUDIO_MUSIC]: 'audio_music.json',
-  [TASK_TYPE.AUDIO_SFX]: 'audio_sfx.json'
-});
-
-// 音频 limits, shared by the validator, the worker and the panel.
-const AUDIO_LIMITS = Object.freeze({
-  music: { minSeconds: 8, maxSeconds: 300, defaultSeconds: 30 },
-  sfx: { minSeconds: 1, maxSeconds: 30, defaultSeconds: 2 },
-  minCrossfadeMs: 100, maxCrossfadeMs: 4000, defaultCrossfadeMs: 800
-});
-const AUDIO_MUSIC_MODEL_ID = 'audio-music';
-const AUDIO_SFX_MODEL_ID = 'audio-sfx';
-
-// Which model each task type needs, and the VRAM floor the scheduler enforces
-// before it hands the task to a worker.
-// `billing` is the rule that decides whether a task costs credits at all.
-//
-//   'self_hosted' - it runs on a GPU in this pool: the owner's machine, a
-//     friend's, a rented one. Nobody is invoiced for it, so NovaFlow does not
-//     invoice for it either. Credits exist to meter what a third party bills
-//     for, not to tax someone's own hardware.
-//
-//   'provider' - it goes out to a paid API (Grok, GPT, Google). That is real
-//     money leaving, and that is what credits are for.
-//
-// Every task type NovaFlow Web runs today is self-hosted. The metered path is
-// kept wired, and priced, for the provider-backed types that will use it.
-const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'provider' });
-
-// 'video_matting' is deliberately absent from TASK_TYPE and
-// TASK_TYPE_WORKFLOW above. Membership there means "this type names a ComfyUI
-// graph file", which the worker's loadWorkflow() then insists on loading and
-// tests/e2e/protocol.test.mjs asserts exists. AI 抠图 runs BiRefNet in a
-// Python process and never opens ComfyUI at all, so it belongs only here -
-// isKnownTaskType() reads THIS table, which is what admits it to the queue.
-const MATTING_TASK_TYPE = 'video_matting';
-
-// Local Flash assistant (optimize / reverse / art-style description). The task
-// type string stays prompt_assistant so workers already in the field keep
-// dispatching it. Production inference is Flash/Strata; the Python service is
-// not an automatic fallback. On the shared pool the request still travels as
-// one uploaded JSON file and the reply comes back as one output file.
-const PROMPT_ASSISTANT_TASK_TYPE = 'prompt_assistant';
-const PROMPT_ASSISTANT_MODEL_ID = 'prompt-assistant';
-// A separate scheduler capability; legacy Next nodes cannot claim Qwen work.
-const PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID = 'qwen3.5-9b-heretic';
-// Distinct scheduler capability: chat-ready older nodes cannot claim business tasks.
-const PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY = 'qwen3.5-9b-heretic-business-v1';
-// Reserved for a future owner-bound candidate-only route; not advertised or enabled.
-const PROMPT_ASSISTANT_QWEN_ROTATION_CANDIDATE_SCOPE = 'qwen-foart-rotation-candidate-v1';
-const PROMPT_ASSISTANT_QWEN_ROTATION_CANDIDATE_CAPABILITY = 'qwen3.5-9b-heretic-foart-rotation-candidate-v1';
-const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style', 'rewrite-audio-prompt', 'art-agent-chat']);
-const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
-const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
-
-const TASK_TYPE_REQUIREMENTS = Object.freeze({
-  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED },
-  // 音频 is light: the music model peaks under 7 GB, the effects model under 3 GB.
-  [TASK_TYPE.AUDIO_MUSIC]: { modelId: AUDIO_MUSIC_MODEL_ID, minVramMb: 8000, kind: 'audio', label: '音乐', billing: BILLING.SELF_HOSTED },
-  [TASK_TYPE.AUDIO_SFX]: { modelId: AUDIO_SFX_MODEL_ID, minVramMb: 4000, kind: 'audio', label: '音效', billing: BILLING.SELF_HOSTED },
-  // Matting is segmentation, not generation: BiRefNet runs at a fixed
-  // 1024x1024 whatever the clip is, so the VRAM floor is far below the
-  // generation types and a machine that cannot draw can still cut out.
-  [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED },
-  // Local Flash. The node frees its drawing runtime's memory first.
-  [PROMPT_ASSISTANT_TASK_TYPE]: { modelId: PROMPT_ASSISTANT_MODEL_ID, minVramMb: 8000, kind: 'text', label: '本地 Flash 助手', billing: BILLING.SELF_HOSTED }
-});
-
-/** Does this task type cost the user credits? */
-function isMetered(taskType) {
-  const req = TASK_TYPE_REQUIREMENTS[String(taskType || '')];
-  return Boolean(req) && req.billing === BILLING.PROVIDER;
-}
-
-function requirementsFor(taskType) {
-  return TASK_TYPE_REQUIREMENTS[String(taskType || '')] || null;
-}
-
-function isKnownTaskType(taskType) {
-  return Object.prototype.hasOwnProperty.call(TASK_TYPE_REQUIREMENTS, String(taskType || ''));
-}
-
-// ---------------------------------------------------------------------------
-// Result TTL defaults (spec 13). Configurable per deployment; these are the
-// values the worker ships with.
-// ---------------------------------------------------------------------------
-const TTL_SECONDS = Object.freeze({
-  input: 24 * 3600,
-  image: 72 * 3600,
-  video: 48 * 3600,
-  audio: 72 * 3600
-});
-
-// ---------------------------------------------------------------------------
-// Control-plane routes. Written once so the worker, the browser and both
-// server implementations cannot disagree about a path.
-// ---------------------------------------------------------------------------
-const ROUTES = Object.freeze({
-  health: '/health',
-  // user-facing (needs a nfs_ session token)
-  createTask: '/api/web/tasks',
-  listTasks: '/api/web/tasks',
-  getTask: (id) => '/api/web/tasks/' + id,
-  cancelTask: (id) => '/api/web/tasks/' + id + '/cancel',
-  taskGrant: (id) => '/api/web/tasks/' + id + '/grant',
-  workers: '/api/web/workers',
-  capabilities: '/api/web/capabilities',
-  me: '/api/web/me',
-  // worker-facing (needs a nfw_ worker token, except register)
-  workerRegister: '/api/worker/register',
-  workerHeartbeat: '/api/worker/heartbeat',
-  workerClaim: '/api/worker/claim',
-  workerModels: '/api/worker/models',
-  workerProgress: (id) => '/api/worker/tasks/' + id + '/progress',
-  workerComplete: (id) => '/api/worker/tasks/' + id + '/complete',
-  workerFail: (id) => '/api/worker/tasks/' + id + '/fail',
-  // maintenance sweeper, callable by cron or by the local runner
-  sweep: '/api/maintenance/sweep'
-});
-
-// Worker gateway routes (served by the worker itself, reachable by browsers).
-const GATEWAY_ROUTES = Object.freeze({
-  health: '/gw/health',
-  upload: (taskId, name) => '/gw/tasks/' + taskId + '/input/' + name,
-  output: (taskId, name) => '/gw/tasks/' + taskId + '/output/' + name,
-  preview: (taskId, name) => '/gw/tasks/' + taskId + '/preview/' + name
-});
-
-// Account tiers. `users.plan` is what the administrator sets:
-//
-//   trial     普通账户  only the machine 启动NovaFlow opened; no pool node
-//   standard  中级账户  pool nodes marked 普通 (standard), not 高级 ones
-//   pro       高级账户  every pool node, 普通 and 高级 alike
-//   team      legacy alias, normalized to pro (same node access)
-//
-// Anything else reads as trial, so a typo in the database can only take
-// access away, never grant it.
-const PLAN_TIERS = Object.freeze(['trial', 'standard', 'pro']);
-const SHARED_COMPUTE_PLANS = Object.freeze(['standard', 'pro']);
-const PREMIUM_NODE_PLANS = Object.freeze(['pro']);
-
-function normalizePlan(plan) {
-  const key = String(plan || 'trial').trim().toLowerCase();
-  if (key === 'team') return 'pro';
-  return PLAN_TIERS.includes(key) ? key : 'trial';
-}
-
-function canUseSharedCompute(plan) {
-  return SHARED_COMPUTE_PLANS.includes(normalizePlan(plan));
-}
-
-function canUsePremiumNodes(plan) {
-  return PREMIUM_NODE_PLANS.includes(normalizePlan(plan));
-}
-
-// Node tiers. Every pool node is 普通 (standard) or 高级 (premium). The
-// registration code that admits a machine decides its tier, and the
-// administrator may change it afterwards; the scheduler and the picker both
-// read it from gpu_workers.tier.
-const NODE_TIERS = Object.freeze(['standard', 'premium']);
-
-function normalizeNodeTier(tier) {
-  return String(tier || '').trim().toLowerCase() === 'premium' ? 'premium' : 'standard';
-}
-
-/** May an account with this plan run work on a node of this tier? */
-function planAllowsNode(plan, tier) {
-  if (!canUseSharedCompute(plan)) return false;
-  return normalizeNodeTier(tier) === 'standard' || canUsePremiumNodes(plan);
-}
-
-const ERROR_CODE = Object.freeze({
-  UNAUTHORIZED: 'unauthorized',
-  FORBIDDEN: 'forbidden',
-  EXPIRED: 'token_expired',
-  SESSION_REPLACED: 'session_replaced',
-  ACCOUNT_EXPIRED: 'account_expired',
-  NOT_FOUND: 'not_found',
-  BAD_REQUEST: 'bad_request',
-  CONFLICT: 'conflict',
-  INSUFFICIENT_CREDITS: 'insufficient_credits',
-  PLAN_REQUIRED: 'plan_required',
-  NODE_TIER_REQUIRED: 'node_tier_required',
-  NO_WORKER: 'no_capable_worker',
-  RATE_LIMITED: 'rate_limited',
-  UNAVAILABLE: 'unavailable'
-});
-
-// Filenames the gateway will serve. Anything outside this shape is refused
-// before it ever reaches the filesystem.
-const SAFE_FILENAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-function isSafeFilename(name) {
-  const value = String(name || '');
-  if (!SAFE_FILENAME_RE.test(value)) return false;
-  return !value.includes('..');
 }
 
 // ===== pricing.mjs ===================================================
@@ -1715,7 +1684,7 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
   const log = logger || (() => {});
   const sessionSecret = secrets?.sessionSecret || '';
   const controlSecret = secrets?.controlSecret || '';
-  const artKnowledge = createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError});
+  const xiaotaoMemory = createXiaotaoMemoryRoutes({store,requireUser,HttpError});
   const qwenScopeEnabled=scope=>scope===QWEN_PLAN_SCOPE ? qwenPlanEnabled===true : scope===QWEN_IMAGE_EDIT_SCOPE && qwen21LocalImageEditEnabled===true;
 
   async function requireUser(headers) {
@@ -3679,7 +3648,7 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
           throw new HttpError(400,String(error?.code||'art-business-invalid'),'\u5728\u7ebf\u7f8e\u5de5\u8bf7\u6c42\u672a\u5b8c\u6210\uff0c\u8bf7\u6838\u5bf9\u8d26\u5355\u72b6\u6001\u3002');
         }
       }
-      if (path.startsWith('/api/web/art-knowledge')) return ok(await artKnowledge.handle({method,path,headers,query,body}));
+      if (path === '/api/web/xiaotao/memory' || path.startsWith('/api/web/xiaotao/memory/')) return ok(await xiaotaoMemory.handle({method,path,headers,body}));
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });
       }
@@ -4015,37 +3984,17 @@ function unwrapRpc<T>(data: unknown): T | null {
  * cannot diverge between the two deployments.
  */
 const supabaseStore = {
-  async readArtKnowledge(skillId: string,knownVersion?: string) {
-    const {data,error}=await admin().from('art_knowledge_releases').select('version,methods,skill').eq('skill_id',skillId).eq('active',true).maybeSingle();
-    if(data && data.version===knownVersion)return {version:data.version,unchanged:true};
-    if(error)throw error;return data || {version:'0',methods:[]};
+  async listXiaotaoMemory(userId: string) {
+    const {data,error}=await admin().from('xiaotao_user_memories').select('id,category,slot,memory_text,source,updated_at').eq('user_id',userId).order('updated_at',{ascending:false}).limit(20);
+    if(error)throw error;return (data||[]).map((r:any)=>({id:r.id,category:r.category,slot:r.slot,text:r.memory_text,source:r.source,updatedAt:r.updated_at}));
   },
-  async getArtLearningConsent(userId: string){const {data,error}=await admin().from('art_learning_consents').select('allowed').eq('user_id',userId).maybeSingle();if(error)throw error;return data?.allowed===true;},
-  async isArtPublisher(userId: string){const {data,error}=await admin().from('art_knowledge_policy').select('singleton').eq('publisher_user_id',userId).maybeSingle();if(error)throw error;return Boolean(data);},
-  async setArtLearningConsent(userId: string,allow: boolean){const {error}=await admin().from('art_learning_consents').upsert({user_id:userId,allowed:allow,updated_at:new Date().toISOString()});if(error)throw error;},
-  async submitArtMethod(userId: string,input: any) {
-    const {data,error}=await admin().rpc('novaflow_art_submit_method',{p_user_id:userId,p_scope:input.scope,p_method:input.method,p_evidence:input.evidence});
-    if(error)throw error;return data;
-  },
-  async submitArtOutcome(userId:string,input:any){const {data,error}=await admin().rpc('novaflow_art_submit_outcome',{p_user_id:userId,p_method_ids:input.appliedMethodIds,p_evidence:input.evidence});if(error)throw error;return data;},
-  async listArtReleases(){const {data,error}=await admin().rpc('novaflow_art_release_history');if(error)throw error;return data||[];},
-  async listArtCandidates() {
-    // Provenance remains server-only. The review API exposes abstract methods.
-    const {data,error}=await admin().rpc('novaflow_art_review_candidates');
-    if(error)throw error;return data || [];
-  },
-  async saveArtReview(userId: string,report: any){
-    const {error:oldError}=await admin().from('art_knowledge_reviews').update({state:'outdated'}).eq('state','pending').eq('report->publishRequest->>skillId',report.publishRequest.skillId).neq('batch_sha256',report.batchSHA256);if(oldError)throw oldError;
-    const {error}=await admin().from('art_knowledge_reviews').upsert({batch_sha256:report.batchSHA256,report,prepared_by:userId},{onConflict:'batch_sha256'});if(error)throw error;
-  },
-  async getArtReview(){const {data,error}=await admin().from('art_knowledge_reviews').select('report').eq('state','pending').order('created_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;return data?.report||null;},
-  async publishArtKnowledge(userId: string,input: any) {
-    const {data,error}=await admin().rpc('novaflow_art_publish_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version,p_candidate_ids:input.candidateIds,p_validation:input.validation,p_skill:input.skill||null});
-    if(error)throw error;return data;
-  },
-  async rollbackArtKnowledge(userId: string,input: any) {
-    const {data,error}=await admin().rpc('novaflow_art_rollback_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version});
-    if(error)throw error;return data;
+  async getXiaotaoMemoryEnabled(userId: string){const {data,error}=await admin().from('xiaotao_memory_settings').select('enabled').eq('user_id',userId).maybeSingle();if(error)throw error;return data?.enabled!==false;},
+  async setXiaotaoMemoryEnabled(userId: string,enabled: boolean){const {error}=await admin().from('xiaotao_memory_settings').upsert({user_id:userId,enabled,updated_at:new Date().toISOString()});if(error)throw error;},
+  async saveXiaotaoMemory(userId: string,item: any){const {data,error}=await admin().rpc('xiaotao_memory_save',{p_user_id:userId,p_category:item.category,p_slot:item.slot,p_text:item.text,p_source:item.source});if(error)throw error;return data;},
+  async deleteXiaotaoMemory(userId: string,id: string|null){
+    let query=admin().from('xiaotao_user_memories').delete({count:'exact'}).eq('user_id',userId);
+    if(id)query=query.eq('id',id);
+    const {count,error}=await query;if(error)throw error;return count||0;
   },
   async getUserById(userId: string) {
     if (!UUID_RE.test(String(userId))) return null;
