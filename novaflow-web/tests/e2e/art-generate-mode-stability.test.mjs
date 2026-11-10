@@ -46,7 +46,7 @@ test('a corrupted or stale model list is repaired once and keeps the requested p
   const f=fixture();f.sync();
   f.select.children[0].textContent='stale';
   f.sync('gpt');
-  assert.deepEqual(f.select.children.map(o=>[o.value,o.textContent]),[['local','Qwen（本地）'],['gpt','GPT Image 2.5']]);
+  assert.deepEqual(f.select.children.map(o=>[o.value,o.textContent]),[['local','Qwen（本地）'],['gpt','GPT Image 2.5'],['gpt:nano-banana-2.1','Nano Banana 2.1'],['gpt:gpt-image-2','GPT Image 2'],['gpt:grok-imagine','Grok 图像']]);
   assert.equal(f.select.value,'gpt');
   const before=f.mutations();f.sync('gpt');assert.equal(f.mutations(),before);
 });

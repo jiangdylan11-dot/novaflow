@@ -79987,6 +79987,7 @@
     active: false,
     mode: "txt2img",
     provider: "local",
+    cloudImageModel: "gpt-image-2.5",
     gptQualityTxt2img: "high",
     gptQualityImg2img: "low",
     gptSize: "1024x1024",
@@ -81768,8 +81769,8 @@
     return mode === "img2img" ? ART_GENERATE_LABELS.img2img : ART_GENERATE_LABELS.txt2img;
   }
 
-  function artGenerateProviderTitle(provider) {
-    return window.NovaFlowArtGenerateModels?.providerTitle?.(provider) || ART_GENERATE_LABELS.localAi;
+  function artGenerateProviderTitle(provider, state = ART_GENERATE_STATE) {
+    return window.NovaFlowArtGenerateModels?.providerTitle?.(provider, state) || ART_GENERATE_LABELS.localAi;
   }
 
   function syncArtGenerateControlPanel() {
@@ -86267,7 +86268,7 @@
     if (provider === 'local' && state?.nsfw === true && !uiDesignRun) throw new Error('旧版 NSFW 生图路线已移除，未提交任务；请刷新页面后重新选择模型。');
     if (String(providerOptions?.taskProfile || '').toLowerCase() === 'ui-design' && state?.uiLayoutMode === 'partial' && !providerOptions.uiNativeEdit) throw new Error('局部UI任务缺少原生选区，禁止退为全图编辑');
     if (window.NovaFlowWebRuntime) {
-      const stateKeys = ['mode', 'provider', 'nsfw', 'nsfwLoraEnabled', 'nsfwLoraName', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
+      const stateKeys = ['mode', 'provider', 'cloudImageModel', 'nsfw', 'nsfwLoraEnabled', 'nsfwLoraName', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
         'samplingOverrides', 'negativePrompt', 'localQwen21Variant',
         'uiRunIntent', 'uiPreserveLayout', 'uiLayoutMode', 'uiNativeEditPrompt', 'iterationReferenceCount', 'localUiEngine',
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
@@ -87121,7 +87122,7 @@
     });
     current();
     const operationId=window.crypto.randomUUID();
-    const payload={operationId,mode:ctx.runMode,prompt:ctx.prompt,settings,images:verified,count:1,width:ctx.settingsSnapshot.width,height:ctx.settingsSnapshot.height};
+    const payload={operationId,mode:ctx.runMode,model:ctx.settingsSnapshot.cloudImageModel||'gpt-image-2.5',prompt:ctx.prompt,settings,images:verified,count:1,width:ctx.settingsSnapshot.width,height:ctx.settingsSnapshot.height};
     const request={payload,brain:binding.modelId,pageHash:prepared.confirmationPageHash,compilerProof:binding.proof,selectionEpoch:binding.epoch};
     const quoted=await api.runningHubGptImageQuote({...request,contract:'confirmed-reference-v1'},{signal:boundRun?.controller?.signal});
     current();
@@ -87146,8 +87147,9 @@
     ART_GENERATE_STATE.batchIndex = 0;
     ART_GENERATE_STATE.batchTotal = batchCount > 1 ? batchCount : 0;
     if (!ctx.prepared?.agentRun) ART_GENERATE_STATE.count = batchCount;
-    setArtGenerateProgress("正在连接 GPT Image 2.5...", 0.08);
-    setArtGenerateStatus("正在连接 GPT Image 2.5...");
+    const cloudTitle = artGenerateProviderTitle("gpt", ctx.settingsSnapshot);
+    setArtGenerateProgress(`正在连接 ${cloudTitle}...`, 0.08);
+    setArtGenerateStatus(`正在连接 ${cloudTitle}...`);
     const settings = window.NovaFlowArtGenerateModels?.workflowSettings?.(ctx.settingsSnapshot, "gpt", ctx.runMode) || {};
     const images = ctx.runMode === "img2img"
       ? await Promise.all(ctx.refs.map(async (item) => ({ dataUrl: await resolveArtReferenceDataUrl(item), filename: item.name, mime: item.mimeType || item.file?.type })))
@@ -87173,6 +87175,7 @@
         finally{if(pendingConfirmedCloudRun===boundRun)pendingConfirmedCloudRun=null;}
       }else sent=await api.runningHubGptImage({
         mode: ctx.runMode,
+        model: ctx.settingsSnapshot.cloudImageModel || 'gpt-image-2.5',
         prompt: ctx.prompt,
         settings,
         images,
@@ -87299,6 +87302,7 @@
         ...(source.localQwen21Variant === 'turbo' ? { localQwen21Variant: source.localQwen21Variant } : {}),
         localDrawEngine: options.taskProfile === "ui-layer" && source.localDrawEngine === "qwen-2.1" ? "qwen-2.1" : "",
         iterationReferenceCount: Math.max(0, Math.round(Number(source.iterationReferenceCount) || 0)),
+        cloudImageModel: window.NovaFlowArtGenerateModels?.normalizeCloudImageModel?.(source.cloudImageModel) || "gpt-image-2.5",
         gptQualityImg2img: ["low", "medium", "high"].includes(source.gptQualityImg2img) ? source.gptQualityImg2img : "high",
         gptSize: String(source.gptSize || "auto"),
         gptCustomWidth: Math.max(1024, Math.round(Number(source.gptCustomWidth) || 1024)),

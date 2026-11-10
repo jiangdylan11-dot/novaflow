@@ -1492,12 +1492,12 @@ async function handleRunningHubGptImage(req:Request, session:{user:PublicUser}, 
     const provider=runningHubLlm();
     const base=readRunningHubImageConfig((name:string)=>name==='NOVAFLOW_RUNNINGHUB_API_KEY'?provider.apiKey:env(name),creditConfig);
     const config={...base,creditConfig,pricePreview:true};
-    const quote=quoteGptImage({endpoint:config.gptImageEndpoint,imageEndpoint:config.gptImageI2iEndpoint,mode:payload.mode,count:payload.count||1,prices:config.prices,creditConfig,settings:payload.settings,width:payload.width,height:payload.height});
+    const quote=quoteGptImage({endpoint:config.gptImageEndpoint,imageEndpoint:config.gptImageI2iEndpoint,mode:payload.mode,count:payload.count||1,prices:config.prices,creditConfig,settings:payload.settings,width:payload.width,height:payload.height,model:payload.model});
     if(quoteOnly)return jsonResponse(req,200,{ok:true,...quote,buttonLabel:formatCreditButtonLabel(quote.credits,quote),buttonTitle:formatCreditButtonTitle(quote.credits,quote)});
     if(!config.configured)return jsonResponse(req,503,{ok:false,error:'RunningHub 出图尚未配置'});
     const poolAccount=await readImagePoolAccount(config);
     const charge=createOnlineAiCharge({...createFeatureCreditPorts(creditRpc),prices:creditConfig});
-    const outcome=await runChargedGptImage({charge,config,poolAccount,request:{userId:session.user.id,usageKey:'gptimg_'+crypto.randomUUID(),mode:payload.mode,prompt:payload.prompt,settings:payload.settings,images:payload.images,count:payload.count||1,width:payload.width,height:payload.height}});
+    const outcome=await runChargedGptImage({charge,config,poolAccount,request:{userId:session.user.id,usageKey:'gptimg_'+crypto.randomUUID(),mode:payload.mode,prompt:payload.prompt,settings:payload.settings,images:payload.images,count:payload.count||1,width:payload.width,height:payload.height,model:payload.model}});
     const rejected=outcome.results?.find((item:AnyRecord)=>item.success===false);
     if(rejected)return jsonResponse(req,400,{ok:false,error:rejected.message||'提示内容未通过审核，请修改后再试',moderation:true,charged:outcome.charged||0,remaining:outcome.remaining,billing:outcome.billing});
     return jsonResponse(req,200,{ok:true,charged:outcome.charged,remaining:outcome.remaining,quote:outcome.quote,billing:outcome.billing,images:(outcome.results||[]).map((item:AnyRecord)=>item.image).filter(Boolean)});

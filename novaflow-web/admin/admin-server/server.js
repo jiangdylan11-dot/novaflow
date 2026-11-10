@@ -11255,7 +11255,8 @@ async function handleRunningHubGptImageQuote(req, res) {
       creditConfig,
       settings: payload.settings,
       width: payload.width,
-      height: payload.height
+      height: payload.height,
+      model: payload.model
     });
     sendJson(res, 200, {
       ok: true,
@@ -11302,7 +11303,8 @@ async function handleRunningHubGptImage(req, res) {
         images: payload.images,
         count: payload.count || 1,
         width: payload.width,
-        height: payload.height
+        height: payload.height,
+        model: payload.model
       }
     });
     const rejected = (outcome.results || []).find((item) => item?.success === false);

@@ -59,6 +59,68 @@ const SIZE_PRESETS = Object.freeze({
 // refused with business code 1007 before a task exists.
 export const I2I_25_ASPECT_RATIOS = Object.freeze(['1:1', '2:3', '3:2', '4:5', '5:4', '4:3', '3:4', '16:9', '9:16', '21:9']);
 
+// The cheaper RunningHub image lines beside GPT Image 2.5 (Dylan, 2026-11-10). Each one names
+// its two endpoints, the request shape RunningHub documents for it, the ratios it accepts and
+// the fixed per-image feature it is charged as. 'gpt-image-2.5' keeps the configurable routes,
+// token billing and the official fallback above; these three are fixed-price and never fall back.
+export const DEFAULT_CLOUD_IMAGE_MODEL = 'gpt-image-2.5';
+export const CLOUD_IMAGE_MODELS = Object.freeze({
+  'gpt-image-2.5': Object.freeze({ id: 'gpt-image-2.5', label: 'GPT Image 2.5', referenceLimit: 16 }),
+  'nano-banana-2.1': Object.freeze({
+    id: 'nano-banana-2.1', label: 'Nano Banana 2.1', referenceLimit: 14,
+    txt2img: '/openapi/v2/rhart-image-n-nb21-official/text-to-image',
+    img2img: '/openapi/v2/rhart-image-n-nb21-official/image-to-image',
+    feature: 'nano_banana_21', shape: 'banana',
+    aspectRatios: Object.freeze(['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '5:4', '4:5', '21:9', '1:4', '4:1', '1:8', '8:1'])
+  }),
+  'gpt-image-2': Object.freeze({
+    id: 'gpt-image-2', label: 'GPT Image 2', referenceLimit: 10,
+    txt2img: '/openapi/v2/rhart-image-g-2-official/text-to-image',
+    img2img: '/openapi/v2/rhart-image-g-2-official/image-to-image',
+    feature: 'gpt_image_2_official', img2imgFeature: 'gpt_image_2_edit', shape: 'gpt',
+    aspectRatios: ASPECT_RATIOS
+  }),
+  'grok-imagine': Object.freeze({
+    id: 'grok-imagine', label: 'Grok 图像', referenceLimit: 1,
+    txt2img: '/openapi/v2/rhart-image-x-official/text-to-image',
+    img2img: '/openapi/v2/rhart-image-x-official/edit',
+    feature: 'grok_image_official', shape: 'grok',
+    aspectRatios: Object.freeze(['2:1', '20:9', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16', '9:20', '1:2'])
+  })
+});
+
+export function normalizeCloudImageModel(value) {
+  const id = String(value || '').trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(CLOUD_IMAGE_MODELS, id) ? id : DEFAULT_CLOUD_IMAGE_MODEL;
+}
+
+// The fixed-price line a request runs on, or null for GPT Image 2.5 (the configurable routes).
+export function cloudImageLine(model, mode = 'txt2img') {
+  const id = normalizeCloudImageModel(model);
+  if (id === DEFAULT_CLOUD_IMAGE_MODEL) return null;
+  const entry = CLOUD_IMAGE_MODELS[id];
+  const img2img = String(mode || 'txt2img') === 'img2img';
+  return {
+    model: id,
+    label: entry.label,
+    endpoint: img2img ? entry.img2img : entry.txt2img,
+    feature: img2img && entry.img2imgFeature ? entry.img2imgFeature : entry.feature,
+    shape: entry.shape,
+    aspectRatios: entry.aspectRatios,
+    referenceLimit: img2img ? entry.referenceLimit : 0
+  };
+}
+
+export function cloudImageFeatureForEndpoint(endpoint) {
+  const path = String(endpoint || '');
+  for (const entry of Object.values(CLOUD_IMAGE_MODELS)) {
+    if (!entry.txt2img) continue;
+    if (path === entry.img2img) return entry.img2imgFeature || entry.feature;
+    if (path === entry.txt2img) return entry.feature;
+  }
+  return '';
+}
+
 const ENDPOINT_PATH = /^\/openapi\/v2\/[a-zA-Z0-9_./-]+$/;
 const RELEASE_CODES = ['invalid_prompt', 'content_policy_violation', 'content_policy', 'content_filter', 'moderation_rejected', 'moderation', 'sensitive_content', 'sensitive'];
 const MISSING_ENDPOINT_MESSAGE = '出图接口不存在（1001），本次未扣积分';
@@ -86,9 +148,11 @@ export function resolveImageEndpoint(value) {
 }
 
 export function fallbackFor(endpoint, routes = DEFAULT_GPT_IMAGE_ROUTES) {
+  if (routes && routes.fallback_text_endpoint === '' && routes.fallback_image_endpoint === '') return '';
   const textFallback = routes?.fallback_text_endpoint || FALLBACK_GPT_IMAGE_ENDPOINT;
   const imageFallback = routes?.fallback_image_endpoint || FALLBACK_GPT_IMAGE_I2I_ENDPOINT;
   const path = assertEndpoint(endpoint, routes?.text_endpoint || DEFAULT_GPT_IMAGE_ENDPOINT);
+  if (cloudImageFeatureForEndpoint(path) && path !== textFallback && path !== imageFallback) return '';
   if (!path.includes('2.5')) return '';
   if (path === textFallback || path === imageFallback) return '';
   return path.includes('image-to-image') ? imageFallback : textFallback;
@@ -97,6 +161,8 @@ export function fallbackFor(endpoint, routes = DEFAULT_GPT_IMAGE_ROUTES) {
 export function featureForEndpoint(endpoint, options = {}) {
   const path = String(endpoint || '');
   const routes = options.routes || DEFAULT_GPT_IMAGE_ROUTES;
+  const fixedLine = cloudImageFeatureForEndpoint(path);
+  if (fixedLine && path !== routes.fallback_text_endpoint && path !== routes.fallback_image_endpoint) return fixedLine;
   const img2img = options.mode === 'img2img' || path.includes('image-to-image');
   if (img2img) return path.includes('2.5') ? 'gpt_image_2_5_economy' : 'gpt_image_2_official';
   const markers = Array.isArray(routes.token_markers) && routes.token_markers.length
@@ -108,7 +174,11 @@ export function featureForEndpoint(endpoint, options = {}) {
 }
 
 export function referenceLimitForEndpoint(endpoint) {
-  return String(endpoint || '').includes('2.5') ? 16 : 10;
+  const path = String(endpoint || '');
+  for (const entry of Object.values(CLOUD_IMAGE_MODELS)) {
+    if (entry.img2img && path === entry.img2img) return entry.referenceLimit;
+  }
+  return path.includes('2.5') ? 16 : 10;
 }
 
 function integerPrice(value, fallback) {
@@ -215,10 +285,35 @@ function clampCount(value) {
   return count;
 }
 
-export function quoteGptImage({ endpoint, imageEndpoint, mode = 'txt2img', count = 1, prices, creditConfig, settings, width, height, previewUsd } = {}) {
+export function quoteGptImage({ endpoint, imageEndpoint, mode = 'txt2img', count = 1, prices, creditConfig, settings, width, height, previewUsd, model: cloudModel } = {}) {
   const config = creditConfigForQuote({ prices, creditConfig });
   const routes = config.gpt_image;
   const normalizedMode = String(mode || 'txt2img') === 'img2img' ? 'img2img' : 'txt2img';
+  const line = cloudImageLine(cloudModel, normalizedMode);
+  if (line) {
+    const images = clampCount(count);
+    const shape = resolveBillingShape(settings, width, height);
+    const quoted = quoteFeature({ feature: line.feature, units: images, prices: config });
+    return {
+      feature: quoted.feature,
+      billingMode: 'fixed',
+      perImage: quoted.unitPrice,
+      count: images,
+      credits: quoted.credits,
+      estimatedCredits: quoted.credits,
+      estimatedCreditsIsCap: false,
+      settleCap: null,
+      endpoint: line.endpoint,
+      model: line.model,
+      cloudModel: line.model,
+      mayFallback: false,
+      fallbackFeature: null,
+      fallbackCredits: null,
+      resolution: shape.resolution,
+      quality: shape.quality,
+      message: null
+    };
+  }
   const path = normalizedMode === 'img2img'
     ? assertEndpoint(imageEndpoint || routes.image_endpoint, routes.image_endpoint)
     : assertEndpoint(endpoint || routes.text_endpoint, routes.text_endpoint);
@@ -332,19 +427,42 @@ function positiveDimension(value, fallback) {
   return Math.max(64, Math.min(3840, number));
 }
 
-export function mapGptImageParams({ mode = 'txt2img', prompt, settings = {}, images = [], width, height, endpoint, imageEndpoint } = {}) {
+export function mapGptImageParams({ mode = 'txt2img', prompt, settings = {}, images = [], width, height, endpoint, imageEndpoint, model: cloudModel } = {}) {
   const text = String(prompt || '').trim();
   if (!text || text.length > 20000) {
     throw Object.assign(new Error(text ? '提示词过长，请缩短到 20000 字以内' : '请先输入提示词'), { statusCode: 400 });
   }
   const normalizedMode = String(mode || 'txt2img') === 'img2img' ? 'img2img' : 'txt2img';
   const mapped = resolveBillingShape(settings, width, height);
-  const path = normalizedMode === 'img2img' ? resolveImageEndpoint(imageEndpoint) : resolveTextEndpoint(endpoint);
+  const line = cloudImageLine(cloudModel, normalizedMode);
+  const path = line ? line.endpoint : normalizedMode === 'img2img' ? resolveImageEndpoint(imageEndpoint) : resolveTextEndpoint(endpoint);
   const refs = Array.isArray(images) ? images.filter(Boolean) : [];
   if (normalizedMode === 'img2img' && refs.length < 1) {
     throw Object.assign(new Error('图生图需要至少一张参考图'), { statusCode: 400 });
   }
-  const limit = referenceLimitForEndpoint(path);
+  const limit = line ? line.referenceLimit : referenceLimitForEndpoint(path);
+  if (normalizedMode === 'img2img' && refs.length > limit) {
+    throw Object.assign(new Error(`当前模型最多 ${limit} 张参考图，请先移除多余图片`), { statusCode: 400 });
+  }
+  const urls = refs.map((item) => (typeof item === 'string' ? item : item.url)).filter(Boolean);
+  if (line) {
+    // Each line gets only the fields RunningHub documents for it; a ratio the line does not list
+    // snaps to its nearest one, as the 2.5 image route already does.
+    const [rw, rh] = String(mapped.aspectRatio).split(':').map(Number);
+    const ratio = line.aspectRatios.includes(mapped.aspectRatio) ? mapped.aspectRatio : rw > 0 && rh > 0 ? closestAspect(rw, rh, line.aspectRatios) : '1:1';
+    let body;
+    if (line.shape === 'grok') {
+      if (text.length < 5) throw Object.assign(new Error('Grok 图像的提示词至少 5 个字'), { statusCode: 400 });
+      body = normalizedMode === 'img2img' ? { prompt: text, image: urls[0] } : { prompt: text, aspectRatio: ratio, outputFormat: 'png' };
+    } else if (line.shape === 'banana') {
+      body = { prompt: text, aspectRatio: ratio, resolution: mapped.resolution, thinkingLevel: 'medium' };
+      if (normalizedMode === 'img2img') body.imageUrls = urls;
+    } else {
+      body = { prompt: text, aspectRatio: ratio, resolution: mapped.resolution, quality: mapped.quality };
+      if (normalizedMode === 'img2img') body.imageUrls = urls;
+    }
+    return { mode: normalizedMode, endpoint: path, body, referenceCount: refs.length, model: line.model };
+  }
   if (refs.length > limit) {
     throw Object.assign(new Error(`当前模型最多 ${limit} 张参考图，请先移除多余图片`), { statusCode: 400 });
   }
@@ -638,6 +756,7 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
   const count = clampCount(request.count || 1);
   const creditConfig = normalizeCreditConfig(config?.creditConfig || { prices: config?.prices || undefined });
   const routes = creditConfig.gpt_image;
+  const cloudModel = normalizeCloudImageModel(request.model);
   let quote = quoteGptImage({
     endpoint: config?.gptImageEndpoint,
     imageEndpoint: config?.gptImageI2iEndpoint,
@@ -647,7 +766,8 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
     creditConfig,
     settings: request.settings,
     width: request.width,
-    height: request.height
+    height: request.height,
+    model: cloudModel
   });
   if (poolBlocksNewTask(poolAccount, config?.balanceBlockUsd)) {
     throw Object.assign(new Error('云服务余额不足，请联系管理员。本次未扣积分。'), { statusCode: 402, moderation: false, noCharge: true });
@@ -661,7 +781,8 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
     width: request.width,
     height: request.height,
     endpoint: config?.gptImageEndpoint,
-    imageEndpoint: config?.gptImageI2iEndpoint
+    imageEndpoint: config?.gptImageI2iEndpoint,
+    model: cloudModel
   });
   if (quote.billingMode === 'token' && config?.pricePreview === true) {
     const previewUsd = await readPricePreviewUsd({ fetchImpl, config, endpoint: mapped.endpoint, body: mapped.body });
@@ -676,7 +797,8 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
         settings: request.settings,
         width: request.width,
         height: request.height,
-        previewUsd
+        previewUsd,
+        model: cloudModel
       });
       if (boosted.perImage >= quote.perImage) quote = boosted;
     }
@@ -684,7 +806,8 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
   const runOne = async (usageKey) => {
     const run = async () => {
       try {
-        const image = await submitAndPoll({ fetchImpl, config, endpoint: mapped.endpoint, body: mapped.body, sleep, routes });
+        // A fixed-price line never falls back to the official GPT Image 2 route: its quote is its own.
+        const image = await submitAndPoll({ fetchImpl, config, endpoint: mapped.endpoint, body: mapped.body, sleep, routes: mapped.model ? { ...routes, fallback_text_endpoint: '', fallback_image_endpoint: '' } : routes });
         if (image.fellBack) return { success: false, fallback: true, image };
         if (quote.billingMode !== 'token') {
           return { success: true, amount: 1, image, metadata: { feature: quote.feature, endpoint: image.endpoint, billing_mode: 'fixed', model: quote.model } };

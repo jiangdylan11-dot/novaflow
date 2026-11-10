@@ -227,7 +227,16 @@
 
   function providerCapability(provider, options = {}) {
     const normalized = normalizeProvider(provider)
-    if (normalized !== 'local') return referenceLimits[normalized]
+    if (normalized !== 'local') {
+      // Each cloud line has its own reference ceiling; one slot stays reserved for the layout guide.
+      const models = root && root.NovaFlowArtGenerateModels
+      const info = options.cloudImageModel && typeof models?.cloudImageModelInfo === 'function' ? models.cloudImageModelInfo(options.cloudImageModel) : null
+      if (info && info.id !== 'gpt-image-2.5') {
+        const total = Math.max(1, Number(info.referenceLimit) || 1)
+        return Object.freeze({ provider: 'gpt', totalReferenceLimit: total, externalReferenceLimit: Math.max(0, total - 1), reservedLayoutReferences: 1, negativePrompt: false, title: info.label })
+      }
+      return referenceLimits[normalized]
+    }
     const qwen21 = typeof options.qwen21 === 'boolean' ? options.qwen21 : localQwen21Available()
     return qwen21 ? referenceLimits.localQwen21 : referenceLimits.local
   }
@@ -581,7 +590,7 @@
   function validateExternalReferenceCount(provider, refs, capability = providerCapability(provider)) {
     if (refs.length <= capability.externalReferenceLimit) return capability
     throw new Error(
-      `${providerTitle(provider)} 最多支持 ${capability.externalReferenceLimit} 张外部参考图` +
+      `${capability.title || providerTitle(provider)} 最多支持 ${capability.externalReferenceLimit} 张外部参考图` +
       (capability.reservedLayoutReferences ? `（另保留 ${capability.reservedLayoutReferences} 张页面结构控制图）` : '') +
       `，当前已连接 ${refs.length} 张`,
     )
@@ -1904,7 +1913,7 @@
     const refs = Object.freeze(guideReference && connectedGuideIndex < 0 ? validatedRefs.filter(ref => ref !== guideReference) : validatedRefs)
     // Asked on every run: the assistant may point at another ComfyUI than when the page loaded.
     const qwen21 = provider === 'local' && await refreshLocalQwen21Available()
-    const runCapability = providerCapability(provider, { qwen21 })
+    const runCapability = providerCapability(provider, { qwen21, cloudImageModel: state.cloudImageModel })
     // A connected cloud guide occupies the already reserved layout slot, not
     // an external asset slot. Keep the full ordered refs for mentions/upload;
     // the final synthesis reference count still enforces the total capacity.
@@ -2248,6 +2257,7 @@
       emitProgress(onProgress, 'submit', '正在提交 RunningHub 出图', 0.3)
       const sent = await cloud.runningHubGptImage({
         mode: executionMode,
+        model: root?.NovaFlowArtGenerateModels?.cloudImageModelFor?.(state) || 'gpt-image-2.5',
         prompt,
         referenceRoles,
         settings: workflowSettings(state, 'gpt', executionMode),

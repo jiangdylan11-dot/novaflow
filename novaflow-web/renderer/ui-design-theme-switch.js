@@ -69,13 +69,17 @@
     if (!name) throw new Error('请选择主题')
     if (!keepLayout) return redesignPrompt({ name, description, keepText, extra, inventory, anchored, provider, sketched, arrangement })
     if (provider === 'local') return [
-      `把图1这张游戏界面整体换成「${name}」主题${description ? `：${description}` : ''}。`,
-      '布局完全不变：画布比例、每个面板、按钮、条栏、网格、符号格、人物区、横幅和文字块的位置与大小不变，行数、列数、按钮数和重复元素数量不变。',
+      `把图1这张游戏界面整体换成「${name}」主题${description ? `：${description}` : ''}，做成一张精致、华丽、有氛围的完整游戏界面成品图。`,
+      '布局不变：画布比例、每个面板、按钮、条栏、网格、符号格、人物区、横幅和文字块的位置与大小不变，行数、列数、按钮数和重复元素数量不变。',
+      '位置不变的前提下放开重画：面板、边框和按钮的轮廓造型按主题重新设计（圆角、切角、雕花边、金属包边都可以），人物区里人物的姿势、表情、动作和取景可以适度调整得更有张力，装饰元素可以增加，画面不要像原图的简单换色。符号格里一律不画人物头像，原图格子里的人物头像也换成主题物件。',
       keepText ? '所有文字和数字逐字保留，内容和位置不变，只把字体做成主题风格。' : '数字和按钮文字保留原位，标题和装饰文字可改成贴合主题的简短文字。',
       `原图中的每一个人物都换成「${name}」主题的人物：保持人数、位置、姿势和取景，但服装、发型、配饰和身份全部按新主题重做，一个人物都不能保留原来的衣服。`,
       `每一个符号格里的图案都重画成「${name}」主题的物件，字母和数字仍是同样的字母和数字但用主题材质制作，一个符号都不能保留原来的造型、颜色或发光效果。`,
       `背景换成「${name}」场景；所有面板、边框、按钮和条栏用主题材质、纹样和光线重做，边框和底板要有层次丰富的浮雕、镶嵌和描金装饰，按钮要有厚度、高光和发光。画面中不能残留任何原主题的美术。`,
       '要有创意：每个符号都设计成独特、有辨识度的主题物件，人物造型夸张有魅力，背景有纵深和故事感，空白处加入主题特效（光粒、光带、飘落物）。',
+      '美感：整屏像一张精修过的商业宣传图——主色调统一而浓郁，背景、人物、面板三层之间明暗和冷暖拉开层次，重要元素（人物、WIN 数值、主按钮）最亮最醒目，边角和缝隙有细致的描金与暗部收口，没有生硬的平涂和空白。',
+      '氛围感：背景有主题场景的纵深、雾气与体积光，光源方向统一，人物有轮廓光并被环境光染色，前景飘着主题粒子（光尘、火星、雪花、花瓣等按主题选），面板和按钮带柔和的内发光，整屏有戏剧性的光影和情绪。',
+      '质感：所有金属有真实的高光、反射和錾刻纹理，宝石玉石通透带内部折射，木石布料有清晰纹理与磨损，面板有厚度、倒角和多层浮雕，按钮像可以按下去的实体，符号像立体雕刻的实物。',
       ...QUALITY_ZH,
       anchored ? `图2是同一套「${name}」主题已完成的界面：画风、配色、材质、边框、按钮和符号设计与图2保持一致，但不采用图2的布局。` : '',
       extra ? `用户补充要求：${extra}` : '',
@@ -297,8 +301,11 @@
   // Local runs: CFG 2.5 with a negative prompt was the one knob that lifted finish without
   // breaking the layout (A/B 2026-11-09: 2048 px broke grids, CFG 1 stayed flat).
   const LOCAL_THEME_CFG = 2.5
+  // 换皮 tried CFG 3 for a bolder redraw (2026-11-10): the source portraits came back into the
+  // symbol cells and button labels dropped, so it samples at the same 2.5 as the other routes.
+  const LOCAL_RESKIN_CFG = 2.5
   const LOCAL_THEME_NEGATIVE = '模糊，脏污，灰暗，平涂，塑料感，扭曲，错位，多余的格子，多余的边框，文字乱码'
-  const STATE_KEYS = ['mode', 'provider', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'localTextQuality', 'localEditStrength', 'localQwen21Variant', 'localDrawEngine', 'googleResolution']
+  const STATE_KEYS = ['mode', 'provider', 'cloudImageModel', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'localTextQuality', 'localEditStrength', 'localQwen21Variant', 'localDrawEngine', 'googleResolution']
   async function preparedFor(rt, { screen, anchor, prompt, keepLayout = false, sketch = '' }) {
     const locked = keepLayout || Boolean(sketch)
     const context = rt.captureContext(), source = context.state
@@ -316,7 +323,7 @@
     const mode = references.length ? 'img2img' : 'txt2img'
     Object.assign(state, {
       mode, provider, count: 1, nsfw: false, negativePrompt: provider === 'local' ? LOCAL_THEME_NEGATIVE : '', width: size.width, height: size.height,
-      ...(provider === 'local' ? { samplingOverrides: { ...(state.samplingOverrides || {}), 'qwen-2.1-turbo:img2img': { cfg: LOCAL_THEME_CFG }, 'qwen-2.1-turbo:txt2img': { cfg: LOCAL_THEME_CFG } } } : {}),
+      ...(provider === 'local' ? { samplingOverrides: { ...(state.samplingOverrides || {}), 'qwen-2.1-turbo:img2img': { cfg: keepLayout ? LOCAL_RESKIN_CFG : LOCAL_THEME_CFG }, 'qwen-2.1-turbo:txt2img': { cfg: LOCAL_THEME_CFG } } } : {}),
       gptQualityImg2img: 'high', gptQualityTxt2img: 'high', gptSize: 'Custom', gptCustomWidth: size.width, gptCustomHeight: size.height,
       localEditStrength: 'enhanced', uiPreserveLayout: keepLayout, uiLayoutMode: keepLayout ? 'preserve' : 'reflow', uiRunIntent: 'redesign',
     })
@@ -425,7 +432,7 @@
     const body = make('div', '', { class: 'nf-panel-body' }); Object.assign(body.style, accordion.bodyStyle(false))
     panel.append(header, body)
 
-    const hint = make('div', '添加一张或多张界面图，选几个主题，一次生成全部。默认读出界面功能后按原图位置排版、按主题重画全部美术；「自由构图」让模型自己排版。同一主题的多张界面画风统一。'); Object.assign(hint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
+    const hint = make('div', '添加一张或多张界面图，选几个主题，一次生成全部。默认「换皮 + 主题元素」：布局和文字保持原样，背景、人物、符号、面板和按钮全部按主题重画；「重新设计」几档会先读出界面功能再重新排版。同一主题的多张界面画风统一。'); Object.assign(hint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
     const chips = make('div', '', { 'data-foart-ui-theme-chips': '1' }); Object.assign(chips.style, { display: 'flex', flexWrap: 'wrap', gap: '6px' })
     const editor = make('div', '', { 'data-foart-ui-theme-editor': '1' }); Object.assign(editor.style, { display: 'none', gap: '8px' })
     const customRow = make('div'); Object.assign(customRow.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })
@@ -437,10 +444,10 @@
     const layoutRow = make('label'); Object.assign(layoutRow.style, { display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr)', alignItems: 'center', gap: '8px', color: '#bbb', fontSize: '12px' })
     const layoutMode = make('select', '', { 'aria-label': '排版', 'data-novaflow-art-generate-select-field': '1' })
     Object.assign(layoutMode.style, { width: '100%', minWidth: '0', height: '30px', boxSizing: 'border-box', background: '#292929', color: '#ddd', border: '1px solid #444', borderRadius: '5px', padding: '5px 8px', fontSize: '12px' })
-    for (const [value, label] of [['follow', '跟随原图布局'], ['free', '自由构图'], ['variety', `多种排版（每个主题 ${ARRANGEMENTS.length + 1} 种）`], ['reskin', '保持原图，只换皮']]) { const option = make('option', label); option.value = value; layoutMode.append(option) }
-    layoutMode.value = ['follow', 'free', 'variety', 'reskin'].includes(read('foart.ui.theme-layout-mode.v1', 'follow')) ? read('foart.ui.theme-layout-mode.v1', 'follow') : 'follow'
+    for (const [value, label] of [['reskin', '换皮 + 主题元素（推荐）'], ['follow', '重新设计，跟随原图布局'], ['free', '重新设计，自由构图'], ['variety', `重新设计，多种排版（每个主题 ${ARRANGEMENTS.length + 1} 种）`]]) { const option = make('option', label); option.value = value; layoutMode.append(option) }
+    layoutMode.value = ['reskin', 'follow', 'free', 'variety'].includes(read('foart.ui.theme-layout-mode.v2', 'reskin')) ? read('foart.ui.theme-layout-mode.v2', 'reskin') : 'reskin'
     layoutRow.append(make('span', '排版'), layoutMode)
-    layoutMode.addEventListener('change', () => { write('foart.ui.theme-layout-mode.v1', layoutMode.value); render() })
+    layoutMode.addEventListener('change', () => { write('foart.ui.theme-layout-mode.v2', layoutMode.value); render() })
     const note = field('补充要求（可选），如：人物换成女性、整体更亮', true)
     const status = make('div', ''); Object.assign(status.style, { color: '#aaa', fontSize: '11px', lineHeight: '1.5', minHeight: '16px' })
     const actions = make('div'); Object.assign(actions.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })

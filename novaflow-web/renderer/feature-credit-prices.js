@@ -16,14 +16,26 @@
     lean_research: 14,
     gpt_image_2_5_economy: 20,
     gpt_image_2_official: 4,
+    gpt_image_2_edit: 11,
+    nano_banana_21: 13,
+    grok_image_official: 8,
     grok_image_g42: 6,
     local: 0
   };
   var PER_IMAGE = {
     gpt_image_2_5_economy: 1,
     gpt_image_2_official: 1,
+    gpt_image_2_edit: 1,
+    nano_banana_21: 1,
+    grok_image_official: 1,
     grok_image_g42: 1,
     gpt_image_2_5_token: 1
+  };
+  // The fixed-price cloud lines beside GPT Image 2.5: model id -> feature per mode.
+  var CLOUD_IMAGE_FEATURES = {
+    'nano-banana-2.1': { txt2img: 'nano_banana_21', img2img: 'nano_banana_21' },
+    'gpt-image-2': { txt2img: 'gpt_image_2_official', img2img: 'gpt_image_2_edit' },
+    'grok-imagine': { txt2img: 'grok_image_official', img2img: 'grok_image_official' }
   };
   var ALIASES = {
     'xiaotao-vision': 'xiaotao_vision',
@@ -43,6 +55,11 @@
     gpt_image_2_5_token: 'gpt_image_2_5_token',
     'gpt-image-2': 'gpt_image_2_official',
     gpt_image_2: 'gpt_image_2_official',
+    'gpt-image-2-edit': 'gpt_image_2_edit',
+    'nano-banana-2.1': 'nano_banana_21',
+    'nano-banana-21': 'nano_banana_21',
+    'grok-imagine': 'grok_image_official',
+    'grok-image-official': 'grok_image_official',
     'g-4.2': 'grok_image_g42',
     'grok-image-g42': 'grok_image_g42',
     local: 'local'
@@ -151,6 +168,21 @@
     var spec = input || {};
     var mode = spec.mode === 'img2img' ? 'img2img' : 'txt2img';
     var count = Math.max(1, Math.min(10, Math.round(Number(spec.count || spec.units) || 1)));
+    var line = CLOUD_IMAGE_FEATURES[String(spec.model || '').trim().toLowerCase()];
+    if (line) {
+      var fixed = quoteFeature({ feature: line[mode], units: count });
+      return {
+        feature: fixed.feature,
+        billingMode: 'fixed',
+        perImage: fixed.unitPrice,
+        credits: fixed.credits,
+        count: count,
+        estimatedCreditsIsCap: false,
+        mayFallback: false,
+        model: String(spec.model).trim().toLowerCase(),
+        endpoint: ''
+      };
+    }
     var billing = billingConfig();
     var path = mode === 'img2img' ? (spec.imageEndpoint || billing.imageEndpoint) : (spec.endpoint || billing.textEndpoint);
     var feature = 'gpt_image_2_official';

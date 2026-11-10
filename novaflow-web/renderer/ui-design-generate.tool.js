@@ -10,7 +10,24 @@
   const PROVIDER_OPTIONS = Object.freeze([
     Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
     Object.freeze({ value: 'gpt', label: 'GPT Image 2.5' }),
+    Object.freeze({ value: 'gpt:nano-banana-2.1', label: 'Nano Banana 2.1' }),
+    Object.freeze({ value: 'gpt:gpt-image-2', label: 'GPT Image 2' }),
+    Object.freeze({ value: 'gpt:grok-imagine', label: 'Grok 图像' }),
   ])
+  // provider stays 'gpt' for every cloud line; the line itself is state.cloudImageModel.
+  function cloudSelection(state) {
+    const models = root && root.NovaFlowArtGenerateModels
+    if (models && typeof models.providerSelection === 'function') return models.providerSelection(state)
+    return normalizeProvider(state?.provider) === 'gpt' ? 'gpt' : 'local'
+  }
+  function applyCloudSelection(state, value) {
+    const models = root && root.NovaFlowArtGenerateModels
+    const next = models && typeof models.applyProviderSelection === 'function'
+      ? models.applyProviderSelection(value)
+      : { provider: normalizeProvider(value), cloudImageModel: 'gpt-image-2.5' }
+    state.provider = next.provider
+    if (next.provider === 'gpt') state.cloudImageModel = next.cloudImageModel
+  }
   const GPT_EXACT_SIZES = new Set([
     '1024x1024', '1024x1536', '1536x1024', '2048x2048',
     '2048x1152', '1152x2048', '3840x2160', '2160x3840',
@@ -87,6 +104,7 @@
       : ''
     state.mode = MODE
     state.provider = normalizeProvider(state.provider)
+    state.cloudImageModel = root?.NovaFlowArtGenerateModels?.normalizeCloudImageModel?.(state.cloudImageModel) || 'gpt-image-2.5'
     state.prompt = String(state.prompt == null ? '' : state.prompt)
     // Nothing is filled in for the user, as in the drawing panel: an empty negative prompt keeps a
     // local run at its normal speed and a filled one is used for real. A project saved with the old
@@ -412,7 +430,7 @@
 
   function updateState(record, key, value) {
     if (!record.active) return
-    if (key === 'provider') record.state.provider = normalizeProvider(value)
+    if (key === 'provider') applyCloudSelection(record.state, value)
     else if (key === 'randomSeed') {
       record.state.randomSeed = value === true
       if (!record.state.randomSeed && (!Number.isFinite(Number(record.state.seed)) || Number(record.state.seed) < 0)) {
@@ -1143,7 +1161,7 @@
       'provider',
       '模型方式',
       PROVIDER_OPTIONS,
-      record.state.provider,
+      cloudSelection(record.state),
       'data-novaflow-ui-design-provider',
     )
     const statusText = record.status || record.error

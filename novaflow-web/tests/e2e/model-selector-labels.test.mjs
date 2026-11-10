@@ -1,4 +1,4 @@
-// Image generation offers Qwen locally and GPT Image 2.5 in the cloud.
+// Image generation offers Qwen locally and four RunningHub lines in the cloud (GPT Image 2.5 first).
 // The video panel's local option is MiniMaxH3(本地).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,9 +24,12 @@ function load(name, extra = {}) {
 const imageLabels = [
   { value: 'local', label: 'Qwen（本地）' },
   { value: 'gpt', label: 'GPT Image 2.5' },
+  { value: 'gpt:nano-banana-2.1', label: 'Nano Banana 2.1' },
+  { value: 'gpt:gpt-image-2', label: 'GPT Image 2' },
+  { value: 'gpt:grok-imagine', label: 'Grok 图像' },
 ];
 
-test('image generation selectors are Qwen（本地） and GPT Image 2.5', () => {
+test('image generation selectors are Qwen（本地）, GPT Image 2.5 and the three cheaper cloud lines', () => {
   for (const file of [
     'art-generate-mode.tool.js',
     'ui-design-mode.tool.js',
@@ -40,6 +43,18 @@ test('image generation selectors are Qwen（本地） and GPT Image 2.5', () => 
   assert.equal(models.providerTitle('local'), 'Qwen（本地）');
   assert.equal(models.providerTitle('gpt'), 'GPT Image 2.5');
   assert.equal(models.providerTitle('google'), 'Qwen（本地）');
+  // Every cloud line keeps provider 'gpt'; the line itself is state.cloudImageModel.
+  assert.equal(models.providerTitle('gpt', { cloudImageModel: 'nano-banana-2.1' }), 'Nano Banana 2.1');
+  assert.equal(models.providerTitle('gpt:grok-imagine'), 'Grok 图像');
+  assert.equal(models.normalizeProvider('gpt:nano-banana-2.1'), 'gpt');
+  assert.deepEqual(JSON.parse(JSON.stringify(models.applyProviderSelection('gpt:gpt-image-2'))), { provider: 'gpt', cloudImageModel: 'gpt-image-2' });
+  assert.deepEqual(JSON.parse(JSON.stringify(models.applyProviderSelection('gpt'))), { provider: 'gpt', cloudImageModel: 'gpt-image-2.5' });
+  assert.deepEqual(JSON.parse(JSON.stringify(models.applyProviderSelection('local'))), { provider: 'local', cloudImageModel: 'gpt-image-2.5' });
+  assert.equal(models.providerSelection({ provider: 'gpt', cloudImageModel: 'grok-imagine' }), 'gpt:grok-imagine');
+  assert.equal(models.providerSelection({ provider: 'gpt', cloudImageModel: 'nope' }), 'gpt');
+  assert.equal(models.providerSelection({ provider: 'local', cloudImageModel: 'grok-imagine' }), 'local');
+  assert.equal(models.cloudImageModelFor({ provider: 'gpt', cloudImageModel: 'nano-banana-2.1' }), 'nano-banana-2.1');
+  assert.equal(models.cloudImageModelFor({ provider: 'local', cloudImageModel: 'nano-banana-2.1' }), '');
 });
 
 test('the video panel local option is MiniMaxH3(本地)', () => {

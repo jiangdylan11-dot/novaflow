@@ -2488,7 +2488,7 @@
         await rt.run();
         if(rt.state.error)throw Error('UI 提示词已写入，但生成没有完成：'+rt.state.error);
         const fresh=Array.from(rt.state.results||[]).filter(item=>item&&!earlier.has(item.id)).reverse();
-        return {action:op.action,phase:'completed',plannerPrompt:true,surface:'ui',provider:rt.state.provider,modelLabel:rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen',outputs:fresh.map((item,index)=>({id:item.id,name:item.name||item.fileName||'UI成图'+(index+1)})),message:'已写入 UI 提示词并完成生成。'};
+        return {action:op.action,phase:'completed',plannerPrompt:true,surface:'ui',provider:rt.state.provider,modelLabel:root.NovaFlowArtGenerateModels?.providerTitle?.(rt.state.provider,rt.state)||(rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen'),outputs:fresh.map((item,index)=>({id:item.id,name:item.name||item.fileName||'UI成图'+(index+1)})),message:'已写入 UI 提示词并完成生成。'};
       }
       if(!info||info.surface!=='drawing')throw Error('请先打开绘图页面，再优化提示词');
       // "改上一张": the previous picture becomes the 图生图 reference before the brief is written, so the edit is made on it and not on a fresh picture.
@@ -2522,7 +2522,7 @@
       const outputs=(fresh.length?fresh.reverse():made?[made]:[]).map((item,index)=>({id:item.id,name:item.name||item.fileName||'成图'+(index+1)}));
       const drawn=Array.from(rt.references?.()||[]).filter(Boolean),subject=drawn.find(ref=>ref.drawingRole==='subject');
       if(subject&&drawn.some(ref=>ref.drawingRole==='style'))currentSubject={...subject};
-      return {action:op.action,phase:'completed',plannerPrompt:true,provider:rt.state.provider,modelLabel:rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen',prompt:String(rt.state.prompt||''),outputs,message:'已写入提示词并完成生成，请在绘图页查看结果。'};
+      return {action:op.action,phase:'completed',plannerPrompt:true,provider:rt.state.provider,modelLabel:root.NovaFlowArtGenerateModels?.providerTitle?.(rt.state.provider,rt.state)||(rt.state.provider==='gpt'?'GPT Image 2.5':'Qwen'),prompt:String(rt.state.prompt||''),outputs,message:'已写入提示词并完成生成，请在绘图页查看结果。'};
     }
     // The brain's runs for this turn's pictures: one full generation per run, each writing its own texts and billed on its own.
     // A run puts the subject and only its own pictures on the page, each in the role the brain gave it; the page then shows the last run.

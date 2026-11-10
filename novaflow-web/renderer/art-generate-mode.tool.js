@@ -5,16 +5,45 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict'
 
+  // Cloud lines beside GPT Image 2.5 (Dylan, 2026-11-10). provider stays 'gpt' for all of them;
+  // the line is state.cloudImageModel, shown here as 'gpt:<model id>'.
   const PROVIDER_OPTIONS = Object.freeze([
     Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
     Object.freeze({ value: 'gpt', label: 'GPT Image 2.5' }),
+    Object.freeze({ value: 'gpt:nano-banana-2.1', label: 'Nano Banana 2.1' }),
+    Object.freeze({ value: 'gpt:gpt-image-2', label: 'GPT Image 2' }),
+    Object.freeze({ value: 'gpt:grok-imagine', label: 'Grok 图像' }),
   ])
   const PROVIDER_KEYS = new Set(PROVIDER_OPTIONS.map((option) => option.value))
+  function modelsApiSafe() {
+    return typeof modelsApi === 'function' ? modelsApi() : null
+  }
+  // The list follows NovaFlowArtGenerateModels when it is loaded.
+  function providerOptionsList() {
+    const options = modelsApiSafe()?.providerOptions
+    return Array.isArray(options) && options.length ? options : PROVIDER_OPTIONS
+  }
+  // The option a state shows: 'local', 'gpt' (GPT Image 2.5) or 'gpt:<model>'.
+  function selectionFor(state) {
+    const models = modelsApiSafe()
+    if (models && typeof models.providerSelection === 'function') return models.providerSelection(state)
+    const provider = normalizeProvider(state?.provider)
+    if (provider !== 'gpt') return 'local'
+    const model = String(state?.cloudImageModel || '').trim().toLowerCase()
+    return model && model !== 'gpt-image-2.5' && PROVIDER_KEYS.has(`gpt:${model}`) ? `gpt:${model}` : 'gpt'
+  }
+  function selectionToState(value) {
+    const models = modelsApiSafe()
+    if (models && typeof models.applyProviderSelection === 'function') return models.applyProviderSelection(value)
+    const raw = String(value || '').trim().toLowerCase()
+    return { provider: normalizeProvider(raw), cloudImageModel: raw.startsWith('gpt:') ? raw.slice(4) : 'gpt-image-2.5' }
+  }
   const mountedControls = new WeakMap()
   let settlementRefreshBound = false
 
   function normalizeProvider(value) {
     const provider = String(value || '').trim().toLowerCase()
+    if (provider.startsWith('gpt:')) return 'gpt'
     return PROVIDER_KEYS.has(provider) ? provider : 'local'
   }
 
@@ -65,17 +94,18 @@
 
   function syncModelChoices(select, documentRef, options) {
     const current = Array.from(select.options || select.children || [])
+    const wanted = providerOptionsList()
     // Layout observers call mount again. Replacing identical OPTION nodes here
     // retriggered those observers indefinitely when entering image-to-image.
-    if (current.length !== PROVIDER_OPTIONS.length || current.some((option, index) =>
-      option.value !== PROVIDER_OPTIONS[index].value || option.textContent !== PROVIDER_OPTIONS[index].label)) {
+    if (current.length !== wanted.length || current.some((option, index) =>
+      option.value !== wanted[index].value || option.textContent !== wanted[index].label)) {
       const choices=[]
-      for(const item of PROVIDER_OPTIONS){
+      for(const item of wanted){
         const option=documentRef.createElement('option');option.value=item.value;option.textContent=item.label;choices.push(option)
       }
       select.replaceChildren(...choices)
     }
-    const selected = normalizeProvider(options.provider)
+    const selected = selectionFor({ provider: options.provider, cloudImageModel: options.cloudImageModel })
     if (select.value !== selected) select.value = selected
   }
 
@@ -123,7 +153,7 @@
       handle: null,
     }
     select.addEventListener('change', () => {
-      if (typeof record.onProviderChange === 'function') record.onProviderChange(normalizeProvider(select.value))
+      if (typeof record.onProviderChange === 'function') record.onProviderChange(String(select.value || ''))
     })
 
     modelField.appendChild(label)
@@ -245,16 +275,17 @@
     mount({
       host,
       showAccount: options.showAccount,
-      provider: state.provider, localQwen21Variant: state.localQwen21Variant, showTurboRoute: options.showTurboRoute===true&&state.nsfw!==true,
+      provider: state.provider, cloudImageModel: state.cloudImageModel, localQwen21Variant: state.localQwen21Variant, showTurboRoute: options.showTurboRoute===true&&state.nsfw!==true,
       disabled: Boolean(state.running),
-      onProviderChange(provider) {
+      onProviderChange(value) {
         if (state.running) return
-        const nextProvider = normalizeProvider(provider)
-        if (nextProvider === state.provider) return
-        state.provider = nextProvider
+        const next = selectionToState(value)
+        if (next.provider === state.provider && (next.provider !== 'gpt' || next.cloudImageModel === state.cloudImageModel)) return
+        state.provider = next.provider
+        if (next.provider === 'gpt') state.cloudImageModel = next.cloudImageModel
         state.error = ''
         state.status = ''
-        options.onChange?.(nextProvider)
+        options.onChange?.(next.provider)
       },
     })
     return true

@@ -9,6 +9,9 @@
   const FALLBACK_PROVIDER_OPTIONS = Object.freeze([
     Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
     Object.freeze({ value: 'gpt', label: 'GPT Image 2.5' }),
+    Object.freeze({ value: 'gpt:nano-banana-2.1', label: 'Nano Banana 2.1' }),
+    Object.freeze({ value: 'gpt:gpt-image-2', label: 'GPT Image 2' }),
+    Object.freeze({ value: 'gpt:grok-imagine', label: 'Grok 图像' }),
   ])
   const mountedControls = new WeakMap()
 
@@ -65,7 +68,7 @@
     const generatorId = String(context.id || '')
     const disabled = !generatorId || context.disabled === true
     record.context = context
-    record.select.value = normalizeProvider(context.provider)
+    record.select.value = root?.NovaFlowArtGenerateModels?.providerSelection?.(context) || normalizeProvider(context.provider)
     record.select.disabled = disabled
     if (disabled) record.select.setAttribute('disabled', 'disabled')
     else record.select.removeAttribute?.('disabled')
@@ -176,7 +179,7 @@
     })
     select.addEventListener('change', () => {
       if (record.select.disabled) return
-      const provider = normalizeProvider(record.select.value)
+      const provider = String(record.select.value || '') || normalizeProvider(record.select.value)
       record.options.onProviderChange?.(provider, record.context)
       sync(record)
     })

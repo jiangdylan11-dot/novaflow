@@ -129,7 +129,7 @@
     }
     if (combined.length > context.referenceLimit) throw new Error('图层修复还需携带原图风格参考，当前模型参考数量不足；请移除其他参考图')
     const source = targets[0].uiSplitContext, state = {}
-    for (const key of ['mode', 'provider', 'count', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'negativePrompt', 'localTextQuality', 'localEditStrength', 'localDrawEngine', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight', 'googleAspectRatioImg2img', 'googleResolution']) if (context.state[key] !== undefined) state[key] = copy(context.state[key])
+    for (const key of ['mode', 'provider', 'cloudImageModel', 'count', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'negativePrompt', 'localTextQuality', 'localEditStrength', 'localDrawEngine', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight', 'googleAspectRatioImg2img', 'googleResolution']) if (context.state[key] !== undefined) state[key] = copy(context.state[key])
     Object.assign(state, { mode: 'img2img', width: targets[0].width || source.sourceBox.width, height: targets[0].height || source.sourceBox.height, nsfw: false, uiPreserveLayout: false, uiLayoutMode: 'reflow', uiRunIntent: 'redesign' })
     const originalPrompt = String(context.state.prompt || '')
     const prompt = [originalPrompt || '修复选中的独立 UI 图层', '只输出目标独立素材，使用真实透明背景，不生成整张界面。原始 UI 仅提供画风、配色、材质、光照上下文；不复制其布局、人物身份或其他控件。未明确要求保留的旧形状和身份不要强锁。', ...targets.map((ref, i) => 'Image ' + (refs.indexOf(ref) + 1) + ': 待修改图层 ' + ref.name), ...combined.map((ref, index) => ref.uiSplitStyleOnly ? 'Image ' + (index + 1) + ': 原图风格上下文，不能当布局或待生成内容' : '').filter(Boolean), ...Array.from(sources.values(), s => s.style).filter(Boolean)].join('\n')

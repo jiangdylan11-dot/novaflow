@@ -75,6 +75,10 @@ export const DEFAULT_FEATURE_PRICES = Object.freeze({
   lean_research: 14,
   gpt_image_2_5_economy: 20,
   gpt_image_2_official: 4,
+  // Cheaper RunningHub image lines (Dylan, 2026-11-10): catalog USD x 211 credits/USD x 2.
+  gpt_image_2_edit: 11,
+  nano_banana_21: 13,
+  grok_image_official: 8,
   grok_image_g42: 6,
   local: 0
 });
@@ -88,6 +92,9 @@ export const DEFAULT_RH_COST_USD = Object.freeze({
   lean_research: 0.0306,
   gpt_image_2_5_economy: 0.05,
   gpt_image_2_official: 0.009,
+  gpt_image_2_edit: 0.027,
+  nano_banana_21: 0.03,
+  grok_image_official: 0.02,
   grok_image_g42: 0.01,
   local: 0
 });
@@ -95,6 +102,9 @@ export const DEFAULT_RH_COST_USD = Object.freeze({
 export const PER_IMAGE_FEATURES = Object.freeze([
   'gpt_image_2_5_economy',
   'gpt_image_2_official',
+  'gpt_image_2_edit',
+  'nano_banana_21',
+  'grok_image_official',
   'grok_image_g42',
   'gpt_image_2_5_token'
 ]);
@@ -128,6 +138,14 @@ const ALIASES = Object.freeze({
   'gpt-image-2': 'gpt_image_2_official',
   gpt_image_2: 'gpt_image_2_official',
   gpt_image_2_official: 'gpt_image_2_official',
+  'gpt-image-2-edit': 'gpt_image_2_edit',
+  gpt_image_2_edit: 'gpt_image_2_edit',
+  'nano-banana-2.1': 'nano_banana_21',
+  'nano-banana-21': 'nano_banana_21',
+  nano_banana_21: 'nano_banana_21',
+  'grok-imagine': 'grok_image_official',
+  'grok-image-official': 'grok_image_official',
+  grok_image_official: 'grok_image_official',
   'g-4.2': 'grok_image_g42',
   'grok-image-g42': 'grok_image_g42',
   grok_image_g42: 'grok_image_g42',
@@ -142,6 +160,9 @@ export const FEATURE_PRICE_FIELDS = Object.freeze([
   ['lean_research', 'UI 目录分析', '每轮'],
   ['gpt_image_2_5_economy', 'GPT Image 2.5 图生图', '每张'],
   ['gpt_image_2_official', 'GPT Image 2 官方', '每张'],
+  ['gpt_image_2_edit', 'GPT Image 2 图生图', '每张'],
+  ['nano_banana_21', 'Nano Banana 2.1', '每张'],
+  ['grok_image_official', 'Grok 图像', '每张'],
   ['grok_image_g42', 'g-4.2 出图', '每张'],
   ['local', '本地', '不扣']
 ]);

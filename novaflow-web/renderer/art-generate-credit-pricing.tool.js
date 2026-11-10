@@ -53,8 +53,10 @@
 
   function copyState(state) {
     const input = state && typeof state === 'object' ? state : {}
+    const models = root && root.NovaFlowArtGenerateModels
     return {
       provider: normalizeProvider(input.provider),
+      cloudImageModel: models && typeof models.normalizeCloudImageModel === 'function' ? models.normalizeCloudImageModel(input.cloudImageModel) : String(input.cloudImageModel || 'gpt-image-2.5'),
       mode: normalizeMode(input.mode),
       gptQualityTxt2img: String(input.gptQualityTxt2img || 'low'),
       gptQualityImg2img: String(input.gptQualityImg2img || 'low'),
@@ -87,6 +89,7 @@
     const signature = JSON.stringify([
       baseUrl,
       provider,
+      values.cloudImageModel,
       mode,
       settings,
       values.referenceCount,
@@ -389,6 +392,7 @@
           count,
           prices: snapshot.prices,
           mode,
+          model: snapshot.cloudImageModel,
           settings: snapshot.settings,
         })
         if (quoted && typeof quoted.then !== 'function') return creditEstimate(snapshot, quoted)
@@ -404,6 +408,7 @@
           imageEndpoint: snapshot.gptImageI2iEndpoint || '',
           count,
           mode,
+          model: snapshot.cloudImageModel,
           settings: snapshot.settings,
           width: snapshot.gptCustomWidth,
           height: snapshot.gptCustomHeight,

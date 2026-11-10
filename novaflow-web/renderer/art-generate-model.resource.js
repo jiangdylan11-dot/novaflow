@@ -39,9 +39,43 @@
     return state?.nsfw !== true
   }
 
+  // Cloud image lines on RunningHub (Dylan, 2026-11-10). provider stays 'gpt' for every cloud
+  // line; which line runs is state.cloudImageModel. The 模型方式 select shows them as one list:
+  // 'gpt' is GPT Image 2.5, the others are 'gpt:<model id>'. Mirrors
+  // packages/shared/src/runninghub-gpt-image.mjs CLOUD_IMAGE_MODELS (labels, reference limits).
+  const DEFAULT_CLOUD_IMAGE_MODEL = 'gpt-image-2.5'
+  const CLOUD_IMAGE_MODELS = Object.freeze([
+    Object.freeze({ id: 'gpt-image-2.5', label: 'GPT Image 2.5', referenceLimit: 16, credits: { img2img: 20, txt2img: null } }),
+    Object.freeze({ id: 'nano-banana-2.1', label: 'Nano Banana 2.1', referenceLimit: 14, credits: { img2img: 13, txt2img: 13 } }),
+    Object.freeze({ id: 'gpt-image-2', label: 'GPT Image 2', referenceLimit: 10, credits: { img2img: 11, txt2img: 4 } }),
+    Object.freeze({ id: 'grok-imagine', label: 'Grok 图像', referenceLimit: 1, credits: { img2img: 8, txt2img: 8 } }),
+  ])
+  function normalizeCloudImageModel(value) {
+    const id = String(value || '').trim().toLowerCase().replace(/^gpt:/, '')
+    return CLOUD_IMAGE_MODELS.some((item) => item.id === id) ? id : DEFAULT_CLOUD_IMAGE_MODEL
+  }
+  function cloudImageModelInfo(value) {
+    const id = normalizeCloudImageModel(value)
+    return CLOUD_IMAGE_MODELS.find((item) => item.id === id) || CLOUD_IMAGE_MODELS[0]
+  }
+  // The cloud line a state runs on, '' for a local state.
+  function cloudImageModelFor(state) {
+    return normalizeProvider(state?.provider) === 'gpt' ? normalizeCloudImageModel(state?.cloudImageModel) : ''
+  }
+  // What the 模型方式 select shows for a state, and what a chosen option means for the state.
+  function providerSelection(state) {
+    if (normalizeProvider(state?.provider) !== 'gpt') return 'local'
+    const model = normalizeCloudImageModel(state?.cloudImageModel)
+    return model === DEFAULT_CLOUD_IMAGE_MODEL ? 'gpt' : `gpt:${model}`
+  }
+  function applyProviderSelection(value) {
+    const raw = String(value || '').trim().toLowerCase()
+    if (raw === 'local' || raw === '' || raw === 'google' || raw === 'gemini') return { provider: 'local', cloudImageModel: DEFAULT_CLOUD_IMAGE_MODEL }
+    return { provider: 'gpt', cloudImageModel: normalizeCloudImageModel(raw) }
+  }
   const providerOptions = Object.freeze([
     Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
-    Object.freeze({ value: 'gpt', label: 'GPT Image 2.5' }),
+    ...CLOUD_IMAGE_MODELS.map((item) => Object.freeze({ value: item.id === DEFAULT_CLOUD_IMAGE_MODEL ? 'gpt' : `gpt:${item.id}`, label: item.label })),
   ])
 
   function preset(steps, cfg, samplerName, scheduler, lightning) {
@@ -216,17 +250,20 @@
   function normalizeProvider(value) {
     const provider = String(value || '').trim().toLowerCase()
     if (provider === 'google' || provider === 'gemini') return 'local'
-    return provider === 'gpt' ? 'gpt' : 'local'
+    return provider === 'gpt' || provider.startsWith('gpt:') ? 'gpt' : 'local'
   }
 
   function normalizeMode(value) {
     return String(value || '').trim().toLowerCase() === 'img2img' ? 'img2img' : 'txt2img'
   }
 
-  function providerTitle(value) {
+  // The title of the line a state runs on: a cloud state names its model, a local one Qwen.
+  function providerTitle(value, state) {
     const provider = normalizeProvider(value)
-    if (provider === 'gpt') return 'GPT Image 2.5'
-    return 'Qwen（本地）'
+    if (provider !== 'gpt') return 'Qwen（本地）'
+    const raw = String(value || '').trim().toLowerCase()
+    const model = raw.startsWith('gpt:') ? raw : state && typeof state === 'object' ? state.cloudImageModel : ''
+    return cloudImageModelInfo(model).label
   }
 
   function renderKey(state) {
@@ -327,6 +364,13 @@
 
   return Object.freeze({
     providerOptions,
+    CLOUD_IMAGE_MODELS,
+    DEFAULT_CLOUD_IMAGE_MODEL,
+    normalizeCloudImageModel,
+    cloudImageModelInfo,
+    cloudImageModelFor,
+    providerSelection,
+    applyProviderSelection,
     getCapability,
     normalizeProvider,
     normalizeMode,
