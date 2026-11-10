@@ -155,10 +155,13 @@
 #nf-xiaotao-art-root .nf-xiaotao-memory-toggle:hover { background:#333333; color:#ffffff; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-toggle[data-open="1"] { color:#1EA672; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-toggle[data-open="1"]:hover { background:#333333; color:#3fc08d; }
-#nf-xiaotao-art-root .nf-xiaotao-memory-toggle[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-list[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-empty[hidden] { display:none; }
-#nf-xiaotao-art-root .nf-xiaotao-memory { max-height:260px; overflow:auto; padding:10px 12px; border-bottom:1px solid #3e3e3e; background:#1F1F1F; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-toggle[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-mask[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-list[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-empty[hidden] { display:none; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-mask { position:fixed; inset:0; z-index:2147483000; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(0,0,0,.58); }
+#nf-xiaotao-art-root .nf-xiaotao-memory { width:min(440px,100%); max-height:min(560px,calc(100vh - 32px)); overflow:auto; padding:16px 18px; border:1px solid #333333; border-radius:8px; background:#1F1F1F; color:#dddddd; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-#nf-xiaotao-art-root .nf-xiaotao-memory-head strong { font-size:13px; font-weight:600; color:#eaeaea; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-head strong { font-size:14px; font-weight:600; color:#eaeaea; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-close { border:0; padding:0 4px 0 8px; font-size:16px; line-height:1; color:#aaaaaa; background:transparent; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-close:hover { background:transparent; color:#ffffff; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-actions { display:flex; gap:6px; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-actions button { font-size:11px; padding:4px 8px; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-hint, #nf-xiaotao-art-root .nf-xiaotao-memory-empty { margin:6px 0 0; font-size:11px; line-height:1.55; color:#aaaaaa; }

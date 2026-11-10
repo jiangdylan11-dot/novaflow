@@ -2912,12 +2912,15 @@
     // 小桃记忆: the account's own preferences, shown and managed here.
     const memoryToggle = el('button', 'nf-xiaotao-memory-toggle', '记忆'); memoryToggle.type = 'button'; memoryToggle.title = '小桃记住的偏好'; memoryToggle.setAttribute('aria-expanded', 'false');
     header.append(title, memoryToggle, close);
-    const memorySheet = el('section', 'nf-xiaotao-memory'); memorySheet.hidden = true; memorySheet.setAttribute('aria-label', '小桃记忆');
+    // A dialog of its own over a dimmed page, never inside the chat panel.
+    const memoryMask = el('div', 'nf-xiaotao-memory-mask'); memoryMask.hidden = true;
+    const memorySheet = el('section', 'nf-xiaotao-memory'); memorySheet.setAttribute('role', 'dialog'); memorySheet.setAttribute('aria-modal', 'true'); memorySheet.setAttribute('aria-label', '小桃记忆');
+    const memoryClose = el('button', 'nf-xiaotao-memory-close', '×'); memoryClose.type = 'button'; memoryClose.setAttribute('aria-label', '关闭记忆');
     const memoryHead = el('div', 'nf-xiaotao-memory-head'), memoryTitle = el('strong', '', '小桃记忆'), memoryHint = el('p', 'nf-xiaotao-memory-hint', '只记你的偏好（模型、画风、视频音频习惯、UI、导出格式、不要的东西），不保存聊天和图片。说「记住…」「以后都…」，或对满意的结果说「满意」，小桃会记下来。');
     const memoryEnable = el('button', 'nf-xiaotao-memory-switch'), memoryClear = el('button', 'nf-xiaotao-memory-clear', '清空'); memoryEnable.type = memoryClear.type = 'button';
     const memoryList = el('ul', 'nf-xiaotao-memory-list'), memoryEmpty = el('p', 'nf-xiaotao-memory-empty');
     const memoryActions = el('div', 'nf-xiaotao-memory-actions'); memoryActions.append(memoryEnable, memoryClear);
-    memoryHead.append(memoryTitle, memoryActions); memorySheet.append(memoryHead, memoryHint, memoryEmpty, memoryList);
+    memoryActions.append(memoryClose); memoryHead.append(memoryTitle, memoryActions); memorySheet.append(memoryHead, memoryHint, memoryEmpty, memoryList); memoryMask.append(memorySheet);
     const memoryModule = () => root.NovaFlowXiaotaoMemory || null;
     const renderMemory = () => {
       const memory = memoryModule(), snap = memory?.snapshot?.() || {loaded:true, available:false, enabled:false, items:[], error:'记忆功能未加载'};
@@ -2937,7 +2940,11 @@
       memoryEmpty.hidden = !memoryEmpty.textContent;
       memorySheet.setAttribute('data-off', snap.enabled ? '0' : '1');
     };
-    memoryToggle.onclick = () => {memorySheet.hidden = !memorySheet.hidden; memoryToggle.setAttribute('aria-expanded', String(!memorySheet.hidden)); memoryToggle.setAttribute('data-open', memorySheet.hidden ? '0' : '1'); if (!memorySheet.hidden) void memoryModule()?.load?.();};
+    const showMemory = value => {memoryMask.hidden = !value; memoryToggle.setAttribute('aria-expanded', String(value)); memoryToggle.setAttribute('data-open', value ? '1' : '0'); if (value) void memoryModule()?.load?.();};
+    memoryToggle.onclick = () => showMemory(memoryMask.hidden);
+    memoryClose.onclick = () => showMemory(false);
+    memoryMask.onclick = event => {if (event.target === memoryMask) showMemory(false);};
+    memoryMask.onkeydown = event => {if (event.key === 'Escape') showMemory(false);};
     memoryEnable.onclick = () => {const memory = memoryModule(); if (!memory) return; memoryEnable.disabled = true; void memory.setEnabled(!memory.snapshot().enabled).finally(renderMemory);};
     memoryClear.onclick = () => {const memory = memoryModule(); if (!memory) return; memoryClear.disabled = true; void memory.clear().finally(renderMemory);};
     memoryModule()?.subscribe?.(renderMemory); renderMemory();
@@ -3019,7 +3026,7 @@
     listen(input,'paste',event=>{const files=Array.from(event?.clipboardData?.files||[]);if(files.length){event.preventDefault?.();takeFiles(files);}});
     for (const b of [newConversation, stop]) b.type = 'button'; iconButton(newConversation,'newChat','新对话（清空当前聊天记录）'); iconButton(stop,'stop','停止'); iconButton(send,'send','发送'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); const inputBox=el('div','nf-xiaotao-input-box'),inputField=el('div','nf-xiaotao-input-field');inputField.append(input);inputBox.append(stagedRow,inputField);footer.append(inputBox,footerActions);
     providers.append(modelTrigger);
-    panel.append(header, memorySheet, modelMenu, messages, mediaPromptPanel, proposal, tools, status, error, footer); host.append(modelBackdrop, fab, panel); doc.body.append(host);
+    panel.append(header, modelMenu, messages, mediaPromptPanel, proposal, tools, status, error, footer); host.append(modelBackdrop, fab, panel, memoryMask); doc.body.append(host);
     // @参考图N numbers what this message will send: its own attachments from 1, which replace the
     // page's pictures on send; with nothing attached, the page's pictures as its prompt box numbers them.
     let mentionHandle=null;
