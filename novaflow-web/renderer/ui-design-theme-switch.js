@@ -38,8 +38,8 @@
     'Atmosphere: one key light with a clear warm/cool contrast across the screen, depth, haze and volumetric light in the background, theme particles, light dust or falling things in the foreground, rim light on characters and key elements; the screen carries mood and story like game key art.',
     'Precision: clean sharp lines and edges, crisp icon silhouettes, complete legible lettering, symmetric pieces mirror exactly, buttons and cells of one kind share size and alignment, rich detail without mush, no warping, misalignment or stray parts.',
     'Colour: one unified theme palette across the screen - main colour about 60%, secondary about 30%, accent about 10% reserved for button highlights, gems and key values; controls of one kind share colour and material; cool shadows, warm lights, soft gradients, no stray colours outside the theme.',
-    'Premium finish: like the final art of a top-studio commercial mobile game - fine gilded lines and layered bevel trims, delicate patterns and relief, soft inner glow and drop shadows, deliberate breathing room; ornament stays restrained and orderly (a few strong accents, not decoration on every edge), the functional controls read instantly, clear hierarchy, every corner and detail polished.',
-    'Overall: top-tier mobile game key art, rich vivid yet unified colour, strong contrast, polished finish, elegant rather than busy. Never dull, washed-out, flat, plastic, cheaply oversaturated or cluttered.',
+    'Visual hierarchy: one hero visual (the characters and scene) carries the picture; the functional area is a calm, flat, low-contrast field in one or two theme colours so the controls read instantly; ornament lives only on the hero and on a few framing accents, never on every edge, cell or button; symbols are simple, bold icons on quiet cells, not small paintings; buttons share one plain design with one accent on the main action.',
+    'Overall: top-tier mobile game key art, unified colour, strong but controlled contrast, polished finish, elegant rather than busy. Never dull, washed-out, flat, plastic, cheaply oversaturated or cluttered; no decorative clutter around the controls.',
   ])
   // 多种排版: besides following the source layout, each theme is also drawn in these
   // compositions. They name no genre, so they fit lobbies, shops and HUDs as well as slots.
@@ -127,7 +127,7 @@
         : `Regions take the positions and sizes in the square brackets of the list; every listed button, info bar and value is present and nothing unlisted is added.${hasGrid ? ' Grids have exactly the listed per-row count and rows (count them).' : ''}${hasCast ? ' Characters stand directly in the background scene as full character art; their area has no frame or panel and is never split into cells or portrait frames; only the functional areas are framed.' : ''}`,
       keepText ? 'Write on the screen only the quoted words and numbers from the list, copied exactly; never write region names, notes or bracketed remarks; a button marked as icon-only gets an icon and no words.' : 'Write numbers and button labels from the list; titles and decorative words may be rewritten for the theme; never write region names or notes.',
       'Items tagged 【显示】 (info bars, value boxes, notice banners) are flat read-outs set into the panel (recessed slots, plaques or banners), never buttons; only items tagged 【按钮】 are clickable buttons with thickness and highlights; the tags themselves are never written on the screen.',
-      `Composition, panel and button shapes${hasCast ? ', characters and their poses' : ''} are all designed for "${name}": panels and buttons are thick sculpted theme pieces, not rounded rectangles, with borders and ornament structures of the theme${hasGrid ? '; the grid sits inside one clean theme-shaped frame and every cell holds a distinctive theme object' : ''}; ${hasCast ? 'characters are original, charismatic, in dynamic poses, ' : ''}inside a deep theme scene. Keep the screen calm and readable: one hero visual, plain background behind the controls, no scattered trinkets or extra ornaments around the functional area.`,
+      `Composition, panel and button shapes${hasCast ? ', characters and their poses' : ''} are all designed for "${name}": panels and buttons are thick sculpted theme pieces, not rounded rectangles, with borders and ornament structures of the theme${hasGrid ? '; the grid sits inside one clean theme-shaped frame and every cell holds a distinctive theme object' : ''}; ${hasCast ? 'characters are original, charismatic, in dynamic poses, ' : ''}inside a deep theme scene. Keep the screen calm and readable: one hero visual, plain background behind the controls, at most two materials across all controls, no scattered trinkets, particles or extra ornaments around the functional area.`,
       ...QUALITY_EN,
       sketched ? 'Image 1 is a grey layout sketch: place regions, sizes, grid rows and columns and button counts exactly as it shows; the white words in a box are the text that goes there; the figure silhouettes mark where full characters stand in an open background scene, with no frame, panel or cells there. The grey boxes are placeholders only and must all become finished theme art, no grey box may remain.' : '',
       anchored ? `Image ${style} is another finished screen of this same "${name}" set: match its art style, palette, materials, frames and buttons, but follow this list for functions and layout.` : '',
@@ -425,7 +425,7 @@
     const body = make('div', '', { class: 'nf-panel-body' }); Object.assign(body.style, accordion.bodyStyle(false))
     panel.append(header, body)
 
-    const hint = make('div', '添加一张或多张界面图，选几个主题，一次生成全部。默认按主题从零重新设计（由小桃所选在线模型先读出界面功能）；同一主题的多张界面画风统一。'); Object.assign(hint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
+    const hint = make('div', '添加一张或多张界面图，选几个主题，一次生成全部。默认读出界面功能后按原图位置排版、按主题重画全部美术；「自由构图」让模型自己排版。同一主题的多张界面画风统一。'); Object.assign(hint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
     const chips = make('div', '', { 'data-foart-ui-theme-chips': '1' }); Object.assign(chips.style, { display: 'flex', flexWrap: 'wrap', gap: '6px' })
     const editor = make('div', '', { 'data-foart-ui-theme-editor': '1' }); Object.assign(editor.style, { display: 'none', gap: '8px' })
     const customRow = make('div'); Object.assign(customRow.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })
@@ -437,8 +437,8 @@
     const layoutRow = make('label'); Object.assign(layoutRow.style, { display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr)', alignItems: 'center', gap: '8px', color: '#bbb', fontSize: '12px' })
     const layoutMode = make('select', '', { 'aria-label': '排版', 'data-novaflow-art-generate-select-field': '1' })
     Object.assign(layoutMode.style, { width: '100%', minWidth: '0', height: '30px', boxSizing: 'border-box', background: '#292929', color: '#ddd', border: '1px solid #444', borderRadius: '5px', padding: '5px 8px', fontSize: '12px' })
-    for (const [value, label] of [['follow', '跟随原图布局'], ['variety', `多种排版（每个主题 ${ARRANGEMENTS.length + 1} 种）`], ['reskin', '保持原图，只换皮']]) { const option = make('option', label); option.value = value; layoutMode.append(option) }
-    layoutMode.value = ['follow', 'variety', 'reskin'].includes(read('foart.ui.theme-layout-mode.v1', 'follow')) ? read('foart.ui.theme-layout-mode.v1', 'follow') : 'follow'
+    for (const [value, label] of [['follow', '跟随原图布局'], ['free', '自由构图'], ['variety', `多种排版（每个主题 ${ARRANGEMENTS.length + 1} 种）`], ['reskin', '保持原图，只换皮']]) { const option = make('option', label); option.value = value; layoutMode.append(option) }
+    layoutMode.value = ['follow', 'free', 'variety', 'reskin'].includes(read('foart.ui.theme-layout-mode.v1', 'follow')) ? read('foart.ui.theme-layout-mode.v1', 'follow') : 'follow'
     layoutRow.append(make('span', '排版'), layoutMode)
     layoutMode.addEventListener('change', () => { write('foart.ui.theme-layout-mode.v1', layoutMode.value); render() })
     const note = field('补充要求（可选），如：人物换成女性、整体更亮', true)
@@ -536,7 +536,7 @@
       if (!themes.length) throw new Error('请至少选择一个主题')
       busy = new AbortController(); render()
       try {
-        const outcome = await runBatch({ screens: list, themes, keepText: keep.checked, keepLayout: layoutMode.value === 'reskin', variety: layoutMode.value === 'variety', note: note.value, signal: busy.signal, onProgress: value => message(value) })
+        const outcome = await runBatch({ screens: list, themes, keepText: keep.checked, keepLayout: layoutMode.value === 'reskin', variety: layoutMode.value === 'variety', useSketch: layoutMode.value !== 'free', note: note.value, signal: busy.signal, onProgress: value => message(value) })
         message(outcome.stopped ? `已生成 ${outcome.done}/${outcome.total} 张，已停止${outcome.error ? '：' + outcome.error : ''}` : `已生成 ${outcome.done} 张，已放入结果列表`, outcome.failed > 0)
       } finally { busy = null; render() }
     }
