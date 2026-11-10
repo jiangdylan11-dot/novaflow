@@ -13,7 +13,7 @@ import {
 import { readRunningHubLlmConfig, postRunningHubResponses, uiCatalogResponsesRequest, responsesOutputText, DEFAULT_RUNNINGHUB_LLM_MODEL } from "../_art-shared/backend-legacy-v249-runninghub-llm.mjs";
 import { createOnlineAiCharge } from "../_art-shared/backend-legacy-v249-online-ai-charge.mjs";
 import { createFeatureCreditPorts, normalizeCreditConfig, publicCreditError } from "../_art-shared/backend-legacy-v249-feature-credits.mjs";
-import {readRunningHubImageConfig,quoteGptImage,formatCreditButtonLabel,formatCreditButtonTitle,runChargedGptImage,readImagePoolAccount} from "../_art-shared/backend-legacy-v249-runninghub-gpt-image.mjs";
+import {readRunningHubImageConfig,quoteGptImage,formatCreditButtonLabel,formatCreditButtonTitle,runChargedGptImage,readImagePoolAccount,beginChargedGptImage,finishChargedGptImage} from "../_art-shared/backend-legacy-v249-runninghub-gpt-image.mjs";
 import { RELEASE_VERSION } from "../_art-shared/release.mjs";
 import { createRunningHubServerConfig } from "../_art-shared/backend-legacy-v249-runninghub-server-config.mjs";
 import {
@@ -1507,6 +1507,64 @@ async function handleRunningHubGptImage(req:Request, session:{user:PublicUser}, 
   }
 }
 
+// Two-step cloud image: /start reserves the hold and submits (returns a signed ticket),
+// /poll queries RunningHub once and settles or releases when the task ends. The official GPT
+// lines take longer than one function call may run, and a killed call used to keep its hold.
+async function imageTicketToken(ticket:AnyRecord):Promise<string>{
+  const secret=sessionSecret();
+  if(!secret)throw new Error("NOVAFLOW_SESSION_SECRET is not configured");
+  const encoded=base64UrlJson(ticket);
+  return `nfi_${encoded}.${await hmacSha256(encoded,secret)}`;
+}
+async function imageTicketFromToken(token:string,userId:string):Promise<AnyRecord>{
+  const secret=sessionSecret();
+  const raw=String(token||"").trim();
+  if(!secret||!raw.startsWith("nfi_"))throw Object.assign(new Error("出图任务凭据无效"),{statusCode:400});
+  const parts=raw.slice(4).split(".");
+  if(parts.length!==2||!parts[0]||!parts[1]||!safeCompare(parts[1],await hmacSha256(parts[0],secret)))throw Object.assign(new Error("出图任务凭据无效"),{statusCode:400});
+  let ticket:AnyRecord;
+  try{ticket=JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));}catch{throw Object.assign(new Error("出图任务凭据无效"),{statusCode:400});}
+  if(!ticket||ticket.userId!==userId)throw Object.assign(new Error("出图任务凭据无效"),{statusCode:400});
+  return ticket;
+}
+async function listStaleImageHolds({userId,before}:{userId:string;before:string}):Promise<AnyRecord[]>{
+  const {data,error}=await adminClient().from("credit_ledger").select("usage_key,feature").eq("user_id",userId).eq("status","reserved").like("usage_key","gptimg_%").lt("created_at",before).limit(20);
+  if(error)throw error;
+  return Array.isArray(data)?data as AnyRecord[]:[];
+}
+function imageRouteError(req:Request,error:unknown):Response{
+  const failed=error as AnyRecord,status=Number(failed.statusCode)||502;
+  return jsonResponse(req,status>=400&&status<600?status:502,{ok:false,error:status===402?(failed.noCharge?failed.message:'积分不足或云服务余额不足，本次未生成'):/出图|审核|参考图|提示词|积分|RunningHub|云服务|凭据/.test(sanitizeError(error))?sanitizeError(error):'云端出图未完成',charged:0});
+}
+async function handleRunningHubGptImageStart(req:Request,session:{user:PublicUser}):Promise<Response>{
+  try{
+    const payload=await parseJsonBody(req,24*1024*1024) as AnyRecord;
+    const creditConfig=normalizeCreditConfig(await readFeatureCreditConfig());
+    const provider=runningHubLlm();
+    const base=readRunningHubImageConfig((name:string)=>name==='NOVAFLOW_RUNNINGHUB_API_KEY'?provider.apiKey:env(name),creditConfig);
+    const config={...base,creditConfig,pricePreview:false};
+    if(!config.configured)return jsonResponse(req,503,{ok:false,error:'RunningHub 出图尚未配置'});
+    const poolAccount=await readImagePoolAccount(config);
+    const ports=createFeatureCreditPorts(creditRpc);
+    const begun=await beginChargedGptImage({ports,config,poolAccount,listStaleHolds:listStaleImageHolds,request:{userId:session.user.id,usageKey:'gptimg_'+crypto.randomUUID(),mode:payload.mode,prompt:payload.prompt,settings:payload.settings,images:payload.images,width:payload.width,height:payload.height,model:payload.model}});
+    return jsonResponse(req,200,{ok:true,ticket:await imageTicketToken(begun.ticket),taskId:begun.taskId,quote:begun.quote,expiresAt:begun.ticket.expiresAt,staleReleased:begun.staleReleased.length});
+  }catch(error){return imageRouteError(req,error);}
+}
+async function handleRunningHubGptImagePoll(req:Request,session:{user:PublicUser}):Promise<Response>{
+  try{
+    const payload=await parseJsonBody(req,64*1024) as AnyRecord;
+    const ticket=await imageTicketFromToken(String(payload.ticket||""),session.user.id);
+    const creditConfig=normalizeCreditConfig(await readFeatureCreditConfig());
+    const provider=runningHubLlm();
+    const base=readRunningHubImageConfig((name:string)=>name==='NOVAFLOW_RUNNINGHUB_API_KEY'?provider.apiKey:env(name),creditConfig);
+    const config={...base,creditConfig};
+    const outcome=await finishChargedGptImage({ports:createFeatureCreditPorts(creditRpc),config,ticket});
+    if(outcome.pending)return jsonResponse(req,200,{ok:true,pending:true,status:outcome.status});
+    if(outcome.ok===false)return jsonResponse(req,outcome.moderation?400:502,{ok:false,pending:false,error:outcome.error,moderation:outcome.moderation===true,timeout:outcome.timeout===true,charged:0});
+    return jsonResponse(req,200,{ok:true,pending:false,charged:outcome.charged,remaining:outcome.remaining,billing:outcome.billing,quota:outcome.quota,message:outcome.billing?.message,images:[outcome.image]});
+  }catch(error){return imageRouteError(req,error);}
+}
+
 async function handleGrokImageReverse(
   req: Request,
   session: { user: PublicUser }
@@ -1857,6 +1915,8 @@ Deno.serve(async (req: Request) => {
       "/api/client/runninghub/ui-catalog",
       "/api/client/runninghub/gpt-image/quote",
       "/api/client/runninghub/gpt-image",
+      "/api/client/runninghub/gpt-image/start",
+      "/api/client/runninghub/gpt-image/poll",
       "/api/provider/grok/chat"
     ]);
     if (sessionRoutes.has(path)) {
@@ -1891,6 +1951,8 @@ Deno.serve(async (req: Request) => {
       if (req.method === "POST" && path === "/api/client/runninghub/ui-catalog") return await handleRunningHubUiCatalog(req, session);
       if (req.method === "POST" && path === "/api/client/runninghub/gpt-image/quote") return await handleRunningHubGptImage(req,session,true);
       if (req.method === "POST" && path === "/api/client/runninghub/gpt-image") return await handleRunningHubGptImage(req,session);
+      if (req.method === "POST" && path === "/api/client/runninghub/gpt-image/start") return await handleRunningHubGptImageStart(req,session);
+      if (req.method === "POST" && path === "/api/client/runninghub/gpt-image/poll") return await handleRunningHubGptImagePoll(req,session);
     }
 
     return jsonResponse(req, 404, { ok: false, error: "route not found", path });

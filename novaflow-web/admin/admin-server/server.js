@@ -11270,6 +11270,86 @@ async function handleRunningHubGptImageQuote(req, res) {
   }
 }
 
+function imageTicketToken(ticket) {
+  const secret = readEnv(ENV_SESSION_SECRET);
+  if (!secret) throw Object.assign(new Error("会话密钥未配置"), { statusCode: 503 });
+  const encoded = base64UrlJson(ticket);
+  return `nfi_${encoded}.${hmacSha256(encoded, secret)}`;
+}
+
+function imageTicketFromToken(token, userId) {
+  const secret = readEnv(ENV_SESSION_SECRET);
+  const raw = String(token || "").trim();
+  const invalid = () => Object.assign(new Error("出图任务凭据无效"), { statusCode: 400 });
+  if (!secret || !raw.startsWith("nfi_")) throw invalid();
+  const parts = raw.slice(4).split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1] || !safeCompare(parts[1], hmacSha256(parts[0], secret))) throw invalid();
+  let ticket;
+  try { ticket = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")); } catch { throw invalid(); }
+  if (!ticket || ticket.userId !== userId) throw invalid();
+  return ticket;
+}
+
+function imageRouteFailure(res, err) {
+  if (err?.quotaFailed) { sendJson(res, 500, { ok: false, error: "在线计量没有完成" }); return; }
+  const statusCode = Number(err?.statusCode) || 502;
+  const message = err?.noCharge ? err.message : statusCode === 402 ? "积分不足，本次未生成" : (/出图|审核|参考图|提示词|积分|RunningHub|云服务|凭据/.test(String(err?.message || "")) ? sanitizeError(err) : "云端出图未完成");
+  sendJson(res, statusCode >= 400 && statusCode < 600 ? statusCode : 502, { ok: false, error: message, charged: 0 });
+}
+
+// Two-step cloud image (see the edge function): start reserves and submits, poll settles or releases.
+async function handleRunningHubGptImageStart(req, res) {
+  const session = await requireClientSession(req, res);
+  if (!session) return;
+  let payload;
+  try { payload = await parseBody(req, { maxBytes: 24 * 1024 * 1024 }); }
+  catch (err) { sendJson(res, 400, { ok: false, error: sanitizeError(err) }); return; }
+  try {
+    const image = await loadRunningHubImage();
+    const { createFeatureCreditPorts } = await loadFeatureCredits();
+    const { envConfig, creditConfig } = await imageBillingContext(image);
+    const config = { ...envConfig, creditConfig, pricePreview: false };
+    if (!config.configured) { sendJson(res, 503, { ok: false, error: "RunningHub 出图尚未配置" }); return; }
+    const pool = await adminData.getAdminRunningHubProviderStatus({ checkAccount: true });
+    const ports = createFeatureCreditPorts((name, args) => adminData.callFeatureCreditRpc(name, args));
+    const begun = await image.beginChargedGptImage({
+      ports, config, poolAccount: pool,
+      listStaleHolds: (input) => adminData.listStaleImageHolds(input),
+      request: {
+        userId: session.user.id,
+        usageKey: `gptimg_${session.user.id}_${crypto.randomUUID()}`,
+        mode: payload.mode, prompt: payload.prompt, settings: payload.settings, images: payload.images,
+        width: payload.width, height: payload.height, model: payload.model
+      }
+    });
+    sendJson(res, 200, { ok: true, ticket: imageTicketToken(begun.ticket), taskId: begun.taskId, quote: begun.quote, expiresAt: begun.ticket.expiresAt, staleReleased: begun.staleReleased.length });
+  } catch (err) {
+    imageRouteFailure(res, err);
+  }
+}
+
+async function handleRunningHubGptImagePoll(req, res) {
+  const session = await requireClientSession(req, res);
+  if (!session) return;
+  let payload;
+  try { payload = await parseBody(req, { maxBytes: 64 * 1024 }); }
+  catch (err) { sendJson(res, 400, { ok: false, error: sanitizeError(err) }); return; }
+  try {
+    const image = await loadRunningHubImage();
+    const { createFeatureCreditPorts } = await loadFeatureCredits();
+    const ticket = imageTicketFromToken(payload?.ticket, session.user.id);
+    const { envConfig, creditConfig } = await imageBillingContext(image);
+    const config = { ...envConfig, creditConfig };
+    const ports = createFeatureCreditPorts((name, args) => adminData.callFeatureCreditRpc(name, args));
+    const outcome = await image.finishChargedGptImage({ ports, config, ticket });
+    if (outcome.pending) { sendJson(res, 200, { ok: true, pending: true, status: outcome.status }); return; }
+    if (outcome.ok === false) { sendJson(res, outcome.moderation ? 400 : 502, { ok: false, pending: false, error: outcome.error, moderation: outcome.moderation === true, timeout: outcome.timeout === true, charged: 0 }); return; }
+    sendJson(res, 200, { ok: true, pending: false, charged: outcome.charged, remaining: outcome.remaining, billing: outcome.billing, quota: outcome.quota, message: outcome.billing?.message, images: [outcome.image] });
+  } catch (err) {
+    imageRouteFailure(res, err);
+  }
+}
+
 async function handleRunningHubGptImage(req, res) {
   const session = await requireClientSession(req, res);
   if (!session) return;
@@ -11761,6 +11841,16 @@ function createAdminServer() {
 
       if (req.method === "POST" && pathName === "/api/client/runninghub/gpt-image") {
         await handleRunningHubGptImage(req, res);
+        return;
+      }
+
+      if (req.method === "POST" && pathName === "/api/client/runninghub/gpt-image/start") {
+        await handleRunningHubGptImageStart(req, res);
+        return;
+      }
+
+      if (req.method === "POST" && pathName === "/api/client/runninghub/gpt-image/poll") {
+        await handleRunningHubGptImagePoll(req, res);
         return;
       }
 

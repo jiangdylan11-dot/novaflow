@@ -17,6 +17,7 @@ import {
   DEFAULT_GPT_IMAGE_ROUTES,
   estimateTokenImageCredits,
   normalizeCreditConfig,
+  publicCreditError,
   quoteFeature,
   settleTokenImageCredits,
   tokenPricingDetails
@@ -650,7 +651,8 @@ export async function readPricePreviewUsd({ fetchImpl = fetch, config, endpoint,
   }
 }
 
-export async function submitAndPoll({ fetchImpl = fetch, config, endpoint, body, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), maxAttempts = 90, intervalMs = 1000, routes } = {}) {
+// Submit one task: the 2.5 routes may fall back once to the official GPT Image 2 endpoint.
+export async function submitGptImageTask({ fetchImpl = fetch, config, endpoint, body, routes } = {}) {
   if (!config?.apiKey) throw Object.assign(new Error('RunningHub 出图尚未配置'), { statusCode: 503, moderation: false });
   let currentEndpoint = endpoint;
   let posted = await postTask({ fetchImpl, config, endpoint: currentEndpoint, body });
@@ -663,40 +665,248 @@ export async function submitAndPoll({ fetchImpl = fetch, config, endpoint, body,
   }
   if (submitShouldFallback(posted)) throw endpointGiveUp(posted);
   if (!posted.response.ok || businessErrorCode(posted.payload) > 0) throw imageError(posted.response.status, posted.payload);
-  let task = posted.task;
+  const task = posted.task;
   if (task && String(task.status || '').toUpperCase() === 'FAILED') throw imageError(400, task);
   const taskId = String(task?.taskId || '').trim();
   if (!taskId) throw Object.assign(new Error(EMPTY_TASK_MESSAGE), { statusCode: 502, moderation: false });
+  return { taskId, endpoint: currentEndpoint, fellBack, task };
+}
+
+export async function queryGptImageTask({ fetchImpl = fetch, config, taskId } = {}) {
+  const queried = await fetchImpl(`${config.baseUrl}${QUERY_PATH}`, {
+    method: 'POST',
+    headers: authHeaders(config.apiKey, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ taskId })
+  });
+  const payload = await readJson(queried);
+  // A finished task carries its own status (FAILED with an error code): hand it back so the
+  // caller can release the hold with that reason; only a refused query itself is thrown.
+  const task = unwrapTask(payload);
+  if (!queried.ok || (businessErrorCode(payload) > 0 && !String(task?.status || '').trim())) throw imageError(queried.status, payload);
+  return task || {};
+}
+
+export async function downloadGptImageResult({ fetchImpl = fetch, task, taskId, endpoint, fellBack = false } = {}) {
+  const url = resultUrl(task);
+  if (!url) throw Object.assign(new Error('出图完成但没有返回图片'), { statusCode: 502, moderation: false });
+  const downloaded = await fetchImpl(url);
+  if (!downloaded?.ok) throw Object.assign(new Error('出图结果下载失败'), { statusCode: 502, moderation: false });
+  const bytes = Buffer.from(await downloaded.arrayBuffer());
+  const mime = String(downloaded.headers?.get?.('content-type') || 'image/png').split(';')[0] || 'image/png';
+  return {
+    taskId,
+    imageDataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
+    endpoint,
+    fellBack,
+    usage: task.usage || null
+  };
+}
+
+export async function submitAndPoll({ fetchImpl = fetch, config, endpoint, body, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), maxAttempts = 90, intervalMs = 1000, routes } = {}) {
+  const submitted = await submitGptImageTask({ fetchImpl, config, endpoint, body, routes });
+  const { taskId, endpoint: currentEndpoint, fellBack } = submitted;
+  let task = submitted.task;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const status = String(task?.status || '').toUpperCase();
-    if (status === 'SUCCESS') {
-      const url = resultUrl(task);
-      if (!url) throw Object.assign(new Error('出图完成但没有返回图片'), { statusCode: 502, moderation: false });
-      const downloaded = await fetchImpl(url);
-      if (!downloaded?.ok) throw Object.assign(new Error('出图结果下载失败'), { statusCode: 502, moderation: false });
-      const bytes = Buffer.from(await downloaded.arrayBuffer());
-      const mime = String(downloaded.headers?.get?.('content-type') || 'image/png').split(';')[0] || 'image/png';
-      return {
-        taskId,
-        imageDataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
-        endpoint: currentEndpoint,
-        fellBack,
-        usage: task.usage || null
-      };
-    }
+    if (status === 'SUCCESS') return downloadGptImageResult({ fetchImpl, task, taskId, endpoint: currentEndpoint, fellBack });
     if (status === 'FAILED') throw imageError(400, task);
     if (attempt + 1 >= maxAttempts) break;
     await sleep(intervalMs);
-    const queried = await fetchImpl(`${config.baseUrl}${QUERY_PATH}`, {
-      method: 'POST',
-      headers: authHeaders(config.apiKey, { 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ taskId })
-    });
-    const payload = await readJson(queried);
-    if (!queried.ok || businessErrorCode(payload) > 0) throw imageError(queried.status, payload);
-    task = unwrapTask(payload) || task;
+    task = (await queryGptImageTask({ fetchImpl, config, taskId })) || task;
   }
   throw Object.assign(new Error('出图超时，请稍后重试'), { statusCode: 504, moderation: false });
+}
+
+// ---- Two-step cloud image (2026-11-10). The official GPT lines often take longer than an edge
+// function may run, and a function killed mid-poll (HTTP 546) never released its hold. So
+// `begin` reserves the hold and submits the task, and hands back a ticket; the client then asks
+// `finish` every few seconds, which queries RunningHub once and settles or releases the hold
+// when the task ends. Tickets expire: a finish after the deadline releases the hold.
+export const GPT_IMAGE_TICKET_TTL_MS = 10 * 60 * 1000;
+export const GPT_IMAGE_STALE_HOLD_MS = 15 * 60 * 1000;
+
+function noFallbackRoutes(routes) {
+  return { ...routes, fallback_text_endpoint: '', fallback_image_endpoint: '' };
+}
+
+async function releaseHoldQuietly(ports, { userId, feature, usageKey, reason }) {
+  try { return await ports.release({ userId, feature, usageKey, reason }); }
+  catch (error) { return { status: 'release_failed', error: String(error?.message || error) }; }
+}
+
+// Holds this user opened for pictures that no finish ever closed (a client that went away, or a
+// function killed before it could release). Older than GPT_IMAGE_STALE_HOLD_MS they are returned.
+export async function releaseStaleGptImageHolds({ ports, listStaleHolds, userId, now = Date.now() } = {}) {
+  if (typeof listStaleHolds !== 'function' || !ports?.release) return [];
+  let rows = [];
+  try { rows = await listStaleHolds({ userId, before: new Date(now - GPT_IMAGE_STALE_HOLD_MS).toISOString() }); }
+  catch { return []; }
+  const released = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const usageKey = String(row?.usage_key || row?.usageKey || '');
+    if (!usageKey.startsWith('gptimg_')) continue;
+    const quota = await releaseHoldQuietly(ports, { userId, feature: row.feature, usageKey, reason: 'stale' });
+    released.push({ usageKey, feature: row.feature, status: quota?.status || 'release_failed' });
+  }
+  return released;
+}
+
+export async function beginChargedGptImage({ ports, config, request = {}, fetchImpl = fetch, poolAccount, listStaleHolds } = {}) {
+  const mode = String(request.mode || 'txt2img') === 'img2img' ? 'img2img' : 'txt2img';
+  const userId = request.userId;
+  const usageKey = String(request.usageKey || '');
+  if (!usageKey.startsWith('gptimg_')) throw Object.assign(new Error('出图请求缺少编号'), { statusCode: 400 });
+  const creditConfig = normalizeCreditConfig(config?.creditConfig || { prices: config?.prices || undefined });
+  const routes = creditConfig.gpt_image;
+  const cloudModel = normalizeCloudImageModel(request.model);
+  const quote = quoteGptImage({
+    endpoint: config?.gptImageEndpoint,
+    imageEndpoint: config?.gptImageI2iEndpoint,
+    mode,
+    count: 1,
+    prices: config?.prices,
+    creditConfig,
+    settings: request.settings,
+    width: request.width,
+    height: request.height,
+    model: cloudModel
+  });
+  if (poolBlocksNewTask(poolAccount, config?.balanceBlockUsd)) {
+    throw Object.assign(new Error('云服务余额不足，请联系管理员。本次未扣积分。'), { statusCode: 402, moderation: false, noCharge: true });
+  }
+  const staleReleased = await releaseStaleGptImageHolds({ ports, listStaleHolds, userId });
+  const images = await prepareImageUrls({ fetchImpl, config, images: request.images || [] });
+  const mapped = mapGptImageParams({
+    mode,
+    prompt: request.prompt,
+    settings: request.settings,
+    images,
+    width: request.width,
+    height: request.height,
+    endpoint: config?.gptImageEndpoint,
+    imageEndpoint: config?.gptImageI2iEndpoint,
+    model: cloudModel
+  });
+  let reserved = false;
+  if (quote.perImage >= 1) {
+    if (typeof ports?.reserve !== 'function') throw Object.assign(new Error('在线计量未配置'), { statusCode: 503 });
+    let reservation;
+    try {
+      reservation = await ports.reserve({
+        userId, feature: quote.feature, amount: 1, usageKey,
+        estimatedCredits: quote.billingMode === 'token' ? quote.perImage : undefined,
+        metadata: { model: quote.model, endpoint: mapped.endpoint, billing_mode: quote.billingMode, two_step: true }
+      });
+    } catch (error) {
+      throw Object.assign(new Error(publicCreditError(error?.message || error)), { statusCode: 402, code: error?.code });
+    }
+    if (reservation?.status !== 'reserved' || reservation?.idempotent) {
+      throw Object.assign(new Error('这次请求已提交，请使用新的编号'), { statusCode: 409 });
+    }
+    reserved = true;
+  }
+  let submitted;
+  try {
+    submitted = await submitGptImageTask({ fetchImpl, config, endpoint: mapped.endpoint, body: mapped.body, routes: mapped.model ? noFallbackRoutes(routes) : routes });
+  } catch (error) {
+    if (reserved) error.quota = await releaseHoldQuietly(ports, { userId, feature: quote.feature, usageKey, reason: error?.moderation ? 'moderation' : 'incomplete' });
+    throw error;
+  }
+  const now = Date.now();
+  const ticket = {
+    v: 1, userId, usageKey, taskId: submitted.taskId, endpoint: submitted.endpoint, fellBack: submitted.fellBack,
+    feature: quote.feature, billingMode: quote.billingMode, perImage: quote.perImage, model: quote.model,
+    resolution: mapped.body.resolution || quote.resolution || null, quality: mapped.body.quality || quote.quality || null,
+    reserved, startedAt: now, expiresAt: now + GPT_IMAGE_TICKET_TTL_MS
+  };
+  return { ticket, quote, taskId: submitted.taskId, staleReleased, mapped };
+}
+
+function ticketField(ticket, key, type) {
+  const value = ticket?.[key];
+  if (type === 'string') return typeof value === 'string' && value.trim() ? value : null;
+  if (type === 'number') return Number.isFinite(Number(value)) ? Number(value) : null;
+  if (type === 'boolean') return value === true;
+  return value;
+}
+
+export function validateGptImageTicket(ticket) {
+  const fields = {
+    userId: ticketField(ticket, 'userId', 'string'), usageKey: ticketField(ticket, 'usageKey', 'string'),
+    taskId: ticketField(ticket, 'taskId', 'string'), endpoint: ticketField(ticket, 'endpoint', 'string'),
+    feature: ticketField(ticket, 'feature', 'string'), billingMode: ticketField(ticket, 'billingMode', 'string'),
+    perImage: ticketField(ticket, 'perImage', 'number'), expiresAt: ticketField(ticket, 'expiresAt', 'number'),
+    startedAt: ticketField(ticket, 'startedAt', 'number')
+  };
+  if (ticket?.v !== 1 || Object.values(fields).some((value) => value == null) || !fields.usageKey.startsWith('gptimg_')) {
+    throw Object.assign(new Error('出图任务凭据无效'), { statusCode: 400 });
+  }
+  return {
+    ...fields,
+    fellBack: ticketField(ticket, 'fellBack', 'boolean'),
+    reserved: ticketField(ticket, 'reserved', 'boolean'),
+    model: ticketField(ticket, 'model', 'string') || '',
+    resolution: ticketField(ticket, 'resolution', 'string'),
+    quality: ticketField(ticket, 'quality', 'string')
+  };
+}
+
+export async function finishChargedGptImage({ ports, config, ticket: rawTicket, fetchImpl = fetch, now = Date.now() } = {}) {
+  const ticket = validateGptImageTicket(rawTicket);
+  const creditConfig = normalizeCreditConfig(config?.creditConfig || { prices: config?.prices || undefined });
+  const hold = { userId: ticket.userId, feature: ticket.feature, usageKey: ticket.usageKey };
+  const release = async (reason) => (ticket.reserved ? releaseHoldQuietly(ports, { ...hold, reason }) : null);
+  const failed = (message, extra = {}) => ({ ok: false, pending: false, error: message, charged: 0, ...extra });
+  if (now > ticket.expiresAt) return failed('出图超时，请稍后重试', { timeout: true, quota: await release('timeout') });
+  let task;
+  try {
+    task = await queryGptImageTask({ fetchImpl, config, taskId: ticket.taskId });
+  } catch (error) {
+    // A provider refusal ends the task; a transport hiccup leaves it pending for the next ask.
+    if (error?.moderation) return failed(error.message, { moderation: true, quota: await release('moderation') });
+    if (Number(error?.statusCode) >= 500 || !Number(error?.statusCode)) return { ok: true, pending: true, status: 'RUNNING', transient: String(error?.message || error) };
+    return failed(error.message, { quota: await release('rejected') });
+  }
+  const status = String(task?.status || '').toUpperCase();
+  if (status === 'FAILED') {
+    const error = imageError(400, task);
+    return failed(error.message, { moderation: error.moderation === true, quota: await release(error.moderation ? 'moderation' : 'rejected') });
+  }
+  if (status !== 'SUCCESS') return { ok: true, pending: true, status: status || 'RUNNING' };
+  const image = await downloadGptImageResult({ fetchImpl, task, taskId: ticket.taskId, endpoint: ticket.endpoint, fellBack: ticket.fellBack });
+  if (!ticket.reserved) {
+    return { ok: true, pending: false, image, charged: 0, remaining: undefined, billing: { billingMode: ticket.billingMode, feature: ticket.feature, chargedCredits: 0, estimatedCredits: 0, fellBack: ticket.fellBack } };
+  }
+  if (typeof ports?.settle !== 'function') throw Object.assign(new Error('在线计量未配置'), { statusCode: 503 });
+  let settledCredits;
+  let rhCostUsd;
+  let pricingSource;
+  let details = null;
+  if (ticket.billingMode === 'token') {
+    const decision = settleTokenImageCredits({ usage: image.usage, reservedCredits: ticket.perImage, config: creditConfig });
+    details = tokenPricingDetails({ decision, endpoint: image.endpoint, taskId: image.taskId, resolution: ticket.resolution, quality: ticket.quality, model: ticket.model });
+    settledCredits = decision.credits;
+    rhCostUsd = decision.usdCost;
+    pricingSource = decision.pricingSource;
+  } else if (ticket.fellBack) {
+    // The 2.5 line fell back to official GPT Image 2 at submit: charge that line's price.
+    settledCredits = creditConfig.prices.gpt_image_2_official;
+    pricingSource = 'admin_unit_price';
+  }
+  const quota = await ports.settle({
+    ...hold, amount: 1,
+    metadata: details || { feature: ticket.feature, endpoint: image.endpoint, billing_mode: 'fixed', model: ticket.model, two_step: true, fallback: ticket.fellBack },
+    settledCredits, rhCostUsd, pricingSource
+  });
+  const charged = Number.isFinite(Number(quota?.settled_credits)) ? Number(quota.settled_credits) : (settledCredits ?? ticket.perImage);
+  const remaining = quota?.balance_after ?? quota?.remaining ?? quota?.balance;
+  const billing = {
+    ...(details || {}),
+    billingMode: ticket.billingMode, feature: ticket.feature, fellBack: ticket.fellBack,
+    chargedCredits: charged, estimatedCredits: ticket.perImage, refundedCredits: Math.max(0, ticket.perImage - charged),
+    balanceAfter: remaining, message: formatChargedRemaining(charged, remaining)
+  };
+  return { ok: true, pending: false, image, charged, remaining, quota, billing };
 }
 
 function dataUrlParts(value) {

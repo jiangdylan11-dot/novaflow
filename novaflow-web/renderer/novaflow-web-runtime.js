@@ -3390,12 +3390,39 @@
         return {ok:true,result:await auth('POST','/api/client/runninghub/gpt-image/quote',payload||{},20000)};
       }catch(error){return {ok:false,error:String(error.message||error)};}
     },
+    // One picture: the server reserves the hold and submits (/start), then this side asks /poll
+    // every few seconds until RunningHub finishes, so a slow line is not cut off by one request's
+    // limit. A server without the two-step routes (404) still takes the single request.
     async runningHubGptImage(payload, options={}) {
       try {
         if(payload?.contract==='confirmed-reference-v1'){
           const signal=options.signal;
           if(!signal || typeof AbortSignal?.any!=='function'||typeof AbortSignal?.timeout!=='function')throw Error('confirmed-art-cancellation-unavailable');
           return {ok:true,result:await api(CONFIG.authUrl,'POST','/api/client/runninghub/gpt-image',payload,180000,AbortSignal.any([signal,AbortSignal.timeout(180000)]))};
+        }
+        const count=Math.round(Number(payload?.count)||1);
+        if(count===1){
+          let started=null;
+          try{started=await auth('POST','/api/client/runninghub/gpt-image/start',payload||{},120000);}
+          catch(error){if(Number(error?.status)!==404)throw error;}
+          if(started&&typeof started.ticket==='string'){
+            const deadline=Date.now()+8*60*1000;
+            let pollErrors=0;
+            while(Date.now()<deadline){
+              await new Promise(resolve=>setTimeout(resolve,3000));
+              let polled;
+              try{polled=await auth('POST','/api/client/runninghub/gpt-image/poll',{ticket:started.ticket},30000);pollErrors=0;}
+              catch(error){
+                // A refusal (审核、超时、积分) is final; a transport slip is retried a few times.
+                if(Number(error?.status)>=400&&Number(error?.status)<500)throw error;
+                if(++pollErrors>=5)throw error;
+                continue;
+              }
+              if(polled?.pending)continue;
+              return {ok:true,result:{...polled,quote:started.quote}};
+            }
+            return {ok:false,error:'出图超时，请稍后重试'};
+          }
         }
         return {ok:true,result:await auth('POST','/api/client/runninghub/gpt-image',payload||{},180000)};
       }catch(error){return {ok:false,error:String(error.message||error)};}

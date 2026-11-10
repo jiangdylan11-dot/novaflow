@@ -3960,6 +3960,22 @@ async function queryCreditLedger(payload) {
   return { records: labeled, csv: ledgerCsv(labeled) };
 }
 
+// Two-step cloud image holds this user never closed (see runninghub-gpt-image.mjs).
+async function listStaleImageHolds({ userId, before }) {
+  const clientState = getAdminClient();
+  if (!clientState.client || !userId || !before) return [];
+  const { data, error } = await clientState.client
+    .from("credit_ledger")
+    .select("usage_key, feature")
+    .eq("user_id", userId)
+    .eq("status", "reserved")
+    .like("usage_key", "gptimg_%")
+    .lt("created_at", before)
+    .limit(20);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
 async function callFeatureCreditRpc(name, args) {
   const allowed = new Set(["reserve_feature_credits", "settle_feature_credits", "release_feature_credits", "migrate_grok_quota_to_credits", "rollback_grok_quota_migration"]);
   if (!allowed.has(name)) throw new Error("不支持的积分操作");
@@ -4064,5 +4080,6 @@ module.exports = {
   saveProfitEstimateSettings,
   queryCreditLedger,
   callFeatureCreditRpc,
+  listStaleImageHolds,
   migrateGrokQuotaToCredits
 };
