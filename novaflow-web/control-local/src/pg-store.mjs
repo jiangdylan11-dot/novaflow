@@ -16,33 +16,13 @@ export function createPgStore(db) {
   }
 
   return {
-    async readArtKnowledge(skillId,knownVersion) {
-      const row=await one('select version,methods,skill from public.art_knowledge_releases where skill_id=$1 and active',[skillId]);
-      if(row && row.version===knownVersion)return {version:row.version,unchanged:true};
-      return row || {version:'0',methods:[]};
+    async listXiaotaoMemory(userId) {
+      return (await many('select id,category,slot,memory_text as text,source,updated_at as "updatedAt" from public.xiaotao_user_memories where user_id=$1 order by updated_at desc limit 20',[userId]));
     },
-    async getArtLearningConsent(userId){return Boolean((await one('select allowed from public.art_learning_consents where user_id=$1',[userId]))?.allowed);},
-    async isArtPublisher(userId){return Boolean(await one('select singleton from public.art_knowledge_policy where publisher_user_id=$1',[userId]));},
-    async setArtLearningConsent(userId,allow){await one('insert into public.art_learning_consents(user_id,allowed) values($1,$2) on conflict(user_id) do update set allowed=excluded.allowed,updated_at=now() returning user_id',[userId,allow]);},
-    async submitArtMethod(userId,input) {
-      const row=await one('select public.novaflow_art_submit_method($1,$2::jsonb,$3,$4::jsonb) as result',[userId,JSON.stringify(input.scope),input.method,JSON.stringify(input.evidence)]);return row.result;
-    },
-    async submitArtOutcome(userId,input){return (await one('select public.novaflow_art_submit_outcome($1,$2::uuid[],$3::jsonb) as result',[userId,input.appliedMethodIds,JSON.stringify(input.evidence)])).result;},
-    async listArtReleases(){return (await one('select public.novaflow_art_release_history() as result',[])).result;},
-    async listArtCandidates() {
-      return (await one('select public.novaflow_art_review_candidates() as result',[])).result;
-    },
-    async saveArtReview(userId,report){
-      await many("update public.art_knowledge_reviews set state='outdated' where state='pending' and report->'publishRequest'->>'skillId'=$1 and batch_sha256<>$2",[report.publishRequest.skillId,report.batchSHA256]);
-      await one("insert into public.art_knowledge_reviews(batch_sha256,report,prepared_by,prepared_via) values($1,$2::jsonb,$3,$4) on conflict(batch_sha256) do update set report=excluded.report returning batch_sha256",[report.batchSHA256,JSON.stringify(report),userId,userId===null?'admin-tool':'legacy-account']);
-    },
-    async getArtReview(){return (await one("select report from public.art_knowledge_reviews where state='pending' order by created_at desc limit 1",[]))?.report||null;},
-    async publishArtKnowledge(userId,input) {
-      const row=await one('select public.novaflow_art_publish_knowledge($1,$2,$3,$4::uuid[],$5::jsonb,$6::jsonb) as result',[userId,input.skillId,input.version,input.candidateIds,JSON.stringify(input.validation),input.skill?JSON.stringify(input.skill):null]);return row.result;
-    },
-    async rollbackArtKnowledge(userId,input) {
-      const row=await one('select public.novaflow_art_rollback_knowledge($1,$2,$3) as result',[userId,input.skillId,input.version]);return row.result;
-    },
+    async getXiaotaoMemoryEnabled(userId){return (await one('select enabled from public.xiaotao_memory_settings where user_id=$1',[userId]))?.enabled!==false;},
+    async setXiaotaoMemoryEnabled(userId,enabled){await one('insert into public.xiaotao_memory_settings(user_id,enabled) values($1,$2) on conflict(user_id) do update set enabled=excluded.enabled,updated_at=now() returning user_id',[userId,enabled]);},
+    async saveXiaotaoMemory(userId,item){return (await one('select public.xiaotao_memory_save($1,$2,$3,$4,$5) as result',[userId,item.category,item.slot,item.text,item.source])).result;},
+    async deleteXiaotaoMemory(userId,id){return (await many('delete from public.xiaotao_user_memories where user_id=$1 and ($2::uuid is null or id=$2::uuid) returning id',[userId,id])).length;},
     async getUserById(userId) {
       return await one(
         'select id, email, display_name, role, plan, status, expires_at from public.users where id = $1',

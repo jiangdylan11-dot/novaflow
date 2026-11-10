@@ -1,7 +1,7 @@
 // GENERATED COPY - source: packages/shared/src/control-plane.mjs
 import { commonLoraCatalog } from './lora-catalog.mjs';
 import { RELEASE_VERSION } from './release.mjs';
-import { createArtKnowledgeRoutes } from './art-knowledge.mjs';
+import { createXiaotaoMemoryRoutes } from './xiaotao-memory.mjs';
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -390,7 +390,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
   const log = logger || (() => {});
   const sessionSecret = secrets?.sessionSecret || '';
   const controlSecret = secrets?.controlSecret || '';
-  const artKnowledge = createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError});
+  const xiaotaoMemory = createXiaotaoMemoryRoutes({store,requireUser,HttpError});
   const qwenScopeEnabled=scope=>scope===QWEN_PLAN_SCOPE ? qwenPlanEnabled===true : scope===QWEN_IMAGE_EDIT_SCOPE && qwen21LocalImageEditEnabled===true;
 
   async function requireUser(headers) {
@@ -2354,7 +2354,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
           throw new HttpError(400,String(error?.code||'art-business-invalid'),'\u5728\u7ebf\u7f8e\u5de5\u8bf7\u6c42\u672a\u5b8c\u6210\uff0c\u8bf7\u6838\u5bf9\u8d26\u5355\u72b6\u6001\u3002');
         }
       }
-      if (path.startsWith('/api/web/art-knowledge')) return ok(await artKnowledge.handle({method,path,headers,query,body}));
+      if (path === '/api/web/xiaotao/memory' || path.startsWith('/api/web/xiaotao/memory/')) return ok(await xiaotaoMemory.handle({method,path,headers,body}));
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });
       }

@@ -610,8 +610,6 @@ function loadAccount(sandbox) {
     }
   }
   check(leftovers, []);
-  const adminAccountTest = await readFile(new URL('../../admin/tests/art-knowledge-ui.cjs', import.meta.url), 'utf8');
-  check(/NovaFlowWebAccount\.open\(/.test(adminAccountTest), false);
 }
 
 {

@@ -72,37 +72,17 @@ function unwrapRpc<T>(data: unknown): T | null {
  * cannot diverge between the two deployments.
  */
 const supabaseStore = {
-  async readArtKnowledge(skillId: string,knownVersion?: string) {
-    const {data,error}=await admin().from('art_knowledge_releases').select('version,methods,skill').eq('skill_id',skillId).eq('active',true).maybeSingle();
-    if(data && data.version===knownVersion)return {version:data.version,unchanged:true};
-    if(error)throw error;return data || {version:'0',methods:[]};
+  async listXiaotaoMemory(userId: string) {
+    const {data,error}=await admin().from('xiaotao_user_memories').select('id,category,slot,memory_text,source,updated_at').eq('user_id',userId).order('updated_at',{ascending:false}).limit(20);
+    if(error)throw error;return (data||[]).map((r:any)=>({id:r.id,category:r.category,slot:r.slot,text:r.memory_text,source:r.source,updatedAt:r.updated_at}));
   },
-  async getArtLearningConsent(userId: string){const {data,error}=await admin().from('art_learning_consents').select('allowed').eq('user_id',userId).maybeSingle();if(error)throw error;return data?.allowed===true;},
-  async isArtPublisher(userId: string){const {data,error}=await admin().from('art_knowledge_policy').select('singleton').eq('publisher_user_id',userId).maybeSingle();if(error)throw error;return Boolean(data);},
-  async setArtLearningConsent(userId: string,allow: boolean){const {error}=await admin().from('art_learning_consents').upsert({user_id:userId,allowed:allow,updated_at:new Date().toISOString()});if(error)throw error;},
-  async submitArtMethod(userId: string,input: any) {
-    const {data,error}=await admin().rpc('novaflow_art_submit_method',{p_user_id:userId,p_scope:input.scope,p_method:input.method,p_evidence:input.evidence});
-    if(error)throw error;return data;
-  },
-  async submitArtOutcome(userId:string,input:any){const {data,error}=await admin().rpc('novaflow_art_submit_outcome',{p_user_id:userId,p_method_ids:input.appliedMethodIds,p_evidence:input.evidence});if(error)throw error;return data;},
-  async listArtReleases(){const {data,error}=await admin().rpc('novaflow_art_release_history');if(error)throw error;return data||[];},
-  async listArtCandidates() {
-    // Provenance remains server-only. The review API exposes abstract methods.
-    const {data,error}=await admin().rpc('novaflow_art_review_candidates');
-    if(error)throw error;return data || [];
-  },
-  async saveArtReview(userId: string,report: any){
-    const {error:oldError}=await admin().from('art_knowledge_reviews').update({state:'outdated'}).eq('state','pending').eq('report->publishRequest->>skillId',report.publishRequest.skillId).neq('batch_sha256',report.batchSHA256);if(oldError)throw oldError;
-    const {error}=await admin().from('art_knowledge_reviews').upsert({batch_sha256:report.batchSHA256,report,prepared_by:userId},{onConflict:'batch_sha256'});if(error)throw error;
-  },
-  async getArtReview(){const {data,error}=await admin().from('art_knowledge_reviews').select('report').eq('state','pending').order('created_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;return data?.report||null;},
-  async publishArtKnowledge(userId: string,input: any) {
-    const {data,error}=await admin().rpc('novaflow_art_publish_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version,p_candidate_ids:input.candidateIds,p_validation:input.validation,p_skill:input.skill||null});
-    if(error)throw error;return data;
-  },
-  async rollbackArtKnowledge(userId: string,input: any) {
-    const {data,error}=await admin().rpc('novaflow_art_rollback_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version});
-    if(error)throw error;return data;
+  async getXiaotaoMemoryEnabled(userId: string){const {data,error}=await admin().from('xiaotao_memory_settings').select('enabled').eq('user_id',userId).maybeSingle();if(error)throw error;return data?.enabled!==false;},
+  async setXiaotaoMemoryEnabled(userId: string,enabled: boolean){const {error}=await admin().from('xiaotao_memory_settings').upsert({user_id:userId,enabled,updated_at:new Date().toISOString()});if(error)throw error;},
+  async saveXiaotaoMemory(userId: string,item: any){const {data,error}=await admin().rpc('xiaotao_memory_save',{p_user_id:userId,p_category:item.category,p_slot:item.slot,p_text:item.text,p_source:item.source});if(error)throw error;return data;},
+  async deleteXiaotaoMemory(userId: string,id: string|null){
+    let query=admin().from('xiaotao_user_memories').delete({count:'exact'}).eq('user_id',userId);
+    if(id)query=query.eq('id',id);
+    const {count,error}=await query;if(error)throw error;return count||0;
   },
   async getUserById(userId: string) {
     if (!UUID_RE.test(String(userId))) return null;

@@ -114,7 +114,7 @@ function setGlobalStatus(text, tone, options = {}) {
 
 function showModule(moduleName) {
   const requested = String(moduleName || "dashboard");
-  const name = ["dashboard", "users", "ai-services", "compute", "art-knowledge"].includes(requested) ? requested : "dashboard";
+  const name = ["dashboard", "users", "ai-services", "compute"].includes(requested) ? requested : "dashboard";
   document.querySelectorAll(".moduleNavButton").forEach((el) => {
     el.classList.toggle("active", el.getAttribute("data-module") === name);
   });
@@ -128,9 +128,6 @@ function showModule(moduleName) {
   }
   if (name === "compute") {
     void loadComputeData();
-  }
-  if (name === "art-knowledge") {
-    void window.NovaFlowArtKnowledgeReview?.open();
   }
 }
 

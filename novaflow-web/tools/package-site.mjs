@@ -19,7 +19,6 @@ import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { readConfig, writeConfig } from './set-web-config.mjs';
-import { prepareDeploymentArtReview } from './art-knowledge-deploy-review.mjs';
 import {linkFullAssets,assertFullDestinations} from './isolated-full-site-policy.mjs';
 import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
 
@@ -232,10 +231,6 @@ export async function packageSite({ controlUrl, authUrl, artKnowledgeUrl, artKno
   if (PATHS.ISOLATED_UI_ONLY) throw Error('UI-only validation cannot be packaged or deployed');
   if (PATHS.FULL_PLAN) assertFullDestinations({controlUrl,authUrl,artKnowledgeUrl,artKnowledgeEnabled,out,allowLocal});
   const log = logger || (() => {});
-  // Software deployment prepares the review automatically but never grants
-  // approval or publishes pending methods on the owner's behalf.
-  const artReview=artKnowledgeEnabled===true?await prepareDeploymentArtReview({outputPath:join(ROOT,'.artifacts',`art-knowledge-review-${RELEASE_VERSION}.json`)}):null;
-  if(artReview)log('art review prepared',artReview);
 
   // 1. build - this writes the local default into index.html. The published
   // site is minified: comments stripped, names mangled (anti-copy).
@@ -294,7 +289,7 @@ export async function packageSite({ controlUrl, authUrl, artKnowledgeUrl, artKno
   execFileSync(tar, ['-a', '-c', '-f', zip, '.'], { cwd: PATHS.WEB_OUT, stdio: 'pipe' });
 
   const bytes = (await import('node:fs')).statSync(zip).size;
-  return { zip, bytes, config, files: report, ...(artReview?{artReview}:{}) };
+  return { zip, bytes, config, files: report };
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('package-site.mjs');

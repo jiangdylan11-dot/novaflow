@@ -43,7 +43,6 @@ function visibleJs(source) {
 const files = {
   "license-admin-gui/index.html": stripHtml(fs.readFileSync("license-admin-gui/index.html", "utf8")),
   "license-admin-gui/renderer.js": visibleJs(fs.readFileSync("license-admin-gui/renderer.js", "utf8")),
-  "license-admin-gui/art-knowledge-review.js": fs.readFileSync("license-admin-gui/art-knowledge-review.js", "utf8"),
   "license-admin-gui/README.md": fs.readFileSync("license-admin-gui/README.md", "utf8")
 };
 
@@ -80,5 +79,4 @@ for (const symbol of ["function getAdminCreditLogs", "function getAdminComfyUiPr
 }
 assert(files["license-admin-gui/index.html"].includes("积分流水"), "member page should point at the credit ledger");
 assert(files["license-admin-gui/index.html"].includes("RunningHub 余额"), "dashboard should show the domestic balance");
-assert(!files["license-admin-gui/art-knowledge-review.js"].includes("showModal"));
 console.log("retired admin terms are gone from rendered pages");

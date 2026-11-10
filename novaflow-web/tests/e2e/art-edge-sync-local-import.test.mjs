@@ -6,7 +6,7 @@ import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-test('art edge synchronization follows shared imports without treating function-local imports as shared', async () => {
+test('companion shared synchronization follows shared imports without treating function-local imports as shared', async () => {
   const project = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
   const tempRoot = await realpath(tmpdir());
   const fixture = await mkdtemp(join(tempRoot, 'foart-art-edge-graph-'));
@@ -17,11 +17,10 @@ test('art edge synchronization follows shared imports without treating function-
     for (const file of ['sync-art-knowledge-edge.mjs', 'sync-edge-function.mjs']) {
       await writeFile(join(fixture, 'tools', file), await readFile(join(project, 'tools', file)));
     }
-    await writeFile(join(fixture, 'supabase/functions/_art-shared/art-knowledge-edge.ts'), "import './art-knowledge.mjs';\n");
     await writeFile(join(fixture, 'supabase/functions/novaflow-companion/index.ts'),
       "import '../_art-shared/control-plane.mjs';\nimport './art-dependencies.mjs';\n");
     // The sync always ships companion-chat and the static-fusion contract besides what the imports reach.
-    for (const name of ['art-knowledge.mjs', 'control-plane.mjs', 'companion-chat.mjs', 'xiaotao-static-fusion-v3.mjs']) {
+    for (const name of ['control-plane.mjs', 'companion-chat.mjs', 'xiaotao-static-fusion-v3.mjs']) {
       const source = `export const fixture = ${JSON.stringify(name)};\n`;
       await writeFile(join(fixture, 'packages/shared/src', name), source);
       await writeFile(join(fixture, 'supabase/functions/_art-shared', name),

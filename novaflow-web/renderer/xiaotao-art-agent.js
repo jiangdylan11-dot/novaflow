@@ -466,7 +466,7 @@
         previous.receipts.push(content);
         continue;
       }
-      rows.push({...message, content, receipts:typeof message.receipt === 'string' && message.receipt ? [message.receipt] : [], ...(receipt ? {receiptOnly:true} : {})});
+      rows.push({...message, content, receipts:typeof message.receipt === 'string' && message.receipt ? [message.receipt] : [], ...(receipt ? {receiptOnly:true} : {}), });
     }
     return rows;
   }
@@ -489,12 +489,18 @@
     } catch {/* Keep the failure message even if selection is unavailable. */}
     button.textContent='请选中文字按 Ctrl+C';return false;
   }
-  function renderConversationRow(doc, message, {copyText = () => {}, chooseUploadDestination = () => {}} = {}) {
+  function renderConversationRow(doc, message, {copyText = () => {}, chooseUploadDestination = () => {}, undoMemory = null} = {}) {
     const el = (tag, className = '', text) => {const node = doc.createElement(tag); node.className = className; if (text !== undefined) node.textContent = text; return node;};
     if (message.role === 'status') {
       const failed = !message.receiptOnly && (message.level === 'error' || /失败|未成功|无法|不能|不支持|未放入|不可用|已失效|未完成/.test(message.content));
       const note = el('div', `nf-xiaotao-note${message.receiptOnly ? ' nf-xiaotao-receipt' : failed ? ' nf-xiaotao-note-error' : ''}`, message.content);
       note.setAttribute('role', failed ? 'alert' : 'note');
+      if (message.memoryIds?.length && typeof undoMemory === 'function') {
+        note.classList.add('nf-xiaotao-memory-note');
+        const undo = el('button', 'nf-xiaotao-memory-undo', '撤销'); undo.type = 'button'; undo.setAttribute('aria-label', '撤销这条记忆');
+        undo.onclick = () => {undo.disabled = true; void undoMemory(message).then(ok => {if (!ok) undo.disabled = false;});};
+        note.append(undo);
+      }
       return note;
     }
     const bubble = el('div', 'nf-xiaotao-message nf-xiaotao-' + message.role + (message.level === 'error' ? ' nf-xiaotao-message-error' : ''));
@@ -781,6 +787,10 @@
   }
   // Keep all user wording and the assistant's factual answer, but do not feed
   // execution prompts, full editor snapshots and duplicate images back into the planner.
+  // 小桃记忆 rides along as the first exchange of every request's history.
+  const memoryApi = () => root.NovaFlowXiaotaoMemory || null;
+  const memoryHistory = history => memoryApi()?.withMemory ? memoryApi().withMemory(history) : history;
+  const withoutMemory = history => memoryApi()?.stripMemory ? memoryApi().stripMemory(history) : history;
   function compactFoartHistory(history) {
     return (history||[]).map(row=>row.role==='assistant'?{...row,content:String(row.content||'').split('\n实际工具回执：')[0].split('\n实际执行事实：')[0]}:{...row});
   }
@@ -958,7 +968,7 @@
     // The one picture kept across messages: the subject of the last style transfer, until a new subject or 新对话.
     let currentSubject = null;
     const imageRunPlans = new WeakMap();
-    let stagedSeq = 0, deferredDrawing = [], carryAttachments = null, carryAsk = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
+    let stagedSeq = 0, deferredDrawing = [], carryAttachments = null, carryAsk = null, carryMemory = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
     const communityUploads = () => communityAttachmentMetadata(state.modelId,state.staged,lastUploads);
     // Read only the active surface's current prompt. A source-choice question
@@ -1076,6 +1086,17 @@
       if (carryAttachments?.length) {entry.attachments = carryAttachments; carryAttachments = null;}
       state.messages.push(entry);
       if (carryAsk) {state.messages.push(carryAsk); carryAsk = null;}
+      if (carryMemory) {state.messages.push(carryMemory); carryMemory = null;}
+    }
+    const memoryNote = kept => ({role:'status', receiptOnly:true, content:'已记住：' + kept.map(item => item.text).join('；'), memoryIds:kept.map(item => item.id)});
+    async function undoMemory(message) {
+      const ids = Array.isArray(message?.memoryIds) ? message.memoryIds : [];
+      if (!ids.length || !memoryApi()?.remove) return false;
+      let done = true; for (const id of ids) done = (await memoryApi().remove(id)) && done;
+      // Rendered rows are copies, so find the kept note by the memories it names.
+      const index = state.messages.findIndex(row => Array.isArray(row?.memoryIds) && row.memoryIds.join() === ids.join());
+      if (done && index >= 0) {state.messages[index] = {role:'status', receiptOnly:true, content:state.messages[index].content.replace(/^已记住：/, '已撤销记忆：')}; notify();}
+      return done;
     }
     function note(content, failed = false) {if (content) state.messages.push({role:'status', content:String(content), ...(failed ? {level:'error'} : {})}); }
     async function readPreview(file) {
@@ -1386,7 +1407,7 @@
         + images.map((image,i)=>`图片${i+1}，当前用途：${image.role || 'attachment'}${image.source ? '，绘图参考位置 '+image.source : ''}`).join('');
       const operationTextOnly=state.provider==='api'&&selectedPricingPayload().operationBillingV3===true;
       const toolContext=!operationTextOnly&&state.provider==='api'&&root.NovaFlowFoartTools?root.NovaFlowFoartTools.capture():null;
-      return {text:[message, ...(toolContext?[JSON.stringify(toolContext)]:[]), ...captions].filter(Boolean).join('\n'), history:(state.history || []).map(item => item?.content || '').join('\n'), outputTokens:2048,
+      return {text:[message, ...(toolContext?[JSON.stringify(toolContext)]:[]), ...captions].filter(Boolean).join('\n'), history:(memoryHistory(state.history || [])).map(item => item?.content || '').join('\n'), outputTokens:2048,
         ...(toolContext?{system:root.NovaFlowFoartToolContract.FOART_TOOL_SYSTEM}:{}),
         contextText:operationTextOnly?'':contextText,
         files:[...images.map(image => ({kind:'image',...imageDimensions(image)})), ...Array.from({length:Math.max(0,staged.filter(item => item.kind === 'image').length-images.length)},()=>({kind:'image'})), ...staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => ({kind:item.kind}))]};
@@ -1663,7 +1684,7 @@
           const plannerSource=imageSourceBinding(snapshot),plannerImages=images.map(item=>({role:item?.role||'reference',dataUrl:item?.dataUrl}));
           const plannerImageGuard=()=>imageGuard()&&imageSourceBinding(tools.capture())===plannerSource&&sameImages(plannerImages,images.map(item=>({role:item?.role||'reference',dataUrl:item?.dataUrl})));
           const responsePromise=finishNow?Promise.resolve({ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:receipts.find(r=>r?.plannerPrompt===true)?.message||summarize(terminalFacts.length?terminalFacts:receipts),operations:[]}}}):foartOperationSession?api()?.foartOperationResume?.({requestId:activeRequest,session:foartOperationSession,previousContext:foartPreviousContext,receipt:receipts.at(-1),context:foartWireContext(snapshot),signal})
-              :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),message:planMessage,history:compactFoartHistory(previousHistory),promptLanguage:'en',foartContext:foartWireContext(snapshot),signal})
+              :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),message:planMessage,history:memoryHistory(compactFoartHistory(previousHistory)),promptLanguage:'en',foartContext:foartWireContext(snapshot),signal})
           if(!finishNow)startStatusPolling(operation,activeRequest);let response=await responsePromise;stopStatusPolling();
           // The tool already finished; a planner round that times out or outlives its ticket must not turn real work into an error.
           if(response&&response.ok!==true&&response.errorCode!=='operation-planner-incomplete'&&receipts.at(-1)?.phase==='completed'){if(response.errorCode==='invalid-operation-ticket')foartOperationSession=null;response={ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:summarize(receipts.slice(-1)),operations:[]},...(response.data?.quota?{quota:response.data.quota}:{})}};billing.inFlight=false;billing.unknown=false;}
@@ -1865,6 +1886,16 @@
       
       const newConversation=/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message);
       if(newConversation){reset();lastUploads=[];currentSubject=null;return true;}
+      // 小桃记忆: "记住…" alone is kept and answered without a model call; "以后都…" inside a
+      // request is kept and the request goes on, already carrying the new preference.
+      const remembered=recordMessage&&!(state.staged||[]).length&&memoryApi()?.ready?.()?memoryApi().explicitMemory?.(message):null;
+      if(remembered){
+        const kept=await memoryApi().save([{...remembered,source:'explicit'}]);
+        if(retired)return false;
+        if(remembered.only){pushUser(message);state.messages.push(kept.length?{role:'assistant',content:'好的，记住了：'+kept[0].text+'。以后会按这个来，可以在上方「记忆」里查看或删除。'}:{role:'assistant',content:'这条偏好没能保存，请稍后再试。'});
+          if(kept.length)state.messages.push(memoryNote(kept));state.error='';notify();return true;}
+        if(kept.length)carryMemory=memoryNote(kept);
+      }
       // This is deliberately narrow: the user explicitly asks to optimize the
       // CURRENT drawing prompt AND generate. Other source-choice and compound
       // requests continue through their existing paths.
@@ -1989,7 +2020,10 @@
         if (!(await ensureStaged())) return false;
         pushUser(message);
         if(pureNegative&&state.provider==='api')pendingIntent={surface:'foart',mode:'',foart:true,message:requestMessage};
-        state.messages.push({role:'assistant',content:purePositive ? '好，这一版的效果就按你的评价保留。' : '明白，这一版还没达到要求。告诉我主要想改哪里，我接着改。'}); notify(); return true;
+        state.messages.push({role:'assistant',content:purePositive ? '好，这一版的效果就按你的评价保留。' : '明白，这一版还没达到要求。告诉我主要想改哪里，我接着改。'}); notify();
+        const learned=purePositive&&memoryApi()?.ready?.()?memoryApi().fromAdoption?.(state.history)||[]:[];
+        if(learned.length)void memoryApi().save(learned).then(kept=>{if(!retired&&kept.length){state.messages.push(memoryNote(kept));notify();}}).catch(()=>{});
+        return true;
       }
       if (/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message)) {reset(); return true;}
       const operationTextOnly=state.provider==='api' && selectedPricingPayload().operationBillingV3===true;
@@ -2050,7 +2084,7 @@
         const uploadModel=state.modelId;
         const uploadCurrent=()=>operation===serial&&!stopped&&state.provider==='api'&&state.modelId===uploadModel&&typeof uploadOwner?.current==='function'&&uploadOwner.current()===true;
         activeChatHasImages=mode==='chat' && images.length>0;
-        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage, history:capabilityOnly&&!promptConversation?[]:copy(state.history), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.filter(file=>!reverseImage||images.some(image=>image.name===file.name)).map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
+        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage, history:capabilityOnly&&!promptConversation?[]:memoryHistory(copy(state.history)), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.filter(file=>!reverseImage||images.some(image=>image.name===file.name)).map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新官网页面并检查 Foart状态');
         const deviceEpoch=localCapabilityEpoch;
         if(state.provider==='local' && state.modelId==='qwen3.5-9b-heretic')state.qwenExecutionDevice=null;
@@ -2076,7 +2110,7 @@
         rememberQwenExecutionDevice(response,deviceEpoch);
         if(data.needsInput){
           state.messages.push({role:'assistant',content:data.reply});state.conversationId=data.conversationId || state.conversationId;
-          if(Array.isArray(data.history))state.history=copy(data.history);
+          if(Array.isArray(data.history))state.history=withoutMemory(copy(data.history));
           state.toolTrace=copy(data.toolTrace || []);state.model=String(data.model || state.model);state.localSession=null;
           pendingIntent={...(task || {surface:'image',mode:'img2img'}),message:requestMessage};state.status='等待补充需求';return true;
         }
@@ -2095,7 +2129,7 @@
         state.messages.push({role:'assistant', content:reply, ...(receipt ? {receipt} : {})});
         // Keep the latest settled amount in the shared, quiet billing line.
         if (!capabilityOnly) state.conversationId = data.conversationId || state.conversationId;
-        if (Array.isArray(data.history)) state.history = capabilityOnly?[...capabilityHistory,{role:'user',content:message},{role:'assistant',content:data.reply}].slice(-12):copy(data.history);
+        if (Array.isArray(data.history)) state.history = capabilityOnly?[...capabilityHistory,{role:'user',content:message},{role:'assistant',content:data.reply}].slice(-12):withoutMemory(copy(data.history));
         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
         state.status='已回复';
         return true;
@@ -2754,7 +2788,7 @@
       if(state.promptSourceCancelledNotice)state.status=[state.status,state.promptSourceCancelledNotice].filter(Boolean).join(' ');
       notify(); if(model.provider==='api')void refreshPricingPolicy(); return true;
     }
-    return Object.freeze({state, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, operationEstimate, styleReadAvailable, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
+    return Object.freeze({state, undoMemory, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, operationEstimate, styleReadAvailable, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
   }
   // The one model picker. The 小桃 panel and the 特效 material reader both build
   // it here, so the list, its notes, its look and its keys cannot drift apart.
@@ -2874,7 +2908,39 @@
     const iconButton=(button,name,label)=>{button.classList.add('nf-xiaotao-icon-button');button.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICONS[name]+'</svg>';button.title=label;button.setAttribute('aria-label',label);return button;};
     const panel = el('aside', 'nf-xiaotao-panel'); panel.id = 'nf-xiaotao-art-panel'; panel.hidden = true; panel.setAttribute('aria-label', '小桃AI对话');
     const header = el('header', 'nf-xiaotao-header'), title = el('div','nf-xiaotao-title'), titleText = el('strong','','小桃AI'), close = el('button', 'nf-xiaotao-icon', '×'); close.type = 'button'; close.setAttribute('aria-label', '关闭对话');
-    title.append(titleText); header.append(title, close);
+    title.append(titleText);
+    // 小桃记忆: the account's own preferences, shown and managed here.
+    const memoryToggle = el('button', 'nf-xiaotao-memory-toggle', '记忆'); memoryToggle.type = 'button'; memoryToggle.title = '小桃记住的偏好'; memoryToggle.setAttribute('aria-expanded', 'false');
+    header.append(title, memoryToggle, close);
+    const memorySheet = el('section', 'nf-xiaotao-memory'); memorySheet.hidden = true; memorySheet.setAttribute('aria-label', '小桃记忆');
+    const memoryHead = el('div', 'nf-xiaotao-memory-head'), memoryTitle = el('strong', '', '小桃记忆'), memoryHint = el('p', 'nf-xiaotao-memory-hint', '只记你的偏好（模型、画风、视频音频习惯、UI、导出格式、不要的东西），不保存聊天和图片。说「记住…」「以后都…」，或对满意的结果说「满意」，小桃会记下来。');
+    const memoryEnable = el('button', 'nf-xiaotao-memory-switch'), memoryClear = el('button', 'nf-xiaotao-memory-clear', '清空'); memoryEnable.type = memoryClear.type = 'button';
+    const memoryList = el('ul', 'nf-xiaotao-memory-list'), memoryEmpty = el('p', 'nf-xiaotao-memory-empty');
+    const memoryActions = el('div', 'nf-xiaotao-memory-actions'); memoryActions.append(memoryEnable, memoryClear);
+    memoryHead.append(memoryTitle, memoryActions); memorySheet.append(memoryHead, memoryHint, memoryEmpty, memoryList);
+    const memoryModule = () => root.NovaFlowXiaotaoMemory || null;
+    const renderMemory = () => {
+      const memory = memoryModule(), snap = memory?.snapshot?.() || {loaded:true, available:false, enabled:false, items:[], error:'记忆功能未加载'};
+      memoryToggle.hidden = !memory;
+      memoryEnable.textContent = snap.enabled ? '关闭记忆' : '打开记忆'; memoryEnable.disabled = !snap.available;
+      memoryEnable.setAttribute('data-enabled', snap.enabled ? '1' : '0');
+      memoryClear.disabled = !snap.available || !snap.items.length;
+      memoryList.replaceChildren();
+      for (const category of memory?.ORDER || []) for (const item of snap.items.filter(row => row.category === category)) {
+        const row = el('li', 'nf-xiaotao-memory-item'), kind = el('span', 'nf-xiaotao-memory-kind', memory.LABELS[category] || ''), text = el('span', 'nf-xiaotao-memory-text', item.text), remove = el('button', 'nf-xiaotao-memory-remove', '删除');
+        remove.type = 'button'; remove.setAttribute('aria-label', '删除记忆：' + item.text);
+        remove.onclick = () => {remove.disabled = true; void memory.remove(item.id).then(ok => {if (!ok) remove.disabled = false;});};
+        row.append(kind, text, remove); memoryList.append(row);
+      }
+      memoryList.hidden = !snap.items.length;
+      memoryEmpty.textContent = !snap.loaded ? '正在读取记忆…' : !snap.available ? (snap.error || '记忆暂不可用') : !snap.enabled ? '记忆已关闭：小桃不会读取也不会新记偏好。' : snap.items.length ? '' : '还没有记忆。';
+      memoryEmpty.hidden = !memoryEmpty.textContent;
+      memorySheet.setAttribute('data-off', snap.enabled ? '0' : '1');
+    };
+    memoryToggle.onclick = () => {memorySheet.hidden = !memorySheet.hidden; memoryToggle.setAttribute('aria-expanded', String(!memorySheet.hidden)); memoryToggle.setAttribute('data-open', memorySheet.hidden ? '0' : '1'); if (!memorySheet.hidden) void memoryModule()?.load?.();};
+    memoryEnable.onclick = () => {const memory = memoryModule(); if (!memory) return; memoryEnable.disabled = true; void memory.setEnabled(!memory.snapshot().enabled).finally(renderMemory);};
+    memoryClear.onclick = () => {const memory = memoryModule(); if (!memory) return; memoryClear.disabled = true; void memory.clear().finally(renderMemory);};
+    memoryModule()?.subscribe?.(renderMemory); renderMemory();
     const messages = el('div', 'nf-xiaotao-messages'); messages.setAttribute('role', 'log'); messages.setAttribute('aria-label', '小桃全局对话');
     const intro = el('p', 'nf-xiaotao-intro', '上传素材并描述想要的结果，我会根据需求调用美工、音视、特效、动画或工具；拿不准你的意思时，会先向你问清楚。'); messages.append(intro);
     const proposal = el('details', 'nf-xiaotao-proposal'), summary = el('summary', '', '提示词与执行'), proposalText = el('pre'), copyPrompt=el('button','','复制完整提示词'); copyPrompt.type='button'; copyPrompt.onclick=()=>void copyText(controller.state.proposal?.prompt || '',copyPrompt); proposal.hidden = true; proposal.append(summary,copyPrompt,proposalText);
@@ -2953,7 +3019,7 @@
     listen(input,'paste',event=>{const files=Array.from(event?.clipboardData?.files||[]);if(files.length){event.preventDefault?.();takeFiles(files);}});
     for (const b of [newConversation, stop]) b.type = 'button'; iconButton(newConversation,'newChat','新对话（清空当前聊天记录）'); iconButton(stop,'stop','停止'); iconButton(send,'send','发送'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); const inputBox=el('div','nf-xiaotao-input-box'),inputField=el('div','nf-xiaotao-input-field');inputField.append(input);inputBox.append(stagedRow,inputField);footer.append(inputBox,footerActions);
     providers.append(modelTrigger);
-    panel.append(header, modelMenu, messages, mediaPromptPanel, proposal, tools, status, error, footer); host.append(modelBackdrop, fab, panel); doc.body.append(host);
+    panel.append(header, memorySheet, modelMenu, messages, mediaPromptPanel, proposal, tools, status, error, footer); host.append(modelBackdrop, fab, panel); doc.body.append(host);
     // @参考图N numbers what this message will send: its own attachments from 1, which replace the
     // page's pictures on send; with nothing attached, the page's pictures as its prompt box numbers them.
     let mentionHandle=null;
@@ -3048,7 +3114,7 @@
         const lastOfTurn = new Map(); rows.forEach((row, index) => {if (row.chargeTurn && (row.role !== 'user' || !lastOfTurn.has(row.chargeTurn))) lastOfTurn.set(row.chargeTurn, index);});
         if (!rows.length) messages.append(intro);
         rows.forEach((row, index) => {
-          const node = renderConversationRow(doc, {...row,receipts:[]}, {copyText, chooseUploadDestination:controller.chooseUploadDestination}); messages.append(node);
+          const node = renderConversationRow(doc, {...row,receipts:[]}, {copyText, chooseUploadDestination:controller.chooseUploadDestination, undoMemory:controller.undoMemory}); messages.append(node);
           const amount = lastOfTurn.get(row.chargeTurn) === index ? charges.get(row.chargeTurn) : undefined;
           if (amount !== undefined && Number(amount) > 0) {const charge = el('div', 'nf-xiaotao-charge nf-xiaotao-charge-' + (row.role === 'user' ? 'user' : 'reply'), billingNoticeText({confirmed:amount})); charge.setAttribute('role','note'); messages.append(charge);}
         });
@@ -3096,7 +3162,7 @@
       const robot = fab.getBoundingClientRect(), box = panel.getBoundingClientRect(), size = {width:box.width,height:box.height};
       drag.place(anchoredPanelPosition(robot, size, {width:root.innerWidth,height:root.innerHeight}), size);
     }
-    const setOpen = value => {open = value; panel.hidden = !value; fab.setAttribute('aria-expanded', String(value)); if (value) {mountMentions();anchorPanel(); tick();if(qwenRecheckEligible())void nodeRecheck.refreshNow();if(controller.state.provider==='api')void controller.refreshPricingPolicy();else controller.prefetchPricingPolicy();input.focus();} else {nodeRecheck.reset();picker.close({quiet:true});controller.clearSelectionTickets();controller.cancelQwenSeek();render(controller.state);}};
+    const setOpen = value => {open = value; panel.hidden = !value; fab.setAttribute('aria-expanded', String(value)); if (value) {void memoryModule()?.load?.();mountMentions();anchorPanel(); tick();if(qwenRecheckEligible())void nodeRecheck.refreshNow();if(controller.state.provider==='api')void controller.refreshPricingPolicy();else controller.prefetchPricingPolicy();input.focus();} else {nodeRecheck.reset();picker.close({quiet:true});controller.clearSelectionTickets();controller.cancelQwenSeek();render(controller.state);}};
     function navigationSelection() {
       const selected = (kind) => Array.from(doc.querySelectorAll(`[data-novaflow-${kind}-entry="1"]`)).find(node => (node.getAttribute(`data-novaflow-${kind}-active`) === '1' || node.getAttribute('aria-pressed') === 'true' || node.getAttribute('aria-current') === 'page') && node.getClientRects().length);
       const primary = selected('primary'), secondary = selected('secondary');

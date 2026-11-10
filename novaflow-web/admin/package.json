@@ -6,8 +6,8 @@
   "description": "Foart Web administration application",
   "main": "admin-main.js",
   "scripts": {
-    "prebuild:win": "node ../tools/sync-brand-assets.mjs && node ../tools/sync-button-theme.mjs && node ../tools/sync-art-admin.mjs && node ../tools/sync-admin-art-direction.mjs",
-    "pretest": "node ../tools/sync-art-admin.mjs --check && node ../tools/sync-admin-art-direction.mjs --check",
+    "prebuild:win": "node ../tools/sync-brand-assets.mjs && node ../tools/sync-button-theme.mjs && node ../tools/sync-admin-art-direction.mjs",
+    "pretest": "node ../tools/sync-admin-art-direction.mjs --check",
     "start": "electron .",
     "server": "node admin-server/server.js",
     "test": "node tests/dashboard-contract.cjs && node tests/retired-terms.cjs && node --test tests/runninghub-provider.test.cjs tests/user-deletion.test.cjs tests/compute-machine-policy.test.cjs tests/compute-usage-data.test.cjs tests/local-key-packaging.test.cjs tests/feature-credit-preservation.test.cjs tests/generic-policy-cas.test.cjs tests/admin-release-guards.test.cjs",

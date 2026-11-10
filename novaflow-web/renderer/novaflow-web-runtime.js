@@ -3352,6 +3352,15 @@
     promptAssistantReverseImagePrompt: async (payload) => selectedBusinessPrompt('reverse-image-prompt', payload),
     promptAssistantCancelRequest: async (payload) => cancelPromptAssistantRequest(payload),
     companionPricing,
+    // 小桃记忆 lives on the control plane under the account; nothing is kept in the browser.
+    async xiaotaoMemory(op, body) {
+      if (!currentSession()?.token) return {ok:false,status:401,error:'登录后可以使用记忆'};
+      if (!['list','save','delete','settings'].includes(op)) return {ok:false,error:'未知的记忆操作'};
+      try {
+        return op === 'list' ? await api(CONFIG.controlUrl, 'GET', '/api/web/xiaotao/memory')
+          : await api(CONFIG.controlUrl, 'POST', '/api/web/xiaotao/memory' + (op === 'save' ? '' : '/' + op), body || {});
+      } catch (error) { return {ok:false,status:error?.status,code:error?.code,error:String(error?.message || error)}; }
+    },
     foartOperationStart,
     foartOperationResume,
     foartOperationCancel,
