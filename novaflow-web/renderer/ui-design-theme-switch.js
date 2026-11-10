@@ -55,6 +55,18 @@
   }
   function write(key, value) { try { root.localStorage.setItem(key, JSON.stringify(value)) } catch {} }
 
+  // Themes are the user's own words, handed over by 小桃 (Dylan, 2026-11-10: no theme panel, "这种东西
+  // 是用户写"). One theme per non-empty line; the first clause (up to a comma, colon or full stop)
+  // names it and the rest describes it. Names are capped at 40 characters.
+  function themeLines(value) {
+    return String(value || '').split(/\r?\n|；|;/).map(line => text(line)).filter(Boolean).slice(0, 24).map(line => {
+      const match = /^(.{1,40}?)(?:\s*[，,、：:。.]\s*|\s{2,})(.*)$/.exec(line)
+      const name = match ? text(match[1]) : line.slice(0, 40)
+      const description = match ? text(match[2]) : (line.length > 40 ? line : '')
+      return { name, description: description.slice(0, 600) }
+    })
+  }
+
   function loadLibrary() {
     const saved = read(STORE_KEY, null)
     const list = Array.isArray(saved) ? saved : DEFAULT_THEMES
@@ -418,154 +430,5 @@
     return await new Promise((resolve, reject) => { const reader = new root.FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob) })
   }
 
-  function mount({ leftHost, onOpen }) {
-    const doc = leftHost.ownerDocument, accordion = root.NovaFlowLeftPanelAccordion
-    let library = loadLibrary(), picks = new Set(read(PICK_KEY, []).filter(name => library.some(item => item.name === name)))
-    let opened = false, editing = false, busy = null, destroyed = false
-    const make = (tag, value, attrs = {}) => { const node = doc.createElement(tag); if (value) node.textContent = value; for (const [key, v] of Object.entries(attrs)) node.setAttribute(key, v); return node }
-    const panel = make('section', '', { class: 'nf-panel', 'data-foart-ui-theme-switch': '1', 'data-open': '0' }); Object.assign(panel.style, accordion.panelStyle())
-    const header = make('button', '', { type: 'button', class: 'nf-panel-header' }); Object.assign(header.style, accordion.headerStyle(false))
-    const title = make('span'); Object.assign(title.style, accordion.titleStyle())
-    const icon = make('i', '', { class: 'fas fa-palette' }); Object.assign(icon.style, accordion.iconStyle())
-    const label = make('span', '主题切换'); Object.assign(label.style, accordion.labelStyle()); title.append(icon, label); header.append(title)
-    const arrow = make('i', '', { class: accordion.chevronClass(false) }); Object.assign(arrow.style, accordion.chevronStyle()); header.append(arrow)
-    const body = make('div', '', { class: 'nf-panel-body' }); Object.assign(body.style, accordion.bodyStyle(false))
-    panel.append(header, body)
-
-    const hint = make('div', '添加一张或多张界面图，选几个主题，一次生成全部。默认「换皮 + 主题元素」：布局和文字保持原样，背景、人物、符号、面板和按钮全部按主题重画；「重新设计」几档会先读出界面功能再重新排版。同一主题的多张界面画风统一。'); Object.assign(hint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
-    const chips = make('div', '', { 'data-foart-ui-theme-chips': '1' }); Object.assign(chips.style, { display: 'flex', flexWrap: 'wrap', gap: '6px' })
-    const editor = make('div', '', { 'data-foart-ui-theme-editor': '1' }); Object.assign(editor.style, { display: 'none', gap: '8px' })
-    const customRow = make('div'); Object.assign(customRow.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })
-    const field = (placeholder, multi = false) => { const node = make(multi ? 'textarea' : 'input', '', { placeholder, spellcheck: 'false' }); Object.assign(node.style, { width: '100%', minWidth: '0', boxSizing: 'border-box', background: '#1f1f1f', color: '#ddd', border: '1px solid #3a3a3a', borderRadius: '5px', padding: '6px 8px', fontSize: '12px', outline: 'none', resize: multi ? 'vertical' : 'none', ...(multi ? { minHeight: '52px', lineHeight: '1.5', fontFamily: 'inherit' } : { height: '30px' }) }); return node }
-    const custom = field('自定义主题，如：水墨武侠、像素复古')
-    const keepRow = make('label'); Object.assign(keepRow.style, { display: 'flex', alignItems: 'center', gap: '6px', color: '#bbb', fontSize: '12px', cursor: 'pointer' })
-    const keep = make('input', '', { type: 'checkbox' }); keep.checked = read('foart.ui.theme-keep-text.v1', true) !== false
-    keepRow.append(keep, make('span', '保留原文字和数字'))
-    const layoutRow = make('label'); Object.assign(layoutRow.style, { display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr)', alignItems: 'center', gap: '8px', color: '#bbb', fontSize: '12px' })
-    const layoutMode = make('select', '', { 'aria-label': '排版', 'data-novaflow-art-generate-select-field': '1' })
-    Object.assign(layoutMode.style, { width: '100%', minWidth: '0', height: '30px', boxSizing: 'border-box', background: '#292929', color: '#ddd', border: '1px solid #444', borderRadius: '5px', padding: '5px 8px', fontSize: '12px' })
-    for (const [value, label] of [['reskin', '换皮 + 主题元素（推荐）'], ['follow', '重新设计，跟随原图布局'], ['free', '重新设计，自由构图'], ['variety', `重新设计，多种排版（每个主题 ${ARRANGEMENTS.length + 1} 种）`]]) { const option = make('option', label); option.value = value; layoutMode.append(option) }
-    layoutMode.value = ['reskin', 'follow', 'free', 'variety'].includes(read('foart.ui.theme-layout-mode.v2', 'reskin')) ? read('foart.ui.theme-layout-mode.v2', 'reskin') : 'reskin'
-    layoutRow.append(make('span', '排版'), layoutMode)
-    layoutMode.addEventListener('change', () => { write('foart.ui.theme-layout-mode.v2', layoutMode.value); render() })
-    const note = field('补充要求（可选），如：人物换成女性、整体更亮', true)
-    const status = make('div', ''); Object.assign(status.style, { color: '#aaa', fontSize: '11px', lineHeight: '1.5', minHeight: '16px' })
-    const actions = make('div'); Object.assign(actions.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })
-    function button(value, action, primary = false) {
-      const node = make('button', value, { type: 'button', 'data-foart-action': primary ? 'primary' : 'neutral' })
-      Object.assign(node.style, { minWidth: '0', height: '30px', boxSizing: 'border-box', padding: '0 10px', border: '0', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' })
-      node.addEventListener('click', () => { try { Promise.resolve(action()).catch(error => message(error.message, true)) } catch (error) { message(error.message, true) } })
-      return node
-    }
-    const addCustom = button('添加', () => {
-      const name = text(custom.value).slice(0, 40); if (!name) return
-      if (!library.some(item => item.name === name)) library.push({ name, description: '' })
-      picks.add(name); custom.value = ''; save(); render()
-    })
-    customRow.append(custom, addCustom)
-    const go = button('生成', start, true), manage = button('编辑主题', () => { editing = !editing; render() })
-    actions.append(go, manage)
-    body.append(hint, chips, customRow, editor, keepRow, layoutRow, note, actions, status)
-    custom.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addCustom.click() } })
-    keep.addEventListener('change', () => write('foart.ui.theme-keep-text.v1', keep.checked))
-
-    const message = (value, error = false) => { status.textContent = value; status.style.color = error ? '#fca5a5' : '#aaa' }
-    const save = () => { write(STORE_KEY, library); write(PICK_KEY, [...picks]) }
-    // The panel keeps its own screens: the generation dock is closed while this panel is open.
-    let screenList = []
-    const screens = () => screenList
-    const shelf = make('div', '', { 'data-foart-ui-theme-screens': '1' }); Object.assign(shelf.style, { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '6px' })
-    const picker = make('input', '', { type: 'file', accept: 'image/png,image/jpeg,image/webp', multiple: '' }); picker.style.display = 'none'
-    const addScreen = make('button', '', { type: 'button', 'data-foart-ui-theme-add': '1', title: '添加界面图（可多选，也可拖入）' })
-    Object.assign(addScreen.style, { aspectRatio: '1', minWidth: '0', border: '1px dashed #444', borderRadius: '6px', background: 'transparent', color: '#999', fontSize: '11px', cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: '1.4' })
-    addScreen.textContent = '+\n添加界面图'; addScreen.style.whiteSpace = 'pre'
-    addScreen.addEventListener('click', () => { if (!busy) picker.click() })
-    async function addFiles(files) {
-      for (const file of [...files || []].filter(file => /^image\/(png|jpeg|webp)$/.test(file.type))) {
-        const dataUrl = await new Promise((resolve, reject) => { const reader = new root.FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file) })
-        const size = await imageSize(dataUrl)
-        screenList.push({ id: 'ui-theme-screen-' + Date.now().toString(36) + screenList.length, name: file.name, dataUrl, ...size })
-      }
-      render()
-    }
-    picker.addEventListener('change', () => { addFiles(picker.files).catch(error => message(error.message, true)); picker.value = '' })
-    for (const type of ['dragover', 'drop']) shelf.addEventListener(type, event => {
-      if (!event.dataTransfer?.types?.includes?.('Files')) return
-      event.preventDefault(); event.stopPropagation()
-      if (type === 'drop' && !busy) addFiles(event.dataTransfer.files).catch(error => message(error.message, true))
-    })
-    function thumb(item) {
-      const cell = make('div'); Object.assign(cell.style, { position: 'relative', aspectRatio: '1', borderRadius: '6px', overflow: 'hidden', background: '#1b1b1b' })
-      const image = make('img', '', { alt: item.name, draggable: 'false' }); image.src = item.dataUrl; Object.assign(image.style, { width: '100%', height: '100%', objectFit: 'contain' })
-      const remove = make('button', '×', { type: 'button', title: '移除', 'data-foart-ui-theme-remove': '1' })
-      Object.assign(remove.style, { position: 'absolute', top: '2px', right: '2px', width: '18px', height: '18px', padding: '0', border: '0', borderRadius: '9px', background: 'rgba(0,0,0,.6)', color: '#ddd', fontSize: '12px', lineHeight: '18px', cursor: 'pointer' })
-      remove.addEventListener('click', () => { if (busy) return; screenList = screenList.filter(entry => entry !== item); render() })
-      cell.append(image, remove); return cell
-    }
-    hint.after(shelf)
-
-    function chip(item) {
-      // The brand skin draws particle chips and their pressed state; only the attributes are ours.
-      const on = picks.has(item.name), node = make('button', item.name, { type: 'button', 'data-foart-theme-chip': '1', 'data-novaflow-particle-chip': '1', 'aria-pressed': on ? 'true' : 'false', title: item.description || item.name })
-      Object.assign(node.style, { height: '26px', padding: '0 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' })
-      node.addEventListener('click', () => { if (busy) return; on ? picks.delete(item.name) : picks.add(item.name); save(); render() })
-      return node
-    }
-    function editorRow(item, index) {
-      const row = make('div'); Object.assign(row.style, { display: 'grid', gap: '4px', paddingBottom: '8px', borderBottom: '1px solid #2c2c2c' })
-      const top = make('div'); Object.assign(top.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '6px' })
-      const name = field('主题名'); name.value = item.name
-      const remove = button('删除', () => { picks.delete(item.name); library.splice(index, 1); save(); render() })
-      const description = field('画面描述：场景、材质、人物、配色、光线', true); description.value = item.description
-      name.addEventListener('change', () => { const next = text(name.value).slice(0, 40); if (!next) { name.value = item.name; return } if (picks.delete(item.name)) picks.add(next); item.name = next; save(); render() })
-      description.addEventListener('change', () => { item.description = text(description.value).slice(0, 600); save() })
-      top.append(name, remove); row.append(top, description); return row
-    }
-    function render() {
-      if (destroyed) return
-      panel.setAttribute('data-open', opened ? '1' : '0')
-      Object.assign(header.style, accordion.headerStyle(opened)); Object.assign(body.style, accordion.bodyStyle(opened))
-      arrow.className = accordion.chevronClass(opened)
-      body.style.display = opened ? 'grid' : 'none'; body.style.gap = '10px'
-      shelf.replaceChildren(...screenList.map(thumb), addScreen, picker)
-      chips.replaceChildren(...library.map(chip))
-      editor.style.display = editing ? 'grid' : 'none'
-      if (editing) editor.replaceChildren(...library.map(editorRow), button('恢复默认主题', () => { library = DEFAULT_THEMES.map(item => ({ ...item })); picks = new Set([...picks].filter(name => library.some(item => item.name === name))); save(); render() }))
-      manage.textContent = editing ? '完成' : '编辑主题'
-      const count = screens().length * picks.size * (layoutMode.value === 'variety' ? ARRANGEMENTS.length + 1 : 1)
-      go.textContent = busy ? '停止' : count ? `生成 ${count} 张` : '生成'
-      go.setAttribute('data-foart-action', busy ? 'neutral' : 'primary')
-    }
-    async function start() {
-      if (busy) { busy.abort(); message('将在当前这张完成后停止'); return }
-      const list = screens(), themes = library.filter(item => picks.has(item.name))
-      if (!list.length) throw new Error('请先在下方添加界面图')
-      if (!themes.length) throw new Error('请至少选择一个主题')
-      busy = new AbortController(); render()
-      try {
-        const outcome = await runBatch({ screens: list, themes, keepText: keep.checked, keepLayout: layoutMode.value === 'reskin', variety: layoutMode.value === 'variety', useSketch: layoutMode.value !== 'free', note: note.value, signal: busy.signal, onProgress: value => message(value) })
-        message(outcome.stopped ? `已生成 ${outcome.done}/${outcome.total} 张，已停止${outcome.error ? '：' + outcome.error : ''}` : `已生成 ${outcome.done} 张，已放入结果列表`, outcome.failed > 0)
-      } finally { busy = null; render() }
-    }
-    header.addEventListener('click', () => { opened = !opened; if (opened) onOpen?.(); render() })
-    const onOtherPanel = event => { if (event.target.closest?.('.nf-panel-header') && !panel.contains(event.target) && opened) { opened = false; render() } }
-    leftHost.addEventListener('click', onOtherPanel, true)
-    let lastCount = -1
-    function sync() {
-      if (destroyed) return
-      const active = leftHost.getAttribute('data-psd-fusion-ui') === '1'
-      panel.style.display = active ? '' : 'none'
-      const generate = leftHost.querySelector('[data-novaflow-spine-split-control-category="generate"]')
-      if (generate && active) {
-        const layout = leftHost.querySelector('[data-novaflow-ui-layout-section]') || generate
-        if (panel.previousElementSibling !== layout) layout.after(panel)
-      }
-      const count = screens().length
-      if (count !== lastCount) { lastCount = count; render() }
-    }
-    render()
-    return { sync, destroy() { destroyed = true; busy?.abort(); leftHost.removeEventListener('click', onOtherPanel, true); panel.remove() } }
-  }
-
-  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, ARRANGEMENTS, buildPrompt, outputSize, sketchPlan, sketchBlocks, drawSketch, readInventory, runBatch, mount })
+  root.FoartUiThemeSwitch = Object.freeze({ DEFAULT_THEMES, ARRANGEMENTS, themeLines, buildPrompt, outputSize, sketchPlan, sketchBlocks, drawSketch, readInventory, runBatch })
 })(typeof window !== 'undefined' ? window : globalThis)

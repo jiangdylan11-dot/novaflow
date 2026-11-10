@@ -334,7 +334,6 @@
 
       syncAnalysisSelectors()
       smartSplit?.sync()
-      themeSwitch?.sync()
 
       // The drawing runtime may rebuild its accordion; reattach the extension without replacing it.
 
@@ -361,7 +360,6 @@
     }
 
     const smartSplit = root.NovaFlowUiSmartSplit?.mount({ leftHost, store, onOpen: () => show(false) })
-    const themeSwitch = root.FoartUiThemeSwitch?.mount({ leftHost, onOpen: () => show(false) })
 
     const observer = new root.MutationObserver(sync)
 
@@ -405,7 +403,7 @@
 
       destroy() {
 
-        alive = false; smartSplit?.destroy(); themeSwitch?.destroy(); observer.disconnect(); unsubscribe?.(); if (frame) root.cancelAnimationFrame(frame)
+        alive = false; smartSplit?.destroy(); observer.disconnect(); unsubscribe?.(); if (frame) root.cancelAnimationFrame(frame)
 
         root.removeEventListener('resize', queuePosition); root.removeEventListener('novaflow:stage-box', queuePosition)
 

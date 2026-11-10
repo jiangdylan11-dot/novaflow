@@ -111,3 +111,18 @@ test('read-outs tagged 【显示】 become display blocks, never buttons', () =>
   assert.deepEqual(purposes, ['投注栏从左到右第 1 个：余额“¥1000”（显示框，不是按钮）', '投注栏从左到右第 2 个：减号“−”', '投注栏从左到右第 3 个：下注额“¥1000”（显示框，不是按钮）']);
   assert.match(api.buildPrompt({ theme: { name: '埃及神话' }, provider: 'local', inventory: '投注栏：【显示】“¥1000”' }), /标【显示】的信息条、数值框、公告栏画成嵌在面板里的扁平显示区/);
 });
+
+test('theme lines are the user\'s own words: one theme per line, first clause names it', () => {
+  const lines = api.themeLines('北欧神话，冰雪蓝金，角色换成维京战士\n\n赛博朋克霓虹夜景\n蒸汽朋克：黄铜齿轮和飞艇；埃及神话');
+  assert.deepEqual(lines, [
+    { name: '北欧神话', description: '冰雪蓝金，角色换成维京战士' },
+    { name: '赛博朋克霓虹夜景', description: '' },
+    { name: '蒸汽朋克', description: '黄铜齿轮和飞艇' },
+    { name: '埃及神话', description: '' },
+  ]);
+  assert.deepEqual(api.themeLines('   '), []);
+  assert.equal(api.themeLines('一个很长很长没有标点的主题描述文字一直写到超过四十个字的长度还在继续写下去直到结束').length, 1);
+  assert.equal(api.buildPrompt({ theme: lines[0], keepLayout: true, provider: 'local' }).includes('「北欧神话」主题：冰雪蓝金，角色换成维京战士'), true);
+  // The left panel is gone: the module only serves 小桃 and the prompt/batch helpers.
+  assert.equal(typeof api.mount, 'undefined');
+});

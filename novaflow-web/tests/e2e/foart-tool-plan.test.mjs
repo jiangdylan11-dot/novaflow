@@ -29,6 +29,17 @@ test('planner schemas omit irrelevant media arguments and retain surface transit
  assert.ok(JSON.stringify(animation).length<JSON.stringify(full).length/2);
  assert.ok(foartPlanResponseFormat({media:{active:true},animation:{active:true}}).schema.properties.operations.items.anyOf.some(s=>s.properties.action.const==='media'));
 });
+test('ui_theme carries the user\'s own theme words and only runs on the open UI surface',()=>{
+ const ctx={...context(),art:{surface:'ui'},uploads:[{id:'upload-1',name:'slot.png',kind:'image'},{id:'upload-2',name:'clip.mp4',kind:'video'}]};
+ assert.doesNotThrow(()=>validateFoartPlan(plan([{action:'ui_theme',theme:'北欧神话，冰雪蓝金\n赛博朋克',uploadIds:['upload-1'],layout:'reskin',keepText:true,note:'人物换成女性'}]),ctx));
+ assert.doesNotThrow(()=>validateFoartPlan(plan([{action:'ui_theme',theme:'蒸汽朋克'}]),ctx));
+ assert.throws(()=>validateFoartPlan(plan([{action:'ui_theme',theme:'蒸汽朋克'}]),{...context(),art:{surface:'drawing'}}),/先打开UI设计/);
+ assert.throws(()=>validateFoartPlan(plan([{action:'ui_theme',theme:'   '}]),ctx),/主题/);
+ assert.throws(()=>validateFoartPlan(plan([{action:'ui_theme',theme:'蒸汽朋克',layout:'wild'}]),ctx));
+ assert.throws(()=>validateFoartPlan(plan([{action:'ui_theme',theme:'蒸汽朋克',uploadIds:['upload-2']}]),ctx),/界面图/);
+ assert.throws(()=>validateFoartPlan(plan([{action:'ui_theme',theme:'蒸汽朋克',uploadIds:['nope']}]),ctx),/界面图/);
+ assert.throws(()=>validateFoartPlan(plan([{action:'ui_theme',theme:'蒸汽朋克',prompt:'x'}]),ctx));
+});
 test('UI layout operations preserve native module identities and reject out-of-canvas geometry',()=>{
  const ctx={...context(),uiLayout:{active:true,blocks:[{id:'title'}]}},block={id:'title',name:'设置',x:160,y:40,width:192,height:48};
  assert.doesNotThrow(()=>validateFoartPlan(plan([{action:'ui_layout',width:512,height:512,blocks:[block]}]),ctx));

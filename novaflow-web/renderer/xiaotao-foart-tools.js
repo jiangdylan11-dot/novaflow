@@ -676,6 +676,30 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       fail('该入口只支持当前绘图的纯文字提示词优化，未提交或扣费。');
     if(signal?.aborted)fail('Foart 操作已停止');
     if(op.action==='open')return open(op.surface,{signal});
+    if(op.action==='ui_theme'){
+      // 换主题 is 小桃's job (Dylan, 2026-11-10): the theme flow runs with the user's own words.
+      const rt=root.__NovaFlowArtGenerate,theme=root.FoartUiThemeSwitch;
+      if(!theme?.runBatch||rt?.captureContext?.().generationSurface!=='ui')fail('请先打开UI设计');
+      if(rt.state.running)fail('已有生成正在进行，请稍候');
+      const screens=[];
+      for(const id of Array.isArray(op.uploadIds)?op.uploadIds:[]){
+        const file=await materialFile(id);if(!/^image\/(png|jpeg|webp)$/.test(file.type))fail('主题切换只接受 PNG/JPG/WebP 界面图');
+        const dataUrl=await new Promise((resolve,reject)=>{const reader=new root.FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});
+        screens.push({id:'ui-theme-'+id,name:file.name,dataUrl});
+      }
+      if(!screens.length){
+        const result=rt.selectedResult?.(),ref=(rt.references?.()||[]).find(r=>r?.dataUrl);
+        const dataUrl=result?.imageUrl||result?.dataUrl||ref?.dataUrl;if(!dataUrl)fail('请先提供要换主题的界面图');
+        screens.push({id:'ui-theme-current',name:result?.name||ref?.name||'界面.png',dataUrl});
+      }
+      const themes=theme.themeLines(op.theme);if(!themes.length)fail('请写出要换的主题');
+      const layout=['reskin','follow','free'].includes(op.layout)?op.layout:'reskin';
+      onStatus('正在按主题重画界面…');
+      const outcome=await theme.runBatch({screens,themes,keepText:op.keepText!==false,keepLayout:layout==='reskin',variety:false,useSketch:layout!=='free',note:String(op.note||''),signal:signal||new root.AbortController().signal,onProgress:onStatus});
+      if(!outcome.done)fail(outcome.error||'主题切换未生成图片');
+      const outputs=(rt.state.results||[]).slice(0,outcome.done).map(item=>({id:item.id,name:item.name,width:item.width,height:item.height}));
+      return {action:op.action,phase:'completed',provider:rt.state.provider,modelLabel:root.NovaFlowArtGenerateModels?.providerTitle?.(rt.state.provider,rt.state)||'',done:outcome.done,total:outcome.total,outputs,message:'已按主题生成 '+outcome.done+' 张界面，已放入结果列表'+(outcome.error?'；'+outcome.error:'')};
+    }
     if(op.action==='ui_layout'){
       if(!uiLayout())fail('请先打开UI设计');
       const result=await root.NovaFlowUiDesignBridge.applyAgentLayout({width:op.width,height:op.height,blocks:copy(op.blocks)});
