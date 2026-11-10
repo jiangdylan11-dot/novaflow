@@ -19,8 +19,6 @@ export function createPgStore(db) {
     async listXiaotaoMemory(userId) {
       return (await many('select id,category,slot,memory_text as text,source,updated_at as "updatedAt" from public.xiaotao_user_memories where user_id=$1 order by updated_at desc limit 20',[userId]));
     },
-    async getXiaotaoMemoryEnabled(userId){return (await one('select enabled from public.xiaotao_memory_settings where user_id=$1',[userId]))?.enabled!==false;},
-    async setXiaotaoMemoryEnabled(userId,enabled){await one('insert into public.xiaotao_memory_settings(user_id,enabled) values($1,$2) on conflict(user_id) do update set enabled=excluded.enabled,updated_at=now() returning user_id',[userId,enabled]);},
     async saveXiaotaoMemory(userId,item){return (await one('select public.xiaotao_memory_save($1,$2,$3,$4,$5) as result',[userId,item.category,item.slot,item.text,item.source])).result;},
     async deleteXiaotaoMemory(userId,id){return (await many('delete from public.xiaotao_user_memories where user_id=$1 and ($2::uuid is null or id=$2::uuid) returning id',[userId,id])).length;},
     async getUserById(userId) {

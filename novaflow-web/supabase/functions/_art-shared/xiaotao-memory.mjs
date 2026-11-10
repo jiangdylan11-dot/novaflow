@@ -23,7 +23,7 @@ export function createXiaotaoMemoryRoutes({ store, requireUser, HttpError }) {
       ready();
       const user = await requireUser(headers);
       if (method === 'GET' && path === '/api/web/xiaotao/memory') {
-        return { ok: true, enabled: await store.getXiaotaoMemoryEnabled(user.id), limit: XIAOTAO_MEMORY_LIMIT, items: await store.listXiaotaoMemory(user.id) };
+        return { ok: true, limit: XIAOTAO_MEMORY_LIMIT, items: await store.listXiaotaoMemory(user.id) };
       }
       if (method !== 'POST') fail(404, 'xiaotao-memory-route', '未知的记忆操作');
       if (path === '/api/web/xiaotao/memory') {
@@ -31,17 +31,11 @@ export function createXiaotaoMemoryRoutes({ store, requireUser, HttpError }) {
         const text = cleanXiaotaoMemoryText(body.text);
         if (!XIAOTAO_MEMORY_CATEGORIES.includes(body.category) || typeof body.slot !== 'string' || !SLOT.test(body.slot)
           || !['explicit', 'adopted'].includes(body.source) || !text) fail(400, 'xiaotao-memory-invalid', '这条记忆不能保存');
-        if (!await store.getXiaotaoMemoryEnabled(user.id)) fail(409, 'xiaotao-memory-off', '记忆已关闭');
         return { ok: true, item: await store.saveXiaotaoMemory(user.id, { category: body.category, slot: body.slot, text, source: body.source }) };
       }
       if (path === '/api/web/xiaotao/memory/delete') {
         if (!plain(body, ['id', 'all']) || (body.all !== true && !(typeof body.id === 'string' && ID.test(body.id)))) fail(400, 'xiaotao-memory-invalid', '删除请求无效');
         return { ok: true, deleted: await store.deleteXiaotaoMemory(user.id, body.all === true ? null : body.id) };
-      }
-      if (path === '/api/web/xiaotao/memory/settings') {
-        if (!plain(body, ['enabled']) || typeof body.enabled !== 'boolean') fail(400, 'xiaotao-memory-invalid', '设置无效');
-        await store.setXiaotaoMemoryEnabled(user.id, body.enabled);
-        return { ok: true, enabled: body.enabled };
       }
       fail(404, 'xiaotao-memory-route', '未知的记忆操作');
     }
@@ -50,14 +44,12 @@ export function createXiaotaoMemoryRoutes({ store, requireUser, HttpError }) {
 
 // Memory-only store for the local control plane and tests.
 export function createMemoryXiaotaoMemoryStore() {
-  const rows = new Map(), off = new Set();
+  const rows = new Map();
   const list = userId => [...rows.values()].filter(r => r.userId === userId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.seq - a.seq);
   let seq = 0;
   const view = ({ id, category, slot, text, source, updatedAt }) => ({ id, category, slot, text, source, updatedAt });
   return {
     async listXiaotaoMemory(userId) { return list(userId).map(view); },
-    async getXiaotaoMemoryEnabled(userId) { return !off.has(userId); },
-    async setXiaotaoMemoryEnabled(userId, enabled) { if (enabled) off.delete(userId); else off.add(userId); },
     async saveXiaotaoMemory(userId, item) {
       const old = list(userId).find(r => r.category === item.category && r.slot === item.slot);
       const row = { ...(old || { id: crypto.randomUUID(), userId }), ...item, updatedAt: new Date().toISOString(), seq: ++seq };

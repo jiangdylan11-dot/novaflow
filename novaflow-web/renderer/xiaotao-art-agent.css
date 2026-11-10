@@ -171,6 +171,5 @@
 #nf-xiaotao-art-root .nf-xiaotao-memory-text { flex:1; min-width:0; overflow-wrap:anywhere; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-remove, #nf-xiaotao-art-root .nf-xiaotao-memory-undo { flex:0 0 auto; border:0; padding:0 4px; font-size:11px; color:#aaaaaa; background:transparent; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-remove:hover, #nf-xiaotao-art-root .nf-xiaotao-memory-undo:hover { background:transparent; color:#ffffff; }
-#nf-xiaotao-art-root .nf-xiaotao-memory[data-off="1"] .nf-xiaotao-memory-list { opacity:.5; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-note { color:#9be4cd; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-undo { margin-left:6px; }

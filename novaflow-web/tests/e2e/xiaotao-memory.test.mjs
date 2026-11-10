@@ -34,10 +34,6 @@ test('memory routes keep each account to its own preferences', async () => {
   list = await call('a', 'GET', '/api/web/xiaotao/memory');
   assert.equal(list.items.length, 20);
   assert.equal(list.items[0].text, '第24条');
-  // Switched off: nothing new is kept.
-  await call('a', 'POST', '/api/web/xiaotao/memory/settings', { enabled: false });
-  assert.equal((await call('a', 'GET', '/api/web/xiaotao/memory')).enabled, false);
-  await assert.rejects(call('a', 'POST', '/api/web/xiaotao/memory', { category: 'art', slot: 'art.color', text: '暖色', source: 'explicit' }), e => e.status === 409);
   // Delete one, then everything.
   const one = list.items[3].id;
   assert.equal((await call('a', 'POST', '/api/web/xiaotao/memory/delete', { id: one })).deleted, 1);
@@ -54,7 +50,7 @@ async function loadClient(server) {
 }
 
 test('小桃 understands what to remember and what not to', async () => {
-  const memory = await loadClient(async () => ({ ok: true, enabled: true, items: [] }));
+  const memory = await loadClient(async () => ({ ok: true, items: [] }));
   const explicit = text => { const r = memory.explicitMemory(text); return r && { text: r.text, category: r.category, slot: r.slot, only: r.only }; };
   assert.deepEqual(explicit('记住我喜欢厚涂二次元'), { text: '喜欢厚涂二次元', category: 'art', slot: 'art.style', only: true });
   assert.deepEqual(explicit('记住：叫我小江'), { text: '叫我小江', category: 'chat', slot: 'chat.name', only: true });
@@ -72,7 +68,7 @@ test('小桃 understands what to remember and what not to', async () => {
 });
 
 test('an adopted turn keeps at most two things it actually used', async () => {
-  const memory = await loadClient(async () => ({ ok: true, enabled: true, items: [] }));
+  const memory = await loadClient(async () => ({ ok: true, items: [] }));
   const receipt = '已生成\n实际工具回执：' + JSON.stringify([{ action: 'image_generate', modelLabel: 'GPT Image 2.5' }]);
   const learned = memory.fromAdoption([{ role: 'user', content: '画一个二次元厚涂少女，不要写实' }, { role: 'assistant', content: receipt }]);
   assert.deepEqual(plain(learned.map(i => [i.slot, i.text, i.source])), [['model.image', '画图常用 GPT Image 2.5', 'adopted'], ['art.style', '喜欢的画风：二次元、厚涂', 'adopted']]);
@@ -83,7 +79,7 @@ test('an adopted turn keeps at most two things it actually used', async () => {
 
 test('the memory rides at the front of the history and never stacks', async () => {
   const items = [{ id: '1', category: 'art', slot: 'art.style', text: '喜欢厚涂' }, { id: '2', category: 'avoid', slot: 'audio.music', text: '不要背景音乐' }];
-  const memory = await loadClient(async op => op === 'list' ? { ok: true, enabled: true, items } : { ok: true });
+  const memory = await loadClient(async op => op === 'list' ? { ok: true, items } : { ok: true });
   assert.deepEqual(plain(memory.withMemory([{ role: 'user', content: 'hi' }])), [{ role: 'user', content: 'hi' }]);
   await memory.load();
   const history = Array.from({ length: 12 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: 'm' + i }));
@@ -95,10 +91,7 @@ test('the memory rides at the front of the history and never stacks', async () =
   assert.deepEqual(memory.withMemory(sent).length, 12);
   assert.deepEqual(plain(memory.stripMemory(sent)), history.slice(-10));
   assert.match(memory.withMemoryText('old'), /^我的偏好记忆（[\s\S]*\nold$/);
-  // Switched off or unavailable: nothing is added.
-  const off = await loadClient(async op => op === 'list' ? { ok: true, enabled: false, items } : { ok: true });
-  await off.load();
-  assert.deepEqual(plain(off.withMemory(history)), history);
+  // Unavailable: nothing is added.
   const down = await loadClient(async () => ({ ok: false, status: 500, error: 'x' }));
   await down.load();
   assert.equal(down.ready(), false);
@@ -109,7 +102,7 @@ test('a newer preference replaces the opposite one', async () => {
   const deleted = [];
   let items = [{ id: 'old', category: 'avoid', slot: 'audio.music', text: '不要背景音乐' }];
   const memory = await loadClient(async (op, body) => {
-    if (op === 'list') return { ok: true, enabled: true, items };
+    if (op === 'list') return { ok: true, items };
     if (op === 'save') return { ok: true, item: { id: 'new', ...body } };
     if (op === 'delete') { deleted.push(body.id); return { ok: true, deleted: 1 }; }
     return { ok: true };

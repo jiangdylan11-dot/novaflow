@@ -2917,16 +2917,14 @@
     const memorySheet = el('section', 'nf-xiaotao-memory'); memorySheet.setAttribute('role', 'dialog'); memorySheet.setAttribute('aria-modal', 'true'); memorySheet.setAttribute('aria-label', '小桃记忆');
     const memoryClose = el('button', 'nf-xiaotao-memory-close', '×'); memoryClose.type = 'button'; memoryClose.setAttribute('aria-label', '关闭记忆');
     const memoryHead = el('div', 'nf-xiaotao-memory-head'), memoryTitle = el('strong', '', '小桃记忆'), memoryHint = el('p', 'nf-xiaotao-memory-hint', '只记你的偏好（模型、画风、视频音频习惯、UI、导出格式、不要的东西），不保存聊天和图片。说「记住…」「以后都…」，或对满意的结果说「满意」，小桃会记下来。');
-    const memoryEnable = el('button', 'nf-xiaotao-memory-switch'), memoryClear = el('button', 'nf-xiaotao-memory-clear', '清空'); memoryEnable.type = memoryClear.type = 'button';
+    const memoryClear = el('button', 'nf-xiaotao-memory-clear', '清空'); memoryClear.type = 'button';
     const memoryList = el('ul', 'nf-xiaotao-memory-list'), memoryEmpty = el('p', 'nf-xiaotao-memory-empty');
-    const memoryActions = el('div', 'nf-xiaotao-memory-actions'); memoryActions.append(memoryEnable, memoryClear);
+    const memoryActions = el('div', 'nf-xiaotao-memory-actions'); memoryActions.append(memoryClear);
     memoryActions.append(memoryClose); memoryHead.append(memoryTitle, memoryActions); memorySheet.append(memoryHead, memoryHint, memoryEmpty, memoryList); memoryMask.append(memorySheet);
     const memoryModule = () => root.NovaFlowXiaotaoMemory || null;
     const renderMemory = () => {
-      const memory = memoryModule(), snap = memory?.snapshot?.() || {loaded:true, available:false, enabled:false, items:[], error:'记忆功能未加载'};
+      const memory = memoryModule(), snap = memory?.snapshot?.() || {loaded:true, available:false, items:[], error:'记忆功能未加载'};
       memoryToggle.hidden = !memory;
-      memoryEnable.textContent = snap.enabled ? '关闭记忆' : '打开记忆'; memoryEnable.disabled = !snap.available;
-      memoryEnable.setAttribute('data-enabled', snap.enabled ? '1' : '0');
       memoryClear.disabled = !snap.available || !snap.items.length;
       memoryList.replaceChildren();
       for (const category of memory?.ORDER || []) for (const item of snap.items.filter(row => row.category === category)) {
@@ -2936,16 +2934,14 @@
         row.append(kind, text, remove); memoryList.append(row);
       }
       memoryList.hidden = !snap.items.length;
-      memoryEmpty.textContent = !snap.loaded ? '正在读取记忆…' : !snap.available ? (snap.error || '记忆暂不可用') : !snap.enabled ? '记忆已关闭：小桃不会读取也不会新记偏好。' : snap.items.length ? '' : '还没有记忆。';
+      memoryEmpty.textContent = !snap.loaded ? '正在读取记忆…' : !snap.available ? (snap.error || '记忆暂不可用') : snap.items.length ? '' : '还没有记忆。';
       memoryEmpty.hidden = !memoryEmpty.textContent;
-      memorySheet.setAttribute('data-off', snap.enabled ? '0' : '1');
     };
     const showMemory = value => {memoryMask.hidden = !value; memoryToggle.setAttribute('aria-expanded', String(value)); memoryToggle.setAttribute('data-open', value ? '1' : '0'); if (value) void memoryModule()?.load?.();};
     memoryToggle.onclick = () => showMemory(memoryMask.hidden);
     memoryClose.onclick = () => showMemory(false);
     memoryMask.onclick = event => {if (event.target === memoryMask) showMemory(false);};
     memoryMask.onkeydown = event => {if (event.key === 'Escape') showMemory(false);};
-    memoryEnable.onclick = () => {const memory = memoryModule(); if (!memory) return; memoryEnable.disabled = true; void memory.setEnabled(!memory.snapshot().enabled).finally(renderMemory);};
     memoryClear.onclick = () => {const memory = memoryModule(); if (!memory) return; memoryClear.disabled = true; void memory.clear().finally(renderMemory);};
     memoryModule()?.subscribe?.(renderMemory); renderMemory();
     const messages = el('div', 'nf-xiaotao-messages'); messages.setAttribute('role', 'log'); messages.setAttribute('aria-label', '小桃全局对话');
