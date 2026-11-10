@@ -155,7 +155,12 @@
 #nf-xiaotao-art-root .nf-xiaotao-memory-toggle:hover { background:#333333; color:#ffffff; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-toggle[data-open="1"] { color:#1EA672; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-toggle[data-open="1"]:hover { background:#333333; color:#3fc08d; }
-#nf-xiaotao-art-root .nf-xiaotao-memory-toggle[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-mask[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-list[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-empty[hidden] { display:none; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-control { display:inline-flex; align-items:center; gap:2px; flex:0 0 auto; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-check { width:13px; height:13px; margin:0; accent-color:#1EA672; cursor:pointer; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-check:disabled { cursor:default; opacity:.45; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-toggle:disabled { opacity:.4; cursor:default; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-toggle:disabled:hover { background:transparent; color:#bdbdbd; }
+#nf-xiaotao-art-root .nf-xiaotao-memory-control[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-toggle[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-mask[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-list[hidden], #nf-xiaotao-art-root .nf-xiaotao-memory-empty[hidden] { display:none; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-mask { position:fixed; inset:0; z-index:2147483000; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(0,0,0,.58); }
 #nf-xiaotao-art-root .nf-xiaotao-memory { width:min(440px,100%); max-height:min(560px,calc(100vh - 32px)); overflow:auto; padding:16px 18px; border:1px solid #333333; border-radius:8px; background:#1F1F1F; color:#dddddd; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -171,5 +176,6 @@
 #nf-xiaotao-art-root .nf-xiaotao-memory-text { flex:1; min-width:0; overflow-wrap:anywhere; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-remove, #nf-xiaotao-art-root .nf-xiaotao-memory-undo { flex:0 0 auto; border:0; padding:0 4px; font-size:11px; color:#aaaaaa; background:transparent; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-remove:hover, #nf-xiaotao-art-root .nf-xiaotao-memory-undo:hover { background:transparent; color:#ffffff; }
+#nf-xiaotao-art-root .nf-xiaotao-memory[data-off="1"] .nf-xiaotao-memory-list { opacity:.5; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-note { color:#9be4cd; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-undo { margin-left:6px; }

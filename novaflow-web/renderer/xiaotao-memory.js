@@ -8,10 +8,10 @@
   const LABELS = {model:'模型', art:'画风画法', video:'视频', audio:'音频', ui:'UI 排版', export:'导出', chat:'说话习惯', avoid:'不要'};
   const ORDER = ['model','art','video','audio','ui','export','chat','avoid'];
   const LIMIT = 20;
-  const state = {loaded:false, available:false, items:[], error:''};
+  const state = {loaded:false, available:false, enabled:true, items:[], error:''};
   const listeners = new Set();
   const notify = () => { for (const fn of listeners) { try { fn(snapshot()); } catch {} } };
-  const snapshot = () => ({loaded:state.loaded, available:state.available, items:state.items.slice(), error:state.error});
+  const snapshot = () => ({loaded:state.loaded, available:state.available, enabled:state.enabled, items:state.items.slice(), error:state.error});
   const call = async (op, body) => {
     const fn = root.electronAPI?.xiaotaoMemory;
     if (typeof fn !== 'function') return {ok:false, error:'记忆功能未加载'};
@@ -106,7 +106,7 @@
 
   // ---- what the model reads ----------------------------------------------------------
   function summaryText(items = state.items) {
-    const usable = items.filter(item => item && item.text);
+    const usable = state.enabled ? items.filter(item => item && item.text) : [];
     if (!usable.length) return '';
     const lines = [];
     for (const category of ORDER) {
@@ -137,13 +137,13 @@
   async function load() {
     const result = await call('list');
     state.loaded = true;
-    if (result?.ok) { state.available = true; state.items = Array.isArray(result.items) ? result.items.slice(0, LIMIT) : []; state.error = ''; }
+    if (result?.ok) { state.available = true; state.enabled = result.enabled !== false; state.items = Array.isArray(result.items) ? result.items.slice(0, LIMIT) : []; state.error = ''; }
     else { state.available = false; state.items = []; state.error = result?.status === 401 ? '登录后可以使用记忆' : '记忆暂不可用'; }
     notify();
     return snapshot();
   }
   async function save(items) {
-    if (!state.available) return [];
+    if (!state.available || !state.enabled) return [];
     const saved = [];
     for (const item of items) {
       const result = await call('save', {category:item.category, slot:item.slot, text:item.text, source:item.source || 'explicit'});
@@ -167,8 +167,13 @@
     if (result?.ok) { state.items = []; notify(); }
     return result?.ok === true;
   }
+  async function setEnabled(enabled) {
+    const result = await call('settings', {enabled:enabled === true});
+    if (result?.ok) { state.enabled = result.enabled === true; notify(); }
+    return result?.ok === true;
+  }
   const subscribe = fn => { listeners.add(fn); return () => listeners.delete(fn); };
 
   root.NovaFlowXiaotaoMemory = Object.freeze({LABELS, ORDER, LIMIT, explicitMemory, classify, fromAdoption, summaryText, stripMemory, withMemory, withMemoryText,
-    load, save, remove, clear, subscribe, snapshot, ready:() => state.available});
+    load, save, remove, clear, setEnabled, subscribe, snapshot, ready:() => state.available && state.enabled});
 })(typeof globalThis !== 'undefined' ? globalThis : window);

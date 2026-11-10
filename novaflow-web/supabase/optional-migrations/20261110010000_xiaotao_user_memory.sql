@@ -20,9 +20,16 @@ create table if not exists public.xiaotao_user_memories (
 );
 create index if not exists xiaotao_user_memories_user_idx on public.xiaotao_user_memories (user_id, updated_at desc);
 
+create table if not exists public.xiaotao_memory_settings (
+  user_id uuid primary key references public.users (id) on delete cascade,
+  enabled boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.xiaotao_user_memories enable row level security;
-revoke all on public.xiaotao_user_memories from public, anon, authenticated;
-grant select, insert, update, delete on public.xiaotao_user_memories to service_role;
+alter table public.xiaotao_memory_settings enable row level security;
+revoke all on public.xiaotao_user_memories, public.xiaotao_memory_settings from public, anon, authenticated;
+grant select, insert, update, delete on public.xiaotao_user_memories, public.xiaotao_memory_settings to service_role;
 
 create or replace function public.xiaotao_memory_save(p_user_id uuid, p_category text, p_slot text, p_text text, p_source text)
 returns jsonb language plpgsql security invoker set search_path = pg_catalog, public as $$

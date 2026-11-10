@@ -2911,7 +2911,10 @@
     title.append(titleText);
     // 小桃记忆: the account's own preferences, shown and managed here.
     const memoryToggle = el('button', 'nf-xiaotao-memory-toggle', '记忆'); memoryToggle.type = 'button'; memoryToggle.title = '小桃记住的偏好'; memoryToggle.setAttribute('aria-expanded', 'false');
-    header.append(title, memoryToggle, close);
+    // The tick in front of 记忆 is the on/off: unticked, 小桃 neither reads nor keeps preferences and 记忆 is greyed out.
+    const memoryEnable = el('input', 'nf-xiaotao-memory-check'); memoryEnable.type = 'checkbox'; memoryEnable.checked = true; memoryEnable.title = '勾选后小桃会读取并记住你的偏好'; memoryEnable.setAttribute('aria-label', '使用记忆');
+    const memoryControl = el('span', 'nf-xiaotao-memory-control'); memoryControl.append(memoryEnable, memoryToggle);
+    header.append(title, memoryControl, close);
     // A dialog of its own over a dimmed page, never inside the chat panel.
     const memoryMask = el('div', 'nf-xiaotao-memory-mask'); memoryMask.hidden = true;
     const memorySheet = el('section', 'nf-xiaotao-memory'); memorySheet.setAttribute('role', 'dialog'); memorySheet.setAttribute('aria-modal', 'true'); memorySheet.setAttribute('aria-label', '小桃记忆');
@@ -2923,8 +2926,11 @@
     memoryActions.append(memoryClose); memoryHead.append(memoryTitle, memoryActions); memorySheet.append(memoryHead, memoryHint, memoryEmpty, memoryList); memoryMask.append(memorySheet);
     const memoryModule = () => root.NovaFlowXiaotaoMemory || null;
     const renderMemory = () => {
-      const memory = memoryModule(), snap = memory?.snapshot?.() || {loaded:true, available:false, items:[], error:'记忆功能未加载'};
-      memoryToggle.hidden = !memory;
+      const memory = memoryModule(), snap = memory?.snapshot?.() || {loaded:true, available:false, enabled:false, items:[], error:'记忆功能未加载'};
+      memoryControl.hidden = !memory;
+      memoryEnable.checked = !snap.available || snap.enabled; memoryEnable.disabled = !snap.available;
+      memoryToggle.disabled = snap.available && !snap.enabled;
+      if (memoryToggle.disabled && !memoryMask.hidden) showMemory(false);
       memoryClear.disabled = !snap.available || !snap.items.length;
       memoryList.replaceChildren();
       for (const category of memory?.ORDER || []) for (const item of snap.items.filter(row => row.category === category)) {
@@ -2934,14 +2940,16 @@
         row.append(kind, text, remove); memoryList.append(row);
       }
       memoryList.hidden = !snap.items.length;
-      memoryEmpty.textContent = !snap.loaded ? '正在读取记忆…' : !snap.available ? (snap.error || '记忆暂不可用') : snap.items.length ? '' : '还没有记忆。';
+      memoryEmpty.textContent = !snap.loaded ? '正在读取记忆…' : !snap.available ? (snap.error || '记忆暂不可用') : !snap.enabled ? '记忆已关闭：小桃不会读取也不会新记偏好。' : snap.items.length ? '' : '还没有记忆。';
       memoryEmpty.hidden = !memoryEmpty.textContent;
+      memorySheet.setAttribute('data-off', snap.enabled ? '0' : '1');
     };
     const showMemory = value => {memoryMask.hidden = !value; memoryToggle.setAttribute('aria-expanded', String(value)); memoryToggle.setAttribute('data-open', value ? '1' : '0'); if (value) void memoryModule()?.load?.();};
     memoryToggle.onclick = () => showMemory(memoryMask.hidden);
     memoryClose.onclick = () => showMemory(false);
     memoryMask.onclick = event => {if (event.target === memoryMask) showMemory(false);};
     memoryMask.onkeydown = event => {if (event.key === 'Escape') showMemory(false);};
+    memoryEnable.onchange = () => {const memory = memoryModule(); if (!memory) return; const want = memoryEnable.checked; memoryEnable.disabled = true; void memory.setEnabled(want).finally(renderMemory);};
     memoryClear.onclick = () => {const memory = memoryModule(); if (!memory) return; memoryClear.disabled = true; void memory.clear().finally(renderMemory);};
     memoryModule()?.subscribe?.(renderMemory); renderMemory();
     const messages = el('div', 'nf-xiaotao-messages'); messages.setAttribute('role', 'log'); messages.setAttribute('aria-label', '小桃全局对话');

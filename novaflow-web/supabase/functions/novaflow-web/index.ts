@@ -76,6 +76,8 @@ const supabaseStore = {
     const {data,error}=await admin().from('xiaotao_user_memories').select('id,category,slot,memory_text,source,updated_at').eq('user_id',userId).order('updated_at',{ascending:false}).limit(20);
     if(error)throw error;return (data||[]).map((r:any)=>({id:r.id,category:r.category,slot:r.slot,text:r.memory_text,source:r.source,updatedAt:r.updated_at}));
   },
+  async getXiaotaoMemoryEnabled(userId: string){const {data,error}=await admin().from('xiaotao_memory_settings').select('enabled').eq('user_id',userId).maybeSingle();if(error)throw error;return data?.enabled!==false;},
+  async setXiaotaoMemoryEnabled(userId: string,enabled: boolean){const {error}=await admin().from('xiaotao_memory_settings').upsert({user_id:userId,enabled,updated_at:new Date().toISOString()});if(error)throw error;},
   async saveXiaotaoMemory(userId: string,item: any){const {data,error}=await admin().rpc('xiaotao_memory_save',{p_user_id:userId,p_category:item.category,p_slot:item.slot,p_text:item.text,p_source:item.source});if(error)throw error;return data;},
   async deleteXiaotaoMemory(userId: string,id: string|null){
     let query=admin().from('xiaotao_user_memories').delete({count:'exact'}).eq('user_id',userId);
