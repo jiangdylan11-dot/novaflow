@@ -268,6 +268,41 @@ test('feature credit RPCs hold the balance, release on failure, and mirror the o
   await db.close();
 });
 
+test('the cloud image line prices migration teaches the quote defaults and fills the stored config once', async () => {
+  const db = await database();
+  const quote = async (feature, units = 1) => (await db.query('select public.feature_credit_quote($1, $2) as q', [feature, units])).rows[0].q;
+  // Before the migration the deployed config and the built-in defaults know none of the lines.
+  assert.equal((await quote('nano_banana_21')).unpriced, true);
+  assert.equal((await quote('grok_image_official')).unpriced, true);
+  assert.equal((await quote('gpt_image_2_edit')).unpriced, true);
+  // An admin's own number stays in charge after the migration.
+  await db.query(`update public.system_settings set value = jsonb_set(value, '{prices,gpt_image_2_official}', '5'::jsonb) where key = 'feature_credit_config'`);
+  const migration = await readFile(join(repoRoot, 'supabase/migrations/20261110090000_cloud_image_line_prices.sql'), 'utf8');
+  await db.exec(migration);
+  await db.exec(migration);
+  assert.equal((await quote('nano_banana_21', 2)).credits, 26);
+  // The charge path always sends the canonical key (quote.feature); the SQL alias map is untouched.
+  assert.equal((await quote('nano_banana_21')).unit_price, 13);
+  assert.equal((await quote('nano_banana_21')).per_image, true);
+  assert.equal((await quote('grok_image_official')).credits, 8);
+  assert.equal((await quote('gpt_image_2_edit')).credits, 11);
+  assert.equal((await quote('gpt_image_2_official')).credits, 5);
+  const stored = (await db.query(`select value from public.system_settings where key = 'feature_credit_config'`)).rows[0].value;
+  assert.equal(stored.prices.nano_banana_21, 13);
+  assert.equal(stored.prices.grok_image_official, 8);
+  assert.equal(stored.prices.gpt_image_2_edit, 11);
+  assert.equal(stored.prices.gpt_image_2_official, 5);
+  assert.equal(stored.rh_cost_usd.nano_banana_21, 0.03);
+  // A config that drops a line again still prices it from the built-in default instead of refusing.
+  await db.query(`update public.system_settings set value = value #- '{prices,grok_image_official}' where key = 'feature_credit_config'`);
+  assert.equal((await quote('grok_image_official')).credits, 8);
+  // The hold path itself accepts the line now.
+  const user = await addUser(db, 'cloud-line@example.com', 50);
+  const held = (await db.query('select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb) as row', [user.id, 'use-banana', 'nano_banana_21', '{}'])).rows[0].row;
+  assert.equal(num(held.estimated_credits), 13);
+  await db.close();
+});
+
 test('quota migration rounds remaining counts up, is idempotent, and rolls the batch back', async () => {
   const db = await database();
   const whole = await addUser(db, 'whole@novaflow.local', 10);

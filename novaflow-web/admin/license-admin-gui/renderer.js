@@ -2517,7 +2517,10 @@ const FEATURE_PRICE_FIELDS = [
   ["image_reverse", "图像反推"],
   ["lean_research", "UI 目录分析"],
   ["gpt_image_2_5_economy", "GPT Image 2.5 图生图 / 张"],
-  ["gpt_image_2_official", "GPT Image 2 官方 / 张"],
+  ["gpt_image_2_official", "GPT Image 2 文生图 / 张"],
+  ["gpt_image_2_edit", "GPT Image 2 图生图 / 张"],
+  ["nano_banana_21", "Nano Banana 2.1 / 张"],
+  ["grok_image_official", "Grok 图像 / 张"],
   ["grok_image_g42", "g-4.2 / 张"],
   ["local", "本地"]
 ];
@@ -2640,7 +2643,7 @@ async function renderFeatureCreditAdmin() {
     const config = result?.config || {};
     const prices = config.prices || {
       xiaotao_vision: 4, online_chat_turn: 4, prompt_optimize: 4, image_reverse: 4,
-      lean_research: 14, gpt_image_2_5_economy: 20, gpt_image_2_official: 4, grok_image_g42: 6, local: 0
+      lean_research: 14, gpt_image_2_5_economy: 20, gpt_image_2_official: 4, gpt_image_2_edit: 11, nano_banana_21: 13, grok_image_official: 8, grok_image_g42: 6, local: 0
     };
     renderFeaturePriceFields(prices);
     const token = config.token_billing || {};
