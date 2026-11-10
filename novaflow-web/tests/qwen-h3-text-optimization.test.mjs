@@ -45,7 +45,7 @@ test('Xiaotao applies local H3 result without reading reference frames, or ignor
   for(const mode of modes)for(const stale of [false,true]){
     let valid=true,applied='',captureArgs,modelArgs;
     const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,console,setTimeout,clearTimeout,setInterval,clearInterval,AbortController});
-    const marker='return Object.freeze({state, retire, businessModelSnapshot,';assert.equal(agent.split(marker).length,2);
+    const marker='return Object.freeze({state, undoMemory, retire, businessModelSnapshot,';assert.equal(agent.split(marker).length,2);
     vm.runInContext(agent.replace(marker,'return Object.freeze({prepareSelectedH3TextDraft, state, retire, businessModelSnapshot,'),ctx);
     ctx.NovaFlowAiSequenceGeneration={capture:()=>({genType:mode}),optimizationContext:async()=>({modelId:'minimax_h3_local',mode,durationSeconds:2})};
     ctx.NovaFlowMediaAgent={captureH3TextDraft:async options=>{captureArgs=options;return {request:{h3Mode:mode,durationSeconds:2,prompt:'角色向前走',requirements:'优化'},isCurrent:()=>valid,applyDraft:async text=>{applied=text;return {phase:'applied'}}};}};
