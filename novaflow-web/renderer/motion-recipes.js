@@ -159,7 +159,14 @@
     }
     const secSet = new Set(secondary), depth = new Map()
     for (const n of secondary) { let d = 0, p = by.get(n).parent; while (p && secSet.has(p)) { d++; p = by.get(p).parent } depth.set(n, d) }
-    return Object.assign({}, base, { structural: true, hips: hub, chest, neck, head, trunk: [hub, ...trunkPath], armTargets, legTargets, secondary, depth, height: H })
+    let weapon = null
+    if (armTargets.length) {
+      const c = (json.ik || []).find((k) => k.target === armTargets[0])
+      const end = c && c.bones[c.bones.length - 1]
+      let best = 0
+      if (end) for (const b of json.bones) { if (b.name !== end && under(b.name, end) && !ikTargets.has(b.name) && (b.length || 0) > Math.max(best, H * 0.12)) { best = b.length; weapon = b.name } }
+    }
+    return Object.assign({}, base, { structural: true, hips: hub, chest, neck, head, trunk: [hub, ...trunkPath], armTargets, legTargets, secondary, depth, height: H, weapon })
   }
 
   // --------------------------------------------------------------- key helpers --
@@ -354,9 +361,10 @@
         const tA = T * (heavy ? 0.45 : 0.3), tS = tA + T * (heavy ? 0.1 : 0.12), tH = tS + T * 0.15
         const back = H * 0.03 * I, fwd = H * (heavy ? 0.08 : 0.05) * I, crouch = H * (heavy ? 0.05 : 0.03) * I
         bob([[0, [0, 0], 'io'], [tA, [-back * F, -crouch], 'i'], [tS, [fwd * F, -crouch * 0.6], 'o'], [tH, [fwd * F * 0.9, -crouch * 0.5], 'io'], [T, [0, 0]]])
-        trunkRot((m, b) => [[0, 0, 'io'], [tA, lean(b, -10 * I * m), 'i'], [tS, lean(b, 16 * I * m), 'o'], [tH, lean(b, 13 * I * m), 'io'], [T, 0]])
-        arms.forEach((n, i) => { const lead = i === 0 ? 1 : 0.35
-          keyTranslate(a, n, [[0, [0, 0], 'io'], [tA, [-H * 0.08 * I * F * lead, H * 0.1 * I * lead], 'i'], [tS, [H * 0.16 * I * F * lead, -H * 0.02 * I], 'o'], [tH, [H * 0.14 * I * F * lead, -H * 0.03 * I], 'io'], [T, [0, 0]]]) })
+        trunkRot((m, b) => [[0, 0, 'io'], [tA, lean(b, -12 * I * m), 'i'], [tS, lean(b, 20 * I * m), 'o'], [tH, lean(b, 16 * I * m), 'io'], [T, 0]])
+        arms.forEach((n, i) => { const lead = i === 0 ? 1 : 0.3, tM = tA + (tS - tA) * 0.45
+          keyTranslate(a, n, [[0, [0, 0], 'io'], [tA, [-H * 0.12 * I * F * lead, H * 0.16 * I * lead], 'i'], [tM, [H * 0.08 * I * F * lead, H * 0.2 * I * lead], 'lin'], [tS, [H * 0.26 * I * F * lead, -H * 0.06 * I * lead], 'o'], [tH, [H * 0.23 * I * F * lead, -H * 0.08 * I * lead], 'io'], [T, [0, 0]]]) })
+        if (rig.weapon) keyRotate(a, rig.weapon, [[0, 0, 'io'], [tA, 35 * I * F, 'i'], [tS, -70 * I * F, 'o'], [tH, -62 * I * F, 'io'], [T, 0]])
         const front = frontFoot(rig, W, F)
         for (const ft of front) keyTranslate(a, ft, [[0, [0, 0], 'io'], [tA, [0, 0], 'o'], [tS, [fwd * F * 0.9, 0], 'io'], [tH, [fwd * F * 0.9, 0], 'io'], [T, [0, 0]]])
         o.events = [{ name: 'hit', time: tS }]
