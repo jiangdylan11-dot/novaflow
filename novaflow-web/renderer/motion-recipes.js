@@ -118,6 +118,15 @@
       if (size(cs[0]) < total * 0.5 && hub !== base.root) break
       hub = cs[0]
     }
+    {
+      const roots = (json.ik || []).map((c) => c.bones[0]).filter((n) => by.has(n))
+      if (roots.length >= 2) {
+        const chain = (n) => { const out = []; let p = by.get(n).parent; while (p) { out.push(p); p = by.get(p).parent } return out }
+        let common = chain(roots[0])
+        for (const r of roots.slice(1)) { const set = new Set(chain(r)); common = common.filter((n) => set.has(n)) }
+        if (common.length && common[0] !== base.root && size(common[0]) >= 6) hub = common[0]
+      }
+    }
     if (hub === base.root || size(hub) < 6) return null
     // the trunk: climb while the best child still fans out (a head carries hair chains, a chain is hair itself)
     const isChain = (n) => { let c = n; for (;;) { const k = ch(c); if (k.length > 1) return false; if (!k.length) return true; c = k[0] } }
@@ -737,6 +746,7 @@
         keyTranslate(r.anim, rig.root, [[0, [0, 0], 'io'], [o.duration / 2, [0, 8 * o.intensity], 'io'], [o.duration, [0, 0]]])
       }
       report.basePose = basePose(json, json.animations[name], name)
+      if (o.motion === 'idle' || o.motion === 'breathe' || o.motion === 'float') { report.waves = chainWaves(json, json.animations[name], o.duration, { intensity: o.intensity * (o.motion === 'breathe' ? 0.6 : 1), skip: rig.trunk }); o.springs = false }
       report.springs = bakeSprings(json, name, rig, { duration: o.duration, loop: o.loop, wind: r.wind, springGain: o.intensity, springs: o.springs })
       if (o.flash) slotFlash(json, json.animations[name], o.flash)
       if (o.fade) slotFade(json, json.animations[name], o.fade)
@@ -811,5 +821,112 @@
     return { skeleton: { fileName: stem + '.json', text: JSON.stringify(skel) }, atlas: { fileName: stem + '.atlas', text: atlas.join('\n') + '\n' }, images }
   }
 
-  return { MOTIONS, synthesize, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld } }
+  /**
+   * Hair, ribbons, tassels, skirts in an idle, the way the studio keys them (measured on its 立绘
+   * idles: ~145 of ~190 bones wave; half-range 7° at a chain's root growing to 16° by the fourth
+   * link; each link lags its parent by about a tenth of the cycle): every bone chain that carries
+   * no IK gets a sine wave travelling root → tip. Few eased keys per bone, so it stays editable.
+   */
+  function chainWaves(json, a, T, opts) {
+    const o = opts || {}, I = o.intensity || 1
+    const by = new Map(json.bones.map((b) => [b.name, b])), kids = new Map()
+    for (const b of json.bones) { const p = b.parent || ''; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(b.name) }
+    const ch = (n) => kids.get(n) || []
+    const locked = new Set()
+    for (const c of [...(json.ik || []), ...(json.transform || []), ...(json.path || [])]) { for (const n of [...(c.bones || []), c.target]) { let p = n; while (p && by.has(p) && !locked.has(p)) { locked.add(p); p = by.get(p).parent } } }
+    const skip = new Set(o.skip || [])
+    const free = (n) => !locked.has(n) && !skip.has(n) && by.get(n).parent && (by.get(n).length || 0) > 0 && ch(n).length <= 2
+    const chainLen = (n) => 1 + Math.max(0, ...ch(n).filter(free).map(chainLen))
+    let chains = 0, bones = 0
+    const hash = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) } return ((h >>> 0) % 1000) / 1000 }
+    const lay = (n, d, phase, sign) => {
+      const amp = Math.min(16, 7 + 2.2 * d) * I * sign
+      const tr = tracks(a, n), keys = sineKeys(T, amp, phase % 1)
+      if (tr.rotate && tr.rotate.length === 1) { const base = tr.rotate[0].angle || 0; tr.rotate = keys.map(([t, v, e]) => ({ time: t3(t), angle: r2(v + base), ...curveOf(e) })) }
+      else if (!tr.rotate) keyRotate(a, n, keys)
+      else return
+      bones++
+      for (const c of ch(n)) if (free(c)) lay(c, d + 1, phase + 0.09, sign)
+    }
+    for (const b of json.bones) {
+      const n = b.name
+      if (!free(n) || free(b.parent) && by.get(b.parent).parent) continue
+      if (chainLen(n) < 2) continue
+      chains++
+      const h = hash(n)
+      lay(n, 0, h, h > 0.5 ? 1 : -1)
+    }
+    return { chains, bones }
+  }
+  function parentMatrix(json) {
+    const m = makeSkeleton(json); if (!m) return null
+    const out = new Map()
+    for (const b of m.sk.bones) { const p = b.parent; out.set(b.data.name, p ? { a: p.a, b: p.b, c: p.c, d: p.d } : { a: 1, b: 0, c: 0, d: 1 }) }
+    return out
+  }
+  const firstKey = (keys) => (keys && keys.length && !(keys[0].time > 0.0001) ? keys[0] : null)
+  const curveCopy = (k) => { const c = {}; for (const f of ['curve', 'c2', 'c3', 'c4']) if (k[f] !== undefined) c[f] = k[f]; return c }
+  /**
+   * Lift an animation off its rig: per role (hub, trunk bones by position along the trunk, arm and
+   * leg IK targets by where they sit, the weapon), the keys as deltas from the rig's idle first
+   * frame; translations in world axes divided by the figure's height. Cloth chains are left out —
+   * the target rig's own chains follow through the springs.
+   */
+  function extractClip(json, animName) {
+    const A = json.animations[animName]; if (!A) throw new Error('没有这个动画：' + animName)
+    const rig = rigMap(json); if (!rig.structural && !rig.templ) throw new Error('这个工程的骨架认不出身体结构')
+    const W = setupWorld(json), PM = parentMatrix(json)
+    const ref = refAnimation(json, animName), R = ref ? json.animations[ref] : null
+    const H = rig.height || (() => { let lo = Infinity, hi = -Infinity; for (const v of W.values()) { lo = Math.min(lo, v.y); hi = Math.max(hi, v.y) } return Math.max(60, hi - lo) })()
+    const hx = W.get(rig.hips).x, hy = W.get(rig.hips).y
+    const lift = (bone) => {
+      const tr = (A.bones || {})[bone]; if (!tr) return null
+      const base = (R && R.bones && R.bones[bone]) || {}, m = PM.get(bone), out = {}
+      if (tr.rotate && tr.rotate.length > 1) { const b0 = (firstKey(base.rotate) || {}).angle || 0; out.rotate = tr.rotate.map((k) => ({ time: k.time || 0, angle: (k.angle || 0) - b0, ...curveCopy(k) })) }
+      if (tr.translate && tr.translate.length > 1) { const f = firstKey(base.translate) || {}, bx = f.x || 0, by0 = f.y || 0
+        out.translate = tr.translate.map((k) => { const dx = (k.x || 0) - bx, dy = (k.y || 0) - by0; return { time: k.time || 0, x: (m.a * dx + m.b * dy) / H, y: (m.c * dx + m.d * dy) / H, ...curveCopy(k) } }) }
+      if (tr.scale && tr.scale.length > 1) { const f = firstKey(base.scale) || {}, bx = f.x == null ? 1 : f.x, by0 = f.y == null ? 1 : f.y; out.scale = tr.scale.map((k) => ({ time: k.time || 0, x: (k.x == null ? 1 : k.x) / (bx || 1), y: (k.y == null ? 1 : k.y) / (by0 || 1), ...curveCopy(k) })) }
+      return Object.keys(out).length ? out : null
+    }
+    const at = (n) => ({ px: (W.get(n).x - hx) / H, py: (W.get(n).y - hy) / H })
+    const trunk = rig.trunk.filter((n) => n !== rig.hips)
+    let dur = 0; const scan = (o) => { if (Array.isArray(o)) { for (const k of o) if (k && typeof k.time === 'number') dur = Math.max(dur, k.time) } else if (o && typeof o === 'object') for (const v of Object.values(o)) scan(v) }; scan(A.bones || {})
+    const clip = { source: animName, duration: dur, hub: lift(rig.hips), trunk: trunk.map((n, i) => ({ u: trunk.length > 1 ? i / (trunk.length - 1) : 0, tracks: lift(n) })).filter((x) => x.tracks),
+      arms: rig.armTargets.map((n) => ({ ...at(n), tracks: lift(n) })).filter((x) => x.tracks), legs: rig.legTargets.map((n) => ({ ...at(n), tracks: lift(n) })).filter((x) => x.tracks),
+      weapon: rig.weapon ? lift(rig.weapon) : null, events: (A.events || []).map((e) => ({ time: e.time || 0, name: e.name })) }
+    clip.moving = (clip.hub ? 1 : 0) + clip.trunk.length + clip.arms.length + clip.legs.length
+    return clip
+  }
+  function applyClip(source, clip, opts) {
+    const o = Object.assign({}, opts || {}), json = clone(source)
+    json.animations = json.animations || {}
+    let name = String(o.name || clip.source || '动作').trim(); if (json.animations[name]) { let k = 2; while (json.animations[name + '_' + k]) k++; name = name + '_' + k }
+    const rig = rigMap(json); if (!rig.structural && !rig.templ) throw new Error('这个工程的骨架认不出身体结构')
+    const W = setupWorld(json), PM = parentMatrix(json)
+    const H = rig.height || (() => { let lo = Infinity, hi = -Infinity; for (const v of W.values()) { lo = Math.min(lo, v.y); hi = Math.max(hi, v.y) } return Math.max(60, hi - lo) })()
+    const I = Math.max(0.2, Math.min(3, Number(o.intensity) || 1)), a = {}
+    const lay = (bone, tr) => {
+      if (!bone || !tr) return
+      const m = PM.get(bone), det = m.a * m.d - m.b * m.c || 1, mine = tracks(a, bone)
+      if (tr.rotate) mine.rotate = tr.rotate.map((k) => ({ time: t3(k.time), angle: r2(k.angle * I), ...curveCopy(k) }))
+      if (tr.translate) mine.translate = tr.translate.map((k) => { const wx = k.x * H * I, wy = k.y * H * I; return { time: t3(k.time), x: r2((m.d * wx - m.b * wy) / det), y: r2((-m.c * wx + m.a * wy) / det), ...curveCopy(k) } })
+      if (tr.scale) mine.scale = tr.scale.map((k) => ({ time: t3(k.time), x: r2(1 + (k.x - 1) * I), y: r2(1 + (k.y - 1) * I), ...curveCopy(k) }))
+    }
+    lay(rig.hips, clip.hub)
+    const trunk = rig.trunk.filter((n) => n !== rig.hips)
+    const usedT = new Set()
+    for (const t of clip.trunk) { if (!trunk.length) break; let best = 0, bd = Infinity; trunk.forEach((n, i) => { const u = trunk.length > 1 ? i / (trunk.length - 1) : 0, d = Math.abs(u - t.u); if (d < bd && !usedT.has(i)) { bd = d; best = i } }); if (usedT.has(best)) continue; usedT.add(best); lay(trunk[best], t.tracks) }
+    const hx = W.get(rig.hips).x, hy = W.get(rig.hips).y
+    const match = (list, targets) => { const used = new Set(); for (const it of list) { let best = null, bd = Infinity; for (const n of targets) { if (used.has(n)) continue; const d = Math.hypot((W.get(n).x - hx) / H - it.px, (W.get(n).y - hy) / H - it.py); if (d < bd) { bd = d; best = n } } if (best) { used.add(best); lay(best, it.tracks) } } }
+    match(clip.arms, rig.armTargets); match(clip.legs, rig.legTargets)
+    if (clip.weapon && rig.weapon) lay(rig.weapon, clip.weapon)
+    json.animations[name] = a
+    const report = { clip: clip.source, name, duration: clip.duration, laid: Object.keys(a.bones || {}).length }
+    report.basePose = basePose(json, a, name)
+    report.springs = bakeSprings(json, name, rig, { duration: clip.duration, loop: !!o.loop, wind: 0, springGain: 1, springs: o.springs })
+    if (clip.events.length) { json.events = json.events || {}; for (const e of clip.events) if (!json.events[e.name]) json.events[e.name] = {}; a.events = clip.events.map((e) => ({ time: t3(e.time), name: e.name })) }
+    return { json, name, report }
+  }
+
+  return { MOTIONS, synthesize, extractClip, applyClip, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
 })
