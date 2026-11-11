@@ -282,7 +282,7 @@
     const replace = !!(state.json && projects[activeProject] && operation !== 'append')
     // JSON + 图集 + 贴图 with no folder: right after loading, a dialog asks for one (纹理解包, see askImageFolder)
     await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, audio: await sourceAudio(src.audio, dir, json, name), imageFolder, label: stem(name), replace,
-      operation, askFolder: !imageFolder && !replace && !!(src.atlas && src.atlas.text) })
+      operation, askFolder: !imageFolder && !replace && !!(src.atlas && src.atlas.text) && !(opts && opts.noFolderAsk) })
     return true
   }
 
@@ -13781,8 +13781,43 @@
     if(!communitySeekMatches(undo.snapshot,undo.snapshot.frame))throw new Error('撤销状态发生变化，请检查当前帧')
     return {phase:'applied',operation:'seek_undo',animation:undo.snapshot.animation,frame:undo.snapshot.frame}
   }
+  // 小桃 动作 (motion-recipes.js): one sentence → a whole animation in one undo step. A character
+  // project that has no rig yet (only root + picture layers, e.g. fresh from 美工 一键拆图) first
+  // runs the app's own 自动架设 → 自动蒙皮 → 自动权重 on every picture, as the panels would.
+  async function agentMotion(op) {
+    const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
+    if (!R) throw new Error('动作合成模块未加载')
+    const def = R.MOTIONS[op.motion]
+    if (!def) throw new Error('不支持的动作：' + op.motion)
+    const keys = ['action', 'operation', 'motion', 'name', 'targets', 'duration', 'intensity', 'loop', 'delay', 'merge', 'facing']
+    if (Object.keys(op).some((k) => !keys.includes(k))) throw new Error('动作参数无效')
+    if (op.name !== undefined && (typeof op.name !== 'string' || !op.name.trim() || op.name.length > 100)) throw new Error('动画名称无效')
+    for (const [k, lo, hi] of [['duration', 0.2, 20], ['intensity', 0.2, 3], ['delay', 0, 20]]) if (op[k] !== undefined && !(Number.isFinite(op[k]) && op[k] >= lo && op[k] <= hi)) throw new Error('动作参数超出范围：' + k)
+    if (op.facing !== undefined && op.facing !== 1 && op.facing !== -1) throw new Error('朝向只能是 1 或 -1')
+    if (op.targets !== undefined && !(Array.isArray(op.targets) && op.targets.length <= 200 && op.targets.every((t) => typeof t === 'string' && t && t.length <= 100))) throw new Error('动作目标图层无效')
+    let prepared = null
+    if (def.kind === 'character' && state.json.bones.length <= 1) {
+      setMode('setup')
+      const rig = await autoRig(() => {})
+      const pics = () => imageLayers(false, false)
+      const mesh = await runBatch(pics(), '自动蒙皮', meshOneLayer)
+      const weights = await runBatch(pics(), '自动权重', (j, L) => weighOneLayer(j, L))
+      prepared = { bones: rig.bones, ik: rig.ik, layers: rig.layers, meshes: mesh.done, weighted: weights.done }
+    }
+    let out = null
+    const label = '小桃动作 ' + (op.name || def.label)
+    const applied = edit(label, (j) => {
+      out = R.synthesize(j, { motion: op.motion, name: op.name || def.label, targets: op.targets, duration: op.duration, intensity: op.intensity, loop: op.loop, delay: op.delay, merge: op.merge, facing: op.facing })
+      return { json: out.json }
+    })
+    if (applied === null || !out || !state.json.animations[out.name]) throw new Error('动作没有写入，已保留原工程')
+    state.anim = out.name; setMode('animate'); state.frame = 0; refresh()
+    return { phase: 'applied', operation: 'motion', motion: op.motion, animation: out.name, report: out.report, prepared, context: agentContext() }
+  }
+
   function agentAction(op) {
     if (!state.json) throw new Error('请先新建或导入动画工程')
+    if (op && op.operation === 'motion') return agentMotion(op)
     let boneReceipt, constraintReceipt
     if (['auto_mesh','auto_weights','edit_mesh','edit_weights','select_attachment'].includes(op.operation)) {
       const L={skin:op.skinName,slot:op.slotName,name:op.attachmentName}

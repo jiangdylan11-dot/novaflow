@@ -1,0 +1,589 @@
+/*
+ * Foart — motion recipes (小桃 动作合成).
+ *
+ * One call writes a complete, editable Spine 3.8 animation for a rig the app built (自动架设
+ * names: y/x hips, waist/chest/neck/head trunk, root-level IK targets) or any other rig:
+ *   synthesize(json, { motion, name, duration?, intensity?, facing?, targets?, loop? })
+ * Primary motion = a few eased keys on the trunk / hips / IK targets (what an animator keys);
+ * secondary motion (hair, cloth, ribbons, tails: every unnamed bone chain) = a damped spring per
+ * bone driven by its parent's real acceleration, evaluated through the Spine runtime itself so
+ * IK and transform constraints are honoured, then baked every 2 frames. Loops run the spring for
+ * three cycles and keep the last one, so the wrap is seamless.
+ * UI motions give every target layer its own bone at the picture's centre (one undo step) and key
+ * scale / translate / rotate / slot colour with a stagger by draw order.
+ */
+(function (root, factory) {
+  const api = factory()
+  if (typeof module === 'object' && module.exports) module.exports = api
+  if (root && typeof root === 'object') root.NovaFlowMotionRecipes = api
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict'
+
+  const FPS = 30
+  const clone = (v) => JSON.parse(JSON.stringify(v))
+  const r2 = (v) => Math.round(v * 100) / 100
+  const t3 = (v) => Math.round(v * 10000) / 10000
+  const EASE = { io: [0.25, 0, 0.75, 1], o: [0.15, 0.6, 0.35, 1], i: [0.6, 0, 0.85, 0.4], lin: null, step: 'stepped', back: [0.3, 0, 0.2, 1] }
+
+  // ---------------------------------------------------------------- catalogue --
+  const MOTIONS = {
+    idle: { kind: 'character', duration: 2, loop: true, label: '待机' },
+    breathe: { kind: 'character', duration: 3, loop: true, label: '呼吸' },
+    attack: { kind: 'character', duration: 1.1, loop: false, label: '攻击' },
+    heavy_attack: { kind: 'character', duration: 1.6, loop: false, label: '蓄力重击' },
+    cast: { kind: 'character', duration: 1.6, loop: false, label: '施法' },
+    hit: { kind: 'character', duration: 0.6, loop: false, label: '受击' },
+    die: { kind: 'character', duration: 1.4, loop: false, label: '死亡' },
+    win: { kind: 'character', duration: 1.4, loop: true, label: '胜利欢呼' },
+    jump: { kind: 'character', duration: 1, loop: false, label: '跳跃' },
+    float: { kind: 'character', duration: 3, loop: true, label: '漂浮' },
+    walk: { kind: 'character', duration: 1, loop: true, label: '走路(原地)' },
+    ui_pop: { kind: 'ui', duration: 1, loop: false, label: '入场弹出' },
+    ui_breathe: { kind: 'ui', duration: 1.6, loop: true, label: '呼吸缩放' },
+    ui_float: { kind: 'ui', duration: 2.4, loop: true, label: '上下浮动' },
+    ui_shake: { kind: 'ui', duration: 0.6, loop: false, label: '抖动' },
+    ui_flash: { kind: 'ui', duration: 1.2, loop: true, label: '闪光' },
+    ui_swing: { kind: 'ui', duration: 2, loop: true, label: '摇摆' },
+    ui_spin: { kind: 'ui', duration: 3, loop: true, label: '旋转' },
+    ui_press: { kind: 'ui', duration: 0.4, loop: false, label: '按下回弹' },
+    ui_bigwin: { kind: 'ui', duration: 2.4, loop: false, label: '大奖入场' }
+  }
+
+  // ------------------------------------------------------------------- rig map --
+  const TEMPLATE_LIMB = /^(kua\d+|jian\d+|leg\d*|leg_[lr]|lowerLeg_[lr]|foot\d*|foot_[lr]|toes_[lr]|arm\d+a?|Upper_arm_[lr]|forearm_[lr]|hand_[lr]|hip_[lr](_\d+)?|shoulder_[lr]|body_(up|down)_turn|face_turn(_back)?|eyes?_.*|mouth_.*|breast_[lr]|bra(_[lr])?|y\d*|x\d*|abdomen|neck_\d+)$/
+  const TRUNK = ['y', 'x', 'waist', 'chest', 'neck', 'head']
+  const STIFF = /(object|weapon|sword|blade|staff|spear|shield|gun|axe|bow|wand|handwear|glove|hand|arm|leg|foot|wing|horn|armor|armour)/i
+  const SOFT = /(hair|bang|braid|tail|ribbon|cape|cloak|skirt|scarf|tassel|sleeve|bottomwear|dress|ear|strap|flag|feather|fur)/i
+
+  function rigMap(json) {
+    const bones = json.bones, by = new Map(bones.map((b, i) => [b.name, { ...b, i }]))
+    const kids = new Map(); for (const b of bones) { const p = b.parent || ''; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(b.name) }
+    const ikTargets = new Set((json.ik || []).map((c) => c.target)), ikBones = new Set((json.ik || []).flatMap((c) => c.bones))
+    const tcBones = new Set((json.transform || []).flatMap((c) => c.bones)), tcTargets = new Set((json.transform || []).map((c) => c.target))
+    const has = (n) => by.has(n)
+    const trunk = TRUNK.filter(has)
+    const templ = trunk.length >= 3
+    // secondary chains: bones that carry pictures but no named role
+    const secondary = []
+    for (const b of bones) {
+      if (!b.parent || trunk.includes(b.name) || ikTargets.has(b.name) || ikBones.has(b.name) || tcTargets.has(b.name)) continue
+      if (templ && TEMPLATE_LIMB.test(b.name)) continue
+      if (!(b.length > 0)) continue
+      secondary.push(b.name)
+    }
+    const secSet = new Set(secondary)
+    const depth = new Map()
+    for (const n of secondary) { let d = 0, p = by.get(n).parent; while (p && secSet.has(p)) { d++; p = by.get(p).parent } depth.set(n, d) }
+    // hips: the template's y; otherwise the root child with the largest subtree
+    const size = (n) => 1 + (kids.get(n) || []).reduce((s, c) => s + size(c), 0)
+    const rootName = (bones.find((b) => !b.parent) || bones[0]).name
+    let hips = has('y') ? 'y' : has('x') ? 'x' : null
+    if (!hips) { const cs = (kids.get(rootName) || []).filter((c) => !ikTargets.has(c)); hips = cs.sort((a, b) => size(b) - size(a))[0] || rootName }
+    const chest = has('chest') ? 'chest' : null, neck = has('neck') ? 'neck' : null, head = has('head') ? 'head' : null
+    const armTargets = ['arm2', 'arm4', 'arm1', 'arm3'].filter((n) => has(n) && ikTargets.has(n) || has(n) && by.get(n).parent === rootName)
+    const legTargets = [...ikTargets].filter((n) => /^(leg\d|foot\d*)$/.test(n))
+    return { by, kids, trunk, templ, secondary, depth, hips, chest, neck, head, root: rootName, armTargets, legTargets, ikTargets, tcBones }
+  }
+
+  // --------------------------------------------------------------- key helpers --
+  function tracks(anim, bone) { anim.bones = anim.bones || {}; return (anim.bones[bone] = anim.bones[bone] || {}) }
+  function curveOf(e) { const c = EASE[e || 'io']; if (c === undefined || c === null) return {}; if (c === 'stepped') return { curve: 'stepped' }; return { curve: c[0], c2: c[1], c3: c[2], c4: c[3] } }
+  // keys: [[time, value(s), ease], ...] — ease belongs to the segment that STARTS at the key
+  function keyRotate(anim, bone, keys) { tracks(anim, bone).rotate = keys.map(([t, a, e]) => ({ time: t3(t), angle: r2(a), ...curveOf(e) })) }
+  function keyTranslate(anim, bone, keys) { tracks(anim, bone).translate = keys.map(([t, v, e]) => ({ time: t3(t), x: r2(v[0]), y: r2(v[1]), ...curveOf(e) })) }
+  function keyScale(anim, bone, keys) { tracks(anim, bone).scale = keys.map(([t, v, e]) => ({ time: t3(t), x: r2(v[0]), y: r2(v[1]), ...curveOf(e) })) }
+  function keyColor(anim, slot, keys) { anim.slots = anim.slots || {}; anim.slots[slot] = anim.slots[slot] || {}; anim.slots[slot].color = keys.map(([t, c, e]) => ({ time: t3(t), color: c, ...curveOf(e) })) }
+  // a phase-shifted sine for a loop, sampled at the extremes + crossings (eased), wrapping cleanly
+  function sineKeys(T, amp, phase, base = 0, cycles = 1) {
+    const out = [], n = 4 * cycles
+    for (let k = 0; k <= n; k++) {
+      let t = ((k / n) * T + phase * T) % T
+      out.push([t, base + amp * Math.sin((2 * Math.PI * cycles * (t / T)) - 2 * Math.PI * cycles * phase)])
+    }
+    // keys at the extremes of the shifted wave, sorted, plus exact 0 and T
+    const ext = []
+    for (let k = 0; k < 2 * cycles; k++) ext.push(((phase + (k + 0.5) / (2 * cycles)) % 1) * T)
+    const f = (t) => base + amp * Math.sin(2 * Math.PI * cycles * (t / T - phase))
+    const ts = [0, ...ext.filter((t) => t > 1e-4 && t < T - 1e-4), T].sort((a, b) => a - b)
+    return ts.map((t) => [t, f(t), 'io'])
+  }
+
+  // ------------------------------------------------------------ runtime probe --
+  function runtime() { const g = typeof globalThis !== 'undefined' ? globalThis : {}; return g.spine || (g.parent && g.parent.spine) || null }
+  function makeSkeleton(json, animName) {
+    const spine = runtime(); if (!spine) return null
+    const j = clone(json)
+    j.slots = []; j.skins = [{ name: 'default', attachments: {} }]; delete j.path; j.events = j.events || {}
+    const anims = {}; if (animName && j.animations && j.animations[animName]) { const a = j.animations[animName]; anims[animName] = { bones: a.bones || {}, ik: a.ik || {}, transform: a.transform || {} } }
+    j.animations = anims
+    const loader = { newRegionAttachment: () => null, newMeshAttachment: () => null, newBoundingBoxAttachment: () => null, newPathAttachment: () => null, newPointAttachment: () => null, newClippingAttachment: () => null }
+    const data = new spine.SkeletonJson(loader).readSkeletonData(j)
+    const sk = new spine.Skeleton(data); sk.setToSetupPose(); sk.updateWorldTransform()
+    return { spine, sk, anim: animName ? data.findAnimation(animName) : null }
+  }
+  function setupWorld(json) {
+    const s = makeSkeleton(json); if (!s) return null
+    const w = new Map(); for (const b of s.sk.bones) w.set(b.data.name, { x: b.worldX, y: b.worldY, rot: b.getWorldRotationX(), len: b.data.length, sx: b.getWorldScaleX() })
+    return w
+  }
+
+  // ----------------------------------------------------- secondary (springs) --
+  function bakeSprings(json, animName, rig, opts) {
+    if (opts.springs === false || opts.springs === 0) return 0
+    const s = makeSkeleton(json, animName); if (!s || !rig.secondary.length) return 0
+    const { spine, sk, anim } = s
+    const T = anim.duration || opts.duration, loop = opts.loop
+    const dt = 1 / FPS, sub = 4, cycles = loop ? 3 : 1
+    const total = Math.round(T * FPS) + (loop ? 0 : Math.round(0.5 * FPS))
+    const order = sk.bones.filter((b) => rig.secondary.includes(b.data.name))
+    const st = new Map(order.map((b) => {
+      const L = Math.max(8, b.data.length), nm = b.data.name, d = rig.depth.get(nm) || 0
+      const stiff = STIFF.test(nm) && !SOFT.test(nm)
+      const f = stiff ? 4.5 : Math.max(0.9, Math.min(3.2, 2.4 * Math.sqrt(45 / L))) * (1 - 0.06 * Math.min(d, 6))
+      const pSoft = rig.secondary.includes(b.parent && b.parent.data.name) && !(STIFF.test(b.parent.data.name) && !SOFT.test(b.parent.data.name))
+      return [nm, { th: 0, w: 0, hist: [], L, d, stiff, keep: stiff && !rig.secondary.includes(b.parent && b.parent.data.name) ? 0.8 : stiff && pSoft ? 0.9 : 0, pr0: b.parent ? b.parent.getWorldRotationX() : 0, om: 2 * Math.PI * f, z: stiff ? 0.7 : 0.32, gain: (stiff ? 0.15 : 0.3) * (opts.springGain || 1), lim: stiff ? 6 : Math.max(6, 20 / (1 + 0.35 * d)), out: [] }]
+    }))
+    const wind = opts.wind || 0
+    const frames = cycles * Math.round(T * FPS) + (loop ? 0 : Math.round(0.5 * FPS))
+    const last = loop ? (cycles - 1) * Math.round(T * FPS) : 0
+    for (let k = 0; k <= frames; k++) {
+      const t = loop ? (k % Math.round(T * FPS)) / FPS : Math.min(k / FPS, T)
+      sk.setToSetupPose()
+      anim.apply(sk, t, t, false, null, 1, spine.MixBlend.setup, spine.MixDirection.mixIn)
+      sk.updateWorldTransform()
+      for (const b of order) {
+        const S = st.get(b.data.name)
+        let keepDeg = 0
+        if (S.keep && b.parent) { let dr = b.parent.getWorldRotationX() - S.pr0; dr = ((dr + 540) % 360) - 180; keepDeg = -dr * S.keep }
+        S.keepDeg = keepDeg
+        b.rotation += S.th * 180 / Math.PI + keepDeg
+        b.updateWorldTransform()
+        // update this bone's descendants after its change (children come later in the order list
+        // when they are secondary; non-secondary children are recomputed below)
+        const p = b.parent
+        S.hist.push({ x: b.worldX, y: b.worldY, pr: p ? p.getWorldRotationX() * Math.PI / 180 : 0, r: b.getWorldRotationX() * Math.PI / 180 })
+        if (S.hist.length > 3) S.hist.shift()
+        if (S.hist.length === 3) {
+          const [a0, a1, a2] = S.hist
+          const ax = (a2.x - 2 * a1.x + a0.x) / (dt * dt), ay = (a2.y - 2 * a1.y + a0.y) / (dt * dt)
+          let dp = (a2.pr - 2 * a1.pr + a0.pr); dp = Math.atan2(Math.sin(dp), Math.cos(dp)); const alpha = dp / (dt * dt)
+          const nx = -Math.sin(a2.r), ny = Math.cos(a2.r)
+          const lever = S.L * 0.5
+          let drive = -(ax * nx + ay * ny) / lever * S.gain - alpha * S.gain * 0.9
+          if (wind) drive += wind * S.om * S.om * Math.sin(2 * Math.PI * (t / T) - S.d * 0.55) * (0.6 + 0.4 * Math.min(S.d, 4) / 4)
+          const h = dt / sub
+          for (let i = 0; i < sub; i++) {
+            const acc = drive - S.om * S.om * S.th - 2 * S.z * S.om * S.w
+            S.w += acc * h; S.th += S.w * h
+          }
+          const lim = S.lim * Math.PI / 180
+          if (S.th > lim) { S.th = lim; S.w = Math.min(S.w, 0) } else if (S.th < -lim) { S.th = -lim; S.w = Math.max(S.w, 0) }
+        }
+        if (k >= last) S.out.push(S.th * 180 / Math.PI + (S.keepDeg || 0))
+      }
+      // non-secondary descendants of secondary bones follow (e.g. a picture bone under a strand)
+      sk.updateWorldTransform()
+    }
+    const a = json.animations[animName]
+    let n = 0
+    for (const [name, S] of st) {
+      const vals = S.out
+      if (!vals.length) continue
+      const peak = Math.max(...vals.map(Math.abs)); if (peak < 0.25) continue
+      const keys = []
+      const step = 2
+      const count = loop ? Math.round(T * FPS) : vals.length - 1
+      for (let f = 0; f <= count; f += step) keys.push([f / FPS, vals[Math.min(f, vals.length - 1)], 'lin'])
+      if (loop) keys[keys.length - 1] = [T, keys[0][1], 'lin']
+      else if ((count % step) !== 0) keys.push([count / FPS, vals[count], 'lin'])
+      // add onto any rotate track the recipe already wrote for this bone
+      const tr = tracks(a, name)
+      if (tr.rotate && tr.rotate.length) {
+        const base = sampleTrack(tr.rotate)
+        tr.rotate = keys.map(([t, v]) => ({ time: t3(t), angle: r2(v + base(t)) }))
+      } else tr.rotate = keys.map(([t, v]) => ({ time: t3(t), angle: r2(v) }))
+      n++
+    }
+    return n
+  }
+  function sampleTrack(keys) {
+    return (t) => {
+      if (t <= keys[0].time) return keys[0].angle
+      for (let i = 0; i < keys.length - 1; i++) { const a = keys[i], b = keys[i + 1]; if (t <= b.time) { const u = (t - a.time) / Math.max(1e-6, b.time - a.time); return a.angle + (b.angle - a.angle) * u } }
+      return keys[keys.length - 1].angle
+    }
+  }
+
+  // ------------------------------------------------------- character recipes --
+  function characterRecipe(json, rig, motion, o) {
+    const W = setupWorld(json)
+    const a = {}
+    const T = o.duration, I = o.intensity
+    // scale of the figure: hips height above the lowest bone / the head
+    const hw = W && W.get(rig.hips), hd = W && rig.head && W.get(rig.head)
+    let H = 400
+    if (W) { let lo = Infinity, hi = -Infinity; for (const v of W.values()) { lo = Math.min(lo, v.y); hi = Math.max(hi, v.y) } H = Math.max(120, hi - lo) }
+    const F = o.facing || 1
+    // rotation that tips a bone's end toward +x·F: sign depends on the bone's world direction
+    const lean = (bone, deg) => { const w = W && W.get(bone); const s = w ? (Math.sin(w.rot * Math.PI / 180) >= 0 ? -1 : 1) : -1; return s * deg * F }
+    const trunkRot = (keysFor) => { for (const [bone, mul] of [[rig.chest, 1], [rig.neck, 0.5], [rig.head, 0.6]]) if (bone) keyRotate(a, bone, keysFor(mul, bone)) }
+    const hips = rig.hips
+    // the template's waist hangs from root and follows the hips at the constraint's translate mix:
+    // a whole-body move carries the rest, or the abdomen IK stretches (×1.6 measured)
+    const follow = (() => { const w = rig.by.get('waist'); if (!w || w.parent !== rig.root || hips === 'waist') return 0
+      const tc = (json.transform || []).find((c) => c.bones.includes('waist') && (c.target === 'x' || c.target === hips)); return 1 })()
+    const bob = (keys, waistShare = 1) => { keyTranslate(a, hips, keys); if (follow) keyTranslate(a, 'waist', keys.map(([t, v, e]) => [t, [v[0] * follow * waistShare, v[1] * follow * waistShare], e])) }
+    const arms = rig.armTargets
+    let wind = 0
+    switch (motion) {
+      case 'idle':
+      case 'breathe': {
+        const d = H * 0.012 * I * (motion === 'breathe' ? 0.7 : 1)
+        bob([[0, [0, 0], 'io'], [T / 2, [0, -d], 'io'], [T, [0, 0]]])
+        trunkRot((m, b) => sineKeys(T, lean(b, 1.6 * I * m), b === rig.chest ? 0 : 0.08 * m))
+        if (rig.chest) keyScale(a, rig.chest, [[0, [1, 1], 'io'], [T / 2, [1 + 0.012 * I, 1 + 0.012 * I], 'io'], [T, [1, 1]]])
+        arms.forEach((n, i) => keyTranslate(a, n, [[0, [0, 0], 'io'], [T / 2, [H * 0.006 * I * (i % 2 ? 1 : -1), -d * 0.8], 'io'], [T, [0, 0]]]))
+        if (!rig.templ && rig.trunk.length < 2) {
+          // a plain rig (one picture, a creature, a prop): breathe the trunk root by scale
+          keyScale(a, hips, [[0, [1, 1], 'io'], [T / 2, [1 + 0.015 * I, 1 - 0.01 * I], 'io'], [T, [1, 1]]])
+        }
+        wind = 0.018 * I
+        break
+      }
+      case 'float': {
+        bob(sineKeys(T, H * 0.025 * I, 0))
+        if (rig.chest) keyRotate(a, rig.chest, sineKeys(T, 2 * I, 0.25))
+        wind = 0.025 * I
+        break
+      }
+      case 'attack':
+      case 'heavy_attack': {
+        const heavy = motion === 'heavy_attack'
+        const tA = T * (heavy ? 0.45 : 0.3), tS = tA + T * (heavy ? 0.1 : 0.12), tH = tS + T * 0.15
+        const back = H * 0.03 * I, fwd = H * (heavy ? 0.08 : 0.05) * I, crouch = H * (heavy ? 0.05 : 0.03) * I
+        bob([[0, [0, 0], 'io'], [tA, [-back * F, -crouch], 'i'], [tS, [fwd * F, -crouch * 0.6], 'o'], [tH, [fwd * F * 0.9, -crouch * 0.5], 'io'], [T, [0, 0]]])
+        trunkRot((m, b) => [[0, 0, 'io'], [tA, lean(b, -10 * I * m), 'i'], [tS, lean(b, 16 * I * m), 'o'], [tH, lean(b, 13 * I * m), 'io'], [T, 0]])
+        arms.forEach((n, i) => { const lead = i === 0 ? 1 : 0.35
+          keyTranslate(a, n, [[0, [0, 0], 'io'], [tA, [-H * 0.08 * I * F * lead, H * 0.1 * I * lead], 'i'], [tS, [H * 0.16 * I * F * lead, -H * 0.02 * I], 'o'], [tH, [H * 0.14 * I * F * lead, -H * 0.03 * I], 'io'], [T, [0, 0]]]) })
+        const front = frontFoot(rig, W, F)
+        for (const ft of front) keyTranslate(a, ft, [[0, [0, 0], 'io'], [tA, [0, 0], 'o'], [tS, [fwd * F * 0.9, 0], 'io'], [tH, [fwd * F * 0.9, 0], 'io'], [T, [0, 0]]])
+        o.events = [{ name: 'hit', time: tS }]
+        break
+      }
+      case 'cast': {
+        const tU = T * 0.35, tR = T * 0.55, tH = T * 0.75
+        bob([[0, [0, 0], 'io'], [tU, [0, -H * 0.02 * I], 'io'], [tR, [0, H * 0.02 * I], 'o'], [tH, [0, H * 0.015 * I], 'io'], [T, [0, 0]]])
+        trunkRot((m, b) => [[0, 0, 'io'], [tU, lean(b, 4 * I * m), 'io'], [tR, lean(b, -8 * I * m), 'o'], [tH, lean(b, -7 * I * m), 'io'], [T, 0]])
+        arms.forEach((n, i) => keyTranslate(a, n, [[0, [0, 0], 'io'], [tU, [H * 0.03 * (i % 2 ? -1 : 1), H * 0.05 * I], 'io'], [tR, [H * 0.06 * (i % 2 ? -1 : 1), H * 0.22 * I], 'o'], [tH, [H * 0.06 * (i % 2 ? -1 : 1), H * 0.2 * I], 'io'], [T, [0, 0]]]))
+        o.flash = { time: tR, color: 'fff2b0ff' }
+        o.events = [{ name: 'cast', time: tR }]
+        break
+      }
+      case 'hit': {
+        const tI = T * 0.12, tB = T * 0.45
+        bob([[0, [0, 0], 'o'], [tI, [-H * 0.05 * I * F, -H * 0.01 * I], 'io'], [tB, [-H * 0.02 * I * F, 0], 'io'], [T, [0, 0]]])
+        trunkRot((m, b) => [[0, 0, 'o'], [tI, lean(b, -14 * I * m), 'io'], [tB, lean(b, 3 * I * m), 'io'], [T, 0]])
+        o.flash = { time: 0, color: 'ff6060ff', hold: tI, out: tB }
+        break
+      }
+      case 'die': {
+        const tH = T * 0.15, tF = T * 0.6, tE = T * 0.85
+        bob([[0, [0, 0], 'o'], [tH, [-H * 0.03 * F, -H * 0.03], 'i'], [tF, [-H * 0.02 * F, -H * 0.06], 'o'], [T, [-H * 0.02 * F, -H * 0.06]]])
+        keyRotate(a, rig.root, [[0, 0, 'o'], [tH, 0, 'i'], [tF, 78 * F, 'o'], [tE, 72 * F, 'io'], [T, 74 * F]])
+        trunkRot((m, b) => [[0, 0, 'o'], [tH, lean(b, -18 * m), 'i'], [tF, lean(b, -6 * m), 'io'], [T, lean(b, -4 * m)]])
+        o.fade = { from: tE, to: T + 0.0001, keepEnd: true }
+        o.flash = { time: 0, color: 'ff6060ff', hold: tH * 0.6, out: tH * 2 }
+        break
+      }
+      case 'win': {
+        const tC = T * 0.18, tU = T * 0.42, tL = T * 0.7
+        const up = H * 0.12 * I
+        bob([[0, [0, 0], 'i'], [tC, [0, -H * 0.03], 'o'], [tU, [0, 0], 'i'], [tL, [0, -H * 0.03], 'io'], [T, [0, 0]]])
+        keyTranslate(a, rig.root, [[0, [0, 0], 'step'], [tC, [0, 0], 'o'], [tU, [0, up], 'i'], [tL, [0, 0], 'step'], [T, [0, 0]]])
+        if (rig.chest) keyScale(a, rig.chest, [[0, [1, 1], 'i'], [tC, [1.03, 0.96], 'o'], [tU, [0.98, 1.03], 'i'], [tL, [1.03, 0.96], 'io'], [T, [1, 1]]])
+        trunkRot((m, b) => [[0, 0, 'io'], [tU, lean(b, -4 * m), 'io'], [T, 0]])
+        arms.forEach((n, i) => keyTranslate(a, n, [[0, [0, 0], 'i'], [tC, [0, -H * 0.02], 'o'], [tU, [H * 0.05 * (i % 2 ? -1 : 1), H * 0.25 * I], 'i'], [tL, [0, H * 0.05], 'io'], [T, [0, 0]]]))
+        break
+      }
+      case 'jump': {
+        const tC = T * 0.2, tU = T * 0.5, tL = T * 0.75
+        bob([[0, [0, 0], 'io'], [tC, [0, -H * 0.05], 'o'], [tU, [0, 0], 'i'], [tL, [0, -H * 0.05], 'io'], [T, [0, 0]]])
+        keyTranslate(a, rig.root, [[0, [0, 0], 'step'], [tC, [0, 0], 'o'], [tU, [0, H * 0.25 * I], 'i'], [tL, [0, 0], 'step'], [T, [0, 0]]])
+        if (rig.chest) keyScale(a, rig.chest, [[0, [1, 1], 'io'], [tC, [1.04, 0.94], 'o'], [tU, [0.97, 1.04], 'i'], [tL, [1.05, 0.93], 'io'], [T, [1, 1]]])
+        break
+      }
+      case 'walk': {
+        bob([[0, [0, 0], 'io'], [T / 4, [0, H * 0.015], 'io'], [T / 2, [0, 0], 'io'], [3 * T / 4, [0, H * 0.015], 'io'], [T, [0, 0]]])
+        trunkRot((m, b) => sineKeys(T, lean(b, 3 * m), 0.1))
+        rig.legTargets.slice(0, 2).forEach((n, i) => keyTranslate(a, n, [[0, [H * 0.08 * (i ? 1 : -1), 0], 'io'], [T / 4, [0, i ? 0 : H * 0.05], 'io'], [T / 2, [H * 0.08 * (i ? -1 : 1), 0], 'io'], [3 * T / 4, [0, i ? H * 0.05 : 0], 'io'], [T, [H * 0.08 * (i ? 1 : -1), 0]]]))
+        arms.slice(0, 2).forEach((n, i) => keyTranslate(a, n, sineKeys(T, 0, 0).map(([t]) => [t, [H * 0.05 * Math.sin(2 * Math.PI * t / T) * (i ? -1 : 1), 0], 'io'])))
+        wind = 0.02
+        break
+      }
+    }
+    return { anim: a, wind }
+  }
+
+  function frontFoot(rig, W, F) {
+    // every root-level leg target on the facing side of the hips (knee, ankle and toe targets of that leg)
+    const hx = W && W.get(rig.hips) ? W.get(rig.hips).x : 0
+    const feet = [...rig.ikTargets].filter((n) => W && W.get(n) && rig.by.get(n).parent === rig.root && /^(legd|footd*)$/.test(n))
+    const front = feet.filter((n) => (W.get(n).x - hx) * F > 0)
+    return front.length ? front : feet.sort((a, b) => (W.get(b).x - W.get(a).x) * F).slice(0, 1)
+  }
+
+  // --------------------------------------------------------------- UI recipes --
+  function slotCenters(json) {
+    const out = new Map(), skin = (json.skins || [])[0], atts = skin ? (skin.attachments || {}) : {}
+    const W = setupWorld(json)
+    for (const s of json.slots || []) {
+      const a = atts[s.name] && atts[s.name][s.attachment || Object.keys(atts[s.name] || {})[0]]
+      if (!a) continue
+      let x = 0, y = 0, w = 0, h = 0
+      if (!a.type || a.type === 'region') { x = a.x || 0; y = a.y || 0; w = a.width || 0; h = a.height || 0 }
+      else if (a.type === 'mesh' && a.vertices && a.vertices.length === (a.uvs || []).length) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+        for (let i = 0; i < a.vertices.length; i += 2) { x0 = Math.min(x0, a.vertices[i]); x1 = Math.max(x1, a.vertices[i]); y0 = Math.min(y0, a.vertices[i + 1]); y1 = Math.max(y1, a.vertices[i + 1]) }
+        x = (x0 + x1) / 2; y = (y0 + y1) / 2; w = x1 - x0; h = y1 - y0
+      } else continue
+      const bw = W && W.get(s.bone)
+      out.set(s.name, { x: (bw ? bw.x : 0) + x, y: (bw ? bw.y : 0) + y, w, h, bone: s.bone, att: a })
+    }
+    return out
+  }
+  /** Give each target slot its own bone at the picture's centre (pictures keep their place). */
+  function ensureLayerBones(json, slots) {
+    const centers = slotCenters(json), made = []
+    const rootName = (json.bones.find((b) => !b.parent) || json.bones[0]).name
+    const taken = new Set(json.bones.map((b) => b.name))
+    for (const name of slots) {
+      const s = json.slots.find((x) => x.name === name), c = centers.get(name)
+      if (!s || !c) continue
+      const owners = json.slots.filter((x) => x.bone === s.bone).length
+      if (s.bone !== rootName && owners === 1) continue
+      const b = json.bones.find((x) => x.name === s.bone)
+      if (b && (b.rotation || b.scaleX && b.scaleX !== 1 || b.scaleY && b.scaleY !== 1 || b.parent)) continue
+      let bn = name; let k = 2; while (taken.has(bn)) bn = name + '_' + k++
+      taken.add(bn)
+      const bx = Math.round(c.x * 100) / 100, by = Math.round(c.y * 100) / 100
+      json.bones.push({ name: bn, parent: rootName, x: bx, y: by })
+      for (const sk of json.skins) {
+        const m = sk.attachments && sk.attachments[name]; if (!m) continue
+        for (const att of Object.values(m)) {
+          if (!att.type || att.type === 'region') { att.x = r2((att.x || 0) - bx + (b ? b.x || 0 : 0)); att.y = r2((att.y || 0) - by + (b ? b.y || 0 : 0)) }
+          else if (att.type === 'mesh' && att.vertices.length === att.uvs.length) for (let i = 0; i < att.vertices.length; i += 2) { att.vertices[i] = r2(att.vertices[i] - bx); att.vertices[i + 1] = r2(att.vertices[i + 1] - by) }
+        }
+      }
+      s.bone = bn
+      made.push(bn)
+    }
+    return { made, centers }
+  }
+  function resolveTargets(spec, all) {
+    const list = Array.isArray(spec) ? spec : typeof spec === 'string' && spec ? spec.split('|') : []
+    if (!list.length) return all.slice()
+    const out = []
+    for (const p of list) {
+      const re = new RegExp('^' + String(p).split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i')
+      for (const n of all) if ((n === p || re.test(n)) && !out.includes(n)) out.push(n)
+    }
+    return out
+  }
+  function uiRecipe(json, motion, o) {
+    const all = (json.slots || []).map((s) => s.name)
+    const targets = resolveTargets(o.targets, all)
+    const { made } = ensureLayerBones(json, targets)
+    const boneOf = new Map(json.slots.map((s) => [s.name, s.bone]))
+    const centers = slotCenters(json)
+    const a = {}, T = o.duration, I = o.intensity
+    const n = targets.length
+    const stagger = o.stagger != null ? o.stagger : (n > 1 ? Math.min(0.08, (T * 0.4) / n) : 0)
+    let H = 200; for (const c of centers.values()) H = Math.max(H, c.h)
+    const seen = new Set()
+    targets.forEach((slot, i) => {
+      const bone = boneOf.get(slot); if (!bone || seen.has(bone)) return; seen.add(bone)
+      const d = stagger * i, c = centers.get(slot) || { h: 100, w: 100 }
+      switch (motion) {
+        case 'ui_pop': {
+          const t1 = d + 0.18, t2 = t1 + 0.12, t3 = t2 + 0.12
+          keyScale(a, bone, [[0, [0, 0], 'step'], ...(d > 0 ? [[d, [0, 0], 'o']] : [[0, [0, 0], 'o']]).slice(d > 0 ? 0 : 1), [t1, [1.18 * I + (1 - I), 1.18 * I + (1 - I)], 'io'], [t2, [0.94, 0.94], 'io'], [t3, [1, 1]]].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
+          keyColor(a, slot, [[0, 'ffffff00', d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, 'ffffff00', 'o']] : []), [d + 0.12, 'ffffffff']])
+          break
+        }
+        case 'ui_breathe': {
+          const s = 1 + 0.05 * I
+          keyScale(a, bone, [[0, [1, 1], 'io'], [T / 2, [s, s], 'io'], [T, [1, 1]]])
+          break
+        }
+        case 'ui_float': {
+          const amp = Math.max(4, c.h * 0.05) * I
+          keyTranslate(a, bone, sineKeys(T, amp, i * 0.13).map(([t, v, e]) => [t, [0, v], e]))
+          break
+        }
+        case 'ui_shake': {
+          const ks = []; const N = 8
+          for (let k = 0; k <= N; k++) { const t = d + (T * 0.8) * k / N; const fall = 1 - k / N; ks.push([t, (k % 2 ? 1 : -1) * 6 * I * fall * (k === 0 || k === N ? 0 : 1), 'io']) }
+          if (d > 0) ks.unshift([0, 0, 'step'])
+          keyRotate(a, bone, ks)
+          keyTranslate(a, bone, ks.map(([t, v, e]) => [t, [v * c.w * 0.004, 0], e]))
+          break
+        }
+        case 'ui_flash': {
+          const t0 = (d % T)
+          keyColor(a, slot, [[0, 'ffffffff', 'step'], ...(t0 > 0 ? [[t0, 'ffffffff', 'o']] : []), [t0 + 0.12, 'fffff0ff', 'io'], [t0 + 0.45, 'ffffffff', 'step'], [T, 'ffffffff']].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
+          // brighten via scale pop + colour (additive light comes from a 扫光 layer the planner adds separately)
+          keyScale(a, bone, [[0, [1, 1], 'step'], ...(t0 > 0 ? [[t0, [1, 1], 'o']] : []), [t0 + 0.12, [1.06, 1.06], 'io'], [t0 + 0.45, [1, 1], 'step'], [T, [1, 1]]].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
+          break
+        }
+        case 'ui_swing': {
+          keyRotate(a, bone, sineKeys(T, 6 * I, i * 0.1))
+          break
+        }
+        case 'ui_spin': {
+          keyRotate(a, bone, [[0, 0, 'lin'], [T / 3, -120, 'lin'], [2 * T / 3, -240, 'lin'], [T, -360]])
+          break
+        }
+        case 'ui_press': {
+          keyScale(a, bone, [[0, [1, 1], 'o'], [0.08, [0.9, 0.9], 'io'], [0.22, [1.05, 1.05], 'io'], [T, [1, 1]]])
+          break
+        }
+        case 'ui_bigwin': {
+          const t1 = d + 0.25, t2 = t1 + 0.15, t3 = t2 + 0.15
+          keyScale(a, bone, [[0, [0, 0], d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, [0, 0], 'o']] : []), [t1, [1.35, 1.35], 'io'], [t2, [0.9, 0.9], 'io'], [t3, [1.04, 1.04], 'io'], [t3 + 0.5, [1, 1], 'io'], [t3 + 1, [1.04, 1.04], 'io'], [T, [1, 1]]].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
+          keyRotate(a, bone, [[0, -8, d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, -8, 'o']] : []), [t1, 3, 'io'], [t2, 0]].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
+          keyColor(a, slot, [[0, 'ffffff00', d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, 'ffffff00', 'o']] : []), [d + 0.1, 'ffffffff']])
+          break
+        }
+      }
+    })
+    return { anim: a, made }
+  }
+
+  // ---------------------------------------------------------------- flashes --
+  function slotFlash(json, a, f, rigBones) {
+    const slots = (json.slots || []).map((s) => s.name)
+    a.slots = a.slots || {}
+    for (const s of slots) {
+      const base = (json.slots.find((x) => x.name === s).color) || 'ffffffff'
+      const keys = []
+      if (f.time > 0) keys.push({ time: 0, color: base })
+      keys.push({ time: t3(f.time), color: f.color, ...(f.hold ? { curve: 'stepped' } : {}) })
+      if (f.hold) keys.push({ time: t3(f.time + f.hold), color: f.color })
+      keys.push({ time: t3(f.out || f.time + 0.3), color: base })
+      a.slots[s] = a.slots[s] || {}; a.slots[s].color = keys
+    }
+  }
+  function slotFade(json, a, f) {
+    a.slots = a.slots || {}
+    for (const s of json.slots || []) {
+      const tr = (a.slots[s.name] = a.slots[s.name] || {})
+      const prev = tr.color || [{ time: 0, color: s.color || 'ffffffff' }]
+      const base = (s.color || 'ffffffff').slice(0, 6)
+      tr.color = [...prev.filter((k) => k.time < f.from), { time: t3(f.from), color: base + 'ff' }, { time: t3(f.to), color: base + '00' }]
+    }
+  }
+
+  // ---------------------------------------------------------------- entry ----
+  function synthesize(source, opts) {
+    const o = Object.assign({}, opts || {})
+    const def = MOTIONS[o.motion]
+    if (!def) throw new Error('未知动作：' + o.motion)
+    const json = clone(source)
+    json.animations = json.animations || {}
+    let name = String(o.name || def.label).trim() || o.motion
+    const into = o.merge && json.animations[name] ? json.animations[name] : null
+    if (!into && json.animations[name] && !o.replace) { let k = 2; while (json.animations[name + '_' + k]) k++; name = name + '_' + k }
+    o.duration = Math.max(0.2, Math.min(20, Number(o.duration) || def.duration))
+    o.intensity = Math.max(0.2, Math.min(3, Number(o.intensity) || 1))
+    o.loop = o.loop != null ? !!o.loop : def.loop
+    const report = { motion: o.motion, name, duration: o.duration, loop: o.loop }
+    if (def.kind === 'ui') {
+      const r = uiRecipe(json, o.motion, o)
+      if (o.delay) shiftAnim(r.anim, Number(o.delay) || 0)
+      json.animations[name] = into ? mergeAnim(into, r.anim) : r.anim
+      report.bones = r.made.length; report.targets = Object.keys(r.anim.bones || {}).length
+    } else {
+      const rig = rigMap(json)
+      if (!o.facing) o.facing = guessFacing(json, rig)
+      const r = characterRecipe(json, rig, o.motion, o)
+      json.animations[name] = r.anim
+      if (!Object.keys(r.anim.bones || {}).length) {
+        // nothing named to move (no rig yet): move the whole picture from the root
+        keyTranslate(r.anim, rig.root, [[0, [0, 0], 'io'], [o.duration / 2, [0, 8 * o.intensity], 'io'], [o.duration, [0, 0]]])
+      }
+      report.springs = bakeSprings(json, name, rig, { duration: o.duration, loop: o.loop, wind: r.wind, springGain: o.intensity, springs: o.springs })
+      if (o.flash) slotFlash(json, json.animations[name], o.flash)
+      if (o.fade) slotFade(json, json.animations[name], o.fade)
+      if (o.events && o.events.length) {
+        json.events = json.events || {}
+        for (const e of o.events) if (!json.events[e.name]) json.events[e.name] = {}
+        json.animations[name].events = o.events.map((e) => ({ time: t3(e.time), name: e.name }))
+      }
+      report.rig = { template: rig.templ, trunk: rig.trunk, hips: rig.hips, arms: rig.armTargets.length, secondary: rig.secondary.length, facing: o.facing }
+      // a non-looping action ends exactly where it started unless it is a fall
+      if (!o.loop && o.motion !== 'die') padEnd(json.animations[name], o.duration)
+    }
+    report.keys = countKeys(json.animations[name])
+    return { json, name, report }
+  }
+  function shiftAnim(a, d) {
+    for (const g of [a.bones || {}, a.slots || {}]) for (const tr of Object.values(g)) for (const [k, keys] of Object.entries(tr)) {
+      const first = keys[0]
+      const moved = keys.map((x) => ({ ...x, time: t3(x.time + d) }))
+      tr[k] = d > 0 && first ? [{ ...first, time: 0, curve: 'stepped', c2: undefined, c3: undefined, c4: undefined }, ...moved] : moved
+    }
+  }
+  function mergeAnim(base, add) {
+    for (const g of ['bones', 'slots']) { if (!add[g]) continue; base[g] = base[g] || {}; for (const [n, tr] of Object.entries(add[g])) base[g][n] = Object.assign(base[g][n] || {}, tr) }
+    return base
+  }
+  function padEnd(a, T) {
+    for (const tr of Object.values(a.bones || {})) for (const keys of Object.values(tr)) {
+      const last = keys[keys.length - 1]; if (last && last.time < T - 1e-4) keys.push({ ...last, time: t3(T), curve: undefined, c2: undefined, c3: undefined, c4: undefined })
+    }
+  }
+  function countKeys(a) { let n = 0; for (const g of [a.bones || {}, a.slots || {}]) for (const tr of Object.values(g)) for (const keys of Object.values(tr)) n += keys.length; return n }
+  function guessFacing(json, rig) {
+    // eyes / face pictures to the right of the head bone = facing right; default right
+    const W = setupWorld(json); if (!W || !rig.head) return 1
+    const h = W.get(rig.head)
+    const c = slotCenters(json)
+    let sx = 0, n = 0
+    for (const [name, v] of c) if (/eye|iris|irides|nose|mouth|face/i.test(name)) { sx += v.x - h.x; n++ }
+    if (!n) return 1
+    const off = sx / n
+    return Math.abs(off) < 6 ? 1 : (off > 0 ? 1 : -1)
+  }
+
+  /**
+   * 美工 layers (back → front, x/y = top-left in the picture, width/height, dataUrl) → a
+   * PhotoshopToSpine-style Spine 3.8 project the skeleton editor's loadSource() takes: one slot +
+   * region per layer on root, origin at the picture's bottom centre, one atlas page per picture.
+   */
+  function projectFromLayers(layers, size, opts) {
+    const list = (layers || []).filter((l) => l && l.dataUrl && l.width > 0 && l.height > 0)
+    if (!list.length) throw new Error('没有可用的图层')
+    const W = Math.round((size && size.width) || Math.max(...list.map((l) => (l.x || 0) + l.width)))
+    const H = Math.round((size && size.height) || Math.max(...list.map((l) => (l.y || 0) + l.height)))
+    const taken = new Set(), slots = [], atts = {}, atlas = [], images = []
+    for (const l of list) {
+      let name = String(l.name || l.id || 'layer').replace(/[\\/:*?"<>|\s]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'layer'
+      const base = name; let k = 2
+      while (taken.has(name.toLowerCase())) name = base + '_' + k++
+      taken.add(name.toLowerCase())
+      const w = Math.round(l.width), h = Math.round(l.height)
+      const cx = (l.x || 0) + w / 2 - W / 2, cy = H - ((l.y || 0) + h / 2)
+      slots.push({ name, bone: 'root', attachment: name })
+      atts[name] = { [name]: { x: r2(cx), y: r2(cy), width: w, height: h } }
+      atlas.push('', name + '.png', `size: ${w},${h}`, 'format: RGBA8888', 'filter: Linear,Linear', 'repeat: none',
+        name, '  rotate: false', '  xy: 0, 0', `  size: ${w}, ${h}`, `  orig: ${w}, ${h}`, '  offset: 0, 0', '  index: -1')
+      images.push({ fileName: name + '.png', dataUrl: l.dataUrl })
+    }
+    const stem = String((opts && opts.name) || 'foart_layers').replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|\s]+/g, '_') || 'foart_layers'
+    const skel = { skeleton: { hash: '', spine: '3.8.99', x: -W / 2, y: 0, width: W, height: H, images: './images/' },
+      bones: [{ name: 'root' }], slots, skins: [{ name: 'default', attachments: atts }], animations: {} }
+    return { skeleton: { fileName: stem + '.json', text: JSON.stringify(skel) }, atlas: { fileName: stem + '.atlas', text: atlas.join('\n') + '\n' }, images }
+  }
+
+  return { MOTIONS, synthesize, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld } }
+})
