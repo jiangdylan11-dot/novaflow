@@ -46,7 +46,9 @@
     ui_swing: { kind: 'ui', duration: 2, loop: true, label: '摇摆' },
     ui_spin: { kind: 'ui', duration: 3, loop: true, label: '旋转' },
     ui_press: { kind: 'ui', duration: 0.4, loop: false, label: '按下回弹' },
-    ui_bigwin: { kind: 'ui', duration: 2.4, loop: false, label: '大奖入场' }
+    ui_bigwin: { kind: 'ui', duration: 2.4, loop: false, label: '大奖入场' },
+    ui_win: { kind: 'symbol', duration: 1, loop: false, label: '符号中奖' },
+    ui_land: { kind: 'symbol', duration: 0.5, loop: false, label: '落地回弹' }
   }
 
   // ------------------------------------------------------------------- rig map --
@@ -489,6 +491,42 @@
     }
     return out
   }
+  /**
+   * A rigged symbol / icon (slot-game symbols, badges, buttons built from several bones), the way
+   * the studio's own win / fall clips are keyed: the whole piece squashes then pops from its hub
+   * bone, the parts hanging from the hub bounce a beat later (overlap), additive glow layers swell.
+   */
+  function symbolRecipe(json, rig, motion, o) {
+    const a = {}, T = o.duration, I = o.intensity
+    const { by, kids } = rig
+    const ch = (n) => kids.get(n) || []
+    const size = (n) => 1 + ch(n).reduce((t, c) => t + size(c), 0)
+    let hub = rig.root
+    for (let g = 0; g < 8; g++) { const cs = ch(hub).filter((c) => !rig.ikTargets.has(c)); if (cs.length !== 1) break; hub = cs[0] }
+    if (hub === rig.root) { const cs = ch(hub).slice().sort((x, y) => size(y) - size(x)); if (cs.length && size(cs[0]) >= (json.bones.length - 1) * 0.6) hub = cs[0] }
+    const centers = slotCenters(json)
+    let lo = Infinity, hi = -Infinity; for (const c of centers.values()) { lo = Math.min(lo, c.y - c.h / 2); hi = Math.max(hi, c.y + c.h / 2) }
+    const Hh = isFinite(hi - lo) && hi > lo ? hi - lo : 200
+    // additive layers (flares, glows) and the bones that carry only them
+    const glowSlots = (json.slots || []).filter((sl) => sl.blend === 'additive' || sl.blend === 'screen')
+    const glowBones = new Set(glowSlots.map((sl) => sl.bone).filter((b) => !(json.slots || []).some((x) => x.bone === b && !(x.blend === 'additive' || x.blend === 'screen'))))
+    const parts = ch(hub).filter((c) => !rig.ikTargets.has(c) && !glowBones.has(c) && !rig.secondary.includes(c))
+    if (motion === 'ui_win') {
+      const k = 1 + 0.2 * I
+      keyScale(a, hub, [[0, [1, 1], 'o'], [T * 0.1, [0.9, 0.9], 'o'], [T * 0.2, [k, k], 'io'], [T, [1, 1]]])
+      parts.forEach((p, i) => { const d = Math.min(0.12, 0.03 * i), u = Hh * 0.06 * I * (i % 2 ? 0.8 : 1)
+        keyTranslate(a, p, [[0, [0, 0], 'o'], [T * 0.1 + d, [0, u], 'io'], [T * 0.27 + d, [0, -u * 0.4], 'io'], [T * 0.5 + d, [0, -u * 0.15], 'io'], [T * 0.73 + d, [0, -u * 0.35], 'io'], [T, [0, 0]]]) })
+      for (const g of glowBones) keyScale(a, g, [[0, [1, 1], 'o'], [T * 0.2, [1.3, 1.3], 'io'], [T * 0.6, [1.1, 1.1], 'io'], [T, [1, 1]]])
+      for (const sl of glowSlots) { const base = (sl.color || 'ffffffff').slice(0, 6); keyColor(a, sl.name, [[0, base + '00', 'o'], [T * 0.2, base + 'ff', 'io'], [T * 0.75, base + 'cc', 'io'], [T, base + '00']]) }
+    } else {
+      const dY = Hh * 0.05 * I
+      keyTranslate(a, hub, [[0, [0, 0], 'o'], [T * 0.34, [0, -dY], 'io'], [T, [0, 0]]])
+      keyScale(a, hub, [[0, [1, 1], 'o'], [T * 0.34, [1.04, 0.94], 'io'], [T * 0.7, [0.99, 1.02], 'io'], [T, [1, 1]]])
+      parts.forEach((p, i) => { const d = Math.min(0.1, 0.03 * (i + 1))
+        keyTranslate(a, p, [[0, [0, 0], 'o'], [T * 0.34 + d, [0, -dY * 0.6], 'io'], [Math.min(T, T * 0.75 + d), [0, dY * 0.15], 'io'], [T, [0, 0]]]) })
+    }
+    return { anim: a, hub, parts: parts.length, glows: glowSlots.length }
+  }
   function uiRecipe(json, motion, o) {
     const all = (json.slots || []).map((s) => s.name)
     const targets = resolveTargets(o.targets, all)
@@ -629,7 +667,15 @@
     o.intensity = Math.max(0.2, Math.min(3, Number(o.intensity) || 1))
     o.loop = o.loop != null ? !!o.loop : def.loop
     const report = { motion: o.motion, name, duration: o.duration, loop: o.loop }
-    if (def.kind === 'ui') {
+    if (def.kind === 'symbol') {
+      const rig = rigMap(json)
+      const r = symbolRecipe(json, rig, o.motion, o)
+      json.animations[name] = r.anim
+      report.basePose = basePose(json, json.animations[name], name)
+      report.springs = bakeSprings(json, name, rig, { duration: o.duration, loop: false, wind: 0, springGain: o.intensity, springs: o.springs })
+      report.hub = r.hub; report.parts = r.parts; report.glows = r.glows
+      padEnd(json.animations[name], o.duration)
+    } else if (def.kind === 'ui') {
       const r = uiRecipe(json, o.motion, o)
       if (o.delay) shiftAnim(r.anim, Number(o.delay) || 0)
       json.animations[name] = into ? mergeAnim(into, r.anim) : r.anim
