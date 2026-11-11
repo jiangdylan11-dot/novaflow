@@ -27,6 +27,7 @@ const imageLabels = [
   { value: 'gpt:nano-banana-2.1', label: 'Nano Banana 2.1' },
   { value: 'gpt:gpt-image-2', label: 'GPT Image 2' },
   { value: 'gpt:grok-imagine', label: 'Grok 图像' },
+  { value: 'gpt:gpt-image-2.6', label: 'GPT Image 2.6' },
 ];
 
 test('image generation selectors are Qwen（本地）, GPT Image 2.5 and the three cheaper cloud lines', () => {

@@ -34,6 +34,7 @@ test('the planner contract asks once for the model line and then switches the se
 test('model lines name every drawable line with its credits a picture, a note and the selected one', () => {
   const models = load('art-generate-model.resource.js');
   const quote = ({ mode, model }) => {
+    if (model === 'gpt-image-2.6') return { credits: 23, billingMode: 'token' };
     if (model === 'gpt-image-2.5') return mode === 'img2img' ? { credits: 20, billingMode: 'fixed' } : { credits: 23, billingMode: 'token' };
     const fixed = { 'nano-banana-2.1': 13, 'gpt-image-2': mode === 'img2img' ? 11 : 4, 'grok-imagine': 8 };
     return { credits: fixed[model], billingMode: 'fixed' };
@@ -45,6 +46,7 @@ test('model lines name every drawable line with its credits a picture, a note an
     ['gpt:nano-banana-2.1', 'Nano Banana 2.1', 13, true],
     ['gpt:gpt-image-2', 'GPT Image 2', 11, false],
     ['gpt:grok-imagine', 'Grok 图像', 8, false],
+    ['gpt:gpt-image-2.6', 'GPT Image 2.6', null, false],
   ]);
   assert.ok(lines.every((line) => typeof line.note === 'string' && line.note.length > 0));
   // Text-to-image on GPT Image 2.5 is billed by usage: no fixed number is promised.
@@ -54,7 +56,7 @@ test('model lines name every drawable line with its credits a picture, a note an
   assert.equal(text.find((line) => line.value === 'local').selected, true);
   // Without a price card the lines still exist, just without numbers.
   const blind = JSON.parse(JSON.stringify(models.modelLines({ provider: 'local', mode: 'img2img' })));
-  assert.equal(blind.length, 5);
+  assert.equal(blind.length, 6);
   assert.equal(blind[2].credits, null);
   // Every value is an option of the 模型方式 select, so set_control can apply the answer.
   const values = new Set(models.providerOptions.map((option) => option.value));

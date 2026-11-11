@@ -13,6 +13,7 @@
     Object.freeze({ value: 'gpt:nano-banana-2.1', label: 'Nano Banana 2.1' }),
     Object.freeze({ value: 'gpt:gpt-image-2', label: 'GPT Image 2' }),
     Object.freeze({ value: 'gpt:grok-imagine', label: 'Grok 图像' }),
+    Object.freeze({ value: 'gpt:gpt-image-2.6', label: 'GPT Image 2.6' }),
   ])
   const PROVIDER_KEYS = new Set(PROVIDER_OPTIONS.map((option) => option.value))
   function modelsApiSafe() {

@@ -49,6 +49,7 @@
     Object.freeze({ id: 'nano-banana-2.1', label: 'Nano Banana 2.1', referenceLimit: 14, credits: { img2img: 13, txt2img: 13 } }),
     Object.freeze({ id: 'gpt-image-2', label: 'GPT Image 2', referenceLimit: 10, credits: { img2img: 11, txt2img: 4 } }),
     Object.freeze({ id: 'grok-imagine', label: 'Grok 图像', referenceLimit: 1, credits: { img2img: 8, txt2img: 8 } }),
+    Object.freeze({ id: 'gpt-image-2.6', label: 'GPT Image 2.6', referenceLimit: 16, credits: { img2img: null, txt2img: null } }),
   ])
   function normalizeCloudImageModel(value) {
     const id = String(value || '').trim().toLowerCase().replace(/^gpt:/, '')
@@ -85,6 +86,7 @@
     'nano-banana-2.1': '结构和文字最稳，性价比高，约一分钟',
     'gpt-image-2': '画质好，文生图最便宜，图生图较慢',
     'grok-imagine': '最便宜最快，忠实度一般',
+    'gpt-image-2.6': 'GPT 最新版，按实际用量扣分（质量越高越贵），等待一到两分钟',
   })
   // One row per drawable line for the current mode: option value, label, credits a picture
   // (0 local, null when billed by usage), note, and whether it is the selected one.

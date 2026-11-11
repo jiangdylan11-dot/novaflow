@@ -169,6 +169,28 @@
     var mode = spec.mode === 'img2img' ? 'img2img' : 'txt2img';
     var count = Math.max(1, Math.min(10, Math.round(Number(spec.count || spec.units) || 1)));
     var line = CLOUD_IMAGE_FEATURES[String(spec.model || '').trim().toLowerCase()];
+    // GPT Image 2.6 is billed by usage like the 2.5 token line; an edit holds at least the 2.5
+    // image-to-image price (mirrors packages/shared/src/runninghub-gpt-image.mjs quoteGptImage).
+    if (String(spec.model || '').trim().toLowerCase() === 'gpt-image-2.6') {
+      var tokenBilling = billingConfig();
+      var tokenShape = shapeOf(spec.settings);
+      var hold = tokenBilling.table[tokenShape.resolution][tokenShape.quality];
+      if (mode === 'img2img') hold = Math.min(tokenBilling.cap, Math.max(hold, quoteFeature({ feature: 'gpt_image_2_5_economy', units: 1 }).unitPrice));
+      return {
+        feature: 'gpt_image_2_5_token',
+        billingMode: 'token',
+        perImage: hold,
+        credits: hold * count,
+        count: count,
+        estimatedCreditsIsCap: true,
+        settleCap: tokenBilling.cap,
+        mayFallback: false,
+        resolution: tokenShape.resolution,
+        quality: tokenShape.quality,
+        model: 'gpt-image-2.6',
+        endpoint: ''
+      };
+    }
     if (line) {
       var fixed = quoteFeature({ feature: line[mode], units: count });
       return {

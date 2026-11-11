@@ -13,7 +13,9 @@ import {
   normalizeCloudImageModel,
   quoteGptImage,
   readRunningHubImageConfig,
-  runChargedGptImage
+  runChargedGptImage,
+  beginChargedGptImage,
+  finishChargedGptImage
 } from '../../packages/shared/src/runninghub-gpt-image.mjs';
 
 const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -142,4 +144,50 @@ test('a fixed line that is missing on RunningHub releases the hold instead of si
   }), /1001/);
   assert.equal(events.filter(([kind]) => kind === 'settle').length, 0);
   assert.equal(events.some(([kind]) => kind === 'release'), true);
+});
+
+test('GPT Image 2.6 sends size + quality, holds the token estimate and settles at the real money', async () => {
+  const text = mapGptImageParams({ mode: 'txt2img', model: 'gpt-image-2.6', prompt: '一张海报', settings: { size: '1536x1024', quality: 'high' } });
+  assert.equal(text.endpoint, '/openapi/v2/rhart-image-g-2.6-official-token/sunburst/text-to-image');
+  assert.deepEqual(text.body, { prompt: '一张海报', size: '1536x1024', quality: 'high' });
+  assert.equal(mapGptImageParams({ mode: 'txt2img', model: 'gpt-image-2.6', prompt: '一张海报', settings: { size: 'auto' } }).body.size, 'auto');
+  // A custom screen keeps its ratio inside the 1:3..3:1, 16-px and pixel-count rules.
+  assert.equal(mapGptImageParams({ mode: 'txt2img', model: 'gpt-image-2.6', prompt: '一张海报', settings: { size: 'Custom', customWidth: 944, customHeight: 2048 } }).body.size, '944x2048');
+  assert.equal(mapGptImageParams({ mode: 'txt2img', model: 'gpt-image-2.6', prompt: '一张海报', settings: { size: 'Custom', customWidth: 400, customHeight: 2000 } }).body.size, '512x1536');
+  assert.equal(fallbackFor(text.endpoint), '');
+
+  assert.deepEqual(['low', 'medium', 'high'].map((quality) => quoteGptImage({ mode: 'txt2img', model: 'gpt-image-2.6', settings: { size: '1024x1024', quality } }).perImage), [3, 6, 23]);
+  const editQuote = quoteGptImage({ mode: 'img2img', model: 'gpt-image-2.6', settings: { size: '1024x1024', quality: 'medium' } });
+  assert.equal(editQuote.billingMode, 'token');
+  assert.equal(editQuote.feature, 'gpt_image_2_5_token');
+  assert.equal(editQuote.perImage, 20); // references add input tokens: an edit holds at least the 2.5 edit price
+  assert.equal(quoteGptImage({ mode: 'txt2img', model: 'gpt-image-2.6', settings: { size: '2048x2048', quality: 'high' } }).perImage, 40);
+
+  const events = [];
+  const ports = {
+    reserve: async (input) => { events.push(['reserve', input.feature, input.estimatedCredits]); return { status: 'reserved' }; },
+    settle: async (input) => { events.push(['settle', input.feature, input.settledCredits, input.pricingSource]); return { settled_credits: input.settledCredits, balance_after: 90 }; },
+    release: async (input) => { events.push(['release', input.reason]); return { status: 'released' }; }
+  };
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push([String(url), typeof init?.body === 'string' ? JSON.parse(init.body) : null]);
+    if (String(url).includes('/media/upload/binary')) return Response.json({ code: 0, data: { download_url: 'https://cdn.example/up.png' } });
+    if (String(url).endsWith('/sunburst/edit')) return Response.json({ taskId: 't-26', status: 'RUNNING' });
+    if (String(url).endsWith('/query')) return Response.json({ taskId: 't-26', status: 'SUCCESS', results: [{ url: 'https://cdn.example/out.png' }], usage: { thirdPartyConsumeMoney: '0.02' } });
+    if (String(url) === 'https://cdn.example/out.png') return new Response(Buffer.from('png'), { headers: { 'content-type': 'image/png' } });
+    throw new Error('unexpected ' + url);
+  };
+  const begun = await beginChargedGptImage({
+    ports, config: config(), fetchImpl,
+    request: { userId: 'u1', usageKey: 'gptimg_26', mode: 'img2img', model: 'gpt-image-2.6', prompt: '换成夜景', images: [{ dataUrl: png }], settings: { size: '1024x1536', quality: 'medium' } }
+  });
+  const submit = calls.find(([url]) => url.endsWith('/sunburst/edit'));
+  assert.equal(submit[0], 'https://www.runninghub.ai/openapi/v2/rhart-image-g-2.6-official-token/sunburst/edit');
+  assert.deepEqual(submit[1], { prompt: '换成夜景', size: '1024x1536', quality: 'medium', imageUrls: ['https://cdn.example/up.png'] });
+  const done = await finishChargedGptImage({ ports, config: config(), fetchImpl, ticket: begun.ticket });
+  assert.equal(done.ok, true);
+  // $0.02 x 211 x 2 = 8.44 -> 9 credits, under the 20 hold.
+  assert.equal(done.charged, 9);
+  assert.deepEqual(events, [['reserve', 'gpt_image_2_5_token', 20], ['settle', 'gpt_image_2_5_token', 9, 'rh_consume_money']]);
 });

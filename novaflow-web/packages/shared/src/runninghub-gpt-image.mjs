@@ -87,6 +87,18 @@ export const CLOUD_IMAGE_MODELS = Object.freeze({
     img2img: '/openapi/v2/rhart-image-x-official/edit',
     feature: 'grok_image_official', shape: 'grok',
     aspectRatios: Object.freeze(['2:1', '20:9', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16', '9:20', '1:2'])
+  }),
+  // GPT Image 2.6 Sunburst (Dylan, 2026-11-11). RunningHub bills it by usage like the 2.5
+  // stable-token line (same price calculator: 1k low $0.006, medium $0.014, high $0.053), so it
+  // holds the token estimate and settles at the real money under the same cap. It takes `size`
+  // (WxH, multiples of 16, ratio 1:3..3:1) instead of aspectRatio + resolution. Flare is the
+  // faster sibling at the same price; Sunburst is the quality-first one.
+  'gpt-image-2.6': Object.freeze({
+    id: 'gpt-image-2.6', label: 'GPT Image 2.6', referenceLimit: 16,
+    txt2img: '/openapi/v2/rhart-image-g-2.6-official-token/sunburst/text-to-image',
+    img2img: '/openapi/v2/rhart-image-g-2.6-official-token/sunburst/edit',
+    feature: 'gpt_image_2_5_token', billing: 'token', shape: 'gpt26',
+    aspectRatios: ASPECT_RATIOS
   })
 });
 
@@ -107,6 +119,7 @@ export function cloudImageLine(model, mode = 'txt2img') {
     endpoint: img2img ? entry.img2img : entry.txt2img,
     feature: img2img && entry.img2imgFeature ? entry.img2imgFeature : entry.feature,
     shape: entry.shape,
+    billing: entry.billing === 'token' ? 'token' : 'fixed',
     aspectRatios: entry.aspectRatios,
     referenceLimit: img2img ? entry.referenceLimit : 0
   };
@@ -291,6 +304,35 @@ export function quoteGptImage({ endpoint, imageEndpoint, mode = 'txt2img', count
   const routes = config.gpt_image;
   const normalizedMode = String(mode || 'txt2img') === 'img2img' ? 'img2img' : 'txt2img';
   const line = cloudImageLine(cloudModel, normalizedMode);
+  if (line && line.billing === 'token') {
+    const images = clampCount(count);
+    const shape = resolveBillingShape(settings, width, height);
+    const estimated = estimateTokenImageCredits({ resolution: shape.resolution, quality: shape.quality, count: images, previewUsd, config });
+    // Reference pictures add input tokens the price table leaves out, so an edit holds at least
+    // the 2.5 image-to-image price (settled by real usage, never above the cap).
+    const perImage = normalizedMode === 'img2img'
+      ? Math.min(estimated.settleCap, Math.max(estimated.perImage, config.prices.gpt_image_2_5_economy))
+      : estimated.perImage;
+    return {
+      feature: line.feature,
+      billingMode: 'token',
+      perImage,
+      count: images,
+      credits: perImage * images,
+      estimatedCredits: perImage * images,
+      estimatedCreditsIsCap: true,
+      settleCap: estimated.settleCap,
+      endpoint: line.endpoint,
+      model: line.model,
+      cloudModel: line.model,
+      mayFallback: false,
+      fallbackFeature: null,
+      fallbackCredits: null,
+      resolution: estimated.resolution,
+      quality: estimated.quality,
+      message: `预估上限 ${perImage * images} 积分；成功后按实际用量结算，不会超过该上限`
+    };
+  }
   if (line) {
     const images = clampCount(count);
     const shape = resolveBillingShape(settings, width, height);
@@ -428,6 +470,40 @@ function positiveDimension(value, fallback) {
   return Math.max(64, Math.min(3840, number));
 }
 
+// GPT Image 2.6 takes `size`: 'auto', or WxH with both edges multiples of 16, ratio between 1:3
+// and 3:1, no edge over 3840 and 655360..8294400 pixels. A preset or custom size is brought
+// inside those rules keeping its ratio; an empty or unknown size (a page that sends only W / H)
+// uses W / H, and nothing at all is 'auto'.
+export function gpt26Size(settings = {}, width, height) {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const raw = String(source.size || source.gptSize || '').trim().toLowerCase();
+  if (raw === 'auto') return 'auto';
+  let w;
+  let h;
+  const match = /^(\d+)x(\d+)$/.exec(raw);
+  if (match) { w = Number(match[1]); h = Number(match[2]); }
+  else {
+    w = Number(source.customWidth ?? source.gptCustomWidth ?? width);
+    h = Number(source.customHeight ?? source.gptCustomHeight ?? height);
+  }
+  if (!(w > 0) || !(h > 0)) return 'auto';
+  let ratio = Math.min(3, Math.max(1 / 3, w / h));
+  let pixels = Math.min(8294400, Math.max(655360, w * h));
+  h = Math.sqrt(pixels / ratio);
+  w = h * ratio;
+  const scale = Math.min(1, 3840 / Math.max(w, h));
+  w *= scale; h *= scale;
+  const snap = (value, up) => Math.max(16, Math.min(3840, (up ? Math.ceil(value / 16) : Math.round(value / 16)) * 16));
+  let sw = snap(w);
+  let sh = snap(h);
+  if (sw * sh < 655360) { sw = snap(w, true); sh = snap(h, true); }
+  if (sw * sh > 8294400) { sw = Math.floor(w / 16) * 16; sh = Math.floor(h / 16) * 16; }
+  // Rounding can tip a 1:3 picture just past the limit: trim the long edge back inside.
+  while (sw * 3 < sh) sh -= 16;
+  while (sh * 3 < sw) sw -= 16;
+  return `${sw}x${sh}`;
+}
+
 export function mapGptImageParams({ mode = 'txt2img', prompt, settings = {}, images = [], width, height, endpoint, imageEndpoint, model: cloudModel } = {}) {
   const text = String(prompt || '').trim();
   if (!text || text.length > 20000) {
@@ -455,6 +531,9 @@ export function mapGptImageParams({ mode = 'txt2img', prompt, settings = {}, ima
     if (line.shape === 'grok') {
       if (text.length < 5) throw Object.assign(new Error('Grok 图像的提示词至少 5 个字'), { statusCode: 400 });
       body = normalizedMode === 'img2img' ? { prompt: text, image: urls[0] } : { prompt: text, aspectRatio: ratio, outputFormat: 'png' };
+    } else if (line.shape === 'gpt26') {
+      body = { prompt: text, size: gpt26Size(settings, width, height), quality: mapped.quality };
+      if (normalizedMode === 'img2img') body.imageUrls = urls;
     } else if (line.shape === 'banana') {
       body = { prompt: text, aspectRatio: ratio, resolution: mapped.resolution, thinkingLevel: 'medium' };
       if (normalizedMode === 'img2img') body.imageUrls = urls;
