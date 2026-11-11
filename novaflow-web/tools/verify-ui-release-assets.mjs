@@ -32,7 +32,7 @@ export async function verifyUiReleaseAssets({ webRoot, workerSrcRoot, workerRend
     ...UI_BROWSER_DEPENDENCIES.map(name => [webRoot, name]),
     [workerSrcRoot, 'prompt-assistant.mjs'], [workerSrcRoot, 'complete-ui-draft.mjs'], [workerSrcRoot, 'native-ui-draft.mjs'], [workerSrcRoot, 'ui-catalog-planner.mjs'],
     [workerRendererRoot, 'spine-split-runtime.js'], [workerRendererRoot, 'art-generate-reference-drop.tool.js'],
-    [desktopRoot, 'prompt-assistant-service.py'], [desktopRoot, 'prompt_assistant/ui_split_proposal.py'],
+    [desktopRoot, 'prompt-assistant-service.py'], [desktopRoot, 'prompt_assistant/ui_split_proposal.py'], [desktopRoot, 'prompt_assistant/ui_layer_split.py'],
     [desktopRoot, 'prompt_assistant/ui_catalog_cli.py'], [desktopRoot, 'prompt_assistant/natural_ui_draft.py'], [desktopRoot, 'prompt_assistant/ui_reference_catalog.py'], [desktopRoot, 'prompt_assistant/grok_ui_vision.py'], [desktopRoot, 'prompt_assistant/grok_ui_vision.recipe.json'], [desktopRoot, 'prompt_assistant/ui_catalog/bridge.py'],
     [desktopRoot, 'prompt_assistant/ui_catalog/compiler.py'], [desktopRoot, 'prompt_assistant/ui_catalog/layout_regions.py'], [desktopRoot, 'prompt_assistant/ui_catalog/observed_layout.py'], [desktopRoot, 'prompt_assistant/ui_catalog/OPTIONAL-DESIGN-RULES.json']
   ];
@@ -53,6 +53,7 @@ export async function verifyUiReleaseAssets({ webRoot, workerSrcRoot, workerRend
   const drop = await readFile(join(workerRendererRoot, 'art-generate-reference-drop.tool.js'), 'utf8');
   for (const [ok, label] of [
     [service.includes("purpose == 'ui-layer-proposal'") && service.includes('prompt_assistant.ui_split_proposal'), 'Python UI split dispatch'],
+    [service.includes("purpose == 'ui-layer-split'") && service.includes('prompt_assistant.ui_layer_split'), 'Python UI layer split dispatch'],
     [transport.includes('nf.ui.split.v1') && transport.includes('usesUiSplit'), 'UI split transport'],
     [/async\s+extractUiObject\s*\(/.test(native), 'native UI object extractor'],
     [native.includes('contextForPart(referencePart)'), 'layer repair source context'],

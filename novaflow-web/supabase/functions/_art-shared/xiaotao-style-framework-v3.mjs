@@ -15,6 +15,46 @@ const EFFECT_SUPPLEMENT_QUESTION = "Translate this request about a game VFX elem
 // 主题切换 reads a game screen as a function list so each theme can be designed from zero.
 const UI_INVENTORY_SYSTEM_TEXT = "你是游戏 UI 分析师，只读图，不做设计。用简体中文回答，只输出清单正文，不要前言、标题符号、Markdown 或 JSON。";
 const UI_INVENTORY_QUESTION = "读这张游戏界面截图，写出它的功能清单，供美术按新主题从零重新设计。按从上到下的顺序逐区写，每区一行，格式为：区域名［左,上,宽,高］：内容。方括号里是这个区域在截图上的位置，按整张截图宽高的百分比写四个整数（左边距、上边距、宽度、高度，例如［4,2,92,40］），要量准。必须写清：第一行写界面类型和横竖屏；符号盘或网格写成“横向每行N个、纵向共M行、共K格”（数清楚，不要写几列几行）以及里面出现的符号种类，人物头像类符号写“人物头像符号”；角色区写有几个角色、占多大；每一个按钮、信息条、数值框的功能和上面的原文文字与数字（原文照抄，加引号）；一个区域里有几个元素时写“从左到右为”或“从上到下为”并逐个列出；每个元素前标类型：【按钮】是能点击的按钮，【显示】是只显示数值或文字、不能点击的信息条、数值框、公告栏或标签，例如：投注栏［2,83,96,4］：从左到右为【显示】余额“¥1000”、【按钮】减号“−”、【显示】下注额“¥1000”、【按钮】加号“+”、【显示】赢分“¥1000”；没有文字的图标按钮写出它的功能，例如【按钮】旋转按钮（图标，无文字）。不要描述颜色、材质、画风、人物长相和背景，不要写建议。";
+// UI 拆图 reads a game screen as a list of art assets (one box per layer an artist would cut); the user
+// checks and adjusts the boxes before the compute node splits them. Prompt from work/ui-layer-split-lab/vision_assets.mjs.
+const UI_LAYERS_SYSTEM_TEXT = "You prepare game UI screenshots for an artist who needs every art asset as its own layer. You only read the picture. Reply with one JSON object only: no preamble, no markdown.";
+const UI_LAYERS_QUESTION = [
+  'You are preparing a game UI screenshot for an artist who needs every art asset as its own layer.',
+  'List EVERY independent visual asset, one entry per asset, at the granularity an artist would cut it:',
+  '- each slot/reel symbol or item icon is ONE asset (a gem cluster with its WILD/SCATTER caption and its frame is one asset; never list single stones, facets or letters)',
+  '- each button is ONE asset together with its icon and label; each small caption under a button is its own asset',
+  '- each plate, bar, panel, banner, jackpot box, reel board or frame that holds other things is ONE asset of kind "panel"',
+  '- each character, vehicle, creature or large scene prop standing in the scene (a train, a pile of ore) is ONE asset of kind "prop"',
+  '- stand-alone art text or numbers on a plate (a jackpot amount, a title, a balance) are assets of kind "text"; text = exactly the words or numbers it shows',
+  'Do not list the background scenery itself. Do not skip repeated symbols: list each occurrence.',
+  'bbox = an array of FOUR integers [x1, y1, x2, y2] (left, top, right, bottom) on a 0-1000 scale of the image width and height, tight around the asset; never a single number or a string.',
+  'parent = the name of the panel asset it sits on, or "" when it sits directly on the scene.',
+  'name is snake_case English; kind is one of panel, element, prop, text. Return JSON only, for example: {"assets":[{"name":"spin_button","kind":"element","bbox":[412,820,588,905],"parent":"","text":""}]}',
+].join('\n');
+const UI_LAYER_KINDS={panel:'panel',element:'object',object:'object',icon:'object',symbol:'object',item:'object',button:'object',prop:'prop',character:'prop',text:'text'};
+// Long lists come back as slightly broken JSON (a missing comma inside a bbox, a cut-off tail), so every
+// asset object is read on its own and the ones that cannot be read are dropped.
+function uiLayerRegions(reply) {
+  const field=(entry,key)=>{const m=new RegExp('"'+key+'"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').exec(entry);if(!m)return '';try{return JSON.parse('"'+m[1]+'"');}catch{return m[1];}};
+  const regions=[],seen=new Set(),byName=new Map();
+  for(const entry of String(reply).match(/\{[^{}]*\}/g)||[]) {
+    const kind=UI_LAYER_KINDS[field(entry,'kind').toLowerCase().trim()];
+    const bbox=/"(?:bbox|box)"\s*:\s*(\[[^\]]*\]|"[^"]*")/.exec(entry);
+    const numbers=bbox?bbox[1].match(/-?\d+(?:\.\d+)?/g)?.map(Number):null;
+    if(!kind||!numbers||numbers.length!==4)continue;
+    const [a,b,c,d]=numbers.map(n=>Math.max(0,Math.min(1000,Math.round(n))));
+    const box=[Math.min(a,c),Math.min(b,d),Math.max(a,c),Math.max(b,d)];
+    if(box[2]-box[0]<2||box[3]-box[1]<2||(box[2]-box[0]>=990&&box[3]-box[1]>=990))continue;
+    const key=kind+box.join(',');if(seen.has(key))continue;seen.add(key);
+    const name=codepoints(flat(field(entry,'name')),120)||kind;
+    const region={id:'r'+(regions.length+1),name,kind,box,uncertain:false,parent:flat(field(entry,'parent'))};
+    const words=codepoints(flat(field(entry,'text')),200);if(kind==='text'&&words)region.text=words;
+    regions.push(region);if(kind==='panel'&&!byName.has(name))byName.set(name,region.id);
+    if(regions.length>=96)break;
+  }
+  for(const region of regions){const parent=region.parent&&byName.get(region.parent);delete region.parent;if(parent&&parent!==region.id)region.parentId=parent;}
+  return regions;
+}
 const fail=()=>{throw Object.assign(new Error('operation-style-invalid'),{code:'operation-style-invalid',statusCode:400});};
 const flat=value=>String(value||'').replace(/\s+/g,' ').trim();
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -60,7 +100,7 @@ function validateStyleImageSize(dataUrl) {
   if(!pixels||pixels.length!==expected||(result.engine&&result.engine.bytesWritten!==input.length))fail();
   for(let row=0;row<h;row++)if(pixels[row*(1+w*channels)]>4)fail();
 }
-export const STYLE_OUTPUT_TOKENS=Object.freeze({style:120,'aifx-material':300,'aifx-supplement':120,'ui-inventory':700});
+export const STYLE_OUTPUT_TOKENS=Object.freeze({style:120,'aifx-material':300,'aifx-supplement':120,'ui-inventory':700,'ui-layers':6000});
 const codepoints=(value,max)=>Array.from(value).slice(0,max).join('');
 const cleanText=value=>String(value||'').trim().replace(/^```(?:json|text)?/i,'').trim().replace(/```$/,'').trim();
 const quoteStrip=value=>value.replace(/^[\s\"'“”]+|[\s\"'“”]+$/g,'');
@@ -74,14 +114,15 @@ export function canonicalizeXiaotaoV3StyleIntent(raw) {
     const intentHash=hash({schema:'nf.xiaotao.operation.style-material-supplement.v1',materialIntentHash:material.intentHash,supplementIntentHash:supplement.intentHash});
     return {intent,intentHash,compiled:{stages,imageCount:1,textOnly:false,outputTokens:stages[0].outputTokens+stages[1].outputTokens}};
   }
-  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['mode','requestId','kind','images','supplement'].includes(k))||raw.mode!=='style-analysis'||!/^[A-Za-z0-9_-]{8,128}$/.test(raw.requestId||'')||!['style','aifx-material','aifx-supplement','ui-inventory'].includes(raw.kind))fail();
-  const imageRole=raw.kind==='style'?'style':raw.kind==='ui-inventory'?'reference':'material';
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['mode','requestId','kind','images','supplement'].includes(k))||raw.mode!=='style-analysis'||!/^[A-Za-z0-9_-]{8,128}$/.test(raw.requestId||'')||!['style','aifx-material','aifx-supplement','ui-inventory','ui-layers'].includes(raw.kind))fail();
+  const screen=raw.kind==='ui-inventory'||raw.kind==='ui-layers';
+  const imageRole=raw.kind==='style'?'style':screen?'reference':'material';
   const textOnly=raw.kind==='aifx-supplement';
   if(textOnly ? (Object.hasOwn(raw,'images')||typeof raw.supplement!=='string'||!flat(raw.supplement)||raw.supplement.length>12000) :
     (Object.hasOwn(raw,'supplement')||!Array.isArray(raw.images)||raw.images.length!==1||!raw.images[0]||Object.keys(raw.images[0]).some(k=>!['role','dataUrl'].includes(k))||raw.images[0].role!==imageRole))fail();
   const intent=textOnly?{mode:raw.mode,requestId:raw.requestId,kind:raw.kind,supplement:codepoints(flat(raw.supplement),400)}:{mode:raw.mode,requestId:raw.requestId,kind:raw.kind,images:[{role:raw.images[0].role,dataUrl:raw.images[0].dataUrl}]};
-  const systemText=textOnly?EFFECT_SUPPLEMENT_SYSTEM_TEXT:raw.kind==='style'?ART_STYLE_SYSTEM_TEXT:raw.kind==='ui-inventory'?UI_INVENTORY_SYSTEM_TEXT:EFFECT_MATERIAL_SYSTEM_TEXT;
-  const userText=textOnly?EFFECT_SUPPLEMENT_QUESTION+'「'+intent.supplement+'」':raw.kind==='style'?ART_STYLE_QUESTION:raw.kind==='ui-inventory'?UI_INVENTORY_QUESTION:EFFECT_MATERIAL_QUESTION;
+  const systemText=textOnly?EFFECT_SUPPLEMENT_SYSTEM_TEXT:raw.kind==='style'?ART_STYLE_SYSTEM_TEXT:raw.kind==='ui-inventory'?UI_INVENTORY_SYSTEM_TEXT:raw.kind==='ui-layers'?UI_LAYERS_SYSTEM_TEXT:EFFECT_MATERIAL_SYSTEM_TEXT;
+  const userText=textOnly?EFFECT_SUPPLEMENT_QUESTION+'「'+intent.supplement+'」':raw.kind==='style'?ART_STYLE_QUESTION:raw.kind==='ui-inventory'?UI_INVENTORY_QUESTION:raw.kind==='ui-layers'?UI_LAYERS_QUESTION:EFFECT_MATERIAL_QUESTION;
   let content=[{type:'input_text',text:userText}];
   if(!textOnly) {
     // Reuse native bounded image and magic-byte validation. The validated original
@@ -89,14 +130,15 @@ export function canonicalizeXiaotaoV3StyleIntent(raw) {
     const validated=companionInput({mode:'chat',requestId:raw.requestId,message:userText,images:[{role:raw.kind==='style'?'style':'reference',dataUrl:intent.images[0].dataUrl}]});
     content=validated.input.at(-1).content;
     // The purpose is assigned by the client, not inferred or renamed by the model.
-    content[1]={type:'input_text',text:raw.kind==='style'?'Image 1: style reference.':raw.kind==='ui-inventory'?'Image 1: game UI screen to read.':'Image 1: effect material reference.'};
+    content[1]={type:'input_text',text:raw.kind==='style'?'Image 1: style reference.':screen?'Image 1: game UI screen to read.':'Image 1: effect material reference.'};
     validateStyleImageSize(intent.images[0].dataUrl);
   }
   const compiled={input:[{role:'system',content:[{type:'input_text',text:systemText}]},{role:'user',content}],imageCount:textOnly?0:1,textOnly,systemText,userText,outputTokens:STYLE_OUTPUT_TOKENS[raw.kind]};
   return {intent,compiled,intentHash:hash({schema:'nf.xiaotao.operation.style.v1',intent,systemText,userText,outputTokens:STYLE_OUTPUT_TOKENS[raw.kind]})};
 }
 export function inspectXiaotaoV3StyleReply({kind,reply}) {
-  if(typeof reply!=='string'||!reply.trim()||reply.length>12000)fail();
+  if(typeof reply!=='string'||!reply.trim()||reply.length>(kind==='ui-layers'?40000:12000))fail();
+  if(kind==='ui-layers') {const regions=uiLayerRegions(reply);if(!regions.length)fail();return {proposal:{schema:'nf.ui.split.v1',style:'',regions}};}
   if(kind==='style') {
     const rawStyle=codepoints(flat(reply),800);
     let value=flat(cleanText(reply));if(value.startsWith('{')){try {const obj=JSON.parse(value);if(obj&&!Array.isArray(obj)&&typeof obj==='object')value=Object.values(obj).find(x=>typeof x==='string'&&x.trim())?.trim()||value;}catch{}}

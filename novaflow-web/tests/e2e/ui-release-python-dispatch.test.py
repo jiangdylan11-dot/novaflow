@@ -1,4 +1,4 @@
-import ast
+﻿import ast
 import json
 import os
 import sys
@@ -32,7 +32,7 @@ request = {'images': [{'dataUrl': 'CPU_IMAGE_STUB'}], 'surface': 'ui-design', 'p
 result = scope['reverse_image_prompt'](model, request)
 assert result['proposal']['schema'] == 'nf.ui.split.v1'
 assert result['maskProduced'] is False
-assert len(model.calls) == 1 and model.calls[0]['max_length'] == 3072
+assert len(model.calls) == 1 and model.calls[0]['max_length'] == 4096
 assert model.calls[0]['images'] == ['CPU_DECODE_STUB']
 try:
     scope['reverse_image_prompt'](model, {**request, 'visualSchema': 'invalid'})

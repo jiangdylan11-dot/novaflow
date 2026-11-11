@@ -17,11 +17,32 @@
       if (used.has(id)) throw new Error('识别区域 ID 重复')
       used.add(id)
       const kind = region.kind
-      if (!['object', 'icon', 'panel', 'text', 'button', 'group'].includes(region.kind)) throw new Error('识别区域类型无效，原图未修改')
+      // 'prop' = a character or scene object: it is cut from the picture after the UI is removed, so hidden parts are complete.
+      if (!['object', 'icon', 'panel', 'text', 'button', 'prop', 'group'].includes(region.kind)) throw new Error('识别区域类型无效，原图未修改')
       const rounded = box.map(n => Math.round(n))
       if (rounded[2] <= rounded[0] || rounded[3] <= rounded[1]) throw new Error('识别区域为空，原图未修改')
-      return { id, name: String(region.name || '区域 ' + (index + 1)).slice(0, 120), kind, box: rounded, uncertain: region.uncertain === true, parentId: String(region.parentId || '').slice(0, 80), origin: region.origin === 'manual' ? 'manual' : region.origin === 'detail' ? 'detail' : 'model', selected: false, manualEdits: 0 }
+      return { id, name: String(region.name || '区域 ' + (index + 1)).slice(0, 120), kind, box: rounded, uncertain: region.uncertain === true, parentId: String(region.parentId || '').slice(0, 80), origin: region.origin === 'manual' ? 'manual' : region.origin === 'detail' ? 'detail' : 'model', selected: false, manualEdits: 0, ...(kind === 'text' && region.text ? { text: String(region.text).slice(0, 200) } : {}) }
     }) }
+  }
+  // The compute node's layer split (nf.ui.layers.v1: confirmed regions in, complete layers out, bottom to top) as a
+  // layer project. Hidden pixels in these layers were filled by the node, so nothing here is marked as unresolved.
+  function projectFromNodeLayers(source, proposal, result) {
+    const width = result?.width, height = result?.height, list = result?.layers
+    if (result?.visualSchema !== 'nf.ui.layers.v1' || !Number.isInteger(width) || !Number.isInteger(height) || !Array.isArray(list) || !list.length) throw new Error('拆图结果无效，原图和原图层保留')
+    const manualEdits = proposal.regions.reduce((n, r) => n + (r.manualEdits || 0), 0)
+    const origin = { sourceResourceId: source.id, sourceSha256: source.sha256, width, height, style: String(proposal.style || ''), proposalId: source.proposalId, manualEdits }
+    const groupNames = { background: '背景', prop: '场景物', panel: '底板', element: '元素', text: '文字' }
+    const layers = list.map((layer, index) => {
+      if (!groupNames[layer?.group] || typeof layer.dataUrl !== 'string' || !layer.dataUrl.startsWith('data:image/png;base64,') || ![layer.x, layer.y, layer.width, layer.height].every(Number.isInteger) || layer.width < 1 || layer.height < 1) throw new Error('拆图结果里有无效图层，原图和原图层保留')
+      const background = layer.group === 'background', region = proposal.regions.find(r => r.id === layer.id)
+      const sourceBox = { x: layer.x, y: layer.y, width: layer.width, height: layer.height }
+      return { id: source.proposalId + '_' + (background ? 'background' : String(layer.id).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) + '_' + index), type: 'image', name: background ? '背景' : groupNames[layer.group] + ' / ' + String(layer.name || layer.id).slice(0, 120), kind: background ? 'background' : 'asset', ...sourceBox, visible: true, opacity: 1, dataUrl: layer.dataUrl,
+        uiSplit: { ...origin, regionId: background ? '' : String(layer.id), regionKind: background ? 'background' : layer.group, parentId: String(layer.parentId || region?.parentId || ''), sourceBox, maskRecipe: 'node-layer-split', ...(layer.text ? { text: String(layer.text).slice(0, 200) } : {}) },
+        provenance: { kind: 'ui-layer-split', automaticProposal: region ? region.origin !== 'manual' : false, proposalScope: region?.origin || '', confirmedByUser: true, maskRecipe: 'node-layer-split', inferredHiddenPixels: true } }
+    })
+    if (layers[0].kind !== 'background') throw new Error('拆图结果缺少背景层，原图和原图层保留')
+    const groups = copy(proposal.groups || proposal.regions.filter(r => r.kind === 'group').map(r => ({ id: r.id, name: r.name, box: r.box, pixelLayer: false })))
+    return { version: 1, width, height, layers, uiSplitGroups: groups, uiSplitOriginal: { ...origin, originalDataUrl: source.dataUrl }, uiSplitFailures: [], uiSplitManualEdits: manualEdits }
   }
   function pixels(box, width, height) {
     const x = Math.max(0, Math.floor(box[0] * width / 1000)), y = Math.max(0, Math.floor(box[1] * height / 1000))
@@ -135,5 +156,5 @@
     const prompt = [originalPrompt || '修复选中的独立 UI 图层', '只输出目标独立素材，使用真实透明背景，不生成整张界面。原始 UI 仅提供画风、配色、材质、光照上下文；不复制其布局、人物身份或其他控件。未明确要求保留的旧形状和身份不要强锁。', ...targets.map((ref, i) => 'Image ' + (refs.indexOf(ref) + 1) + ': 待修改图层 ' + ref.name), ...combined.map((ref, index) => ref.uiSplitStyleOnly ? 'Image ' + (index + 1) + ': 原图风格上下文，不能当布局或待生成内容' : '').filter(Boolean), ...Array.from(sources.values(), s => s.style).filter(Boolean)].join('\n')
     return { uiSplitRepair: true, state, references: combined, originalPrompt, optimizedPrompt: originalPrompt, promptSnapshot: { prompt, negativePrompt: String(context.state.negativePrompt || '') }, sourceContexts: Array.from(sources.values()) }
   }
-  return Object.freeze({ validate, pixels, merge, divide, detailCrop, mapChildren, sourceHash, extract, repair })
+  return Object.freeze({ validate, pixels, merge, divide, detailCrop, mapChildren, sourceHash, extract, projectFromNodeLayers, repair })
 })

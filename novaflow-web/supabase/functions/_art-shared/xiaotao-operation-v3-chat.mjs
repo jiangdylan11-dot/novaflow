@@ -153,7 +153,7 @@ export function createXiaotaoOperationV3Chat({enabled=false,visionEnabled=false,
     let posted;
     try {posted=await infer({body:{model,input:compiled.input,temperature:audioRewrite?.5:.4,reasoning:{effort:'low'},max_output_tokens:outputTokens,
       ...(videoRewrite?{text:{format:xiaotaoVideoResponseFormat(intent.h3Mode)}}:{})},
-      model,signal,maxRetries:0,includeBillingIntegrity:true});}
+      model,signal,maxRetries:0,includeBillingIntegrity:true,...(styleAnalysis&&intent.kind==='ui-layers'?{long:true}:{})});}
     catch(error) {return {ok:false,errorCode:'provider-failed',receipt:await closeProviderFailedStage(ports,stage,{reason:error?.code||error?.message})};}
     const data=posted?.data;
     if(!data||data.model!==model||!data.usage)return {ok:false,errorCode:'provider-failed',receipt:await closeProviderFailedStage(ports,stage,{reason:'provider-answer-invalid'})};

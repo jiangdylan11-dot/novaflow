@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 import gc
@@ -20097,6 +20097,20 @@ class PromptAssistant:
         )
         merge_instruction = f"{current_prompt_instruction}{requirements_instruction}"
         is_art_direction = purpose in ('art-director', 'art-director-review') and payload.get('surface') == 'art'
+        if purpose == 'ui-layer-split':
+            # Confirmed regions in, complete layers out. No vision model here: SAM3 + the image service do the work,
+            # so the shared Qwen3 weights are released first to leave the memory to them.
+            if payload.get('visualSchema') != 'nf.ui.layers.v1':
+                raise ValueError('UI 拆图协议无效')
+            adapter = getattr(self, '_qwen3_adapter', None)
+            if adapter is not None and hasattr(adapter, 'unload'):
+                adapter.unload()
+            config = self.read_runtime_config()
+            if not payload.get('comfyUrl') and config.get('port'):
+                payload = {**payload, 'comfyUrl': 'http://127.0.0.1:%d' % int(config['port'])}
+            models_dir = config.get('modelsPath') or str(Path(config.get('assetsPath') or '') / 'models')
+            from prompt_assistant.ui_layer_split import split_request
+            return split_request(payload, str(self.comfy_root()), models_dir)
         if not isinstance(images, list) or (not images and not is_art_direction):
             raise ValueError("请先选择可分析的图片")
         image_items = []

@@ -32,9 +32,13 @@
     const footerActions = make('div'); Object.assign(footerActions.style, { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px', marginTop: '6px' })
     const note = make('div', '先识别原图，修正选区后批量拆层。'); Object.assign(note.style, { color: '#aaa', fontSize: '11px', lineHeight: '1.5' })
     const selection = make('select', '', { 'aria-label': '选中区域的提取方式', 'data-novaflow-art-generate-select-field': '1' }); Object.assign(selection.style, { width: '100%', minWidth: '0', height: '30px', boxSizing: 'border-box', background: '#292929', color: '#ddd', border: '1px solid #444', borderRadius: '5px', padding: '5px 8px', fontSize: '12px' })
-    for (const [value, text] of [['object', '对象轮廓（透明抠图）'], ['panel', '完整区块（保留框内像素）'], ['text', '文字保护（保留框内像素）'], ['group', '组织组（不提取像素）']]) { const option = make('option', text); option.value = value; selection.append(option) }
+    for (const [value, text] of [['object', '元素（按钮、图标、符号）'], ['panel', '底板（面板、条、框）'], ['text', '文字'], ['prop', '人物 / 场景物'], ['group', '组织组（不提取像素）']]) { const option = make('option', text); option.value = value; selection.append(option) }
+    // One field for the selected box: its name, or for a text box the words in it (the split redraws exactly these words).
+    const detailInput = make('input', '', { type: 'text', 'aria-label': '选中区域的名称或文字内容', 'data-ui-split-detail': '1', maxlength: '200' }); Object.assign(detailInput.style, { width: '100%', minWidth: '0', height: '30px', boxSizing: 'border-box', background: '#292929', color: '#ddd', border: '1px solid #444', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', outline: 'none' })
+    detailInput.addEventListener('input', () => { const region = selected().length === 1 ? selected()[0] : null; if (!region) return; if (region.kind === 'text') region.text = detailInput.value.slice(0, 200); else region.name = detailInput.value.slice(0, 120); region.manualEdits++; manualActions++; saveSession() })
+    detailInput.addEventListener('keydown', event => event.stopPropagation())
     const correctionHint = make('div', 'Ctrl 按住拖框添加选区；拖动框移动，拖边角缩放。Shift 多选，Delete 删除，Alt 重画。', { 'data-ui-split-correction-hint': '1' }); Object.assign(correctionHint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
-    controls.append(actions, editActions, selection, correctionHint, note, footerActions); panel.append(header, controls)
+    controls.append(actions, editActions, selection, detailInput, correctionHint, note, footerActions); panel.append(header, controls)
     const overlay = make('div', '', { 'data-novaflow-ui-split-preview': '1', tabindex: '0', 'aria-label': 'UI 拆图候选画布' }); Object.assign(overlay.style, { position: 'absolute', inset: '0', zIndex: '12', display: 'none', overflow: 'hidden', background: '#242424' })
     const previewImage = make('img', '', { draggable: 'false' }); Object.assign(previewImage.style, { position: 'absolute', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' })
     const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg'); Object.assign(svg.style, { position: 'absolute', touchAction: 'none', overflow: 'visible' }); overlay.append(previewImage, svg)
@@ -163,7 +167,7 @@
       svg.setAttribute('viewBox', '0 0 1000 1000'); svg.setAttribute('preserveAspectRatio', 'none')
       for (const region of proposal.regions) {
         const group = doc.createElementNS(svg.namespaceURI, 'g'), rect = doc.createElementNS(svg.namespaceURI, 'rect'), [x, y, right, bottom] = region.box
-        const color = ({ object: '#17a582', icon: '#17a582', panel: '#60a5fa', button: '#60a5fa', text: '#f9b454', group: '#c084fc' })[region.kind] || '#17a582'
+        const color = ({ object: '#17a582', icon: '#17a582', button: '#17a582', panel: '#60a5fa', text: '#f9b454', prop: '#f472b6', group: '#c084fc' })[region.kind] || '#17a582'
         for (const [key, value] of Object.entries({ x, y, width: right - x, height: bottom - y, fill: region.kind === 'group' ? 'none' : region.selected ? color + '33' : '#00000008', stroke: color, 'stroke-dasharray': region.kind === 'group' ? '8 5' : 'none', 'stroke-width': region.selected ? 3 : 2, 'vector-effect': 'non-scaling-stroke', 'data-region-id': region.id })) rect.setAttribute(key, value)
         group.append(rect)
         rect.style.cursor = 'move'
@@ -177,7 +181,10 @@
         svg.append(group)
       }
       selection.disabled = busy || !selected().length
-      if (selected().length === 1) selection.value = ['object', 'icon'].includes(selected()[0].kind) ? 'object' : ['group', 'text'].includes(selected()[0].kind) ? selected()[0].kind : 'panel'
+      if (selected().length === 1) selection.value = ['object', 'icon', 'button'].includes(selected()[0].kind) ? 'object' : ['group', 'text', 'prop'].includes(selected()[0].kind) ? selected()[0].kind : 'panel'
+      const only = selected().length === 1 ? selected()[0] : null
+      detailInput.disabled = busy || !only; detailInput.placeholder = !only ? '选中一个框后可改名称或文字' : only.kind === 'text' ? '这段文字的内容' : '这个区域的名称'
+      if (doc.activeElement !== detailInput) detailInput.value = !only ? '' : only.kind === 'text' ? (only.text || '') : (only.name || '')
       recognizeButton.disabled = busy; splitButton.disabled = busy || !proposal.regions.some(r => r.kind !== 'group'); cancelButton.disabled = false
       saveSession(); show(); sync()
     }
@@ -228,6 +235,28 @@
     svg.addEventListener('pointercancel', () => { if (cancelDrag()) render() })
     svg.addEventListener('lostpointercapture', () => { if (cancelDrag()) render() })
     function recognize() { return activateCurrent({ forceRecognize: true }) }
+    // Recognition runs on 小桃's selected online model (default 豆包), billed by use; the split itself stays on the compute node.
+    async function readableScreen(dataUrl) {
+      const image = await new Promise((resolve, reject) => { const im = new doc.defaultView.Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error('原图读取失败')); im.src = dataUrl })
+      const scale = Math.min(1, 768 / Math.max(1, image.naturalWidth, image.naturalHeight)), canvas = doc.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
+      return canvas.toDataURL('image/png')
+    }
+    async function readOnline(dataUrl, signal) {
+      const api = root.electronAPI, agent = root.NovaFlowXiaotaoArtAgent?.panel?.controller, selected = agent?.businessModelSnapshot?.()
+      if (typeof api?.promptAssistantDescribeArtStyle !== 'function' || typeof agent?.onlineBusinessUi !== 'function') throw new Error('对象识别未就绪，请刷新页面后重试')
+      if (!selected || selected.provider !== 'api') throw new Error('对象识别使用在线模型：请先在小桃里选择一个在线模型（默认豆包）')
+      const result = await api.promptAssistantDescribeArtStyle({
+        requestId: root.crypto.randomUUID(), name: 'ui.png', purpose: 'ui-layers', dataUrl,
+        assistantSelectionScope: 'xiaotao', assistantProvider: 'api', assistantModelId: selected.modelId, assistantSelectionEpoch: selected.epoch,
+        signal, isInputCurrent: () => !signal.aborted, ...agent.onlineBusinessUi(selected.modelId), onBillingNotice: () => true,
+      })
+      // An answer that came back but could not be read as boxes may be asked once more; a refusal before the charge may not.
+      if (!result?.ok) throw Object.assign(new Error(result?.error || '对象识别失败，原图未修改'), { retry: result?.errorCode === 'style-analysis-incomplete' })
+      try { return core.validate(result.proposal) } catch (error) { throw Object.assign(error, { retry: true }) }
+    }
+    const looksShort = list => list.regions.length < 8 || !list.regions.some(r => ['object', 'icon', 'button', 'prop'].includes(r.kind))
     async function activateCurrent({ forceRecognize = false } = {}) {
       if (busy || destroyed) return
       const state = bridge()?.getState?.(), current = state?.source
@@ -247,14 +276,17 @@
           message('已恢复本图的候选调整。确认后才拆层。'); return
         }
         if (root.__NovaFlowArtGenerate?.state.running || bridge()?.getState?.().busy) throw new Error('当前有生成或拆图任务运行中，请完成后识别')
-        const api = root.electronAPI
-        if (typeof api?.promptAssistantReverseImagePrompt !== 'function') throw new Error('本机视觉识别接口不可用，请连接桌面计算节点')
-        message('正在调用本机视觉模型识别原图，不预设布局…')
-        const result = await api.promptAssistantReverseImagePrompt({ surface: 'ui-design', purpose: 'ui-layer-proposal', visualSchema: 'nf.ui.split.v1', images: [{ name: current.fileName || 'ui.png', role: 'source', dataUrl: snapshot.dataUrl }] })
+        message('正在用在线模型识别原图里的对象，约需半分钟到两分钟…')
+        const screen = await readableScreen(snapshot.dataUrl)
+        let parsed = await readOnline(screen, next.controller.signal).catch(error => { if (!error.retry) throw error; return null })
         if (!operationCurrent(next)) return
-        if (result?.ok === false) throw new Error(result.error || '本机视觉识别失败')
-        if (result?.data?.validationError) throw new Error(result.data.validationError)
-        const parsed = core.validate(result?.data?.proposal || result?.proposal)
+        // The list is not stable between runs (one run came back with only the plates); ask once more when it is clearly short or unreadable.
+        if (!parsed || looksShort(parsed)) {
+          message('识别结果偏少，正在重新识别一次…')
+          const again = await readOnline(screen, next.controller.signal).catch(error => { if (!parsed) throw error; return null })
+          if (!operationCurrent(next)) return
+          if (again && (!parsed || again.regions.length > parsed.regions.length)) parsed = again
+        }
         snapshot.proposalId = 'ui_split_' + Date.now().toString(36)
         source = snapshot; proposal = parsed; manualActions = 0; refinementAttempts = []; previewImage.src = source.dataUrl; opened = true
         message('识别出 ' + proposal.regions.length + ' 个区域。拖动/缩放修正，Shift 多选；确认后才拆层。')
@@ -290,12 +322,26 @@
       try {
         const work = proposal
         if (!work.regions.length) throw new Error('请先选中本次要提取的区域')
-        const project = await core.extract(next.source, work, { document: doc, signal: next.controller.signal, cutout: (data, options) => bridge().extractUiObject(data, options), onProgress: ({ index, total, name }) => message('提取 ' + (index + 1) + '/' + total + '：' + name) })
+        // The compute node cuts each confirmed box along its outline, fills what was hidden (plates under icons, the
+        // scene behind the UI, characters behind plates) and redraws text as clean lettering. A node that does not
+        // know this request answers without layers; then the boxes are cropped here as before.
+        let project = null
+        const api = root.electronAPI, regions = work.regions.filter(r => r.kind !== 'group').map(r => ({ id: r.id, name: r.name, kind: r.kind, box: r.box, parentId: r.parentId || '', ...(r.kind === 'text' && r.text ? { text: r.text } : {}) }))
+        if (typeof api?.promptAssistantReverseImagePrompt === 'function' && regions.length) {
+          message('正在拆分 ' + regions.length + ' 个区域并补全被遮挡的部分，约需几分钟…')
+          const result = await api.promptAssistantReverseImagePrompt({ surface: 'ui-design', purpose: 'ui-layer-split', visualSchema: 'nf.ui.layers.v1', images: [{ name: 'ui.png', role: 'source', dataUrl: next.source.dataUrl }], regions })
+          if (!operationCurrent(next)) return
+          const data = result?.data || result
+          if (data?.visualSchema === 'nf.ui.layers.v1') project = core.projectFromNodeLayers(next.source, work, data)
+          else if (result?.ok === false && /拆图|分割|去除|图像服务|模型/.test(String(result.error || ''))) throw new Error(result.error)
+        }
+        const filled = !!project
+        if (!project) project = await core.extract(next.source, work, { document: doc, signal: next.controller.signal, cutout: (data, options) => bridge().extractUiObject(data, options), onProgress: ({ index, total, name }) => message('提取 ' + (index + 1) + '/' + total + '：' + name) })
         if (!operationCurrent(next)) return
         next.importing = true
         const imported = await bridge().importUiLayerProject(project, { name: 'UI 智能拆图', activate: true })
         store?.patchProject?.({ uiSmartSplitLast: { sourceResourceId: source.id, sourceSha256: source.sha256, regions: proposal.regions, extractedRegionIds: work.regions.map(r => r.id), manualActions, layerCount: project.layers.length, failures: project.uiSplitFailures, setId: imported.setId } })
-        opened = false; message('已拆出 ' + (project.layers.length - 1) + ' 个区域，另保留未补全背景。' + (project.uiSplitFailures.length ? '失败区域：' + project.uiSplitFailures.map(f => f.name + '（' + f.error + '）').join('；') : '') + ' 图层可拖到下方参考区修复。', project.uiSplitFailures.length > 0)
+        opened = false; message('已拆出 ' + (project.layers.length - 1) + (filled ? ' 个图层，背景和被遮挡的部分已补全。' : ' 个区域，另保留未补全背景。') + (project.uiSplitFailures.length ? '失败区域：' + project.uiSplitFailures.map(f => f.name + '（' + f.error + '）').join('；') : '') + ' 图层可拖到下方参考区修复。', project.uiSplitFailures.length > 0)
       } finally { finishOperation(next) }
     }
     overlay.addEventListener('wheel', event => {

@@ -317,10 +317,21 @@ export function normalizeReverseRequest(payload = {}) {
   const policy = payload.contentPolicy && typeof payload.contentPolicy === 'object' ? payload.contentPolicy : {};
   const usesUiSplit = purpose === 'ui-layer-proposal' && surface === 'ui-design';
   if (usesUiSplit && (images.length !== 1 || visualSchema !== 'nf.ui.split.v1')) throw new Error('UI 拆图需一张原图及有效识别协议');
+  const usesUiLayerSplit = purpose === 'ui-layer-split' && surface === 'ui-design';
+  if (usesUiLayerSplit && (images.length !== 1 || visualSchema !== 'nf.ui.layers.v1' || !Array.isArray(payload.regions) || !payload.regions.length || payload.regions.length > 160)) throw new Error('UI 拆图需一张原图及确认过的区域');
+  const uiLayerRegions = usesUiLayerSplit ? payload.regions.map((region, index) => ({
+    id: String(region?.id || 'region_' + (index + 1)).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80),
+    name: String(region?.name || '').slice(0, 120),
+    kind: String(region?.kind || '').slice(0, 20),
+    box: Array.isArray(region?.box) ? region.box.slice(0, 4).map(Number) : [],
+    parentId: String(region?.parentId || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80),
+    text: String(region?.text || '').slice(0, 200)
+  })) : [];
+  if (uiLayerRegions.some(region => region.box.length !== 4 || region.box.some(n => !Number.isFinite(n) || n < 0 || n > 1000))) throw new Error('UI 拆图区域坐标无效');
   const usesVisualV2 = purpose === 'static-image-reverse' && images.length === 1 && visualSchema === 'nf.visual.v2';
   return {
     usesVisualV2,
-    timeoutMs: usesH3 ? 180000 * Math.max(1, images.length) : 300000,
+    timeoutMs: usesH3 ? 180000 * Math.max(1, images.length) : usesUiLayerSplit ? 1200000 : 300000,
     request: {
       images, requirements, surface, purpose, provider: 'local', currentPrompt,
       ...(usesUiQwen ? { targetEngine:'qwen-2.1', supportsNegativePrompt:payload.supportsNegativePrompt !== false, uiDesignIntent:payload.uiDesignIntent, uiPreserveLayout:payload.uiPreserveLayout } : {}),
@@ -330,6 +341,7 @@ export function normalizeReverseRequest(payload = {}) {
       mandatoryChecklistTokens: checklist.map(item => item.checklistToken),
       ...(usesH3 ? { visualSchema, contentPolicy: { sensitiveVisualAnalysis: policy.sensitiveVisualAnalysis === true, allSubjectsConfirmedAdult: policy.allSubjectsConfirmedAdult === true } } : {}),
       ...(usesVisualV2 ? { visualSchema, nsfw: payload.nsfw === true } : {}),
+      ...(usesUiLayerSplit ? { visualSchema, targetEngine: 'ui-layer-split', regions: uiLayerRegions } : {}),
       ...(usesUiSplit ? { visualSchema, targetEngine: 'ui-split', ...(payload.uiSplitScope === 'children' ? { uiSplitScope: 'children', uiSplitGroupName: String(payload.uiSplitGroupName || '').slice(0, 120) } : {}) } : {})
     }
   };

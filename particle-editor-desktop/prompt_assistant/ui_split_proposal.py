@@ -7,7 +7,7 @@ import re
 SCHEMA = "nf.ui.split.v1"
 QUESTION = '''Look at the supplied UI screenshot and propose separately editable visible UI objects and panels. Return ONLY valid JSON:
 {"schema":"nf.ui.split.v1","style":"brief description of rendering, palette, materials and lighting, not identities or layout","regions":[{"id":"r1","name":"short object name","kind":"object","box":[10,20,200,300],"uncertain":false}]}.
-All coordinates are integers normalized to 0..1000 relative to this exact whole screenshot. Tight boxes must enclose the COMPLETE visible object or panel. Include visible character/mascot art, independent icons, important panels and buttons. Separate visually distinct repeated objects; do not invent a grid count or invisible objects. Avoid duplicating a whole-screen box and its contents. Use object/icon for a free silhouette, panel for a complete rectangular UI block and text for a text region. Propose at most 32 useful regions, not individual glyphs or tiny decoration specks. Mark uncertain boxes uncertain=true. This is a proposal the user will correct, not a final mask. Never infer hidden pixels. Do not redesign or generate an image. Do not return prose outside JSON.'''
+All coordinates are integers normalized to 0..1000 relative to this exact whole screenshot. Tight boxes must enclose the COMPLETE visible object or panel. Include independent icons, important panels and buttons, and every character, mascot, vehicle or large scene prop standing in the scene. One region per thing an artist would cut as one asset: each reel symbol or item icon is ONE region together with its own frame and caption (never its single stones, facets or letters), each button is ONE region with its icon, each plate, bar, banner or board that holds other things is ONE panel. List every occurrence of repeated symbols; do not invent a grid count or invisible objects. Avoid duplicating a whole-screen box and its contents. Use object/icon/button for UI elements, panel for a plate that holds other things, prop for a character or scene object, and text for one line of stand-alone text or numbers on a plate; a text region also carries "text" with exactly the words in it. Propose at most 80 useful regions, not individual glyphs or tiny decoration specks. Mark uncertain boxes uncertain=true. This is a proposal the user will correct, not a final mask. Never infer hidden pixels. Do not redesign or generate an image. Do not return prose outside JSON.'''
 
 def validate_proposal(raw):
     if isinstance(raw, str):
@@ -15,11 +15,11 @@ def validate_proposal(raw):
     if not isinstance(raw, dict) or raw.get("schema") != SCHEMA:
         raise ValueError("UI 识别结果格式无效，原图未修改")
     regions = raw.get("regions")
-    if not isinstance(regions, list) or not 1 <= len(regions) <= 48:
+    if not isinstance(regions, list) or not 1 <= len(regions) <= 96:
         raise ValueError("UI 识别没有有效区域，原图未修改")
     used = set()
     for region in regions:
-        if not isinstance(region, dict) or region.get("kind") not in {"object", "icon", "panel", "text", "button"}:
+        if not isinstance(region, dict) or region.get("kind") not in {"object", "icon", "panel", "text", "button", "prop"}:
             raise ValueError("UI 区域类型无效")
         key = str(region.get("id") or "")
         box = region.get("box")
@@ -31,6 +31,10 @@ def validate_proposal(raw):
         region["box"] = [round(n) for n in box]
         region["name"] = str(region.get("name") or key)[:120]
         region["uncertain"] = region.get("uncertain") is True
+        if region.get("kind") == "text" and isinstance(region.get("text"), str):
+            region["text"] = region["text"][:200]
+        else:
+            region.pop("text", None)
     return {"schema": SCHEMA, "style": str(raw.get("style") or "")[:1200], "regions": regions}
 
 CHILD_QUESTION = '''This image is a crop of one previously identified UI group, with a small margin. Identify the INDEPENDENT visible targets inside that named group. Return the same nf.ui.split.v1 JSON with coordinates normalized to 0..1000 of this exact CROP, not the full screenshot.
@@ -67,7 +71,7 @@ def propose(assistant, tensors, context=None):
     group_name = str(context.get("uiSplitGroupName") or "selected UI group")[:120]
     question = QUESTION + ("\nNamed group: " + group_name + "\n" + CHILD_QUESTION if children else "")
     output = assistant.generate("<|vision_start|><|image_pad|><|vision_end|>\n" + question,
-        images=tensors, llama_template=template, max_length=4096 if children else 3072, trace_label="uiSplitChildren" if children else "uiSplitProposal", do_sample=False)
+        images=tensors, llama_template=template, max_length=4096, trace_label="uiSplitChildren" if children else "uiSplitProposal", do_sample=False)
     result = {"rawOutput": output, "visualSchema": SCHEMA, **_generation_identity(assistant), "maskProduced": False, "scope": "children" if children else "whole"}
     try:
         result["proposal"] = validate_proposal(output)
