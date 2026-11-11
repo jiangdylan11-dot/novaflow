@@ -820,7 +820,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   // Pin all bytes except Python's equivalent CRLF/LF source line endings.
   // Derive these hashes from the packaged source after CRLF -> LF conversion;
   // BOM, lone CR, whitespace and every other byte remain security-relevant.
-  const expectedBridgeService='6432af6e38c0825aa7b0b51dd0ef11cf747852f49fdc8afd20db219631884099';
+  const expectedBridgeService='25458740c225875750c83b6e19cca944cb29699b80e013383b49a0b4c89a09b1';
   const expectedBridgeAdapter='ecb801bcf473bfd36f291a32fe882d586e2c9d0450d0c25a6981381f62f06014';
   const fileDigest=file=>{
     const input=readFileSync(file), normalized=Buffer.allocUnsafe(input.length);let used=0;
