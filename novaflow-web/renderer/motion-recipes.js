@@ -82,7 +82,84 @@
     const chest = has('chest') ? 'chest' : null, neck = has('neck') ? 'neck' : null, head = has('head') ? 'head' : null
     const armTargets = ['arm2', 'arm4', 'arm1', 'arm3'].filter((n) => has(n) && ikTargets.has(n) || has(n) && by.get(n).parent === rootName)
     const legTargets = [...ikTargets].filter((n) => /^(leg\d|foot\d*)$/.test(n))
-    return { by, kids, trunk, templ, secondary, depth, hips, chest, neck, head, root: rootName, armTargets, legTargets, ikTargets, tcBones }
+    const base = { by, kids, trunk, templ, secondary, depth, hips, chest, neck, head, root: rootName, armTargets, legTargets, ikTargets, tcBones }
+    if (!templ) { const g = structuralRig(json, base, size); if (g) return g }
+    return base
+  }
+
+  /**
+   * A rig with any bone names (an artist's own: bone12, idle43 …), read by structure: the hub is
+   * where the dominant branch from root first fans out (the pelvis / body bone an animator bobs);
+   * the trunk climbs from the hub through the child whose branch reaches highest, until that
+   * branch is a plain chain (hair); IK targets are arms when their chain hangs from the trunk
+   * above the hub and legs otherwise; what hangs from an IK limb moves with it (a weapon in the
+   * hand); every other bone chain is cloth / hair for the springs.
+   */
+  function structuralRig(json, base, size) {
+    const W = setupWorld(json); if (!W) return null
+    const { by, kids, ikTargets } = base
+    const ch = (n) => kids.get(n) || []
+    const top = new Map(), low = new Map()
+    const ext = (n) => { const w = W.get(n); const r = (w.rot * Math.PI) / 180; let hi = Math.max(w.y, w.y + Math.sin(r) * (w.len || 0)), lo = Math.min(w.y, w.y + Math.sin(r) * (w.len || 0)); for (const c of ch(n)) { const e = ext(c); hi = Math.max(hi, e[0]); lo = Math.min(lo, e[1]) } top.set(n, hi); low.set(n, lo); return [hi, lo] }
+    ext(base.root)
+    const H = Math.max(60, top.get(base.root) - low.get(base.root)), floor = low.get(base.root)
+    const ikBones = new Set((json.ik || []).flatMap((c) => c.bones))
+    const body = (n) => !ikTargets.has(n)
+    // the hub
+    let hub = base.root
+    for (let guard = 0; guard < 12; guard++) {
+      const cs = ch(hub).filter(body).sort((a, b) => size(b) - size(a))
+      if (!cs.length) break
+      const total = cs.reduce((s, c) => s + size(c), 0)
+      const fan = cs.filter((c) => size(c) >= 2).length
+      if (fan >= 3 && hub !== base.root) break
+      if (size(cs[0]) < total * 0.5 && hub !== base.root) break
+      hub = cs[0]
+    }
+    if (hub === base.root || size(hub) < 6) return null
+    // the trunk: climb while the best child still fans out (a head carries hair chains, a chain is hair itself)
+    const isChain = (n) => { let c = n; for (;;) { const k = ch(c); if (k.length > 1) return false; if (!k.length) return true; c = k[0] } }
+    const trunkPath = []
+    let cur = hub
+    for (let guard = 0; guard < 6; guard++) {
+      const cs = ch(cur).filter((c) => body(c) && !ikBones.has(c) && top.get(c) > W.get(cur).y + H * 0.03)
+      const up = cs.filter((c) => !isChain(c) || size(c) <= 2).sort((a, b) => top.get(b) - top.get(a) || size(b) - size(a))[0]
+      if (!up || isChain(up) && trunkPath.length >= 1) break
+      trunkPath.push(up); cur = up
+    }
+    const chest = trunkPath[0] || null, head = trunkPath.length > 1 ? trunkPath[trunkPath.length - 1] : null, neck = trunkPath.length > 2 ? trunkPath[trunkPath.length - 2] : null
+    const under = (n, anc) => { let p = n; while (p) { if (p === anc) return true; p = by.get(p).parent } return false }
+    // limbs by IK
+    const armTargets = [], legTargets = [], limbBones = new Set()
+    for (const c of json.ik || []) {
+      for (const b of c.bones) limbBones.add(b)
+      const first = c.bones[0]
+      if (!W.get(c.target) || under(c.target, hub) && ikBones.has(by.get(c.target).parent)) continue
+      const arm = chest && under(first, chest)
+      const list = arm ? armTargets : legTargets
+      if (!list.includes(c.target)) list.push(c.target)
+    }
+    // lead arm first: the one reaching furthest from the trunk
+    const hx = W.get(hub).x
+    armTargets.sort((a, b) => Math.abs(W.get(b).x - hx) - Math.abs(W.get(a).x - hx))
+    const fixed = new Set([hub, ...trunkPath, base.root])
+    for (const lb of limbBones) { let p = by.get(lb).parent; while (p && !fixed.has(p)) { limbBones.add(p); p = by.get(p).parent } }
+    { let p = by.get(hub).parent; while (p) { fixed.add(p); p = by.get(p).parent } }
+    const secondary = []
+    for (const b of json.bones) {
+      const n = b.name
+      if (fixed.has(n) || ikTargets.has(n) || limbBones.has(n) || !(b.length > 0) || !under(n, hub)) continue
+      let onLimb = false, p = b.parent
+      while (p && p !== hub) { if (limbBones.has(p)) { onLimb = true; break } p = by.get(p).parent }
+      if (onLimb) continue
+      // an FK limb (no IK): a chain from the hub or chest that reaches the floor or is thick-boned is left alone
+      let rootOf = n; while (by.get(rootOf).parent && !fixed.has(by.get(rootOf).parent)) rootOf = by.get(rootOf).parent
+      if (low.get(rootOf) < floor + H * 0.12 && by.get(rootOf).parent === hub && !isChain(rootOf)) continue
+      secondary.push(n)
+    }
+    const secSet = new Set(secondary), depth = new Map()
+    for (const n of secondary) { let d = 0, p = by.get(n).parent; while (p && secSet.has(p)) { d++; p = by.get(p).parent } depth.set(n, d) }
+    return Object.assign({}, base, { structural: true, hips: hub, chest, neck, head, trunk: [hub, ...trunkPath], armTargets, legTargets, secondary, depth, height: H })
   }
 
   // --------------------------------------------------------------- key helpers --
@@ -238,7 +315,7 @@
     switch (motion) {
       case 'idle':
       case 'breathe': {
-        const d = H * 0.012 * I * (motion === 'breathe' ? 0.7 : 1)
+        const d = H * (rig.structural ? 0.02 : 0.012) * I * (motion === 'breathe' ? 0.7 : 1)
         if (motion === 'idle' && rig.templ && rig.by.has('x') && hips === 'y') {
           // the studio's idle (measured on its own rigs): hips sway on x while the waist half-follows,
           // chest counters the sway, neck and head counter the chest a beat late, the body-turn
@@ -262,7 +339,7 @@
           // a plain rig (one picture, a creature, a prop): breathe the trunk root by scale
           keyScale(a, hips, [[0, [1, 1], 'io'], [T / 2, [1 + 0.015 * I, 1 - 0.01 * I], 'io'], [T, [1, 1]]])
         }
-        wind = 0.018 * I
+        wind = (rig.structural ? 0.05 : 0.018) * I
         break
       }
       case 'float': {
@@ -342,7 +419,7 @@
   function frontFoot(rig, W, F) {
     // every root-level leg target on the facing side of the hips (knee, ankle and toe targets of that leg)
     const hx = W && W.get(rig.hips) ? W.get(rig.hips).x : 0
-    const feet = [...rig.ikTargets].filter((n) => W && W.get(n) && rig.by.get(n).parent === rig.root && /^(legd|footd*)$/.test(n))
+    const feet = rig.structural ? rig.legTargets.filter((n) => W && W.get(n)) : [...rig.ikTargets].filter((n) => W && W.get(n) && rig.by.get(n).parent === rig.root && /^(legd|footd*)$/.test(n))
     const front = feet.filter((n) => (W.get(n).x - hx) * F > 0)
     return front.length ? front : feet.sort((a, b) => (W.get(b).x - W.get(a).x) * F).slice(0, 1)
   }
@@ -479,7 +556,11 @@
     const slots = (json.slots || []).map((s) => s.name)
     a.slots = a.slots || {}
     for (const s of slots) {
-      const base = (json.slots.find((x) => x.name === s).color) || 'ffffffff'
+      const own = a.slots[s] || {}, setup = json.slots.find((x) => x.name === s)
+      const base = (own.color && own.color[0] && own.color[0].color) || setup.color || 'ffffffff'
+      // a slot the base pose keeps empty or invisible (an effect layer waiting for its cue) stays that way
+      const shown = own.attachment && own.attachment[0] ? own.attachment[0].name : setup.attachment
+      if (!shown || /00$/.test(base) || (setup.blend && setup.blend !== 'normal')) continue
       const keys = []
       if (f.time > 0) keys.push({ time: 0, color: base })
       keys.push({ time: t3(f.time), color: f.color, ...(f.hold ? { curve: 'stepped' } : {}) })
@@ -487,6 +568,34 @@
       keys.push({ time: t3(f.out || f.time + 0.3), color: base })
       a.slots[s] = a.slots[s] || {}; a.slots[s].color = keys
     }
+  }
+  /**
+   * A rig that already has animations keeps its look in them, not in the setup pose: which picture
+   * each slot shows, hidden effect layers, the stance the idle starts from. A new motion starts from
+   * the idle's first frame: its slot keys are copied, its bone values become the base the recipe's
+   * keys are added onto.
+   */
+  function basePose(json, a, selfName) {
+    const names = Object.keys(json.animations || {}).filter((n) => n !== selfName)
+    const ref = names.find((n) => /^idle$/i.test(n)) || names.find((n) => /idle|stand|daiji|待机/i.test(n)) || null
+    if (!ref) return null
+    const R = json.animations[ref]
+    const first = (keys) => (keys && keys.length && !(keys[0].time > 0.0001) ? keys[0] : null)
+    const bare = (k) => { const c = Object.assign({}, k); delete c.curve; delete c.c2; delete c.c3; delete c.c4; delete c.nf4; delete c.time; return c }
+    for (const [slot, tr] of Object.entries(R.slots || {})) for (const kind of ['attachment', 'color', 'twoColor']) {
+      const f = first(tr[kind]); if (!f) continue
+      a.slots = a.slots || {}; const mine = (a.slots[slot] = a.slots[slot] || {})
+      if (!mine[kind]) mine[kind] = [Object.assign({ time: 0 }, bare(f))]
+    }
+    for (const [bone, tr] of Object.entries(R.bones || {})) for (const kind of ['rotate', 'translate', 'scale', 'shear']) {
+      const f = first(tr[kind]); if (!f) continue
+      const mine = tracks(a, bone)
+      if (kind === 'rotate') { const v = f.angle || 0; if (!v) continue; if (mine.rotate) for (const k of mine.rotate) k.angle = r2((k.angle || 0) + v); else mine.rotate = [{ time: 0, angle: v }] }
+      else if (kind === 'scale') { const x = f.x == null ? 1 : f.x, y = f.y == null ? 1 : f.y; if (x === 1 && y === 1) continue; if (mine.scale) for (const k of mine.scale) { k.x = r2((k.x == null ? 1 : k.x) * x); k.y = r2((k.y == null ? 1 : k.y) * y) } else mine.scale = [{ time: 0, x, y }] }
+      else { const x = f.x || 0, y = f.y || 0; if (!x && !y) continue; if (mine[kind]) for (const k of mine[kind]) { k.x = r2((k.x || 0) + x); k.y = r2((k.y || 0) + y) } else mine[kind] = [{ time: 0, x, y }] }
+    }
+    for (const kind of ['drawOrder', 'draworder']) { const f = first(R[kind]); if (f && !a[kind]) a[kind] = [Object.assign({ time: 0 }, bare(f))] }
+    return ref
   }
   function slotFade(json, a, f) {
     a.slots = a.slots || {}
@@ -526,6 +635,7 @@
         // nothing named to move (no rig yet): move the whole picture from the root
         keyTranslate(r.anim, rig.root, [[0, [0, 0], 'io'], [o.duration / 2, [0, 8 * o.intensity], 'io'], [o.duration, [0, 0]]])
       }
+      report.basePose = basePose(json, json.animations[name], name)
       report.springs = bakeSprings(json, name, rig, { duration: o.duration, loop: o.loop, wind: r.wind, springGain: o.intensity, springs: o.springs })
       if (o.flash) slotFlash(json, json.animations[name], o.flash)
       if (o.fade) slotFade(json, json.animations[name], o.fade)
