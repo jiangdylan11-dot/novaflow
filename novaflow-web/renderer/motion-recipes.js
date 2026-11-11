@@ -239,6 +239,21 @@
       case 'idle':
       case 'breathe': {
         const d = H * 0.012 * I * (motion === 'breathe' ? 0.7 : 1)
+        if (motion === 'idle' && rig.templ && rig.by.has('x') && hips === 'y') {
+          // the studio's idle (measured on its own rigs): hips sway on x while the waist half-follows,
+          // chest counters the sway, neck and head counter the chest a beat late, the body-turn
+          // helper swings against the hips
+          const A = H * 0.026 * I
+          bob([[0, [0, d * 0.5], 'io'], [T / 4, [0, 0], 'io'], [3 * T / 4, [0, d], 'io'], [T, [0, d * 0.5]]])
+          keyTranslate(a, 'x', [[0, [-A * 0.5, 0], 'io'], [T / 2, [A, 0], 'io'], [T, [-A * 0.5, 0]]])
+          if (rig.chest) keyRotate(a, rig.chest, [[0, 0, 'io'], [T / 2, lean(rig.chest, -5 * I * F), 'io'], [T, 0]])
+          if (rig.neck) keyRotate(a, rig.neck, [[0, 0, 'io'], [T / 2, lean(rig.neck, 5.5 * I * F), 'io'], [T, 0]])
+          if (rig.head) { const h0 = lean(rig.head, 2.5 * I * F), h1 = lean(rig.head, 9 * I * F); keyRotate(a, rig.head, [[0, h0, 'io'], [T / 6, 0, 'io'], [T * 2 / 3, h1, 'io'], [T, h0]]) }
+          if (rig.by.has('body_up_turn')) keyTranslate(a, 'body_up_turn', [[0, [0, 0], 'io'], [T / 2, [-H * 0.08 * I, 0], 'io'], [T, [0, 0]]])
+          arms.forEach((n, i) => keyTranslate(a, n, [[0, [0, 0], 'io'], [T / 2, [H * 0.005 * I, H * (i === 0 ? 0.025 : 0.004) * I], 'io'], [T, [0, 0]]]))
+          wind = 0.05 * I
+          break
+        }
         bob([[0, [0, 0], 'io'], [T / 2, [0, -d], 'io'], [T, [0, 0]]])
         trunkRot((m, b) => sineKeys(T, lean(b, 1.6 * I * m), b === rig.chest ? 0 : 0.08 * m))
         if (rig.chest) keyScale(a, rig.chest, [[0, [1, 1], 'io'], [T / 2, [1 + 0.012 * I, 1 + 0.012 * I], 'io'], [T, [1, 1]]])
