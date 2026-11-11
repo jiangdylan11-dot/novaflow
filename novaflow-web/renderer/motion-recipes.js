@@ -527,25 +527,71 @@
     }
     return { anim: a, hub, parts: parts.length, glows: glowSlots.length }
   }
+  function refAnimation(json, selfName) {
+    const names = Object.keys(json.animations || {}).filter((n) => n !== selfName)
+    return names.find((n) => /^idle$/i.test(n)) || names.find((n) => /idle|stand|daiji|待机/i.test(n)) || null
+  }
+  /** What each slot shows in the base pose (the idle's first frame, else setup): shown?, its rgb. */
+  function baseVisible(json, selfName) {
+    const ref = refAnimation(json, selfName), R = ref ? json.animations[ref] : null, out = new Map()
+    const first = (keys) => (keys && keys.length && !(keys[0].time > 0.0001) ? keys[0] : null)
+    for (const sl of json.slots || []) {
+      const tr = (R && R.slots && R.slots[sl.name]) || {}
+      const fa = first(tr.attachment), fc = first(tr.color)
+      const att = fa ? fa.name : sl.attachment, color = (fc && fc.color) || sl.color || 'ffffffff'
+      out.set(sl.name, { shown: !!att && !/00$/.test(color), rgb: color.slice(0, 6), alpha: color.slice(6, 8) || 'ff' })
+    }
+    return out
+  }
+  function groupBones(json, vis, rootName) {
+    const kids = new Map(); for (const b of json.bones) { const p = b.parent || ''; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(b.name) }
+    const own = new Map(); json.slots.forEach((sl, i) => { const v = vis.get(sl.name); if (v && !v.shown) return; if (!own.has(sl.bone)) own.set(sl.bone, []); own.get(sl.bone).push([sl.name, i]) })
+    const memo = new Map()
+    const under = (b) => { if (memo.has(b)) return memo.get(b); let r = (own.get(b) || []).slice(); for (const c of kids.get(b) || []) r = r.concat(under(c)); memo.set(b, r); return r }
+    let level = [rootName]
+    for (let depth = 0; depth < 4 && level.length < 4; depth++) {
+      const next = []
+      for (const b of level) {
+        const cs = (kids.get(b) || []).filter((c) => under(c).length)
+        if (!(own.get(b) || []).length && cs.length && level.length + cs.length - 1 <= 14) next.push(...cs); else next.push(b)
+      }
+      if (next.length === level.length && next.every((b, i) => b === level[i])) break
+      level = next
+    }
+    const items = level.filter((b) => b !== rootName && under(b).length).map((b) => ({ bone: b, slots: under(b).map((x) => x[0]), z: Math.min(...under(b).map((x) => x[1])) }))
+    items.sort((p, q) => p.z - q.z)
+    return items.length ? items : null
+  }
   function uiRecipe(json, motion, o) {
     const all = (json.slots || []).map((s) => s.name)
     const targets = resolveTargets(o.targets, all)
-    const { made } = ensureLayerBones(json, targets)
+    const rootName = (json.bones.find((b) => !b.parent) || json.bones[0]).name
+    const vis = baseVisible(json)
+    // a rigged piece (a popup, a banner built on bones): its bone groups enter, not single pictures
+    const rigged = json.slots.filter((sl) => sl.bone !== rootName).length > json.slots.length * 0.6
+    const groups = rigged && !(o.targets && o.targets.length) ? groupBones(json, vis, rootName) : null
+    const { made } = ensureLayerBones(json, groups ? [] : targets)
+    const items = groups || targets.map((sl) => ({ bone: null, slots: [sl] }))
     const boneOf = new Map(json.slots.map((s) => [s.name, s.bone]))
     const centers = slotCenters(json)
     const a = {}, T = o.duration, I = o.intensity
-    const n = targets.length
-    const stagger = o.stagger != null ? o.stagger : (n > 1 ? Math.min(0.08, (T * 0.4) / n) : 0)
+    const n = items.length
+    const stagger = o.stagger != null ? o.stagger : (n > 1 ? Math.min(groups ? 0.14 : 0.08, (T * 0.4) / n) : 0)
     let H = 200; for (const c of centers.values()) H = Math.max(H, c.h)
     const seen = new Set()
-    targets.forEach((slot, i) => {
-      const bone = boneOf.get(slot); if (!bone || seen.has(bone)) return; seen.add(bone)
+    items.forEach((it, i) => {
+      const slot = it.slots[0]
+      const bone = it.bone || boneOf.get(slot); if (!bone || seen.has(bone)) return; seen.add(bone)
+      // colour keys keep each picture's own tint and leave layers the base pose hides alone
+      const paint = (an, _s, keys) => { for (const sn of it.slots) { const v = vis.get(sn); if (v && !v.shown) continue; const rgb = v ? v.rgb : 'ffffff', al = v ? v.alpha : 'ff'; keyColor(an, sn, keys.map(([t, c, e]) => [t, rgb + (c.slice(6) === 'ff' ? al : c.slice(6)), e])) } }
       const d = stagger * i, c = centers.get(slot) || { h: 100, w: 100 }
+      // the backmost group of a rigged piece is its backdrop: it only fades in
+      if (groups && i === 0 && n > 1 && (motion === 'ui_pop' || motion === 'ui_bigwin')) { paint(a, slot, [[0, 'ffffff00', 'o'], [0.25, 'ffffffff']]); return }
       switch (motion) {
         case 'ui_pop': {
           const t1 = d + 0.18, t2 = t1 + 0.12, t3 = t2 + 0.12
           keyScale(a, bone, [[0, [0, 0], 'step'], ...(d > 0 ? [[d, [0, 0], 'o']] : [[0, [0, 0], 'o']]).slice(d > 0 ? 0 : 1), [t1, [1.18 * I + (1 - I), 1.18 * I + (1 - I)], 'io'], [t2, [0.94, 0.94], 'io'], [t3, [1, 1]]].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
-          keyColor(a, slot, [[0, 'ffffff00', d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, 'ffffff00', 'o']] : []), [d + 0.12, 'ffffffff']])
+          paint(a, slot, [[0, 'ffffff00', d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, 'ffffff00', 'o']] : []), [d + 0.12, 'ffffffff']])
           break
         }
         case 'ui_breathe': {
@@ -568,7 +614,7 @@
         }
         case 'ui_flash': {
           const t0 = (d % T)
-          keyColor(a, slot, [[0, 'ffffffff', 'step'], ...(t0 > 0 ? [[t0, 'ffffffff', 'o']] : []), [t0 + 0.12, 'fffff0ff', 'io'], [t0 + 0.45, 'ffffffff', 'step'], [T, 'ffffffff']].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
+          paint(a, slot, [[0, 'ffffffff', 'step'], ...(t0 > 0 ? [[t0, 'ffffffff', 'o']] : []), [t0 + 0.12, 'fffff0ff', 'io'], [t0 + 0.45, 'ffffffff', 'step'], [T, 'ffffffff']].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
           // brighten via scale pop + colour (additive light comes from a 扫光 layer the planner adds separately)
           keyScale(a, bone, [[0, [1, 1], 'step'], ...(t0 > 0 ? [[t0, [1, 1], 'o']] : []), [t0 + 0.12, [1.06, 1.06], 'io'], [t0 + 0.45, [1, 1], 'step'], [T, [1, 1]]].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
           break
@@ -589,7 +635,7 @@
           const t1 = d + 0.25, t2 = t1 + 0.15, t3 = t2 + 0.15
           keyScale(a, bone, [[0, [0, 0], d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, [0, 0], 'o']] : []), [t1, [1.35, 1.35], 'io'], [t2, [0.9, 0.9], 'io'], [t3, [1.04, 1.04], 'io'], [t3 + 0.5, [1, 1], 'io'], [t3 + 1, [1.04, 1.04], 'io'], [T, [1, 1]]].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
           keyRotate(a, bone, [[0, -8, d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, -8, 'o']] : []), [t1, 3, 'io'], [t2, 0]].filter((k, j, arr) => j === 0 || k[0] > arr[j - 1][0]))
-          keyColor(a, slot, [[0, 'ffffff00', d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, 'ffffff00', 'o']] : []), [d + 0.1, 'ffffffff']])
+          paint(a, slot, [[0, 'ffffff00', d > 0 ? 'step' : 'o'], ...(d > 0 ? [[d, 'ffffff00', 'o']] : []), [d + 0.1, 'ffffffff']])
           break
         }
       }
@@ -678,6 +724,7 @@
     } else if (def.kind === 'ui') {
       const r = uiRecipe(json, o.motion, o)
       if (o.delay) shiftAnim(r.anim, Number(o.delay) || 0)
+      report.basePose = basePose(json, r.anim, name)
       json.animations[name] = into ? mergeAnim(into, r.anim) : r.anim
       report.bones = r.made.length; report.targets = Object.keys(r.anim.bones || {}).length
     } else {
