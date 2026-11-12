@@ -13942,7 +13942,7 @@
         const seq = (fx.bones.find((b) => b.name === 'seq') || {}).scaleX || 1, arc = R.placeArc(swing, span, seq)
         const big = Math.max(whole.w, whole.h) / span
         place.x = arc.x; place.y = arc.y; place.rotation = arc.rotation; place.flip = arc.flip
-        place.scale = Math.max(big * 0.4, Math.min(big * 0.95, arc.scale)); place.time = swing.time
+        place.scale = Math.max(big * 0.55, Math.min(big * 0.95, arc.scale)); place.time = swing.time
         read = { swing: { time: swing.time, angle: Math.round(swing.angle), reach: Math.round(swing.chord) } }
       } else if (trace.tracks.length && trace.still && op.time === undefined && op.x === undefined) throw new Error('这条动画里没有挥砍的动作，刀光没有可以跟随的轨迹，没有添加（先做攻击动作，或指定时间和位置）')
       else read = { swing: null }

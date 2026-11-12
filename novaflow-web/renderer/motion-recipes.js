@@ -1148,7 +1148,7 @@
     const native = flip ? 180 - ARC.angle : ARC.angle
     let rot = swing.angle - native; while (rot > 180) rot -= 360; while (rot < -180) rot += 360
     const reach = Math.max(swing.chord, Math.min(swing.path * 0.8, swing.chord * 1.3))
-    return { x: (swing.start[0] + swing.end[0]) * 0.25 + swing.mid[0] * 0.5, y: (swing.start[1] + swing.end[1]) * 0.25 + swing.mid[1] * 0.5, rotation: r2(rot), flip, scale: (reach * 1.2) / (ARC.chord * span * (seqScale || 1)) }
+    return { x: (swing.start[0] + swing.end[0]) * 0.25 + swing.mid[0] * 0.5, y: (swing.start[1] + swing.end[1]) * 0.25 + swing.mid[1] * 0.5, rotation: r2(rot), flip, scale: (reach * 1.7) / (ARC.chord * span * (seqScale || 1)) }
   }
   /** The mean drift of everything on screen over the first frames: which way a hit throws the body. */
   function driftFromTracks(tracks, frames, n) {
