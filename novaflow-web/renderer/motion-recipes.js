@@ -349,6 +349,7 @@
           wind = 0.05 * I
           break
         }
+        if (!rig.templ) { o.bodyByMass = true; break }
         bob([[0, [0, 0], 'io'], [T / 2, [0, -d], 'io'], [T, [0, 0]]])
         trunkRot((m, b) => sineKeys(T, lean(b, 1.6 * I * m), b === rig.chest ? 0 : 0.08 * m))
         if (rig.chest) keyScale(a, rig.chest, [[0, [1, 1], 'io'], [T / 2, [1 + 0.012 * I, 1 + 0.012 * I], 'io'], [T, [1, 1]]])
@@ -746,7 +747,11 @@
         keyTranslate(r.anim, rig.root, [[0, [0, 0], 'io'], [o.duration / 2, [0, 8 * o.intensity], 'io'], [o.duration, [0, 0]]])
       }
       report.basePose = basePose(json, json.animations[name], name)
-      if (o.motion === 'idle' || o.motion === 'breathe' || o.motion === 'float') { report.waves = chainWaves(json, json.animations[name], o.duration, { intensity: o.intensity * (o.motion === 'breathe' ? 0.6 : 1), skip: rig.trunk }); o.springs = false }
+      if (o.motion === 'idle' || o.motion === 'breathe' || o.motion === 'float') {
+        const fig = figureHeight(json)
+        if (o.bodyByMass) report.body = bodySway(json, json.animations[name], o.duration, { intensity: o.intensity * (o.motion === 'breathe' ? 0.6 : 1), height: fig })
+        report.waves = chainWaves(json, json.animations[name], o.duration, { intensity: o.intensity * (o.motion === 'breathe' ? 0.6 : 1), skip: rig.templ ? rig.trunk : [], height: fig }); o.springs = false
+      }
       report.springs = bakeSprings(json, name, rig, { duration: o.duration, loop: o.loop, wind: r.wind, springGain: o.intensity, springs: o.springs })
       if (o.flash) slotFlash(json, json.animations[name], o.flash)
       if (o.fade) slotFade(json, json.animations[name], o.fade)
@@ -839,14 +844,16 @@
     const chainLen = (n) => 1 + Math.max(0, ...ch(n).filter(free).map(chainLen))
     let chains = 0, bones = 0
     const hash = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) } return ((h >>> 0) % 1000) / 1000 }
-    const lay = (n, d, phase, sign) => {
-      const amp = Math.min(16, 7 + 2.2 * d) * I * sign
+    const reach = (n) => (by.get(n).length || 0) + Math.max(0, ...ch(n).filter(free).map(reach))
+    const H = o.height || 1000
+    const lay = (n, d, phase, sign, cap, deep) => {
+      const amp = (7 + (cap - 7) * Math.min(1, d / Math.max(2, deep * 0.6))) * I * sign
       const tr = tracks(a, n), keys = sineKeys(T, amp, phase % 1)
       if (tr.rotate && tr.rotate.length === 1) { const base = tr.rotate[0].angle || 0; tr.rotate = keys.map(([t, v, e]) => ({ time: t3(t), angle: r2(v + base), ...curveOf(e) })) }
       else if (!tr.rotate) keyRotate(a, n, keys)
       else return
       bones++
-      for (const c of ch(n)) if (free(c)) lay(c, d + 1, phase + 0.09, sign)
+      for (const c of ch(n)) if (free(c)) lay(c, d + 1, phase + 0.09, sign, cap, deep)
     }
     for (const b of json.bones) {
       const n = b.name
@@ -854,9 +861,39 @@
       if (chainLen(n) < 2) continue
       chains++
       const h = hash(n)
-      lay(n, 0, h, h > 0.5 ? 1 : -1)
+      // measured: chains longer than a third of the figure reach 25–43°, short ones stay at 7–16°
+      const cap = 11 + 45 * Math.min(0.4, reach(n) / H)
+      lay(n, 0, h, h > 0.5 ? 1 : -1, cap, chainLen(n))
     }
     return { chains, bones }
+  }
+  function figureHeight(json) {
+    const W = setupWorld(json)
+    if (!W) return (json.skeleton && json.skeleton.height) || 1000
+    let lo = Infinity, hi = -Infinity
+    for (const v of W.values()) { const r = (v.rot * Math.PI) / 180, y2 = v.y + Math.sin(r) * (v.len || 0); lo = Math.min(lo, v.y, y2); hi = Math.max(hi, v.y, y2) }
+    return Math.max(60, hi - lo)
+  }
+  function bodySway(json, a, T, opts) {
+    const o = opts || {}, I = o.intensity || 1, H = o.height || 1000
+    const by = new Map(json.bones.map((b) => [b.name, b])), kids = new Map()
+    for (const b of json.bones) { const p = b.parent || ''; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(b.name) }
+    const size = (n) => 1 + (kids.get(n) || []).reduce((t, c) => t + size(c), 0)
+    const total = json.bones.length
+    // the deepest bone that still carries 40 % of the rig: the body an animator grabs
+    let body = null, cur = (json.bones.find((b) => !b.parent) || json.bones[0]).name
+    for (let g = 0; g < 12; g++) { const next = (kids.get(cur) || []).filter((c) => size(c) >= total * 0.4).sort((p, q) => size(q) - size(p))[0]; if (!next) break; cur = next; body = cur }
+    if (!body) return null
+    const tr = tracks(a, body); if (tr.translate && tr.translate.length > 1) return null
+    const base = tr.translate && tr.translate[0] ? [tr.translate[0].x || 0, tr.translate[0].y || 0] : [0, 0]
+    // feet that follow the body (no IK target outside it) would slide: only breathe then
+    const inside = (n) => { let p = n; while (p) { if (p === body) return true; p = by.get(p) && by.get(p).parent } return false }
+    const planted = (json.ik || []).some((c) => !inside(c.target))
+    const PM = parentMatrix(json), m = (PM && PM.get(body)) || { a: 1, b: 0, c: 0, d: 1 }, det = m.a * m.d - m.b * m.c || 1
+    const loc = (wx, wy) => [base[0] + (m.d * wx - m.b * wy) / det, base[1] + (-m.c * wx + m.a * wy) / det]
+    const ax = H * 0.012 * I * (planted ? 1 : 0.3), ay = H * 0.008 * I * (planted ? 1 : 0.5)
+    keyTranslate(a, body, [[0, loc(-ax * 0.5, ay * 0.5), 'io'], [T / 4, loc(0, 0), 'io'], [T / 2, loc(ax, ay * 0.5), 'io'], [3 * T / 4, loc(ax * 0.3, ay), 'io'], [T, loc(-ax * 0.5, ay * 0.5)]])
+    return { bone: body, planted }
   }
   function parentMatrix(json) {
     const m = makeSkeleton(json); if (!m) return null
