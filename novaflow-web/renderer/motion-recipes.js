@@ -1051,7 +1051,7 @@
     const wx = (o.x || 0) - RW.x, wy = (o.y || 0) - RW.y
     const rootScale = Math.sqrt(Math.abs(det)) || 1, s = (o.scale || 1) / rootScale
     const holder = tag + 'root'
-    json.bones.push({ name: holder, parent: rootName, x: r2((RW.d * wx - RW.b * wy) / det), y: r2((-RW.c * wx + RW.a * wy) / det), rotation: o.rotation || 0, scaleX: r2(s * (o.flip ? -1 : 1) * (det < 0 ? -1 : 1)), scaleY: r2(s) })
+    json.bones.push({ name: holder, parent: rootName, x: r2((RW.d * wx - RW.b * wy) / det), y: r2((-RW.c * wx + RW.a * wy) / det), rotation: o.rotation || 0, scaleX: r2(s * (o.stretch || 1) * (o.flip ? -1 : 1) * (det < 0 ? -1 : 1)), scaleY: r2(s) })
     const bn = (name) => tag + name
     for (const b of fx.bones) json.bones.push(Object.assign({}, b, { name: bn(b.name), parent: b.parent === 'root' ? holder : bn(b.parent) }))
     const t0 = Math.max(0, o.time || 0), D = fx.duration || animationLength(fx.animation) || 1
@@ -1086,6 +1086,114 @@
     if (o.under != null && o.under >= 0 && o.under < json.slots.length) json.slots.splice(o.under, 0, ...added); else json.slots.push(...added)
     return { json, holder, slots: added.map((x) => x.name), time: t0, end: t3(end), repeats: reps }
   }
+
+  /**
+   * The swing of an animation, read from what moves on screen. tracks: one Float32Array [x0,y0,x1,y1,…]
+   * per traced picture corner / mesh vertex, one pair per frame. Returns the frame of fastest motion,
+   * the span around it, and the path of the point that travels farthest in that span (the weapon tip
+   * in an attack): start, middle, end, the chord's angle and which side the arc bulges to.
+   */
+  function swingFromTracks(tracks, frames, fps, centre) {
+    if (!tracks || !tracks.length || frames < 3) return null
+    const F = frames, energy = new Float32Array(F)
+    // a track may cover only part of the animation (NaN where its picture is not shown)
+    const step = (t, f) => { const d = Math.hypot(t[f * 2 + 2] - t[f * 2], t[f * 2 + 3] - t[f * 2 + 1]); return d === d ? d : 0 }
+    for (let f = 0; f < F - 1; f++) {
+      const sp = []
+      for (const t of tracks) if (t[f * 2] === t[f * 2]) sp.push(step(t, f))
+      if (!sp.length) continue
+      sp.sort((a, b) => b - a)
+      const n = Math.max(1, Math.round(sp.length * 0.15)); let e = 0
+      for (let i = 0; i < n; i++) e += sp[i]
+      energy[f] = e / n
+    }
+    const sm = new Float32Array(F)
+    for (let f = 0; f < F; f++) sm[f] = (energy[Math.max(0, f - 1)] + 2 * energy[f] + energy[Math.min(F - 1, f + 1)]) / 4
+    let peak = 0
+    for (let f = 1; f < F; f++) if (sm[f] > sm[peak]) peak = f
+    if (!(sm[peak] > 0)) return null
+    let a = peak, b = peak + 1
+    while (a > 0 && peak - a < 6 && sm[a - 1] > sm[peak] * 0.4) a--
+    while (b < F - 1 && b - peak < 6 && sm[b] > sm[peak] * 0.4) b++
+    if (b - a < 2) { a = Math.max(0, a - 1); b = Math.min(F - 1, b + 1) }
+    let best = null, far = 0
+    // among the points that travel far, the one that ends farthest out from the body is the striking end
+    // (a staff turning in the hand moves both ends; the blow lands where it reaches out)
+    const paths = tracks.map((t) => { let d = 0; for (let f = a; f < b; f++) d += step(t, f); return d })
+    for (const d of paths) if (d > far) far = d
+    let score = -1
+    tracks.forEach((t, i) => {
+      if (!(paths[i] >= far * 0.6) || !(far > 0)) return
+      let e = b; while (e > a && t[e * 2] !== t[e * 2]) e--
+      const out = centre ? Math.hypot(t[e * 2] - centre[0], t[e * 2 + 1] - centre[1]) : 0, s = centre ? out * (0.5 + 0.5 * paths[i] / far) : paths[i]
+      if (s > score) { score = s; best = t }
+    })
+    if (best) far = paths[tracks.indexOf(best)]
+    if (!best || !(far > 0)) return null
+    while (a < b && best[a * 2] !== best[a * 2]) a++
+    while (b > a && best[b * 2] !== best[b * 2]) b--
+    if (b - a < 1) return null
+    const at = (f) => [best[f * 2], best[f * 2 + 1]], S = at(a), E = at(b)
+    // the point of the path farthest from the chord tells the bulge
+    let M = at(Math.round((a + b) / 2)), off = 0
+    const cx = E[0] - S[0], cy = E[1] - S[1], cl = Math.hypot(cx, cy) || 1
+    for (let f = a + 1; f < b; f++) { const p = at(f), d = (cx * (p[1] - S[1]) - cy * (p[0] - S[0])) / cl; if (Math.abs(d) > Math.abs(off)) { off = d; M = p } }
+    return { frame: peak, from: a, to: b, time: t3(Math.max(0, a - 1) / fps), peakTime: t3(peak / fps), start: S, end: E, mid: M, chord: Math.hypot(cx, cy), path: far,
+      angle: (Math.atan2(cy, cx) * 180) / Math.PI, bulge: Math.abs(off) < cl * 0.04 ? 0 : off > 0 ? 1 : -1, speed: sm[peak] }
+  }
+  /** Where a library arc (drawn top-left to bottom-right, bulging to the right of its travel) goes for a swing. */
+  const ARC = { angle: -43, bulge: -1, chord: 0.73 }
+  function placeArc(swing, span, seqScale) {
+    const flip = swing.bulge !== 0 && swing.bulge !== ARC.bulge
+    const native = flip ? 180 - ARC.angle : ARC.angle
+    let rot = swing.angle - native; while (rot > 180) rot -= 360; while (rot < -180) rot += 360
+    const reach = Math.max(swing.chord, Math.min(swing.path * 0.8, swing.chord * 1.3))
+    return { x: (swing.start[0] + swing.end[0]) * 0.25 + swing.mid[0] * 0.5, y: (swing.start[1] + swing.end[1]) * 0.25 + swing.mid[1] * 0.5, rotation: r2(rot), flip, scale: (reach * 1.2) / (ARC.chord * span * (seqScale || 1)) }
+  }
+  /** The mean drift of everything on screen over the first frames: which way a hit throws the body. */
+  function driftFromTracks(tracks, frames, n) {
+    if (!tracks || !tracks.length) return [0, 0]
+    const f = Math.max(1, Math.min(frames - 1, n)); let x = 0, y = 0
+    let cnt = 0
+    for (const t of tracks) { const dx = t[f * 2] - t[0], dy = t[f * 2 + 1] - t[1]; if (dx === dx && dy === dy) { x += dx; y += dy; cnt++ } }
+    return cnt ? [x / cnt, y / cnt] : [0, 0]
+  }
+  // Tones: the hue an effect is turned to. An effect's own hue is in the library index.
+  const TONES = { fire: 12, gold: 45, green: 125, ice: 200, purple: 280 }
+  /** The tone that suits a subject, from its hue histogram (36 bins of 10°, weighted by saturation). null: no clear colour. */
+  function toneFromHues(bins, total) {
+    let sum = 0; for (const v of bins) sum += v
+    if (!(sum > 0) || (total > 0 && sum / total < 0.06)) return null
+    let best = null, bw = 0
+    for (const [tone, hue] of Object.entries(TONES)) { let w = 0; for (let i = 0; i < 36; i++) { let d = Math.abs(i * 10 + 5 - hue); if (d > 180) d = 360 - d; if (d <= 35) w += bins[i] * (1 - d / 70) } if (w > bw) { bw = w; best = tone } }
+    return bw / sum > 0.3 ? best : null
+  }
+  /** Turn the hue of straight-alpha RGBA pixels by deg, in place; whites and greys stay as they are. */
+  function shiftHue(px, deg) {
+    const d = ((deg % 360) + 360) % 360; if (!d) return px
+    for (let i = 0; i < px.length; i += 4) {
+      if (!px[i + 3]) continue
+      const r = px[i] / 255, g = px[i + 1] / 255, b = px[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn
+      if (c < 0.02) continue
+      let h = mx === r ? ((g - b) / c + 6) % 6 : mx === g ? (b - r) / c + 2 : (r - g) / c + 4
+      h = (h * 60 + d) % 360
+      const x = c * (1 - Math.abs(((h / 60) % 2) - 1)), k = Math.floor(h / 60)
+      const [r1, g1, b1] = k === 0 ? [c, x, 0] : k === 1 ? [x, c, 0] : k === 2 ? [0, c, x] : k === 3 ? [0, x, c] : k === 4 ? [x, 0, c] : [c, 0, x]
+      px[i] = Math.round((r1 + mn) * 255); px[i + 1] = Math.round((g1 + mn) * 255); px[i + 2] = Math.round((b1 + mn) * 255)
+    }
+    return px
+  }
+  /** A copy of a library effect whose pictures carry a suffix (a toned set lives beside the plain one). */
+  function renameEffectPictures(fx, suffix) {
+    const out = clone(fx), nm = (n) => (n ? n + suffix : n)
+    out.pictures = fx.pictures.map(nm)
+    for (const sl of out.slots) if (sl.attachment) sl.attachment = nm(sl.attachment)
+    out.attachments = {}
+    for (const [slot, m] of Object.entries(fx.attachments)) { out.attachments[slot] = {}; for (const [n, a] of Object.entries(m)) out.attachments[slot][nm(n)] = Object.assign({}, a, { path: nm(a.path || n) }) }
+    for (const tr of Object.values(out.animation.slots || {})) if (tr.attachment) tr.attachment = tr.attachment.map((k) => Object.assign({}, k, { name: nm(k.name) }))
+    return out
+  }
+
   /** When an effect of this kind belongs in the animation: at the start, or on the strike (the 'hit' event, else 40 %). */
   function effectTime(json, animName, when) {
     const A = (json.animations || {})[animName] || {}
@@ -1094,5 +1202,5 @@
     return e ? e.time || 0 : t3(animationLength(A) * 0.4)
   }
 
-  return { MOTIONS, synthesize, extractClip, applyClip, subjectBox, mergeEffect, effectTime, animationLength, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
+  return { MOTIONS, synthesize, extractClip, applyClip, subjectBox, mergeEffect, effectTime, animationLength, swingFromTracks, placeArc, driftFromTracks, TONES, toneFromHues, shiftHue, renameEffectPictures, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
 })

@@ -13820,10 +13820,89 @@
   // shows; the pictures join the project like any imported image.
   let fxIndex = null
   const fxUrl = (rel) => new URL('./fx-library/' + rel, document.baseURI).href
+
+  // What moves on screen through an animation, from the runtime's own pose (constraints included):
+  // a few corners / vertices of every plain layer that keeps one picture throughout.
+  function fxTracks(animName) {
+    ensureAtlas()
+    const A = rt.data && rt.data.findAnimation(animName); if (!A) return null
+    const sk = new spine.Skeleton(rt.data), F = Math.max(2, Math.min(600, Math.round(A.duration * FPS) + 1))
+    const per = sk.slots.map(() => []), glow = new Uint16Array(F), shown = sk.slots.map(() => new Uint8Array(F))
+    for (let f = 0; f < F; f++) {
+      sk.setToSetupPose(); A.apply(sk, 0, f / FPS, false, null, 1, spine.MixBlend.setup, spine.MixDirection.mixIn); sk.updateWorldTransform()
+      sk.slots.forEach((slot, i) => {
+        const p = per[i]
+        // light the artist already keyed here (additive / screen layers that show)
+        if (slot.getAttachment() && slot.data.blendMode !== spine.BlendMode.Normal && slot.color.a > 0.05 && !/^fx_/.test(slot.data.name)) glow[f]++
+        const att = slot.getAttachment()
+        if (!att || slot.data.blendMode !== spine.BlendMode.Normal || slot.color.a < 0.05 || /^fx_/.test(slot.data.name)) return
+        shown[i][f] = 1
+        let v
+        if (att instanceof spine.RegionAttachment) { v = new Float32Array(8); att.computeWorldVertices(slot.bone, v, 0, 2) }
+        else if (att instanceof spine.MeshAttachment) { const n = att.worldVerticesLength; v = new Float32Array(n); att.computeWorldVertices(slot, 0, n, v, 0, 2) }
+        else return
+        const last = p[p.length - 1]
+        if (last && last.name === att.name && last.from + last.frames.length === f && last.frames[0].length === v.length) last.frames.push(v); else p.push({ name: att.name, from: f, frames: [v] })
+      })
+    }
+    const tracks = []
+    for (const runs of per) for (const p of runs) {
+      if (p.frames.length < 2) continue
+      const n = p.frames[0].length / 2, step = Math.max(1, Math.floor(n / 24))
+      for (let k = 0; k < n; k += step) { const t = new Float32Array(F * 2).fill(NaN); for (let i = 0; i < p.frames.length; i++) { t[(p.from + i) * 2] = p.frames[i][k * 2]; t[(p.from + i) * 2 + 1] = p.frames[i][k * 2 + 1] } tracks.push(t) }
+    }
+    // plain layers that only flash by (not there at the first or last frame, on for less than 60 %)
+    // are the artist's own effect pictures, unless the whole figure swaps to another set of pictures then
+    const base = [], brief = []
+    shown.forEach((s, i) => { let on = 0; for (let f = 0; f < F; f++) on += s[f]; if (s[0]) base.push(i); else if (on && !s[F - 1] && on < F * 0.6) brief.push(i) })
+    for (let f = 0; f < F; f++) {
+      let kept = 0; for (const i of base) kept += shown[i][f]
+      if (base.length && kept < base.length * 0.5) continue
+      for (const i of brief) glow[f] += shown[i][f]
+    }
+    // a figure that swaps whole poses moves between pictures, not within them: its motion cannot be read here
+    let runs = 0, full = 0
+    for (const r of per) for (const p of r) { runs++; if (p.frames.length === F) full++ }
+    return { tracks, frames: F, glow, still: runs > 0 && full >= runs * 0.5 }
+  }
+  // The hues of what the animation shows (plain layers at its first frame), 36 bins weighted by saturation.
+  function fxSubjectHues(animName) {
+    ensureAtlas()
+    const bins = new Float32Array(36); let total = 0
+    const A = rt.data && rt.data.findAnimation(animName); if (!A) return { bins, total }
+    const sk = new spine.Skeleton(rt.data); sk.setToSetupPose(); A.apply(sk, 0, 0, false, null, 1, spine.MixBlend.setup, spine.MixDirection.mixIn)
+    const c = document.createElement('canvas'); c.width = c.height = 24
+    const g = c.getContext('2d', { willReadFrequently: true })
+    for (const slot of sk.slots) {
+      const att = slot.getAttachment(), reg = att && att.region
+      if (!reg || !reg.page || slot.data.blendMode !== spine.BlendMode.Normal || /^fx_/.test(slot.data.name) || slot.color.a < 0.1) continue
+      const entry = pageEntry(state.images, reg.page.name); if (!entry || !entry.img) continue
+      const rot = !!(reg.rotate || reg.degrees === 90), w = rot ? reg.height : reg.width, h = rot ? reg.width : reg.height
+      if (!(w > 0 && h > 0)) continue
+      try { g.clearRect(0, 0, 24, 24); g.drawImage(entry.img, reg.x, reg.y, w, h, 0, 0, 24, 24) } catch (e) { continue }
+      const px = g.getImageData(0, 0, 24, 24).data, area = (w * h) / 576
+      for (let i = 0; i < px.length; i += 4) {
+        const a = px[i + 3] / 255; if (a < 0.3) continue
+        const r = Math.min(1, px[i] / 255 / (entry.pma ? a : 1)), gg = Math.min(1, px[i + 1] / 255 / (entry.pma ? a : 1)), b = Math.min(1, px[i + 2] / 255 / (entry.pma ? a : 1))
+        const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), ch = mx - mn
+        total += area
+        if (ch < 0.25 || mx < 0.25) continue
+        const hue = (mx === r ? ((gg - b) / ch + 6) % 6 : mx === gg ? (b - r) / ch + 2 : (r - gg) / ch + 4) * 60
+        bins[Math.min(35, Math.floor(hue / 10))] += area * ch
+      }
+    }
+    return { bins, total }
+  }
+  async function fxTonedBlob(blob, deg, R) {
+    const img = await imageFromBlob(blob), c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0)
+    const d = g.getImageData(0, 0, c.width, c.height); R.shiftHue(d.data, deg); g.putImageData(d, 0, 0)
+    return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('特效图片没有生成'))), 'image/png'))
+  }
   async function agentAddEffect(op) {
     const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
     if (!R || !R.mergeEffect) throw new Error('特效模块未加载')
-    const allowed = ['action', 'operation', 'effect', 'name', 'time', 'targets', 'scale', 'x', 'y', 'under', 'flip', 'rotation']
+    const allowed = ['action', 'operation', 'effect', 'name', 'time', 'targets', 'scale', 'x', 'y', 'under', 'flip', 'rotation', 'tone']
     if (Object.keys(op).some((k) => !allowed.includes(k))) throw new Error('特效参数无效')
     if (!fxIndex) { const r = await fetch(fxUrl('index.json')); if (!r.ok) throw new Error('特效库没有读到'); fxIndex = await r.json() }
     const def = fxIndex.effects[op.effect]
@@ -13832,31 +13911,73 @@
     if (!anim || !state.json.animations || !state.json.animations[anim]) throw new Error('先选一个动画，或先做一个动作，再加特效')
     for (const [k, lo, hi] of [['time', 0, 600], ['scale', 0.01, 100], ['x', -100000, 100000], ['y', -100000, 100000], ['rotation', -3600, 3600]]) if (op[k] !== undefined && !(Number.isFinite(op[k]) && op[k] >= lo && op[k] <= hi)) throw new Error('特效参数超出范围：' + k)
     if (op.targets !== undefined && !(Array.isArray(op.targets) && op.targets.length <= 200 && op.targets.every((t) => typeof t === 'string' && t && t.length <= 100))) throw new Error('特效目标图层无效')
+    if (op.tone !== undefined && !Object.prototype.hasOwnProperty.call(R.TONES, op.tone)) throw new Error('特效色调无效')
     const rf = await fetch(fxUrl(op.effect + '/fx.json')); if (!rf.ok) throw new Error('特效文件没有读到')
-    const fx = await rf.json()
-    const box = R.subjectBox(state.json, anim, op.targets)
+    let fx = await rf.json()
+    let box = R.subjectBox(state.json, anim, op.targets)
+    const missed = !box && !!(op.targets && op.targets.length)
+    if (missed) box = R.subjectBox(state.json, anim)
     if (!box && (op.x === undefined || op.y === undefined || op.scale === undefined)) throw new Error('这条动画里没有可以对位的图层')
-    const facing = op.flip ? -1 : 1
+    // the whole subject sizes the effect; named layers say where it sits (and size it when the effect fits its host)
+    const targeted = !!(op.targets && op.targets.length) && !missed, whole = targeted ? R.subjectBox(state.json, anim) || box : box
+    const span = fx.span || 512, facing = op.flip ? -1 : 1
+    const onTarget = targeted && def.onTarget ? def.onTarget : null
+    const basis = onTarget && onTarget.fit === 'target' ? box : whole
+    const anchor = onTarget ? onTarget.anchor : targeted ? [0, 0] : def.anchor, rel = onTarget ? onTarget.rel : def.rel
+    const content = def.content || { w: 1, h: 1, cx: 0, cy: 0 }, stretch = onTarget ? onTarget.stretch || 1 : def.stretch || 1
+    const fit = basis ? (Math.max(basis.w, basis.h) * rel) / (Math.max(content.w, content.h) * span) : 1
     const place = {
-      anim, tag: 'fx_' + op.effect, flip: !!op.flip, rotation: op.rotation || 0,
-      x: op.x !== undefined ? op.x : box.x + def.anchor[0] * facing * box.w / 2,
-      y: op.y !== undefined ? op.y : box.y + def.anchor[1] * box.h / 2,
-      scale: op.scale !== undefined ? op.scale : (Math.max(box.w, box.h) * def.rel) / (fx.span || 512),
-      time: op.time !== undefined ? op.time : R.effectTime(state.json, anim, def.when),
-      under: (op.under !== undefined ? op.under : def.under) && box ? box.under : null
+      anim, tag: 'fx_' + op.effect, flip: !!op.flip, rotation: op.rotation || 0, stretch,
+      x: (box ? box.x + anchor[0] * facing * box.w / 2 : 0) - content.cx * span * fit * stretch, y: (box ? box.y + anchor[1] * box.h / 2 : 0) - content.cy * span * fit,
+      scale: fit,
+      time: R.effectTime(state.json, anim, def.when),
+      under: (op.under !== undefined ? op.under : onTarget ? !!onTarget.under : def.under) && box ? box.under : null
     }
+    // read the motion: an arc follows the swing, a burst sits on the side the blow comes from
+    let read = null
+    const trace = def.follow ? fxTracks(anim) : null
+    if (trace && def.follow === 'swing') {
+      const swing = R.swingFromTracks(trace.tracks, trace.frames, FPS, whole ? [whole.x, whole.y] : null)
+      if (swing && whole && swing.chord > Math.max(whole.w, whole.h) * 0.22) {
+        const seq = (fx.bones.find((b) => b.name === 'seq') || {}).scaleX || 1, arc = R.placeArc(swing, span, seq)
+        const big = Math.max(whole.w, whole.h) / span
+        place.x = arc.x; place.y = arc.y; place.rotation = arc.rotation; place.flip = arc.flip
+        place.scale = Math.max(big * 0.4, Math.min(big * 0.95, arc.scale)); place.time = swing.time
+        read = { swing: { time: swing.time, angle: Math.round(swing.angle), reach: Math.round(swing.chord) } }
+      } else if (trace.tracks.length && trace.still && op.time === undefined && op.x === undefined) throw new Error('这条动画里没有挥砍的动作，刀光没有可以跟随的轨迹，没有添加（先做攻击动作，或指定时间和位置）')
+      else read = { swing: null }
+    } else if (trace && def.follow === 'recoil' && box && !targeted) {
+      const d = R.driftFromTracks(trace.tracks, trace.frames, Math.round(FPS * 0.15))
+      if (Math.abs(d[0]) > box.w * 0.01) { place.x = box.x - Math.sign(d[0]) * box.w * 0.16; read = { recoil: d[0] > 0 ? 'right' : 'left' } }
+    }
+    if (trace && def.follow === 'swing' && op.time === undefined) {
+      const f0 = Math.max(0, Math.round(place.time * FPS) - 2); let own = 0
+      for (let f = f0; f <= Math.min(trace.frames - 1, f0 + 10); f++) own = Math.max(own, trace.glow[f])
+      if (own) throw new Error('这条动画在挥砍的那一刻已经自带光效（' + own + ' 层），再叠一道刀光会重复，没有添加')
+    }
+    for (const k of ['x', 'y', 'scale', 'time', 'rotation']) if (op[k] !== undefined) place[k] = op[k]
+    if (op.flip !== undefined) place.flip = !!op.flip
+    // the tone: asked for, or (for effects that take the subject's colour) read from the picture
+    let tone = op.tone || null
+    if (!tone && def.autoTone) { const h = fxSubjectHues(anim); tone = R.toneFromHues(h.bins, h.total) }
+    let turn = tone ? R.TONES[tone] - (def.hue || 0) : 0
+    turn = ((turn % 360) + 360) % 360; if (turn < 25 || turn > 335) { turn = 0; if (!op.tone) tone = null }
+    const plain = fx
+    if (turn) fx = R.renameEffectPictures(fx, '_' + tone)
     // pictures first (they are not part of the JSON history, like any imported image)
-    for (const pic of fx.pictures) {
+    for (let i = 0; i < fx.pictures.length; i++) {
+      const pic = fx.pictures[i]
       if (rt.atlas && rt.atlas.findRegion(pic)) continue
-      const rb = await fetch(fxUrl(op.effect + '/' + pic + '.png')); if (!rb.ok) throw new Error('特效图片没有读到：' + pic)
-      await addImageFile(new File([await rb.blob()], pic + '.png', { type: 'image/png' }), pic)
+      const rb = await fetch(fxUrl(op.effect + '/' + plain.pictures[i] + '.png')); if (!rb.ok) throw new Error('特效图片没有读到：' + plain.pictures[i])
+      const blob = turn ? await fxTonedBlob(await rb.blob(), turn, R) : await rb.blob()
+      await addImageFile(new File([blob], pic + '.png', { type: 'image/png' }), pic)
     }
     ensureAtlas()
     let out = null
     const applied = edit('小桃特效 ' + def.label, (j) => { out = R.mergeEffect(j, fx, place); return { json: out.json } })
     if (applied === null || !out) throw new Error('特效没有写入，已保留原工程')
     state.anim = anim; setMode('animate'); gotoFrame(Math.round(place.time * FPS)); refresh()
-    return { phase: 'applied', operation: 'add_effect', effect: op.effect, label: def.label, animation: anim, time: out.time, end: out.end, layers: out.slots.length, x: Math.round(place.x), y: Math.round(place.y), scale: Math.round(place.scale * 1000) / 1000, under: place.under !== null, context: agentContext() }
+    return { phase: 'applied', operation: 'add_effect', effect: op.effect, label: def.label, animation: anim, time: out.time, end: out.end, layers: out.slots.length, x: Math.round(place.x), y: Math.round(place.y), scale: Math.round(place.scale * 1000) / 1000, rotation: place.rotation, flip: place.flip, tone: turn ? tone : null, read, under: place.under !== null, context: agentContext() }
   }
 
   function agentAction(op) {

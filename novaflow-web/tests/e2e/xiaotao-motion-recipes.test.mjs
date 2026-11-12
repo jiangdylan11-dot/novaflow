@@ -137,7 +137,8 @@ test('add_effect passes plan validation; an effect lands on the subject, in time
  const loaded={schema:FOART_TOOL_SCHEMA,controls:[],animation:{active:true,loaded:true,bones:[{name:'root'}]}};
  validateFoartPlan(wire({operation:'add_effect',effect:'hit'}),loaded);
  validateFoartPlan(wire({operation:'add_effect',effect:'backlight',name:'中奖',under:true,scale:.5,targets:['sym_*']}),loaded);
- for(const bad of [{effect:'boom'},{effect:'hit',scale:0},{effect:'hit',time:-1},{effect:'hit',under:'yes'},{effect:'hit',script:1}])assert.throws(()=>validateFoartPlan(wire({operation:'add_effect',...bad}),loaded));
+ validateFoartPlan(wire({operation:'add_effect',effect:'slash',tone:'ice'}),loaded);
+ for(const bad of [{effect:'slash',tone:'pink'},{effect:'boom'},{effect:'hit',scale:0},{effect:'hit',time:-1},{effect:'hit',under:'yes'},{effect:'hit',script:1}])assert.throws(()=>validateFoartPlan(wire({operation:'add_effect',...bad}),loaded));
  const R=recipes(),src=uiProject();src.animations['中奖']={bones:{root:{scale:[{time:0,x:1,y:1},{time:1,x:1.1,y:1.1},{time:2,x:1,y:1}]}}};
  const box=R.subjectBox(src,'中奖');
  assert.equal(box.x,0);assert.equal(box.under,0);assert.ok(box.w>=320&&box.h>=480);
@@ -159,6 +160,30 @@ test('add_effect passes plan validation; an effect lands on the subject, in time
 
 test('the editor and 小桃 run add_effect natively',()=>{
  assert.match(editorSource,/if \(op && op\.operation === 'add_effect'\) return agentAddEffect\(op\)/);
- assert.match(editorSource,/await addImageFile\(new File\(\[await rb\.blob\(\)\], pic \+ '\.png'/);
+ assert.match(editorSource,/await addImageFile\(new File\(\[blob\], pic \+ '\.png'/);
+ assert.match(editorSource,/const swing = R\.swingFromTracks\(trace\.tracks, trace\.frames, FPS, /);
+ assert.match(editorSource,/tone = R\.toneFromHues\(h\.bins, h\.total\)/);
  assert.match(toolsSource,/op\.operation==='add_effect'\)\{onStatus\('正在加特效…'\);const result=await api\.agentAction\(op\)/);
+});
+
+test('an arc follows the swing it is read from; tones turn colour and leave white alone',async()=>{
+ const R=recipes(),F=20,fps=30;
+ // a tip swinging a quarter circle of radius 200 around (0,300) between frames 8 and 14, and a still body
+ const tip=new Float32Array(F*2),body=new Float32Array(F*2);
+ for(let f=0;f<F;f++){const u=Math.max(0,Math.min(1,(f-8)/6)),a=(120-90*u)*Math.PI/180;tip[f*2]=200*Math.cos(a);tip[f*2+1]=300+200*Math.sin(a);body[f*2]=0;body[f*2+1]=300;}
+ const sw=R.swingFromTracks([body,tip],F,fps);
+ assert.ok(sw.frame>=8&&sw.frame<=14,'peak inside the swing');assert.ok(sw.from>=7&&sw.to<=15);
+ assert.ok(sw.chord>200&&sw.chord<300);assert.equal(sw.bulge,1,'a clockwise swing bulges to the left of its travel');
+ const arc=R.placeArc(sw,512,4/3);assert.equal(arc.flip,true);assert.ok(arc.scale>.4&&arc.scale<1);assert.ok(Math.hypot(arc.x,arc.y-300)>120&&Math.hypot(arc.x,arc.y-300)<=205,'sits on the path');
+ const mirrored=R.swingFromTracks([body,tip.map((v,i)=>i%2?v:-v)],F,fps);assert.equal(mirrored.bulge,-1);assert.equal(R.placeArc(mirrored,512,4/3).flip,false);
+ assert.equal(R.swingFromTracks([body],F,fps),null,'nothing moves, nothing to follow');
+ assert.deepEqual([...R.driftFromTracks([Float32Array.from([0,0,5,0,9,0])],3,2)],[9,0]);
+ const bins=new Float32Array(36);bins[20]=5;assert.equal(R.toneFromHues(bins,10),'ice');bins.fill(1);assert.equal(R.toneFromHues(bins,36),null,'no clear colour');assert.equal(R.toneFromHues(new Float32Array(36),10),null);
+ const px=Uint8ClampedArray.from([255,0,0,255, 255,255,255,255, 0,0,0,0]);R.shiftHue(px,120);assert.deepEqual([...px],[0,255,0,255, 255,255,255,255, 0,0,0,0]);
+ const hit=await fxOf('hit'),toned=R.renameEffectPictures(hit,'_ice');
+ assert.deepEqual([...toned.pictures],hit.pictures.map(n=>n+'_ice'));
+ for(const m of Object.values(toned.attachments))for(const [n,a] of Object.entries(m)){assert.match(n,/_ice$/);assert.equal(a.path,n);}
+ for(const tr of Object.values(toned.animation.slots))for(const k of tr.attachment||[])assert.ok(k.name===null||/_ice$/.test(k.name));
+ assert.ok(!JSON.stringify(hit).includes('_ice'),'the library entry is untouched');
+ for(const def of Object.values(fxIndex.effects)){assert.ok(def.hue>=0&&def.hue<360);if(def.onTarget)assert.ok(['subject','target'].includes(def.onTarget.fit));}
 });
