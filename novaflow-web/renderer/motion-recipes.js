@@ -965,5 +965,134 @@
     return { json, name, report }
   }
 
-  return { MOTIONS, synthesize, extractClip, applyClip, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
+
+  // ------------------------------------------------------------- effects ---
+  // Built-in effects (fx-library/<id>/fx.json: bones, slots, attachments naming pictures, one animation)
+  // laid into an animation of the open project: where, how big and under which layer come from what
+  // that animation shows.
+
+  /** World matrices of the setup pose (plain FK; constraints do not matter for a bounding box). */
+  function setupMatrices(json) {
+    const W = new Map()
+    for (const b of json.bones) {
+      const p = b.parent ? W.get(b.parent) : null
+      const r = ((b.rotation || 0) * Math.PI) / 180, sx = b.scaleX == null ? 1 : b.scaleX, sy = b.scaleY == null ? 1 : b.scaleY
+      const la = Math.cos(r) * sx, lb = -Math.sin(r) * sy, lc = Math.sin(r) * sx, ld = Math.cos(r) * sy
+      if (!p) W.set(b.name, { a: la, b: lb, c: lc, d: ld, x: b.x || 0, y: b.y || 0 })
+      else W.set(b.name, { a: p.a * la + p.b * lc, b: p.a * lb + p.b * ld, c: p.c * la + p.d * lc, d: p.c * lb + p.d * ld, x: p.a * (b.x || 0) + p.b * (b.y || 0) + p.x, y: p.c * (b.x || 0) + p.d * (b.y || 0) + p.y })
+    }
+    return W
+  }
+  /**
+   * The box of what an animation shows (regions, plain and weighted meshes; additive layers and a
+   * full-screen backdrop are not the subject), its centre, and the draw-order index just under it.
+   * targets: slot names or patterns with * to look only at those.
+   */
+  function subjectBox(json, animName, targets) {
+    const A = (json.animations || {})[animName] || {}, W = setupMatrices(json)
+    const skin = (json.skins || []).find((k) => k.name === 'default') || (json.skins || [])[0] || { attachments: {} }
+    const first = (k) => (k && k.length && !(k[0].time > 0.0001) ? k[0] : null)
+    const want = targets && targets.length ? new Set(resolveTargets(targets, json.slots.map((x) => x.name))) : null
+    const boxes = []
+    json.slots.forEach((sl, index) => {
+      if (want && !want.has(sl.name)) return
+      if (sl.blend && sl.blend !== 'normal') return
+      const tr = (A.slots || {})[sl.name] || {}
+      const fa = first(tr.attachment), fc = first(tr.color)
+      const attName = fa ? fa.name : sl.attachment, color = (fc && fc.color) || sl.color || 'ffffffff'
+      const everOpaque = !tr.color || tr.color.some((k) => !/00$/.test(k.color || 'ff'))
+      if (!attName || (!everOpaque && /00$/.test(color))) return
+      const a = (skin.attachments[sl.name] || {})[attName]; if (!a) return
+      const m = W.get(sl.bone); if (!m) return
+      const pts = []
+      if (!a.type || a.type === 'region') {
+        const w = ((a.width || 0) * (a.scaleX == null ? 1 : a.scaleX)) / 2, h = ((a.height || 0) * (a.scaleY == null ? 1 : a.scaleY)) / 2, r = ((a.rotation || 0) * Math.PI) / 180
+        for (const [px, py] of [[-w, -h], [w, -h], [w, h], [-w, h]]) { const lx = (a.x || 0) + px * Math.cos(r) - py * Math.sin(r), ly = (a.y || 0) + px * Math.sin(r) + py * Math.cos(r); pts.push([m.a * lx + m.b * ly + m.x, m.c * lx + m.d * ly + m.y]) }
+      } else if ((a.type === 'mesh' || a.type === 'linkedmesh') && a.vertices && a.uvs) {
+        const v = a.vertices
+        if (v.length === a.uvs.length) for (let i = 0; i < v.length; i += 2) pts.push([m.a * v[i] + m.b * v[i + 1] + m.x, m.c * v[i] + m.d * v[i + 1] + m.y])
+        else { let i = 0; while (i < v.length) { const nb = v[i++]; let wx = 0, wy = 0; for (let k = 0; k < nb; k++) { const bm = W.get((json.bones[v[i]] || {}).name) || m, px = v[i + 1], py = v[i + 2], w = v[i + 3]; wx += (bm.a * px + bm.b * py + bm.x) * w; wy += (bm.c * px + bm.d * py + bm.y) * w; i += 4 } pts.push([wx, wy]) } }
+      } else return
+      if (!pts.length) return
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+      for (const [x, y] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y) }
+      boxes.push({ index, x0, y0, x1, y1, area: (x1 - x0) * (y1 - y0) })
+    })
+    if (!boxes.length) return null
+    const all = boxes.reduce((t, b) => ({ x0: Math.min(t.x0, b.x0), y0: Math.min(t.y0, b.y0), x1: Math.max(t.x1, b.x1), y1: Math.max(t.y1, b.y1) }), { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity })
+    const total = (all.x1 - all.x0) * (all.y1 - all.y0)
+    const subject = boxes.filter((b) => !(b.area > total * 0.6 && boxes.length > 3))
+    const use = subject.length ? subject : boxes
+    const box = use.reduce((t, b) => ({ x0: Math.min(t.x0, b.x0), y0: Math.min(t.y0, b.y0), x1: Math.max(t.x1, b.x1), y1: Math.max(t.y1, b.y1), under: Math.min(t.under, b.index) }), { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity, under: Infinity })
+    return { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2, w: box.x1 - box.x0, h: box.y1 - box.y0, under: box.under, slots: use.length }
+  }
+  function animationLength(a) {
+    let d = 0
+    const scan = (v) => { if (Array.isArray(v)) { for (const k of v) if (k && typeof k.time === 'number') d = Math.max(d, k.time) } else if (v && typeof v === 'object') for (const x of Object.values(v)) scan(x) }
+    scan(a || {})
+    return d
+  }
+  /**
+   * Lay one library effect into an animation: its bones hang from a holder at the chosen point, its
+   * slots are empty outside its time span, a looping effect repeats to the animation's end.
+   * opts: { anim, time, x, y, scale, under (draw-order index | null), flip, rotation, tag }
+   */
+  function mergeEffect(source, fx, opts) {
+    const o = opts || {}, json = clone(source)
+    const A = json.animations && json.animations[o.anim]; if (!A) throw new Error('没有这个动画：' + o.anim)
+    A.slots = A.slots || {}; A.bones = A.bones || {}
+    const rootName = (json.bones.find((b) => !b.parent) || json.bones[0]).name
+    const taken = new Set(json.bones.map((b) => b.name).concat(json.slots.map((x) => x.name)))
+    let tag = (o.tag || 'fx_' + fx.id) + '_', n = 1
+    while ([...taken].some((nm) => nm.startsWith(tag + n + '_'))) n++
+    tag = tag + n + '_'
+    // the holder in root space: the point and scale are given in world units
+    const RW = setupMatrices(json).get(rootName), det = RW.a * RW.d - RW.b * RW.c || 1
+    const wx = (o.x || 0) - RW.x, wy = (o.y || 0) - RW.y
+    const rootScale = Math.sqrt(Math.abs(det)) || 1, s = (o.scale || 1) / rootScale
+    const holder = tag + 'root'
+    json.bones.push({ name: holder, parent: rootName, x: r2((RW.d * wx - RW.b * wy) / det), y: r2((-RW.c * wx + RW.a * wy) / det), rotation: o.rotation || 0, scaleX: r2(s * (o.flip ? -1 : 1) * (det < 0 ? -1 : 1)), scaleY: r2(s) })
+    const bn = (name) => tag + name
+    for (const b of fx.bones) json.bones.push(Object.assign({}, b, { name: bn(b.name), parent: b.parent === 'root' ? holder : bn(b.parent) }))
+    const t0 = Math.max(0, o.time || 0), D = fx.duration || animationLength(fx.animation) || 1
+    const len = animationLength(A)
+    // a looping effect fills the animation exactly: a whole number of loops, stretched or squeezed a little to fit
+    const total = fx.loop && len - t0 > 0.3 ? len : Math.max(len, t0 + D)
+    const reps = fx.loop ? Math.max(1, Math.round((total - t0) / D)) : 1
+    const ks = fx.loop ? (total - t0) / (reps * D) : 1
+    const end = fx.loop ? total : t0 + D
+    const skin = json.skins.find((k) => k.name === 'default') || json.skins[0]
+    const shift = (keys, extra) => { const out = []; for (let k = 0; k < reps; k++) for (const key of keys) { const t = t0 + ((key.time || 0) + k * D) * ks; if (t > end + 1e-6) continue; if (k > 0 && !(key.time > 0)) continue; out.push(Object.assign({}, key, extra, { time: t3(t) })) } return out }
+    const added = []
+    for (const sl of fx.slots) {
+      const name = tag + sl.name, copy = Object.assign({}, sl, { name, bone: bn(sl.bone) })
+      const setupAtt = copy.attachment || null; delete copy.attachment
+      added.push(copy)
+      if (fx.attachments[sl.name]) skin.attachments[name] = clone(fx.attachments[sl.name])
+      const tr = (fx.animation.slots || {})[sl.name] || {}, mine = (A.slots[name] = {})
+      const att = tr.attachment ? shift(tr.attachment) : []
+      const keys = []
+      if (t0 > 0) keys.push({ time: 0, name: null })
+      if (setupAtt && !(att.length && att[0].time <= t0 + 1e-6)) keys.push({ time: t3(t0), name: setupAtt })
+      keys.push(...att)
+      if (!fx.loop || end < total - 1e-6) keys.push({ time: t3(end + 0.0334), name: null })
+      mine.attachment = keys.filter((k, i, arr) => i === 0 || k.time > arr[i - 1].time + 1e-6)
+      if (tr.color) mine.color = (t0 > 0 ? [Object.assign({}, tr.color[0], { time: 0, curve: 'stepped' })] : []).concat(shift(tr.color))
+    }
+    for (const [b, tr] of Object.entries(fx.animation.bones || {})) {
+      const mine = (A.bones[bn(b)] = {})
+      for (const [kind, keys] of Object.entries(tr)) mine[kind] = (t0 > 0 ? [Object.assign({}, keys[0], { time: 0, curve: 'stepped' })] : []).concat(shift(keys))
+    }
+    if (o.under != null && o.under >= 0 && o.under < json.slots.length) json.slots.splice(o.under, 0, ...added); else json.slots.push(...added)
+    return { json, holder, slots: added.map((x) => x.name), time: t0, end: t3(end), repeats: reps }
+  }
+  /** When an effect of this kind belongs in the animation: at the start, or on the strike (the 'hit' event, else 40 %). */
+  function effectTime(json, animName, when) {
+    const A = (json.animations || {})[animName] || {}
+    if (when !== 'strike') return 0
+    const e = (A.events || []).find((x) => /hit|attack|strike|打击|命中/i.test(x.name || ''))
+    return e ? e.time || 0 : t3(animationLength(A) * 0.4)
+  }
+
+  return { MOTIONS, synthesize, extractClip, applyClip, subjectBox, mergeEffect, effectTime, animationLength, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
 })

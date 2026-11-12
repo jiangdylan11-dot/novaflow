@@ -13815,9 +13815,54 @@
     return { phase: 'applied', operation: 'motion', motion: op.motion, animation: out.name, report: out.report, prepared, context: agentContext() }
   }
 
+  // 小桃 特效 (fx-library + motion-recipes.js mergeEffect): one of the built-in effects laid into an
+  // animation in one undo step. Where, how big and under which layer come from what the animation
+  // shows; the pictures join the project like any imported image.
+  let fxIndex = null
+  const fxUrl = (rel) => new URL('./fx-library/' + rel, document.baseURI).href
+  async function agentAddEffect(op) {
+    const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
+    if (!R || !R.mergeEffect) throw new Error('特效模块未加载')
+    const allowed = ['action', 'operation', 'effect', 'name', 'time', 'targets', 'scale', 'x', 'y', 'under', 'flip', 'rotation']
+    if (Object.keys(op).some((k) => !allowed.includes(k))) throw new Error('特效参数无效')
+    if (!fxIndex) { const r = await fetch(fxUrl('index.json')); if (!r.ok) throw new Error('特效库没有读到'); fxIndex = await r.json() }
+    const def = fxIndex.effects[op.effect]
+    if (!def) throw new Error('没有这个特效：' + op.effect)
+    const anim = op.name || state.anim
+    if (!anim || !state.json.animations || !state.json.animations[anim]) throw new Error('先选一个动画，或先做一个动作，再加特效')
+    for (const [k, lo, hi] of [['time', 0, 600], ['scale', 0.01, 100], ['x', -100000, 100000], ['y', -100000, 100000], ['rotation', -3600, 3600]]) if (op[k] !== undefined && !(Number.isFinite(op[k]) && op[k] >= lo && op[k] <= hi)) throw new Error('特效参数超出范围：' + k)
+    if (op.targets !== undefined && !(Array.isArray(op.targets) && op.targets.length <= 200 && op.targets.every((t) => typeof t === 'string' && t && t.length <= 100))) throw new Error('特效目标图层无效')
+    const rf = await fetch(fxUrl(op.effect + '/fx.json')); if (!rf.ok) throw new Error('特效文件没有读到')
+    const fx = await rf.json()
+    const box = R.subjectBox(state.json, anim, op.targets)
+    if (!box && (op.x === undefined || op.y === undefined || op.scale === undefined)) throw new Error('这条动画里没有可以对位的图层')
+    const facing = op.flip ? -1 : 1
+    const place = {
+      anim, tag: 'fx_' + op.effect, flip: !!op.flip, rotation: op.rotation || 0,
+      x: op.x !== undefined ? op.x : box.x + def.anchor[0] * facing * box.w / 2,
+      y: op.y !== undefined ? op.y : box.y + def.anchor[1] * box.h / 2,
+      scale: op.scale !== undefined ? op.scale : (Math.max(box.w, box.h) * def.rel) / (fx.span || 512),
+      time: op.time !== undefined ? op.time : R.effectTime(state.json, anim, def.when),
+      under: (op.under !== undefined ? op.under : def.under) && box ? box.under : null
+    }
+    // pictures first (they are not part of the JSON history, like any imported image)
+    for (const pic of fx.pictures) {
+      if (rt.atlas && rt.atlas.findRegion(pic)) continue
+      const rb = await fetch(fxUrl(op.effect + '/' + pic + '.png')); if (!rb.ok) throw new Error('特效图片没有读到：' + pic)
+      await addImageFile(new File([await rb.blob()], pic + '.png', { type: 'image/png' }), pic)
+    }
+    ensureAtlas()
+    let out = null
+    const applied = edit('小桃特效 ' + def.label, (j) => { out = R.mergeEffect(j, fx, place); return { json: out.json } })
+    if (applied === null || !out) throw new Error('特效没有写入，已保留原工程')
+    state.anim = anim; setMode('animate'); gotoFrame(Math.round(place.time * FPS)); refresh()
+    return { phase: 'applied', operation: 'add_effect', effect: op.effect, label: def.label, animation: anim, time: out.time, end: out.end, layers: out.slots.length, x: Math.round(place.x), y: Math.round(place.y), scale: Math.round(place.scale * 1000) / 1000, under: place.under !== null, context: agentContext() }
+  }
+
   function agentAction(op) {
     if (!state.json) throw new Error('请先新建或导入动画工程')
     if (op && op.operation === 'motion') return agentMotion(op)
+    if (op && op.operation === 'add_effect') return agentAddEffect(op)
     let boneReceipt, constraintReceipt
     if (['auto_mesh','auto_weights','edit_mesh','edit_weights','select_attachment'].includes(op.operation)) {
       const L={skin:op.skinName,slot:op.slotName,name:op.attachmentName}

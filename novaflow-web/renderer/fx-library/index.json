@@ -1,0 +1,7 @@
+{"version":1,"effects":{
+"hit":{"label":"受击爆点","rel":0.55,"anchor":[0,0.25],"under":false,"when":"start"},
+"slash":{"label":"刀光","rel":0.9,"anchor":[0.35,0.15],"under":false,"when":"strike"},
+"cast":{"label":"蓄力释放","rel":0.95,"anchor":[0,0.15],"under":false,"when":"start"},
+"flame":{"label":"火焰","rel":0.9,"anchor":[0,0],"under":false,"when":"start"},
+"backlight":{"label":"背光","rel":1.5,"anchor":[0,0],"under":true,"when":"start"}
+}}

@@ -114,3 +114,51 @@ test('the page loads the recipes for the editor and 小桃 runs both operations 
  assert.match(toolsSource,/op\.operation==='motion'\)\{onStatus\('正在生成动作…'\);const result=await api\.agentAction\(op\)/);
  assert.match(editorSource,/if \(op && op\.operation === 'motion'\) return agentMotion\(op\)/);
 });
+
+// ---- effects ----------------------------------------------------------------------------------
+import {FOART_EFFECTS} from '../../packages/shared/src/foart-tool-plan.mjs';
+const fxIndex=JSON.parse(await readFile(new URL('../../renderer/fx-library/index.json',import.meta.url),'utf8'));
+const fxOf=async id=>JSON.parse(await readFile(new URL('../../renderer/fx-library/'+id+'/fx.json',import.meta.url),'utf8'));
+
+test('the effect library matches the planner list and every picture it names is shipped',async()=>{
+ assert.deepEqual([...FOART_EFFECTS].sort(),Object.keys(fxIndex.effects).sort());
+ const {access}=await import('node:fs/promises');
+ for(const id of FOART_EFFECTS){
+  const fx=await fxOf(id);assert.equal(fx.id,id);assert.ok(fx.duration>0&&fx.pictures.length>0,id);
+  for(const pic of fx.pictures)await access(new URL('../../renderer/fx-library/'+id+'/'+pic+'.png',import.meta.url));
+  for(const m of Object.values(fx.attachments))for(const [name,att] of Object.entries(m)){assert.ok(fx.pictures.includes(name),id+' attachment '+name);assert.equal(att.path,name);}
+  for(const tr of Object.values(fx.animation.slots||{}))for(const k of tr.attachment||[])assert.ok(k.name===null||fx.pictures.includes(k.name),id+' key picture');
+  assert.match(FOART_TOOL_SYSTEM,new RegExp(id+'='));
+ }
+});
+
+test('add_effect passes plan validation; an effect lands on the subject, in time, on its own bones and slots',async()=>{
+ const wire=op=>({schema:FOART_TOOL_SCHEMA,status:'act',reply:'加特效',operations:[{action:'animation',...op}]});
+ const loaded={schema:FOART_TOOL_SCHEMA,controls:[],animation:{active:true,loaded:true,bones:[{name:'root'}]}};
+ validateFoartPlan(wire({operation:'add_effect',effect:'hit'}),loaded);
+ validateFoartPlan(wire({operation:'add_effect',effect:'backlight',name:'中奖',under:true,scale:.5,targets:['sym_*']}),loaded);
+ for(const bad of [{effect:'boom'},{effect:'hit',scale:0},{effect:'hit',time:-1},{effect:'hit',under:'yes'},{effect:'hit',script:1}])assert.throws(()=>validateFoartPlan(wire({operation:'add_effect',...bad}),loaded));
+ const R=recipes(),src=uiProject();src.animations['中奖']={bones:{root:{scale:[{time:0,x:1,y:1},{time:1,x:1.1,y:1.1},{time:2,x:1,y:1}]}}};
+ const box=R.subjectBox(src,'中奖');
+ assert.equal(box.x,0);assert.equal(box.under,0);assert.ok(box.w>=320&&box.h>=480);
+ const only=R.subjectBox(src,'中奖',['title']);assert.equal(only.y,700);assert.equal(only.under,3);
+ const hit=await fxOf('hit'),before=JSON.stringify(src);
+ const out=R.mergeEffect(src,hit,{anim:'中奖',time:.5,x:box.x,y:box.y,scale:.5,under:null});
+ assert.equal(JSON.stringify(src),before,'the source project is untouched');
+ const j=out.json,holder=j.bones.find(b=>b.name===out.holder);
+ assert.equal(holder.parent,'root');assert.equal(holder.x,box.x);assert.equal(holder.scaleX,.5);
+ assert.equal(out.slots.length,hit.slots.length);assert.deepEqual([...j.slots.slice(-hit.slots.length)].map(s=>s.name),[...out.slots],'on top by default');
+ for(const name of out.slots){const keys=j.animations['中奖'].slots[name].attachment;assert.equal(keys[0].time,0);assert.equal(keys[0].name,null,'hidden before its time');assert.equal(keys.at(-1).name,null,'hidden after it ends');assert.ok(keys.some(k=>k.name&&k.time>=.5));}
+ assert.ok(Math.abs(out.end-(.5+hit.duration))<1e-3);
+ // a looping effect fills the animation with a whole number of loops and stays to its end, under the subject when asked
+ const back=await fxOf('backlight');const looped=R.mergeEffect(src,back,{anim:'中奖',time:0,x:0,y:400,scale:1,under:box.under});
+ assert.equal(looped.end,2);assert.equal(looped.repeats,1);assert.deepEqual([...looped.json.slots.slice(0,back.slots.length)].map(s=>s.name),[...looped.slots]);
+ const second=R.mergeEffect(looped.json,back,{anim:'中奖',time:0,x:0,y:400,scale:1,under:null});assert.notEqual(second.holder,looped.holder,'a second copy gets its own names');
+ assert.equal(R.effectTime({animations:{a:{events:[{time:.42,name:'hit'}]}}},'a','strike'),.42);assert.equal(R.effectTime(src,'中奖','start'),0);
+});
+
+test('the editor and 小桃 run add_effect natively',()=>{
+ assert.match(editorSource,/if \(op && op\.operation === 'add_effect'\) return agentAddEffect\(op\)/);
+ assert.match(editorSource,/await addImageFile\(new File\(\[await rb\.blob\(\)\], pic \+ '\.png'/);
+ assert.match(toolsSource,/op\.operation==='add_effect'\)\{onStatus\('正在加特效…'\);const result=await api\.agentAction\(op\)/);
+});

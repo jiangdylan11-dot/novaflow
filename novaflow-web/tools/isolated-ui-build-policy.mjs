@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {join,relative,resolve,isAbsolute,extname} from 'node:path';
 
-const ASSET_DIRS=['assets','templates','aifx-styles','vendor','public'];
+const ASSET_DIRS=['assets','templates','aifx-styles','fx-library','vendor','public'];
 const HOME_FILES=new Set(['home-shell.html','home-shell.js','home-frame-bridge.js']);
 // This one untracked source was independently reviewed against the published
 // 271 prompt resolver; any byte change invalidates this approval.
