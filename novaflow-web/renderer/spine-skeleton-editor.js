@@ -13899,19 +13899,106 @@
     const d = g.getImageData(0, 0, c.width, c.height); R.shiftHue(d.data, deg); g.putImageData(d, 0, 0)
     return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('特效图片没有生成'))), 'image/png'))
   }
-  async function agentAddEffect(op) {
-    const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
-    if (!R || !R.mergeEffect) throw new Error('特效模块未加载')
-    const allowed = ['action', 'operation', 'effect', 'name', 'time', 'targets', 'scale', 'x', 'y', 'under', 'flip', 'rotation', 'tone']
-    if (Object.keys(op).some((k) => !allowed.includes(k))) throw new Error('特效参数无效')
-    if (!fxIndex) { const r = await fetch(fxUrl('index.json')); if (!r.ok) throw new Error('特效库没有读到'); fxIndex = await r.json() }
-    const def = fxIndex.effects[op.effect]
-    if (!def) throw new Error('没有这个特效：' + op.effect)
-    const anim = op.name || state.anim
-    if (!anim || !state.json.animations || !state.json.animations[anim]) throw new Error('先选一个动画，或先做一个动作，再加特效')
-    for (const [k, lo, hi] of [['time', 0, 600], ['scale', 0.01, 100], ['x', -100000, 100000], ['y', -100000, 100000], ['rotation', -3600, 3600]]) if (op[k] !== undefined && !(Number.isFinite(op[k]) && op[k] >= lo && op[k] <= hi)) throw new Error('特效参数超出范围：' + k)
-    if (op.targets !== undefined && !(Array.isArray(op.targets) && op.targets.length <= 200 && op.targets.every((t) => typeof t === 'string' && t && t.length <= 100))) throw new Error('特效目标图层无效')
-    if (op.tone !== undefined && !Object.prototype.hasOwnProperty.call(R.TONES, op.tone)) throw new Error('特效色调无效')
+  // one trace of the animation serves every effect of a call
+  const fxTrace = (ctx) => (ctx.trace !== undefined ? ctx.trace : (ctx.trace = fxTracks(ctx.anim)))
+  // when the subject lands: the end of its fastest motion (an entrance pops in, then settles); 0 for a still one
+  function fxLanding(ctx) {
+    if (ctx.land !== undefined) return ctx.land
+    const tr = fxTrace(ctx), R = ctx.R, sw = tr && tr.tracks.length ? R.swingFromTracks(tr.tracks, tr.frames, FPS) : null
+    const box = R.subjectBox(state.json, ctx.anim), size = box ? Math.max(box.w, box.h) : 0
+    return (ctx.land = sw && sw.path > size * 0.05 ? Math.round((sw.to / FPS) * 10000) / 10000 : 0)
+  }
+  // an animation that ends where it starts with its subject on screen is a loop (a big win's second half)
+  function fxIsLoop(ctx) {
+    if (/loop|循环|待机|idle|stay|常驻/i.test(ctx.anim)) return true
+    if (/(^|_)in$|进场|入场|出现|弹出|enter|appear|show/i.test(ctx.anim)) return false
+    const tr = fxTrace(ctx); if (!tr || !tr.tracks.length) return false
+    const box = ctx.R.subjectBox(state.json, ctx.anim), size = box ? Math.max(box.w, box.h) : 1
+    let full = 0, moved = 0
+    for (const t of tr.tracks) { const e = (tr.frames - 1) * 2; if (t[0] !== t[0] || t[e] !== t[e]) continue; full++; moved = Math.max(moved, Math.hypot(t[e] - t[0], t[e + 1] - t[1])) }
+    return full > 0 && moved < size * 0.02
+  }
+  // the layer a title effect belongs to: named by the caller, else the wide lettering of the popup
+  function fxTitleSlots(anim, targets, R) {
+    const j = state.json, skin = (j.skins || []).find((k) => k.name === 'default') || (j.skins || [])[0]
+    if (!skin) return []
+    const first = (sl) => { const k = (((j.animations[anim] || {}).slots || {})[sl.name] || {}).attachment; return k && k.length && !(k[0].time > 0) ? k[0].name : sl.attachment }
+    const cand = []
+    j.slots.forEach((sl, index) => {
+      if ((sl.blend && sl.blend !== 'normal') || /^fx_/.test(sl.name)) return
+      const nm = first(sl) || sl.attachment, att = nm && (skin.attachments[sl.name] || {})[nm]
+      if (!att || (att.type && att.type !== 'region') || !(att.width > 0 && att.height > 0)) return
+      cand.push({ slot: sl, index, name: nm, att, area: att.width * att.height * Math.abs((att.scaleX == null ? 1 : att.scaleX) * (att.scaleY == null ? 1 : att.scaleY)), aspect: att.width / att.height })
+    })
+    if (targets && targets.length) { const want = new Set(R.resolveTargets ? R.resolveTargets(targets, j.slots.map((x) => x.name)) : targets); const hit = cand.filter((c) => want.has(c.slot.name)); if (hit.length) return hit.slice(0, 3) }
+    if (!cand.length) return []
+    const biggest = Math.max(...cand.map((c) => c.area))
+    const score = (c) => c.area * (c.aspect >= 1.8 ? 3 : 1) * (/title|win|zi|字|标题|logo|text|big|mega|super|total|jackpot|奖/i.test(c.slot.name + ' ' + c.name) ? 4 : 1) * (cand.length > 2 && c.area === biggest ? 0.15 : 1) * (0.6 + 0.4 * (c.index / j.slots.length))
+    return [cand.slice().sort((x, y) => score(y) - score(x))[0]]
+  }
+  // 扫光 with the software's own sweep generator: a light band crossing a picture, cut from that
+  // picture's own shape, laid on its bone right above it. Returns what to write once the pictures are in.
+  async function fxSweep(op, ctx, part) {
+    const R = ctx.R, L = window.NovaFlowSweepLight
+    if (!L || !L.generateSweepSequence) throw new Error('扫光模块未加载')
+    ensureAtlas()
+    const hosts = fxTitleSlots(ctx.anim, op.targets, R)
+    if (!hosts.length) throw new Error('没有找到可以扫光的图片图层')
+    const A = state.json.animations[ctx.anim], total = Math.max(R.animationLength(A), 0.5), N = 10, pass = 0.6
+    const start = op.time !== undefined ? op.time : Math.min(Math.max(0, total - pass), (part.at === 'land' ? fxLanding(ctx) : 0) + (part.lead || 0))
+    const jobs = []
+    for (const h of hosts) {
+      const px = basePixels(h.att.path || h.name); if (!px) continue
+      // a title is read at up to 512 px on its long side: the band is soft, the slices stay light
+      const k = Math.min(1, 512 / Math.max(px.w, px.h)), w = Math.max(8, Math.round(px.w * k)), hh = Math.max(8, Math.round(px.h * k))
+      let rgba = px.rgba
+      if (k < 1) { const c0 = document.createElement('canvas'); c0.width = px.w; c0.height = px.h; c0.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.rgba), px.w, px.h), 0, 0); const c1 = document.createElement('canvas'); c1.width = w; c1.height = hh; const g1 = c1.getContext('2d'); g1.imageSmoothingQuality = 'high'; g1.drawImage(c0, 0, 0, w, hh); rgba = g1.getImageData(0, 0, w, hh).data }
+      const tone = op.tone && R.TONES[op.tone] !== undefined ? op.tone : null
+      const colour = { fire: '#ff8a4d', gold: '#ffd173', green: '#8dffb0', ice: '#9fdcff', purple: '#d6a3ff' }[tone || 'gold']
+      const seq = L.generateSweepSequence(rgba, w, hh, { scheme: 'gold', frames: N, color: colour, colorMode: 'custom' })
+      let tag = 1; while (state.json.slots.some((x) => x.name.startsWith('fx_sweep_' + tag + '_'))) tag++
+      tag += jobs.length
+      const pics = []
+      for (let i = 0; i < seq.frames.length; i++) {
+        const fr = seq.frames[i], pic = 'fx_sweep_' + tag + '_' + String(i).padStart(2, '0')
+        const c = document.createElement('canvas'); c.width = fr.w; c.height = fr.h; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(fr.data), fr.w, fr.h), 0, 0)
+        const blob = await new Promise((res, rej) => c.toBlob((bl) => (bl ? res(bl) : rej(new Error('扫光图片没有生成'))), 'image/png'))
+        await addImageFile(new File([blob], pic + '.png', { type: 'image/png' }), pic)
+        pics.push({ pic, w: fr.w, h: fr.h })
+      }
+      jobs.push({ host: h.slot.name, att: h.att, tag, pics, sx: h.att.width / w, sy: h.att.height / hh })
+    }
+    if (!jobs.length) throw new Error('这张图片读不到像素，扫光没有添加')
+    const every = part.every || 0, step = pass / (N + 1), t4 = (t) => Math.round(t * 10000) / 10000
+    const apply = (json) => {
+      const j = JSON.parse(JSON.stringify(json)), an = j.animations[ctx.anim]; an.slots = an.slots || {}
+      const skin = j.skins.find((k) => k.name === 'default') || j.skins[0]; let layers = 0
+      for (const job of jobs) {
+        const at = j.slots.findIndex((x) => x.name === job.host); if (at < 0) continue
+        const added = job.pics.map((p, i) => {
+          const name = 'fx_sweep_' + job.tag + '_' + i
+          skin.attachments[name] = { [p.pic]: Object.assign({}, job.att, { path: p.pic, width: Math.round(p.w * job.sx * 100) / 100, height: Math.round(p.h * job.sy * 100) / 100 }) }
+          delete skin.attachments[name][p.pic].type; delete skin.attachments[name][p.pic].name
+          const keys = [{ time: 0, color: 'ffffff00' }]
+          for (let t0 = start; t0 + pass <= total + 1e-6; t0 += every || Infinity) {
+            for (const [t, al] of L.sweepAlphaKeys(i, job.pics.length, step, false)) { const tt = t4(t0 + t); if (tt > keys[keys.length - 1].time + 1e-6) keys.push({ time: tt, color: 'ffffff' + (al ? 'ff' : '00') }) }
+            if (!every) break
+          }
+          an.slots[name] = { color: keys }
+          return { name, bone: j.slots[at].bone, color: 'ffffff00', attachment: p.pic, blend: 'additive' }
+        })
+        j.slots.splice(at + 1, 0, ...added); layers += added.length
+      }
+      return { json: j, layers }
+    }
+    return { apply, start, hosts: jobs.map((x) => x.host), label: '扫光' }
+  }
+  // everything an effect needs before it is written: where, how big, when, which tone, its pictures loaded
+  async function fxPrepare(op, ctx, part) {
+    const R = ctx.R, anim = ctx.anim
+    const def = Object.assign({}, fxIndex.effects[op.effect], part && part.at ? { when: part.at } : null)
+    if (!fxIndex.effects[op.effect]) throw new Error('没有这个特效：' + op.effect)
+    if (def.native === 'sweep') { const sw = await fxSweep(op, ctx, part || { at: 'land', lead: 0.3 }); return { sweep: sw, def } }
     const rf = await fetch(fxUrl(op.effect + '/fx.json')); if (!rf.ok) throw new Error('特效文件没有读到')
     let fx = await rf.json()
     let box = R.subjectBox(state.json, anim, op.targets)
@@ -13930,12 +14017,12 @@
       anim, tag: 'fx_' + op.effect, flip: !!op.flip, rotation: op.rotation || 0, stretch,
       x: (box ? box.x + anchor[0] * facing * box.w / 2 : 0) - content.cx * span * fit * stretch, y: (box ? box.y + anchor[1] * box.h / 2 : 0) - content.cy * span * fit,
       scale: fit,
-      time: R.effectTime(state.json, anim, def.when),
-      under: (op.under !== undefined ? op.under : onTarget ? !!onTarget.under : def.under) && box ? box.under : null
+      time: def.when === 'land' ? fxLanding(ctx) : R.effectTime(state.json, anim, def.when),
+      under: def.under === 'bottom' ? 0 : (op.under !== undefined ? op.under : onTarget ? !!onTarget.under : def.under) && box ? box.under : null
     }
     // read the motion: an arc follows the swing, a burst sits on the side the blow comes from
     let read = null
-    const trace = def.follow ? fxTracks(anim) : null
+    const trace = def.follow ? fxTrace(ctx) : null
     if (trace && def.follow === 'swing') {
       const swing = R.swingFromTracks(trace.tracks, trace.frames, FPS, whole ? [whole.x, whole.y] : null)
       if (swing && whole && swing.chord > Math.max(whole.w, whole.h) * 0.22) {
@@ -13972,12 +14059,56 @@
       const blob = turn ? await fxTonedBlob(await rb.blob(), turn, R) : await rb.blob()
       await addImageFile(new File([blob], pic + '.png', { type: 'image/png' }), pic)
     }
+    if (part && part.lead) place.time = Math.max(0, place.time + part.lead)
+    if (part && part.settled) place.settled = true
+    if (part && part.alpha) place.alpha = part.alpha
+    if (ctx.natural) place.natural = true
+    return { fx, place, def, read, tone: turn ? tone : null }
+  }
+  async function agentAddEffect(op) {
+    const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
+    if (!R || !R.mergeEffect) throw new Error('特效模块未加载')
+    const allowed = ['action', 'operation', 'effect', 'name', 'time', 'targets', 'scale', 'x', 'y', 'under', 'flip', 'rotation', 'tone']
+    if (Object.keys(op).some((k) => !allowed.includes(k))) throw new Error('特效参数无效')
+    if (!fxIndex) { const r = await fetch(fxUrl('index.json')); if (!r.ok) throw new Error('特效库没有读到'); fxIndex = await r.json() }
+    const def = fxIndex.effects[op.effect]
+    if (!def) throw new Error('没有这个特效：' + op.effect)
+    const anim = op.name || state.anim
+    if (!anim || !state.json.animations || !state.json.animations[anim]) throw new Error('先选一个动画，或先做一个动作，再加特效')
+    for (const [k, lo, hi] of [['time', 0, 600], ['scale', 0.01, 100], ['x', -100000, 100000], ['y', -100000, 100000], ['rotation', -3600, 3600]]) if (op[k] !== undefined && !(Number.isFinite(op[k]) && op[k] >= lo && op[k] <= hi)) throw new Error('特效参数超出范围：' + k)
+    if (op.targets !== undefined && !(Array.isArray(op.targets) && op.targets.length <= 200 && op.targets.every((t) => typeof t === 'string' && t && t.length <= 100))) throw new Error('特效目标图层无效')
+    if (op.tone !== undefined && !Object.prototype.hasOwnProperty.call(R.TONES, op.tone)) throw new Error('特效色调无效')
+    const ctx = { R, anim }
+    // a kit is a set of effects laid in one go: the entrance set or the loop set, by what the animation is
+    const loopKit = def.kit ? fxIsLoop(ctx) : false
+    const parts = def.kit ? def.kit[loopKit ? 'loop' : 'in'] : [null]
+    if (def.kit && !loopKit) ctx.natural = true
+    const ready = []
+    for (const part of parts) {
+      const one = part ? { effect: part.effect, name: anim, ...(part.effect === 'sweep' && op.targets ? { targets: op.targets } : null), ...(op.tone && fxIndex.effects[part.effect].native ? { tone: op.tone } : null), ...(part.under !== undefined ? { under: part.under } : null) } : op
+      try { ready.push(await fxPrepare(one, ctx, part)) } catch (e) { if (!part || !part.optional) throw e }
+    }
     ensureAtlas()
-    let out = null
-    const applied = edit('小桃特效 ' + def.label, (j) => { out = R.mergeEffect(j, fx, place); return { json: out.json } })
-    if (applied === null || !out) throw new Error('特效没有写入，已保留原工程')
-    state.anim = anim; setMode('animate'); gotoFrame(Math.round(place.time * FPS)); refresh()
-    return { phase: 'applied', operation: 'add_effect', effect: op.effect, label: def.label, animation: anim, time: out.time, end: out.end, layers: out.slots.length, x: Math.round(place.x), y: Math.round(place.y), scale: Math.round(place.scale * 1000) / 1000, rotation: place.rotation, flip: place.flip, tone: turn ? tone : null, read, under: place.under !== null, context: agentContext() }
+    const done = []
+    const applied = edit('小桃特效 ' + def.label, (j) => {
+      let json = j, shift = []
+      for (const r of ready) {
+        if (r.sweep) { const o = r.sweep.apply(json); json = o.json; done.push({ effect: 'sweep', label: r.def.label, time: r.sweep.start, layers: o.layers }); continue }
+        const place = Object.assign({}, r.place)
+        if (place.under !== null) for (const [at, n] of shift) if (place.under >= at && at !== 0) place.under += n
+        if (place.under !== null && place.under > 0) for (const [at, n] of shift) if (at === 0) place.under += n
+        const out = R.mergeEffect(json, r.fx, place); json = out.json
+        if (place.under !== null) shift.push([place.under, out.slots.length])
+        done.push({ effect: r.fx.id, label: r.def.label, time: out.time, end: out.end, layers: out.slots.length, place, read: r.read, tone: r.tone })
+      }
+      return { json }
+    })
+    if (applied === null || !done.length) throw new Error('特效没有写入，已保留原工程')
+    state.anim = anim; setMode('animate'); gotoFrame(Math.round((done[done.length > 1 ? 1 : 0].time || 0) * FPS)); refresh()
+    const d0 = done[0], pl = d0.place || {}
+    return { phase: 'applied', operation: 'add_effect', effect: op.effect, label: def.label, animation: anim, time: d0.time, end: Math.max(...done.map((d) => d.end || 0)), layers: done.reduce((n, d) => n + d.layers, 0),
+      ...(def.kit ? { kit: loopKit ? 'loop' : 'in', parts: done.map((d) => ({ effect: d.effect, label: d.label, time: d.time, layers: d.layers })) } : { x: Math.round(pl.x || 0), y: Math.round(pl.y || 0), scale: Math.round((pl.scale || 1) * 1000) / 1000, rotation: pl.rotation || 0, flip: !!pl.flip, tone: d0.tone || null, read: d0.read || null, under: pl.under != null }),
+      context: agentContext() }
   }
 
   function agentAction(op) {

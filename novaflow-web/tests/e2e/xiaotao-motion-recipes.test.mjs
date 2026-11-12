@@ -124,6 +124,9 @@ test('the effect library matches the planner list and every picture it names is 
  assert.deepEqual([...FOART_EFFECTS].sort(),Object.keys(fxIndex.effects).sort());
  const {access}=await import('node:fs/promises');
  for(const id of FOART_EFFECTS){
+  const def=fxIndex.effects[id];
+  if(def.native)continue;
+  if(def.kit){for(const set of [def.kit.in,def.kit.loop]){assert.ok(set.length>=4);for(const part of set)assert.ok(fxIndex.effects[part.effect]&&!fxIndex.effects[part.effect].kit,id+' part '+part.effect);}continue;}
   const fx=await fxOf(id);assert.equal(fx.id,id);assert.ok(fx.duration>0&&fx.pictures.length>0,id);
   for(const pic of fx.pictures)await access(new URL('../../renderer/fx-library/'+id+'/'+pic+'.png',import.meta.url));
   for(const m of Object.values(fx.attachments))for(const [name,att] of Object.entries(m)){assert.ok(fx.pictures.includes(name),id+' attachment '+name);assert.equal(att.path,name);}
@@ -161,6 +164,8 @@ test('add_effect passes plan validation; an effect lands on the subject, in time
 test('the editor and 小桃 run add_effect natively',()=>{
  assert.match(editorSource,/if \(op && op\.operation === 'add_effect'\) return agentAddEffect\(op\)/);
  assert.match(editorSource,/await addImageFile\(new File\(\[blob\], pic \+ '\.png'/);
+ assert.ok(editorSource.includes("const parts = def.kit ? def.kit[loopKit ? 'loop' : 'in'] : [null]"));
+ assert.ok(editorSource.includes("L.generateSweepSequence(rgba, w, hh, { scheme: 'gold'"));
  assert.match(editorSource,/const swing = R\.swingFromTracks\(trace\.tracks, trace\.frames, FPS, /);
  assert.match(editorSource,/tone = R\.toneFromHues\(h\.bins, h\.total\)/);
  assert.match(toolsSource,/op\.operation==='add_effect'\)\{onStatus\('正在加特效…'\);const result=await api\.agentAction\(op\)/);
@@ -185,5 +190,26 @@ test('an arc follows the swing it is read from; tones turn colour and leave whit
  for(const m of Object.values(toned.attachments))for(const [n,a] of Object.entries(m)){assert.match(n,/_ice$/);assert.equal(a.path,n);}
  for(const tr of Object.values(toned.animation.slots))for(const k of tr.attachment||[])assert.ok(k.name===null||/_ice$/.test(k.name));
  assert.ok(!JSON.stringify(hit).includes('_ice'),'the library entry is untouched');
- for(const def of Object.values(fxIndex.effects)){assert.ok(def.hue>=0&&def.hue<360);if(def.onTarget)assert.ok(['subject','target'].includes(def.onTarget.fit));}
+ for(const def of Object.values(fxIndex.effects)){if(def.native||def.kit)continue;assert.ok(def.hue>=0&&def.hue<360);if(def.onTarget)assert.ok(['subject','target'].includes(def.onTarget.fit));}
+});
+
+test('a set of effects: a holding layer stays, a settled one is simply there, an entrance never grows, lights can be turned down',async()=>{
+ const R=recipes(),src=uiProject();src.animations['进场']={bones:{root:{scale:[{time:0,x:0,y:0},{time:.4,x:1.1,y:1.1},{time:.6,x:1,y:1}]}}};
+ const dim=await fxOf('dim'),coins=await fxOf('coins'),rays=await fxOf('rays');
+ assert.equal(dim.hold,true);
+ const held=R.mergeEffect(src,dim,{anim:'进场',time:0,x:0,y:0,scale:1,under:0});
+ assert.equal(held.json.slots[0].name,held.slots[0],'under everything');assert.equal(held.end,.6);
+ const hk=held.json.animations['进场'].slots[held.slots[0]];assert.ok(hk.attachment.every(k=>k.name!==null),'never switched off');assert.equal(hk.color.at(-1).color,'000000a6');
+ const there=R.mergeEffect(src,dim,{anim:'进场',time:0,x:0,y:0,scale:1,under:0,settled:true});
+ assert.deepEqual([...there.json.animations['进场'].slots[there.slots[0]].color].map(k=>[k.time,k.color]),[[0,'000000a6']]);
+ const cut=R.mergeEffect(src,coins,{anim:'进场',time:.3,x:0,y:0,scale:1,under:null,natural:true});
+ assert.equal(cut.end,.6,'the entrance keeps its length');assert.equal(R.animationLength(cut.json.animations['进场']),.6);
+ const free=R.mergeEffect(src,coins,{anim:'进场',time:.3,x:0,y:0,scale:1,under:null});assert.ok(free.end>1.5);
+ const soft=R.mergeEffect(src,rays,{anim:'进场',time:0,x:0,y:0,scale:1,under:null,alpha:.5});
+ const first=soft.json.animations['进场'].slots[soft.slots[0]].color[0].color,plain=rays.animation.slots.a.color[0].color;
+ assert.equal(parseInt(first.slice(6),16),Math.round(parseInt(plain.slice(6),16)*.5));
+ // a looping coin never shows its jump back to the launch point
+ const loop=await fxOf('coinloop');assert.equal(loop.loop,true);
+ for(const [n,tr] of Object.entries(loop.animation.bones)){const t=tr.translate,c=loop.animation.slots[n].color;assert.equal(t[0].time,0);assert.equal(t.at(-1).time,2);assert.equal(t[0].x,t.at(-1).x);
+  for(let i=1;i<t.length;i++)if(Math.hypot(t[i].x-t[i-1].x,t[i].y-t[i-1].y)>200)assert.equal(t[i-1].curve,'stepped',n+' jump at '+t[i].time);assert.ok(c.some(k=>k.color.endsWith('00')));}
 });

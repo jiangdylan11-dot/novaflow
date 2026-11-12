@@ -1,7 +1,17 @@
-{"version":2,"effects":{
+{"version":3,"effects":{
 "hit":{"label":"受击爆点","rel":0.55,"anchor":[0,0.25],"under":false,"when":"start","follow":"recoil","hue":30},
 "slash":{"label":"刀光","rel":0.9,"anchor":[0.35,0.15],"under":false,"when":"strike","follow":"swing","hue":12,"autoTone":true},
 "cast":{"label":"蓄力释放","rel":0.95,"anchor":[0,0.15],"under":false,"when":"start","hue":205,"autoTone":true,"onTarget":{"rel":0.6,"anchor":[0,0],"fit":"subject"}},
 "flame":{"label":"火焰","rel":1.3,"anchor":[0,0.25],"stretch":1.8,"under":true,"when":"start","hue":25,"content":{"w":0.31,"h":0.65,"cx":0,"cy":0.143},"onTarget":{"rel":1.4,"anchor":[0,0.9],"fit":"target","under":false}},
-"backlight":{"label":"背光","rel":1.5,"anchor":[0,0],"under":true,"when":"start","hue":45,"onTarget":{"rel":1.6,"anchor":[0,0],"fit":"target","under":true}}
+"backlight":{"label":"背光","rel":1.5,"anchor":[0,0],"under":true,"when":"start","hue":45,"onTarget":{"rel":1.6,"anchor":[0,0],"fit":"target","under":true}},
+"sparkle":{"label":"星光闪烁","rel":1.1,"anchor":[0,0],"under":false,"when":"start","hue":45,"onTarget":{"rel":1.15,"anchor":[0,0],"fit":"target","under":false}},
+"burst":{"label":"光圈爆开","rel":1.35,"anchor":[0,0],"under":false,"when":"land","hue":40,"onTarget":{"rel":1.5,"anchor":[0,0],"fit":"target","under":false}},
+"coins":{"label":"金币喷发","rel":1.6,"anchor":[0,-0.05],"under":false,"when":"land","hue":45},
+"coinloop":{"label":"金币喷泉","rel":1.6,"anchor":[0,-0.05],"under":false,"when":"start","hue":45},
+"rays":{"label":"转光","rel":1.9,"anchor":[0,0],"under":true,"when":"start","hue":45,"onTarget":{"rel":2,"anchor":[0,0],"fit":"target","under":true}},
+"dim":{"label":"压暗","rel":2.8,"anchor":[0,0],"under":"bottom","when":"start","hue":0},
+"sweep":{"label":"扫光","native":"sweep"},
+"bigwin":{"label":"大奖光效","kit":{
+ "in":[{"effect":"dim"},{"effect":"rays","at":"land","lead":-0.12},{"effect":"coins","at":"land","lead":-0.05},{"effect":"burst","at":"land","lead":-0.05,"under":true,"alpha":0.75},{"effect":"sparkle","at":"land","lead":0.25},{"effect":"sweep","at":"land","lead":0.3,"every":1.6,"optional":true}],
+ "loop":[{"effect":"dim","settled":true},{"effect":"rays"},{"effect":"coinloop"},{"effect":"sparkle"},{"effect":"sweep","lead":0.4,"every":2,"optional":true}]}}
 }}

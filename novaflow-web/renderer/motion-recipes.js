@@ -1054,18 +1054,25 @@
     json.bones.push({ name: holder, parent: rootName, x: r2((RW.d * wx - RW.b * wy) / det), y: r2((-RW.c * wx + RW.a * wy) / det), rotation: o.rotation || 0, scaleX: r2(s * (o.stretch || 1) * (o.flip ? -1 : 1) * (det < 0 ? -1 : 1)), scaleY: r2(s) })
     const bn = (name) => tag + name
     for (const b of fx.bones) json.bones.push(Object.assign({}, b, { name: bn(b.name), parent: b.parent === 'root' ? holder : bn(b.parent) }))
-    const t0 = Math.max(0, o.time || 0), D = fx.duration || animationLength(fx.animation) || 1
+    // an effect that holds (a darkened backdrop) stays to the end; settled, it is simply there from the first frame
+    const stays = !!fx.hold, settled = stays && !!o.settled
+    const t0 = settled ? 0 : Math.max(0, o.time || 0), D = fx.duration || animationLength(fx.animation) || 1
     const len = animationLength(A)
     // a looping effect fills the animation exactly: a whole number of loops, stretched or squeezed a little to fit
-    const total = fx.loop && len - t0 > 0.3 ? len : Math.max(len, t0 + D)
-    const reps = fx.loop ? Math.max(1, Math.round((total - t0) / D)) : 1
-    const ks = fx.loop ? (total - t0) / (reps * D) : 1
-    const end = fx.loop ? total : t0 + D
+    // natural (an effect of an entrance set) never lengthens the animation: it is cut where the animation ends
+    const total = (fx.loop && len - t0 > 0.3) || (o.natural && len > t0) ? len : Math.max(len, t0 + D)
+    // natural: a loop running inside a one-shot animation keeps its own pace and is simply cut at the end
+    const reps = fx.loop ? Math.max(1, o.natural ? Math.ceil((total - t0) / D - 1e-6) : Math.round((total - t0) / D)) : 1
+    const ks = fx.loop && !o.natural ? (total - t0) / (reps * D) : 1
+    const end = fx.loop || stays ? total : Math.min(t0 + D, o.natural ? total : Infinity)
     const skin = json.skins.find((k) => k.name === 'default') || json.skins[0]
-    const shift = (keys, extra) => { const out = []; for (let k = 0; k < reps; k++) for (const key of keys) { const t = t0 + ((key.time || 0) + k * D) * ks; if (t > end + 1e-6) continue; if (k > 0 && !(key.time > 0)) continue; out.push(Object.assign({}, key, extra, { time: t3(t) })) } return out }
+    // alpha: the whole effect turned down (a set lays several lights over one another)
+    const dimA = (c) => (o.alpha == null || o.alpha === 1 || !c ? c : c.slice(0, 6) + Math.max(0, Math.min(255, Math.round(parseInt(c.slice(6, 8) || 'ff', 16) * o.alpha))).toString(16).padStart(2, '0'))
+    const shift = (keys, extra) => { if (settled) return [Object.assign({}, keys[keys.length - 1], { time: 0 })]; const out = []; for (let k = 0; k < reps; k++) for (const key of keys) { const t = t0 + ((key.time || 0) + k * D) * ks; if (t > end + 1e-6) continue; if (k > 0 && !(key.time > 0)) continue; out.push(Object.assign({}, key, extra, { time: t3(t) })) } return out }
     const added = []
     for (const sl of fx.slots) {
       const name = tag + sl.name, copy = Object.assign({}, sl, { name, bone: bn(sl.bone) })
+      if (o.alpha != null && o.alpha !== 1) copy.color = dimA(copy.color || 'ffffffff')
       const setupAtt = copy.attachment || null; delete copy.attachment
       added.push(copy)
       if (fx.attachments[sl.name]) skin.attachments[name] = clone(fx.attachments[sl.name])
@@ -1075,13 +1082,13 @@
       if (t0 > 0) keys.push({ time: 0, name: null })
       if (setupAtt && !(att.length && att[0].time <= t0 + 1e-6)) keys.push({ time: t3(t0), name: setupAtt })
       keys.push(...att)
-      if (!fx.loop || end < total - 1e-6) keys.push({ time: t3(end + 0.0334), name: null })
+      if (!stays && !(o.natural && end >= total - 1e-6) && (!fx.loop || end < total - 1e-6)) keys.push({ time: t3(end + 0.0334), name: null })
       mine.attachment = keys.filter((k, i, arr) => i === 0 || k.time > arr[i - 1].time + 1e-6)
-      if (tr.color) mine.color = (t0 > 0 ? [Object.assign({}, tr.color[0], { time: 0, curve: 'stepped' })] : []).concat(shift(tr.color))
+      if (tr.color) mine.color = (t0 > 0 && !settled ? [Object.assign({}, tr.color[0], { time: 0, curve: 'stepped' })] : []).concat(shift(tr.color)).map((k) => (k.color ? Object.assign({}, k, { color: dimA(k.color) }) : k))
     }
     for (const [b, tr] of Object.entries(fx.animation.bones || {})) {
       const mine = (A.bones[bn(b)] = {})
-      for (const [kind, keys] of Object.entries(tr)) mine[kind] = (t0 > 0 ? [Object.assign({}, keys[0], { time: 0, curve: 'stepped' })] : []).concat(shift(keys))
+      for (const [kind, keys] of Object.entries(tr)) mine[kind] = (t0 > 0 && !settled ? [Object.assign({}, keys[0], { time: 0, curve: 'stepped' })] : []).concat(shift(keys))
     }
     if (o.under != null && o.under >= 0 && o.under < json.slots.length) json.slots.splice(o.under, 0, ...added); else json.slots.push(...added)
     return { json, holder, slots: added.map((x) => x.name), time: t0, end: t3(end), repeats: reps }
@@ -1202,5 +1209,5 @@
     return e ? e.time || 0 : t3(animationLength(A) * 0.4)
   }
 
-  return { MOTIONS, synthesize, extractClip, applyClip, subjectBox, mergeEffect, effectTime, animationLength, swingFromTracks, placeArc, driftFromTracks, TONES, toneFromHues, shiftHue, renameEffectPictures, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
+  return { MOTIONS, synthesize, resolveTargets, extractClip, applyClip, subjectBox, mergeEffect, effectTime, animationLength, swingFromTracks, placeArc, driftFromTracks, TONES, toneFromHues, shiftHue, renameEffectPictures, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
 })
