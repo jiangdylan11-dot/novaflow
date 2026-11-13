@@ -123,7 +123,7 @@
     }
     limb('l', 'arm'); limb('r', 'arm'); limb('l', 'leg'); limb('r', 'leg')
     if (parts.length < 2) return null
-    const partLayers = parts.map((p) => Object.assign(capsuleLayer(p.name, p.pts, p.radii, p.hint), p.figure ? { figure: p.figure } : {}))
+    const partLayers = parts.map((p) => Object.assign(capsuleLayer(p.name, p.pts, p.radii, p.hint), p.figure ? { figure: p.figure } : {}, p.name === 'body' ? { figureRoot: true } : {}))
 
     // ---- which real layers the figure lies in
     const headC = J.nose || (J.lEar && J.rEar ? mid(J.lEar, J.rEar) : null), headR = 0.55 * torso
@@ -133,7 +133,17 @@
     const limbOf = (n) => n.replace(/^(forearm|hand)_/, 'arm_').replace(/^(shin|foot)_/, 'leg_')
     const areas = new Map()
     const areaOf = (p) => { if (!areas.has(p)) { let pa = 0; for (let i = 3; i < p.rgba.length; i += 4) if (p.rgba[i]) pa++; areas.set(p, pa) } return areas.get(p) }
-    for (const l of layers) {
+    for (let l of layers) {
+      if (l && l.rgba && headC) {
+        // away from the head (the joints say where it is): never the face, whatever it looks like
+        let all = 0, near = 0
+        const st = Math.max(1, Math.round(Math.max(l.width, l.height) / 200))
+        for (let py = 0; py < l.height; py += st) for (let px = 0; px < l.width; px += st) {
+          if (l.rgba[(py * l.width + px) * 4 + 3] <= o.alpha) continue
+          all++; if (Math.hypot(l.place.x + px - l.width / 2 - headC[0], l.place.y + l.height / 2 - py - headC[1]) <= headR) near++
+        }
+        if (all && near < 0.3 * all) l = Object.assign({}, l, { offHead: true })
+      }
       if (l && l.rgba && hintOf(l) === 'hair') {
         // "hair" that hardly rises above the shoulders is a cape or a cloak: it hangs from the
         // body, not from the head (a knight's cloak labelled back hair swung from the helmet)

@@ -1540,7 +1540,7 @@
         const maxArea = Math.max(...box.map((t) => t.area))
         let best = null
         for (const t of box) {
-          if (!t.l.rgba) continue
+          if (!t.l.rgba || t.l.offHead) continue   // the joints say where the head is: a doll at the belt with two eyes is not the face
           const cy = (t.top + t.bottom) / 2
           if (cy < yTop - 0.45 * H || t.area > 0.4 * maxArea || t.area < 0.002 * maxArea) continue
           const img = faceComposite(t.l, L)
@@ -1641,7 +1641,11 @@
     // ---- root layer: hinted body, else the layer with the most "support"
     let rootLayer = null
     const bodies = layersOk.filter((l) => l.hint.part === 'body')
-    if (bodies.length && !(headEarly && faceBoxEarly)) rootLayer = bodies.reduce((a, b) => (b.analysis.area > a.analysis.area ? b : a))
+    // the figure pass's torso (built from the shoulders and hips) is the root whatever else is there:
+    // a skirt below the face was taken instead and the spine, the shoulders and both arms hung from it
+    const figureRoot = layersOk.find((l) => l.figureRoot)
+    if (figureRoot) { rootLayer = figureRoot; plan.rootWhy = 'figure' }
+    if (!rootLayer && bodies.length && !(headEarly && faceBoxEarly)) rootLayer = bodies.reduce((a, b) => (b.analysis.area > a.analysis.area ? b : a))
     if (!rootLayer && headEarly && faceBoxEarly) {
       const fb = faceBoxEarly, fH = fb[3] - fb[1]
       const cx = (fb[0] + fb[2]) / 2
@@ -2624,6 +2628,14 @@
         if (isFaceFeature && headId >= 0) {
           parentBone = headId
           sk.add(base, parentBone, c[0], c[1], c[0], c[1], Object.assign({}, meta, { kind: 'controller' }))
+        } else if (l.rigid && l.elong >= 4 && len >= 2 * o.boneMin) {
+          // a long hard thing (a sword, a staff, a scythe): one straight bone along it, from the
+          // end nearest what it hangs on — it turns as a whole, as riggers set a weapon up
+          // (along its longest straight run — the shaft of a scythe, not the chord to the blade's tip)
+          const q = Array.from(core().dpSimplify(Float64Array.from(p), Math.max(4, 0.04 * len)))
+          let bi = 0, bl = -1
+          for (let i = 0; i + 3 < q.length; i += 2) { const d = Math.hypot(q[i + 2] - q[i], q[i + 3] - q[i + 1]); if (d > bl) { bl = d; bi = i } }
+          sk.add(base, parentBone, q[bi], q[bi + 1], q[bi + 2], q[bi + 3], Object.assign({}, meta, { kind: 'bone' }))
         } else if (part === 'accessory') {
           const pieces = maskPieces(l)
           if (pieces.length <= 1) sk.add(base, parentBone, c[0], c[1], c[0], c[1], Object.assign({}, meta, { kind: 'controller' }))
@@ -2891,7 +2903,7 @@
       for (;;) { const ks = childrenOf(mine[mine.length - 1]).filter((k) => sk.bones[k].layer === l.name); if (!ks.length) break; let best = ks[0], bd = -1; for (const k of ks) { const d = descent(k); if (d > bd) { bd = d; best = k } } mine.push(best) }
       let uId = mine[0]
       let connector = sk.bones[parentBone].role === 'connector' ? parentBone : -1
-      if (part === 'arm' && o.rigStyle === 'artist' && connector >= 0 && !(job.continues >= 0)) { const moved = toShoulderLine(uId, connector); if (moved) { rootC.wx = sk.bones[uId].ax; rootC.wy = sk.bones[uId].ay; plan.layers[l.name] = Object.assign(plan.layers[l.name] || {}, { shoulder: [Math.round(moved[0]), Math.round(moved[1]), Math.round(rootC.wx), Math.round(rootC.wy)] }) } }
+      if (part === 'arm' && o.rigStyle === 'artist' && connector >= 0 && !(job.continues >= 0) && !l.figure) { const moved = toShoulderLine(uId, connector); if (moved) { rootC.wx = sk.bones[uId].ax; rootC.wy = sk.bones[uId].ay; plan.layers[l.name] = Object.assign(plan.layers[l.name] || {}, { shoulder: [Math.round(moved[0]), Math.round(moved[1]), Math.round(rootC.wx), Math.round(rootC.wy)] }) } }
       const pivotParent = part === 'leg' ? hipsId : (part === 'arm' && waistPivot >= 0 ? waistPivot : (connector >= 0 ? sk.bones[connector].parent : parentBone))
       const mineLen = mine.reduce((a, i) => a + sk.bones[i].len, 0)
       const promote = !l.figure && o.ik && connector >= 0 && !(rootC.prefDepth > 0) && !rootC.bridge && sk.bones[connector].len >= 0.5 * mineLen
