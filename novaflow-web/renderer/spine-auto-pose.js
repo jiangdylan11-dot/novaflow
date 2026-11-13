@@ -257,7 +257,7 @@
       // which finds the face among them
       if (!area || onHead >= 0.7 * area) { kept.push(l); continue }
       const partsOn = []
-      let held = null, heldShare = 0.15, ownFit = null
+      let held = null, heldShare = 0.15, ownFit = null, wholeLimbs = 0
       // a limb's own layer (an artist's split): most of the layer lies on that one limb and it
       // holds a good part of the limb
       {
@@ -267,6 +267,7 @@
         const fits = Object.keys(g).filter((limb) => g[limb] >= 0.5 * area && g[limb] * step * step >= 0.25 * ga[limb])
         if (fits.length === 1) ownLimbs.add(fits[0])
         ownFit = fits.length === 1 ? fits[0] : null
+        wholeLimbs = Object.keys(g).filter((limb) => g[limb] * step * step >= 0.35 * ga[limb]).length
         if (o.report) o.report[l.name] = Object.fromEntries(Object.keys(g).map((limb) => [limb, g[limb] * step * step / Math.max(1, ga[limb])]))
       }
       partLayers.forEach((p, k) => {
@@ -280,7 +281,7 @@
       if (partsOn.length && !l.soft && !l.rigid && (on / area >= o.coverFrac || (partsOn.length >= 2 && on / area >= 0.3))) {
         covered[l.name] = partsOn
         const bodyK = partLayers.findIndex((q) => q.name === 'body')
-        seen[l.name] = { variant, fits: ownFit, bodyShare: bodyK >= 0 ? hit[bodyK] * step * step / Math.max(1, areaOf(partLayers[bodyK])) : 0 }
+        seen[l.name] = { variant, fits: ownFit, wholeLimbs, bodyShare: bodyK >= 0 ? hit[bodyK] * step * step / Math.max(1, areaOf(partLayers[bodyK])) : 0 }
       } else kept.push(variant)
     }
     if (!Object.values(covered).some((ps) => ps.length)) return null
@@ -298,12 +299,15 @@
       if (o.limbs === false) return null
       let bodyLayer = null
       for (const [name, v] of Object.entries(seen)) if (v.bodyShare >= 0.3 && (!bodyLayer || v.bodyShare > seen[bodyLayer].bodyShare)) bodyLayer = name
+      // (and only limbs that have no layer of their own: over a leg that has one, it is clothing)
+      const ownedLimbs = new Set(Object.values(seen).map((q) => q.fits).filter(Boolean))
       const back = new Set()
       for (const name of Object.keys(covered)) {
         const v = seen[name]; if (!v) continue                       // a cloak cut at the shoulders stays
         const limbs = limbsOf.get(name)
         if (v.fits) covered[name] = covered[name].filter((pn) => limbOf(pn) === v.fits)
-        else if (name === bodyLayer || (limbs && limbs.size >= 2) || (o.kinds && o.kinds[name] === 'body')) continue
+        // (two limbs held whole — a pair of trousers; a skirt that brushes a hand and a thigh is cloth)
+        else if (name === bodyLayer || (limbs && limbs.size >= 2 && v.wholeLimbs >= 2 && ![...limbs].some((q) => ownedLimbs.has(q))) || (o.kinds && o.kinds[name] === 'body')) continue
         else back.add(name)
         if (!covered[name].length) back.add(name)
       }
