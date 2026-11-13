@@ -31,7 +31,12 @@ test('the planner catalogue matches the native recipes and the tool prompt teach
  assert.deepEqual([...FOART_MOTIONS].sort(),Object.keys(R.MOTIONS).sort());
  assert.match(FOART_TOOL_SYSTEM,/operation:"motion"/);assert.match(FOART_TOOL_SYSTEM,/from_art_layers/);assert.match(FOART_TOOL_SYSTEM,/never call auto_rig for that/);
  const schemas=foartPlanResponseFormat({animation:{active:true}}).schema.properties.operations.items.anyOf;
- assert.ok(schemas.some(s=>s.properties.action.const==='animation'&&s.properties.operation.const==='motion'&&s.properties.motion.enum.includes('attack')));
+ // only the idle and the UI motions are offered for now: the other character actions stay out of the planner
+ const offered=schemas.find(s=>s.properties.action.const==='animation'&&s.properties.operation.const==='motion').properties.motion.enum;
+ assert.ok(offered.includes('idle')&&offered.includes('ui_pop')&&offered.includes('ui_win'));
+ for(const held of ['attack','heavy_attack','cast','hit','die','win','jump','float','walk','breathe']){assert.ok(!offered.includes(held),held+' is not offered');
+  assert.throws(()=>validateFoartPlan({schema:FOART_TOOL_SCHEMA,status:'act',reply:'做动作',operations:[{action:'animation',operation:'motion',motion:held}]},{schema:FOART_TOOL_SCHEMA,controls:[],animation:{active:true,loaded:true,bones:[{name:'root'}]}}));}
+ assert.match(FOART_TOOL_SYSTEM,/cannot make that action automatically yet/);
  assert.ok(schemas.some(s=>s.properties.action.const==='animation'&&s.properties.operation.const==='from_art_layers'));
 });
 
