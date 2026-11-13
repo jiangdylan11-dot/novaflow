@@ -133,10 +133,22 @@
       const dH = dist(hc, sh)
       const rH = Math.max(0.2 * torso, Math.min(0.4 * torso, J.lEar && J.rEar ? 0.8 * dist(J.lEar, J.rEar) : 0.27 * torso))
       if (dH > 0.1 * torso && (hc[0] - sh[0]) * up[0] + (hc[1] - sh[1]) * up[1] > 0) {
+        // the head's own up: square to the line of the eyes (of the ears when the eyes are not
+        // both found) — that is how far the head is tilted, whichever way it is turned. The line
+        // from the neck to the head's middle is only how far the head is carried to one side.
         const ax = [(hc[0] - sh[0]) / dH, (hc[1] - sh[1]) / dH]
-        const neckLen = Math.max(0.3 * dH, Math.min(dH - 0.75 * rH, 0.6 * dH))
-        chin = [sh[0] + ax[0] * neckLen, sh[1] + ax[1] * neckLen]
-        crown = [hc[0] + ax[0] * 1.15 * rH, hc[1] + ax[1] * 1.15 * rH]
+        const pair = J.lEye && J.rEye && dist(J.lEye, J.rEye) > 0.03 * torso ? [J.lEye, J.rEye] : (J.lEar && J.rEar && dist(J.lEar, J.rEar) > 0.06 * torso ? [J.lEar, J.rEar] : null)
+        let hu = ax
+        if (pair) {
+          const ex = pair[0][0] - pair[1][0], ey = pair[0][1] - pair[1][1], el = Math.hypot(ex, ey)
+          let px = -ey / el, py = ex / el
+          if (px * ax[0] + py * ax[1] < 0) { px = -px; py = -py }
+          // not past 40° from the neck's line: a face seen almost from the side gives a short, unsure eye line
+          if (px * ax[0] + py * ax[1] >= Math.cos(40 * Math.PI / 180)) hu = [px, py]
+        }
+        chin = [hc[0] - hu[0] * 0.85 * rH, hc[1] - hu[1] * 0.85 * rH]
+        if ((chin[0] - sh[0]) * up[0] + (chin[1] - sh[1]) * up[1] < 0.05 * torso) chin = lerp(sh, hc, 0.4)
+        crown = [hc[0] + hu[0] * 1.15 * rH, hc[1] + hu[1] * 1.15 * rH]
       }
     }
     const path = [[0, hp]].concat([0.25, 0.5, 0.75].map((t) => { const m = mids.find((q) => q.t === t); return m ? [t, m.p] : null }).filter(Boolean), [[1, sh]])
