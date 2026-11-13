@@ -2303,6 +2303,10 @@
 
     function roleOf(l) {
       const p = l.hint.part
+      // recognised as a hard thing (a weapon, a crown, armour): one rigid piece, never a chain;
+      // recognised as cloth or a hanging ornament: a chain, never a limb
+      if (l.rigid) return 'plate'
+      if (l.soft) return l.elong < 1.6 ? 'plate' : 'strand'
       if (l.noLimb) {
         // the figure pass built the limbs from the body joints: what is left is never a limb.
         // A straight stiff piece (a sword, a staff, a gun) is one rigid plate, a curved one

@@ -129,7 +129,7 @@
     const headC = J.nose || (J.lEar && J.rEar ? mid(J.lEar, J.rEar) : null), headR = 0.55 * torso
     const covered = {}
     const kept = []
-    const strong = new Set(), ownLimbs = new Set(), capes = []
+    const strong = new Set(), ownLimbs = new Set(), capes = [], seen = {}
     const limbOf = (n) => n.replace(/^(forearm|hand)_/, 'arm_').replace(/^(shin|foot)_/, 'leg_')
     const areas = new Map()
     const areaOf = (p) => { if (!areas.has(p)) { let pa = 0; for (let i = 3; i < p.rgba.length; i += 4) if (p.rgba[i]) pa++; areas.set(p, pa) } return areas.get(p) }
@@ -179,7 +179,7 @@
       // which finds the face among them
       if (!area || onHead >= 0.7 * area) { kept.push(l); continue }
       const partsOn = []
-      let held = null, heldShare = 0.15
+      let held = null, heldShare = 0.15, ownFit = null
       // a limb's own layer (an artist's split): most of the layer lies on that one limb and it
       // holds a good part of the limb
       {
@@ -188,6 +188,7 @@
         // (one limb only: a layer that fits two is a pair of gloves over crossed arms, not a limb's own)
         const fits = Object.keys(g).filter((limb) => g[limb] >= 0.5 * area && g[limb] * step * step >= 0.25 * ga[limb])
         if (fits.length === 1) ownLimbs.add(fits[0])
+        ownFit = fits.length === 1 ? fits[0] : null
         if (o.report) o.report[l.name] = Object.fromEntries(Object.keys(g).map((limb) => [limb, g[limb] * step * step / Math.max(1, ga[limb])]))
       }
       partLayers.forEach((p, k) => {
@@ -197,19 +198,44 @@
         if (share >= o.limbFrac && p.name !== 'body') strong.add(l.name + '|' + limbOf(p.name))
       })
       // on the figure: half of the layer lies on it, or it carries two whole parts (a coat with wide sleeves)
-      if (partsOn.length && (on / area >= o.coverFrac || (partsOn.length >= 2 && on / area >= 0.3))) covered[l.name] = partsOn
-      else kept.push(held ? Object.assign({}, l, { holdLayer: held }) : l)   // lying in a hand: held by it
+      const variant = held ? Object.assign({}, l, { holdLayer: held }) : l   // lying in a hand: held by it
+      if (partsOn.length && !l.soft && !l.rigid && (on / area >= o.coverFrac || (partsOn.length >= 2 && on / area >= 0.3))) {
+        covered[l.name] = partsOn
+        const bodyK = partLayers.findIndex((q) => q.name === 'body')
+        seen[l.name] = { variant, fits: ownFit, bodyShare: bodyK >= 0 ? hit[bodyK] * step * step / Math.max(1, areaOf(partLayers[bodyK])) : 0 }
+      } else kept.push(variant)
     }
     if (!Object.values(covered).some((ps) => ps.length)) return null
     // an artist's split has every limb in a layer of its own and needs no help: only when one
     // layer carries two different limbs (both legs, both arms, the whole character)
     const limbsOf = new Map()
     for (const k of strong) { const [ln, limb] = k.split('|'); if (!covered[ln]) continue; if (!limbsOf.has(ln)) limbsOf.set(ln, new Set()); limbsOf.get(ln).add(limb) }
-    if (o.always !== true) {
-    if (![...limbsOf.values()].some((v) => v.size >= 2)) return null
-    if (ownLimbs.size >= 2) return null
-    // ...or names them (gebo_1 / tui_5 / arm_l), category names (handwear, legwear) aside
-    if (layers.filter((l) => l && ['arm', 'leg', 'hand', 'foot'].includes(hintOf(l)) && !/wear|tail|weiba/i.test(l.name || '')).length >= 2) return null
+    const category = [...limbsOf.values()].some((v) => v.size >= 2) && ownLimbs.size < 2 &&
+      layers.filter((l) => l && ['arm', 'leg', 'hand', 'foot'].includes(hintOf(l)) && !/wear|tail|weiba/i.test(l.name || '')).length < 2
+    if (!category && o.always !== true) {
+      // an artist's split: every limb has its layer. The limbs are still built from the joints
+      // (the shape of an arm raised to the face or buried in a sleeve says little), and bound to
+      // their bones are only the limb's own layers and the torso's; a skirt panel over the legs
+      // or a sleeve over the arm keeps its own chain
+      if (o.limbs === false) return null
+      let bodyLayer = null
+      for (const [name, v] of Object.entries(seen)) if (v.bodyShare >= 0.3 && (!bodyLayer || v.bodyShare > seen[bodyLayer].bodyShare)) bodyLayer = name
+      const back = new Set()
+      for (const name of Object.keys(covered)) {
+        const v = seen[name]; if (!v) continue                       // a cloak cut at the shoulders stays
+        const limbs = limbsOf.get(name)
+        if (v.fits) covered[name] = covered[name].filter((pn) => limbOf(pn) === v.fits)
+        else if (name === bodyLayer || (limbs && limbs.size >= 2) || (o.kinds && o.kinds[name] === 'body')) continue
+        else back.add(name)
+        if (!covered[name].length) back.add(name)
+      }
+      for (const name of back) delete covered[name]
+      if (!Object.keys(covered).length) return null
+      // the layers that go back to the builder, in their drawing order
+      const keptNames = new Set(kept.map((l) => l && l.name))
+      const merged = []
+      for (const l of layers) { if (!l) continue; if (back.has(l.name)) merged.push(seen[l.name].variant); else if (keptNames.has(l.name)) merged.push(kept.find((q) => q && q.name === l.name)) }
+      kept.length = 0; for (const l of merged) kept.push(l)
     }
     // the parts go in at the back, the torso first: the layers that stay hang in front of them
     // ---- what hangs off the figure inside a covered layer (the sleeves of 上衣, the panels of a
@@ -312,7 +338,27 @@
    * a thick strip of cloth beside the legs is then a chain, never a third leg with IK.
    * Returns { layers, fig } (fig null when the figure pass did not run).
    */
+  /**
+   * What a vision model said each layer is (hair / cloth / dangle / hard / body / face), as hints
+   * for the builder. A name that already says what the layer is wins; a numbered export
+   * (bjj28, xm13) says nothing, and shape cannot tell a sword from a straight ribbon.
+   */
+  function applyKinds(layers, kinds, use) {
+    if (!kinds) return layers
+    if (use) kinds = Object.fromEntries(Object.entries(kinds).filter(([, v]) => use.includes(v)))
+    const AB = globalThis.NovaFlowAutoBones
+    return layers.map((l) => {
+      const k = l && kinds[l.name]
+      if (!k || (l.hintOverride && l.hintOverride.part) || (AB && AB.nameHint && AB.nameHint(l.name).part)) return l
+      if (k === 'hair') return Object.assign({}, l, { hintOverride: { part: 'hair', side: null } })
+      if (k === 'cloth' || k === 'dangle') return Object.assign({}, l, { hintOverride: { part: 'cloth', side: null }, soft: true })
+      if (k === 'hard') return Object.assign({}, l, { hintOverride: { part: 'accessory', side: null }, rigid: true })
+      return l
+    })
+  }
+
   function prepare(layers, kps, opts) {
+    layers = applyKinds(layers, opts && opts.kinds, opts && opts.kindsUse)
     if (!kps) return { layers, fig: null }
     const report = {}
     const fig = figureLayers(layers, kps, Object.assign({}, opts, { report }))
@@ -441,5 +487,60 @@
     return pts.slice(0, 17).concat(K >= 22 ? [pts[20], pts[21]] : [])
   }
 
-  return { DEFAULTS, joints, capsuleLayer, figureLayers, prepare, finishFigure, buildSkeleton, detect }
+  // ------------------------------------------------------------ what each layer is ---
+  /**
+   * One picture for a vision model: the whole character on the left, every layer as a numbered
+   * tile on the right. Returns { dataUrl, names } (names[i] is tile i + 1), or null.
+   */
+  async function layerSheet(layers) {
+    const L = (layers || []).filter((l) => l && l.rgba && l.width > 0 && l.height > 0)
+    if (!L.length || typeof document === 'undefined') return null
+    const T = 150, cols = 8, rows = Math.ceil(L.length / cols)
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const l of L) { x0 = Math.min(x0, l.place.x - l.width / 2); x1 = Math.max(x1, l.place.x + l.width / 2); y0 = Math.min(y0, l.place.y - l.height / 2); y1 = Math.max(y1, l.place.y + l.height / 2) }
+    const sc = Math.min(600 / Math.max(1, x1 - x0), 600 / Math.max(1, y1 - y0), 1)
+    const ww = Math.max(1, Math.round((x1 - x0) * sc)), wh = Math.max(1, Math.round((y1 - y0) * sc))
+    const canvas = document.createElement('canvas'); canvas.width = ww + 10 + cols * T; canvas.height = Math.max(wh, rows * T)
+    const g = canvas.getContext('2d')
+    g.fillStyle = '#282828'; g.fillRect(0, 0, canvas.width, canvas.height)
+    g.fillStyle = '#787878'; g.fillRect(0, 0, ww, wh)
+    const names = []
+    for (const l of L) {
+      const bmp = await createImageBitmap(new ImageData(new Uint8ClampedArray(l.rgba.buffer, l.rgba.byteOffset, l.width * l.height * 4), l.width, l.height))
+      g.drawImage(bmp, (l.place.x - l.width / 2 - x0) * sc, (y1 - l.place.y - l.height / 2) * sc, l.width * sc, l.height * sc)
+      // the tile: the layer's opaque box, fitted under its number
+      let bx0 = l.width, bx1 = -1, by0 = l.height, by1 = -1
+      const step = Math.max(1, Math.round(Math.max(l.width, l.height) / 256))
+      for (let py = 0; py < l.height; py += step) for (let px = 0; px < l.width; px += step) if (l.rgba[(py * l.width + px) * 4 + 3] > 40) { if (px < bx0) bx0 = px; if (px > bx1) bx1 = px; if (py < by0) by0 = py; if (py > by1) by1 = py }
+      if (bx1 < bx0) { bmp.close(); continue }
+      const i = names.length, tx = ww + 10 + (i % cols) * T, ty = Math.floor(i / cols) * T
+      g.fillStyle = '#787878'; g.fillRect(tx, ty, T - 2, T - 2)
+      const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1, k = Math.min((T - 12) / bw, (T - 36) / bh)
+      g.drawImage(bmp, bx0, by0, bw, bh, tx + (T - bw * k) / 2, ty + 30 + (T - 32 - bh * k) / 2, bw * k, bh * k)
+      g.fillStyle = '#000'; g.fillRect(tx, ty, 44, 26)
+      g.fillStyle = '#ff0'; g.font = 'bold 22px Arial'; g.textBaseline = 'top'; g.fillText(String(i + 1), tx + 4, ty + 2)
+      names.push(l.name); bmp.close()
+    }
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.88), names }
+  }
+
+  const KINDS = ['hair', 'cloth', 'dangle', 'hard', 'body', 'face', 'other']
+  /**
+   * What each layer is, from the online vision model: { layerName: kind } or null. The page
+   * provides the call as globalThis.NovaFlowRigLayerKinds(dataUrl, count) → { "1": "hair", ... };
+   * without it (or when it fails) 自动架设 goes by names, joints and shape alone.
+   */
+  async function recognize(layers) {
+    const ask = typeof globalThis !== 'undefined' ? globalThis.NovaFlowRigLayerKinds : null
+    if (typeof ask !== 'function') return null
+    const sheet = await layerSheet(layers)
+    if (!sheet || !sheet.names.length) return null
+    const reply = await ask(sheet.dataUrl, sheet.names.length)
+    if (!reply || typeof reply !== 'object') return null
+    const out = {}
+    sheet.names.forEach((n, i) => { const k = String(reply[String(i + 1)] || '').toLowerCase(); if (KINDS.includes(k)) out[n] = k })
+    return Object.keys(out).length ? out : null
+  }
+
+  return { DEFAULTS, KINDS, joints, capsuleLayer, figureLayers, applyKinds, layerSheet, recognize, prepare, finishFigure, buildSkeleton, detect }
 })

@@ -13228,7 +13228,10 @@
     const AP = P.NovaFlowAutoPose || window.NovaFlowAutoPose
     let fig = null, input = layers
     if (AP && AP.detect) {
-      try { tell('识别人体关节…'); const pre = AP.prepare(layers, await AP.detect(layers)); fig = pre.fig; input = pre.layers } catch (e) { fig = null; input = layers }
+      // what each layer is (hair, cloth, a hanging ornament, a hard thing), when the page can ask
+      let kinds = null
+      if (AP.recognize) { try { tell('识别图层…'); kinds = await AP.recognize(layers) } catch (e) { kinds = null } }
+      try { tell('识别人体关节…'); const pre = AP.prepare(layers, await AP.detect(layers), { kinds }); fig = pre.fig; input = pre.layers } catch (e) { fig = null; input = layers }
     }
     let built = pool ? await pool(input).catch(() => AB.buildSkeleton(input)) : AB.buildSkeleton(input)
     if (fig) built = AP.finishFigure(built, fig, layers)

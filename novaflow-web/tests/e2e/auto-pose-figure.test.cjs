@@ -57,9 +57,26 @@ test('the whole character as one picture', () => {
   assert.ok(built.figure && built.figure.covered.art.length >= 10)
 })
 
-test("an artist's split (a layer per limb) is left to the builder", () => {
-  const layers = [picture('p1', [LEG_L]), picture('p2', [LEG_R]), picture('p3', [TORSO]), picture('p4', [ARM_L]), picture('p5', [ARM_R]), picture('p6', [HEAD])]
-  assert.equal(AP.figureLayers(layers, KPS), null)
+test("an artist's split (a layer per limb): limbs from the joints, each bound to its own layer only", () => {
+  const SKIRT = [[[-60, 300], [-90, 120]], 40]   // a panel over the right thigh: cloth, keeps its own chain
+  const layers = [picture('p1', [LEG_L]), picture('p2', [LEG_R]), picture('p3', [TORSO]), picture('p4', [ARM_L]), picture('p5', [ARM_R]), picture('p6', [HEAD]), picture('p7', [SKIRT])]
+  const built = AP.buildSkeleton(layers, KPS)
+  assert.ok(built.figure)
+  const cov = built.figure.covered
+  assert.ok(cov.p1 && cov.p1.every((n) => /leg|Leg|foot|toes/.test(n)), 'the left leg layer is bound to leg bones only: ' + cov.p1)
+  assert.ok(cov.p4 && cov.p4.every((n) => /arm|hand/i.test(n)), 'the arm layer to arm bones: ' + cov.p4)
+  assert.ok(cov.p3 && cov.p3.includes('chest'))
+  assert.equal(cov.p7, undefined, 'the skirt panel is not bound to the legs')
+  assert.ok(built.bones.some((b) => b.layer === 'p7' && b.kind === 'bone'), 'it has bones of its own')
+  assert.equal(AP.figureLayers(layers, KPS, { limbs: false }), null)
+})
+
+test('a layer recognised as hard is one rigid piece, one recognised as cloth a chain', () => {
+  const STICK = [[[150, 520], [200, 250], [215, 60]], 9]
+  const mk = () => [picture('legwear', [LEG_L, LEG_R]), picture('topwear', [TORSO, ARM_L, ARM_R]), picture('face', [HEAD]), picture('k1', [STICK])]
+  const chain = (built) => built.bones.filter((b) => b.layer === 'k1' && b.kind === 'bone' && b.len > 0).length
+  assert.ok(chain(AP.buildSkeleton(mk(), KPS, { figure: { kinds: { k1: 'cloth' } } })) >= 2)
+  assert.ok(chain(AP.buildSkeleton(mk(), KPS, { figure: { kinds: { k1: 'hard' } } })) <= 1)
 })
 
 test('not a figure (weak shoulders and hips): no figure pass', () => {
