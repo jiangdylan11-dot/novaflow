@@ -302,7 +302,9 @@
           kept.push(Object.assign({}, l, { hintOverride: Object.assign({}, l.hintOverride, { part: 'cloth', side: null }) })); continue
         }
       }
-      if (!l || !l.rgba || NEVER.has(hintOf(l))) { kept.push(l); continue }
+      // (an ornament or a prop goes on: it is never bound to the body, but one lying in a hand is held by it)
+      const prop = !!l && hintOf(l) === 'accessory'
+      if (!l || !l.rgba || (NEVER.has(hintOf(l)) && !prop)) { kept.push(l); continue }
       let area = 0, on = 0, onHead = 0
       const hit = new Array(partLayers.length).fill(0)
       const step = Math.max(1, Math.round(Math.max(l.width, l.height) / 400))
@@ -342,7 +344,7 @@
       })
       // on the figure: half of the layer lies on it, or it carries two whole parts (a coat with wide sleeves)
       const variant = held ? Object.assign({}, l, { holdLayer: held }) : l   // lying in a hand: held by it
-      if (partsOn.length && !l.soft && !l.rigid && (on / area >= o.coverFrac || (partsOn.length >= 2 && on / area >= 0.3))) {
+      if (partsOn.length && !prop && !l.soft && !l.rigid && (on / area >= o.coverFrac || (partsOn.length >= 2 && on / area >= 0.3))) {
         covered[l.name] = partsOn
         const bodyK = partLayers.findIndex((q) => q.name === 'body')
         seen[l.name] = { variant, fits: ownFit, wholeLimbs, bodyShare: bodyK >= 0 ? hit[bodyK] * step * step / Math.max(1, areaOf(partLayers[bodyK])) : 0 }

@@ -2653,7 +2653,7 @@
         if (isFaceFeature && headId >= 0) {
           parentBone = headId
           sk.add(base, parentBone, c[0], c[1], c[0], c[1], Object.assign({}, meta, { kind: 'controller' }))
-        } else if (l.rigid && l.elong >= 4 && len >= 2 * o.boneMin) {
+        } else if ((l.rigid || l.holdLayer) && l.elong >= 4 && len >= 2 * o.boneMin) {
           // a long hard thing (a sword, a staff, a scythe): one straight bone along it, from the
           // end nearest what it hangs on — it turns as a whole, as riggers set a weapon up
           // (along its longest straight run — the shaft of a scythe, not the chord to the blade's tip)
