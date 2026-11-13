@@ -27,6 +27,7 @@ const SUITES = [
   { name: 'spine-head-layer', file: 'e2e/spine-head-layer.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'spine-bounds-audio', file: 'e2e/spine-bounds-audio.test.cjs', needs: [], timeoutMs: 60000 },
   { name: 'spine-skeleton-editor', file: 'e2e/spine-skeleton-editor.test.cjs', needs: [], timeoutMs: 120000 },
+  { name: 'auto-pose-figure', file: 'e2e/auto-pose-figure.test.cjs', needs: [], timeoutMs: 60000 },
   { name: 'spine-version-convert', file: 'e2e/spine-version-convert.test.cjs', needs: [], timeoutMs: 120000 },
   { name: 'ribbon-uniform-wave', file: 'e2e/ribbon-uniform-wave.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'runtime-launcher', file: 'e2e/runtime-launcher.test.mjs', needs: [], timeoutMs: 60000 },

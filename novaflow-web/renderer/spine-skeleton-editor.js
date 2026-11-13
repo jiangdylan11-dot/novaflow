@@ -8264,6 +8264,18 @@
     if (ctx.model.path) return weighPath(r.json, L, ctx, boneIds)
     const V = ctx.model.points.flatMap((p) => [p.x, p.y]), T = ctx.model.tris
     const segs = ctx.bones.map((b) => ({ ax: b.worldX, ay: b.worldY, bx: b.worldX + b.data.length * b.a, by: b.worldY + b.data.length * b.c, skip: !(b.data.length >= 1) || !b.parent }))
+    const owned = boneIds && boneIds.length ? null : ownedWeights(r.json, L, ctx, V, T, segs)
+    if (owned) {
+      const m = ME().toWeighted(ctx.model, ctx.slotBone)
+      const nb = owned.ids.length
+      m.points.forEach((p, i) => {
+        const row = []
+        for (let k = 0; k < nb; k++) { const w = owned.W[i * nb + k]; if (w > 1e-3) row.push([owned.ids[k], w]) }
+        const tot = row.reduce((x, [, w]) => x + w, 0)
+        p.w = tot > 0 ? row.map(([b, w]) => [b, w / tot]) : [[owned.ids[0], 1]]
+      })
+      return Ops.setMesh(r.json, L.skin, L.slot, L.name, ME().toAttachment(m, ctx.mats, ctx.slotBone), ME().remapOf(m))
+    }
     let pick = boneIds && boneIds.length ? boneIds.slice() : AW.selectBones(V, T, segs.map((g) => (g.skip ? { ...g, ax: 1e9, ay: 1e9, bx: 1e9, by: 1e9 } : g))).filter((i) => !segs[i].skip)
     if (!(boneIds && boneIds.length)) {
       // a picture hung on a bone (not the root) belongs to that bone's branch first
@@ -8284,6 +8296,61 @@
       p.w = tot > 0 ? row.map(([b, w]) => [b, w / tot]) : [[pick[0], 1]]
     })
     return Ops.setMesh(r.json, L.skin, L.slot, L.name, ME().toAttachment(m, ctx.mats, ctx.slotBone), ME().remapOf(m))
+  }
+
+  /**
+   * 自动权重 on a skeleton 自动架设 built (it recorded which layer every bone was made for): the
+   * layer's own bones plus the bone each of its chains hangs from; a neighbouring layer's bone
+   * only smooths the joint and small loose pieces move rigidly. A layer the figure lies in (上衣
+   * with both arms, the whole character as one picture) takes the body-part bones it covers.
+   * Null when the skeleton is not such a one (built by hand, renamed): the geometric pick runs.
+   */
+  function ownedWeights(json, L, ctx, V, T, segs) {
+    const AW = window.NovaFlowAutoWeights
+    const rec = state.autoRig
+    if (!rec || !rec.roles || !AW.confineToOwn || !AW.rigidIslands) return null
+    const names = ctx.bones.map((b) => b.data.name)
+    const roles = names.map((n) => rec.roles.get(n) || null)
+    const known = roles.filter(Boolean).length
+    if (known < 2 || known < 0.8 * names.length) return null
+    const skip = AW.mechanismBones(json), parents = AW.logicalParents(json)
+    const isBone = (i) => roles[i] && roles[i].kind === 'bone' && !skip.has(i) && !segs[i].skip && !(AW.isController && AW.isController(names[i]))
+    const cover = rec.covered && rec.covered[L.slot]
+    let ids, isOwn
+    if (cover && cover.length) {
+      const set = new Set(cover)
+      ids = names.map((n, i) => (set.has(n) && isBone(i) ? i : -1)).filter((i) => i >= 0)
+      isOwn = () => true
+    } else {
+      const mine = new Set()
+      roles.forEach((r, i) => { if (r && r.layer === L.slot && isBone(i)) mine.add(i) })
+      if (!mine.size) return null
+      const all = new Set(mine)
+      for (const i of mine) { const p = parents[i]; if (p > 0 && !mine.has(p) && isBone(p)) all.add(p) }
+      ids = Array.from(all)
+      isOwn = (id) => mine.has(id)
+    }
+    if (!ids.length) return null
+    const n = V.length / 2
+    const hw = AW.heatWeights(V, T, ids.map((i) => segs[i]))
+    const keep = []
+    ids.forEach((id, j) => { let mx = 0; for (let i = 0; i < n; i++) mx = Math.max(mx, hw.weights[i * ids.length + j]); if (mx > 1e-4) keep.push(j) })
+    if (!keep.length) return null
+    const kept = keep.map((j) => ids[j])
+    let W = new Float64Array(n * kept.length)
+    for (let i = 0; i < n; i++) {
+      let s = 0
+      keep.forEach((j, k) => { W[i * kept.length + k] = hw.weights[i * ids.length + j]; s += W[i * kept.length + k] })
+      if (s > 0) for (let k = 0; k < kept.length; k++) W[i * kept.length + k] /= s
+    }
+    const own = kept.filter(isOwn)
+    if (own.length && own.length < kept.length) {
+      const first = ctx.bones[own[0]]
+      let ownLength = 0; for (const id of own) ownLength += Number(ctx.bones[id].data.length) || 0
+      W = AW.confineToOwn(V, T, W, kept, isOwn, [first.worldX, first.worldY], ownLength)
+    }
+    W = AW.rigidIslands(V, T, W, kept.length).W
+    return { ids: kept, W }
   }
 
   /**
@@ -13156,8 +13223,21 @@
     tell(`分析 ${layers.length} 层的中轴并搭建骨架…`)
     await new Promise((r) => setTimeout(r, 30))
     const pool = P.NovaFlowAutoMeshPanel && P.NovaFlowAutoMeshPanel._buildSkeletonOffThread
-    const built = pool ? await pool(layers).catch(() => AB.buildSkeleton(layers)) : AB.buildSkeleton(layers)
+    // a character split by clothing (or kept as one picture) has both legs / arms in one layer:
+    // the body joints are found on the whole picture first and the limbs are built from them
+    const AP = P.NovaFlowAutoPose || window.NovaFlowAutoPose
+    let fig = null
+    if (AP && AP.detect) {
+      try { tell('识别人体关节…'); const kps = await AP.detect(layers); fig = kps ? AP.figureLayers(layers, kps) : null } catch (e) { fig = null }
+    }
+    const input = fig ? fig.layers : layers
+    let built = pool ? await pool(input).catch(() => AB.buildSkeleton(input)) : AB.buildSkeleton(input)
+    if (fig) built = AP.finishFigure(built, fig, layers)
     const next = JSON.parse(JSON.stringify(AB.applyToSkeleton(JSON.parse(JSON.stringify(json)), built)))
+    // what was built for which layer, by bone name (自动权重 binds each layer to its own bones)
+    const roles = new Map()
+    next.bones.forEach((bn, i) => { const rb = built.bones[i]; if (rb) roles.set(bn.name, { layer: rb.layer || null, role: rb.role || null, kind: rb.kind || null }) })
+    state.autoRig = { roles, slotBone: built.slotBone || {}, covered: (built.figure && built.figure.covered) || null }
     const r = edit(`自动架设完成 · ${built.bones.length} 根骨`, () => ({ json: Ops.tidy(Ops.prepare(next)) }))
     if (!r) throw new Error('自动架设的结果没能载入')
     return { bones: built.bones.length, ik: ((built.json && built.json.ik) || []).length, layers: layers.length }

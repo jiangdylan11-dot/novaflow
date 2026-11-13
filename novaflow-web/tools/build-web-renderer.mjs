@@ -31,6 +31,7 @@ import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
 import { rewordBundle } from './reword-desktop-strings.mjs';
 import { fetchFfmpegCore } from './fetch-ffmpeg-core.mjs';
 import { fetchOnnxRuntimeWeb } from './fetch-onnxruntime-web.mjs';
+import { fetchPoseModel } from './fetch-pose-model.mjs';
 import { allWorkflowEntryMethods, WORKFLOW_SOURCE_MODULES } from '../packages/shared/src/workflow-modules.mjs';
 import { minifyTree } from './minify-web-dist.mjs';
 import { verifyUiReleaseAssets } from './verify-ui-release-assets.mjs';
@@ -204,6 +205,15 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
     log('onnxruntime-web', { bytes: ort.bytes, downloaded: ort.downloaded });
   } catch (error) {
     console.warn('  onnxruntime-web not available: ' + String((error && error.message) || error));
+  }
+  // 自动架设 finds the body joints of a clothing-split or single-picture character in the page
+  // (spine-auto-pose.js): the model is fetched like the runtime above. Without it the site still
+  // builds; 自动架设 then goes by layer shape alone, as before.
+  try {
+    if (ISOLATED_PLAN||FULL_PLAN) log('offline build: no pose model download', {});
+    else { const pose = await fetchPoseModel(); log('pose model', { bytes: pose.bytes, downloaded: pose.downloaded }); }
+  } catch (error) {
+    console.warn('  pose model not available: ' + String((error && error.message) || error));
   }
   try {
     const model = await stat(join(SRC, 'vendor/matting/model.bin'));

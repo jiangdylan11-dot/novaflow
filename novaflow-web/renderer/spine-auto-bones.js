@@ -2266,6 +2266,19 @@
 
     function roleOf(l) {
       const p = l.hint.part
+      if (l.noLimb) {
+        // the figure pass built the limbs from the body joints: what is left is never a limb.
+        // A straight stiff piece (a sword, a staff, a gun) is one rigid plate, a curved one
+        // (a tail, a ribbon) a chain; gloves or boots left over are plates
+        if (p === 'hand' || p === 'foot') return 'plate'
+        if (p === 'arm' || p === 'leg' || !p) {
+          if (l.elong < 1.6 || !l.trunk) return 'plate'
+          const q = l.trunk.poly, ax = q[0], ay = q[1], bx = q[q.length - 2], by = q[q.length - 1]
+          let dev = 0
+          for (let i = 2; i < q.length - 2; i += 2) dev = Math.max(dev, segDist(q[i], q[i + 1], ax, ay, bx, by))
+          return dev <= 0.06 * Math.max(1, Math.hypot(bx - ax, by - ay)) ? 'plate' : 'strand'
+        }
+      }
       if (p === 'arm' || p === 'leg') return 'limb'
       if (p === 'hand' || p === 'foot') return 'extremity'
       if (p === 'hair' || p === 'cloth') return 'strand'
@@ -2362,6 +2375,10 @@
       })
       let rootC = cands[0]
       let continues = -1
+      // a part layer of the figure pass (spine-auto-pose) knows its joint and what it continues:
+      // crossed arms overlap each other and the torso, which the overlap rules below misread
+      const fig = l.figure || null
+      if (fig && fig.root) { let bd = Infinity; for (const cd of cands) { const d = Math.hypot(cd.wx - fig.root[0], cd.wy - fig.root[1]); if (d < bd) { bd = d; rootC = cd } } }
       // A limb continuing another limb layer (a shin under a thigh, a forearm or a hand
       // under an upper arm): the joint is that layer's chain tip. The root is the end
       // nearest the tip and the chain hangs from the tip bone
@@ -2371,6 +2388,7 @@
         let bestP = null, bestOv = 0
         const wantPart = role === 'limb' ? (part || null) : (part === 'hand' ? 'arm' : (part === 'foot' ? 'leg' : null))
         for (const [k, ov] of l.overlap) {
+          if (fig && k.name !== fig.after) continue
           if (!k.done || !(k.limbTip >= 0) || ov <= bestOv) continue
           const kp = k.hint.part || null
           if (wantPart === null ? !(kp === 'arm' || kp === 'leg' || kp === null) : kp !== wantPart) continue
@@ -2382,7 +2400,7 @@
           const tb = sk.bones[bestP.limbTip]
           let bn = null, bd = Infinity
           for (const cd of cands) { const d = Math.hypot(cd.wx - tb.bx, cd.wy - tb.by); if (d < bd) { bd = d; bn = cd } }
-          const attachesToTrunk = cands.some((cd) => cd !== bn && cd.touchTrunk && depthAt(rootLayer, cd.wx, cd.wy) > 2)
+          const attachesToTrunk = !fig && cands.some((cd) => cd !== bn && cd.touchTrunk && depthAt(rootLayer, cd.wx, cd.wy) > 2)
           if (bn && bd <= Math.max(2 * o.boneMin, 0.35 * tb.len) && !attachesToTrunk) { rootC = Object.assign({}, bn, { bridge: false, prefLayer: bestP, prefDepth: 1, pref: 1, onHead: false }); continues = bestP.limbTip }
         }
       }
@@ -2390,7 +2408,7 @@
       // hidden under a flower, a leg layer that carries the whole pelvis): bridge from the
       // centre of the overlap with that layer to the axis — to the nearest axis POINT when
       // that is much closer than the nearest end (the axis is split there), else to the end
-      if (continues < 0 && (role === 'limb' || role === 'extremity') && !(rootC.prefDepth > 0) && prefer.size) {
+      if (continues < 0 && !fig && (role === 'limb' || role === 'extremity') && !(rootC.prefDepth > 0) && prefer.size) {
         let bestP = null, bestOv = 0
         for (const [k, ov] of l.overlap) if (k.done && prefer.has(k.hint.part) && ov > bestOv) { bestOv = ov; bestP = k }
         if (bestP) {
@@ -2419,6 +2437,8 @@
       const notMine = (b) => realBone(b) && b.layer !== l.name
       let par = { index: -1, dist: Infinity }, why = ''
       if (continues >= 0) { par = { index: continues, dist: 0 }; why = 'continues-limb' }
+      // the figure pass saw this piece lying in a hand (a sword, a staff): it is held
+      if (par.index < 0 && l.holdLayer) { const h = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === l.holdLayer && b.kind === 'bone'); if (h.index >= 0) { par = h; why = 'held' } }
       if (par.index < 0 && !part && role === 'strand') {
         // an unnamed wisp: on the head when it lies on the face / head layer, else on the
         // hair lock it overlaps most (the studio hangs stray wisps from the hair, not from
@@ -2739,6 +2759,21 @@
           const first = sk.bones.findIndex((b, i) => i >= created && b.layer === l.name && b.kind === 'bone' && b.parent === snapTo)
           if (first >= 0) { const b = sk.bones[first]; b.ax = tb.bx; b.ay = tb.by; b.len = Math.hypot(b.bx - b.ax, b.by - b.ay) }
         }
+        if (fig && fig.tip) {
+          // a figure part runs from joint to joint exactly (the axis ends were extended to the
+          // capsule's rim, which put the knee a radius below the knee)
+          const own = []
+          for (let i = created; i < sk.bones.length; i++) if (sk.bones[i].layer === l.name && sk.bones[i].kind === 'bone') own.push(i)
+          if (own.length === 1) {
+            const b = sk.bones[own[0]]
+            if (fig.root) {
+              b.ax = fig.root[0]; b.ay = fig.root[1]
+              const pb = b.parent >= 0 ? sk.bones[b.parent] : null
+              if (pb && pb.role === 'connector' && pb.layer !== l.name) { pb.bx = b.ax; pb.by = b.ay; pb.len = Math.hypot(pb.bx - pb.ax, pb.by - pb.ay) }
+            }
+            b.bx = fig.tip[0]; b.by = fig.tip[1]; b.len = Math.hypot(b.bx - b.ax, b.by - b.ay)
+          }
+        }
         if (!strips && !flowDone && role === 'strand') {
           // the other pieces of the layer (a second earring, separate locks) each hang
           // from their own highest node, on the same parent
@@ -2798,7 +2833,7 @@
       if (part === 'arm' && o.rigStyle === 'artist' && connector >= 0 && !(job.continues >= 0)) { const moved = toShoulderLine(uId, connector); if (moved) { rootC.wx = sk.bones[uId].ax; rootC.wy = sk.bones[uId].ay; plan.layers[l.name] = Object.assign(plan.layers[l.name] || {}, { shoulder: [Math.round(moved[0]), Math.round(moved[1]), Math.round(rootC.wx), Math.round(rootC.wy)] }) } }
       const pivotParent = part === 'leg' ? hipsId : (part === 'arm' && waistPivot >= 0 ? waistPivot : (connector >= 0 ? sk.bones[connector].parent : parentBone))
       const mineLen = mine.reduce((a, i) => a + sk.bones[i].len, 0)
-      const promote = o.ik && connector >= 0 && !(rootC.prefDepth > 0) && !rootC.bridge && sk.bones[connector].len >= 0.5 * mineLen
+      const promote = !l.figure && o.ik && connector >= 0 && !(rootC.prefDepth > 0) && !rootC.bridge && sk.bones[connector].len >= 0.5 * mineLen
       let lower = -1, single = false
       const bendAtMiddle = (id) => {
         const b = sk.bones[id]
@@ -2918,6 +2953,8 @@
     while (remaining.length) {
       remaining.sort((a, b) => b.analysis.area - a.analysis.area)
       const ready = (l) => {
+        if (l.figure && l.figure.after && remaining.some((k) => k.name === l.figure.after)) return false
+        if (l.holdLayer && remaining.some((k) => k.name === l.holdLayer)) return false
         const waits = WAIT_FOR[l.hint.part] || []
         for (const k of remaining) if (k !== l && waits.includes(k.hint.part) && !(WAIT_FOR[k.hint.part] || []).includes(l.hint.part)) return false
         return true
