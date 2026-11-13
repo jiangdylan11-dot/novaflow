@@ -2745,7 +2745,8 @@
             const unit = 0.045 * heightAll
             const wide = o.hairSweepsWide !== false && coreW >= 1.2 * unit && bh >= 0.45 * bw && fill >= 0.15
             if ((behindHair && fwW > 0 && bh >= 0.9 * bw && fill >= 0.2 && rowW >= 1.2 * fwW) || wide) {
-              const k = wide ? Math.max(2, Math.min(4, Math.round(coreW / (1.3 * unit)))) : Math.max(2, Math.min(4, Math.round(coreW / (1.1 * fwW))))
+              // (three: on the same rigs a fringe or a fall has 3 chains in 7 of 11, never more than 4)
+              const k = wide ? 3 : Math.max(2, Math.min(4, Math.round(coreW / (1.1 * fwW))))
               const sweeps = clothStrips(l, chainParent, namer, meta, { k, range: [x10, x90], analysis: a, mask: M, strandLenOf: (L) => (fhW > 0 && !chainH ? Math.max(0.2 * fhW, Math.min(0.8 * fhW, 0.2 * L)) : strandBoneLen(L, l.rMean, 'hair')) })
               if (sweeps) { flowDone = true; plan.layers[l.name] = Object.assign(plan.layers[l.name] || {}, { sweeps }) }
             }
@@ -3021,7 +3022,10 @@
       const M = sw && sw.mask ? sw.mask : a.mask
       const bw = a.bbox[2] - a.bbox[0]
       const stripW = (o.panelStrip || 0.12) * heightAll   // (was 0.17 for a named cloth: riggers run two chains on a panel a quarter of the figure wide)
-      const k = sw ? sw.k : Math.max(1, Math.min(4, Math.round(bw / stripW)))
+      // (counted on six studio rigs: of 19 cloth pieces this wide, riggers gave 12 a single chain
+      // and only the broadest two or more — a piece gets strips when its own width, not its
+      // box, is 7 % of the figure's height)
+      const k = sw ? sw.k : (2 * l.rMean >= (o.clothWide || 0.07) * heightAll ? Math.max(2, Math.min(4, Math.round(bw / stripW))) : 1)
       if (k < 2) return 0
       const { ws, hs, scale: sc } = a
       // sweeps (hair): bands over the core of the mask, the outer bands take the flying
@@ -3052,6 +3056,9 @@
             let best = null, bd = Infinity
             for (const r of runs) { const d = want < r[0] ? r[0] - want : (want > r[1] ? want - r[1] : 0); if (d < bd) { bd = d; best = r } }
             if (px !== null && bd > Math.max(4, 0.04 * ws)) { if (++miss > 3) break; continue }
+            // a middle chain ends where the piece parts under it (the short centre lock of a fringe):
+            // it does not jump across to one side and double that side's chain
+            if (px !== null && bd > 1 && runs.length > 1 && f > 0.3 && f < 0.7) break
             miss = 0
             px = best[0] + f * (best[1] - best[0])
             pts.push(px, y)
