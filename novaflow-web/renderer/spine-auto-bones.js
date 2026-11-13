@@ -2635,7 +2635,9 @@
           const q = Array.from(core().dpSimplify(Float64Array.from(p), Math.max(4, 0.04 * len)))
           let bi = 0, bl = -1
           for (let i = 0; i + 3 < q.length; i += 2) { const d = Math.hypot(q[i + 2] - q[i], q[i + 3] - q[i + 1]); if (d > bl) { bl = d; bi = i } }
-          sk.add(base, parentBone, q[bi], q[bi + 1], q[bi + 2], q[bi + 3], Object.assign({}, meta, { kind: 'bone' }))
+          // (a hat or a ring is long too, but has no straight run to speak of: it stays a point)
+          if (bl >= 0.5 * len) sk.add(base, parentBone, q[bi], q[bi + 1], q[bi + 2], q[bi + 3], Object.assign({}, meta, { kind: 'bone' }))
+          else sk.add(base, parentBone, c[0], c[1], c[0], c[1], Object.assign({}, meta, { kind: 'controller' }))
         } else if (part === 'accessory') {
           const pieces = maskPieces(l)
           if (pieces.length <= 1) sk.add(base, parentBone, c[0], c[1], c[0], c[1], Object.assign({}, meta, { kind: 'controller' }))

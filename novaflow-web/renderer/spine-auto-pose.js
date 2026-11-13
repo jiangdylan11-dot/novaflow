@@ -133,7 +133,29 @@
     const limbOf = (n) => n.replace(/^(forearm|hand)_/, 'arm_').replace(/^(shin|foot)_/, 'leg_')
     const areas = new Map()
     const areaOf = (p) => { if (!areas.has(p)) { let pa = 0; for (let i = 3; i < p.rgba.length; i += 4) if (p.rgba[i]) pa++; areas.set(p, pa) } return areas.get(p) }
+    // ---- the head's own layer: the smallest picture that is opaque at the nose and lies mostly
+    // around it (a face, or a face drawn together with its hair). It is the face for the builder
+    // whatever it was labelled, and every other layer is not.
+    let headLayer = null
+    if (J.nose) {
+      let bestArea = Infinity
+      for (const l of layers) {
+        if (!l || !l.rgba || !alphaAt(l, J.nose[0], J.nose[1], o.alpha)) continue
+        let all = 0, near = 0
+        const st = Math.max(1, Math.round(Math.max(l.width, l.height) / 200))
+        for (let py = 0; py < l.height; py += st) for (let px = 0; px < l.width; px += st) {
+          if (l.rgba[(py * l.width + px) * 4 + 3] <= o.alpha) continue
+          all++; if (Math.hypot(l.place.x + px - l.width / 2 - headC[0], l.place.y + l.height / 2 - py - headC[1]) <= headR) near++
+        }
+        if (all * st * st >= Math.pow(0.12 * torso, 2) && near >= 0.5 * all && all * st * st < bestArea) { bestArea = all * st * st; headLayer = l.name }
+      }
+    }
+    const rFace = Math.max(0.2 * torso, Math.min(0.4 * torso, J.lEar && J.rEar ? 0.8 * dist(J.lEar, J.rEar) : 0.27 * torso))
     for (let l of layers) {
+      if (l && headLayer) {
+        if (l.name === headLayer) { kept.push(Object.assign({}, l, { hintOverride: { part: 'face', side: null }, soft: false, rigid: false })); continue }
+        l = Object.assign({}, l, { offHead: true })
+      } else
       if (l && l.rgba && headC) {
         // away from the head (the joints say where it is): never the face, whatever it looks like
         let all = 0, near = 0
@@ -256,9 +278,17 @@
     // piece must reach well clear of the body)
     const far = parts.map((p) => capsuleLayer(p.name, p.pts, p.radii.map((r) => r * (p.name === 'body' ? 1.2 : 1.6) + 0.22 * torso), null))
     const loose = []
-    const minArea = Math.pow(0.2 * torso, 2), minSpan = 0.35 * torso
-    for (const l of layers) {
-      if (!l || !covered[l.name] || !covered[l.name].length) continue
+    const jobs = []
+    for (const l of layers) if (l && covered[l.name] && covered[l.name].length) jobs.push({ l, env, far, minArea: Math.pow(0.2 * torso, 2), minSpan: 0.35 * torso, part: 'cloth' })
+    // ...and the hair drawn in the head's own layer (side locks, a fall behind the neck): what
+    // lies outside the face becomes hair pieces with chains, hung from the head
+    const headL = headLayer ? layers.find((l) => l && l.name === headLayer) : null
+    if (headL && headC) {
+      const ring = (r) => [capsuleLayer('face', [headC, [headC[0], headC[1] + 1]], [r, r], null)]
+      jobs.push({ l: headL, env: ring(1.15 * rFace), far: ring(1.15 * rFace + 0.1 * torso), minArea: Math.pow(0.09 * torso, 2), minSpan: 0.18 * torso, part: 'hair', head: true })
+    }
+    for (const job of jobs) {
+      const { l, env, far, minArea, minSpan } = job
       const q = Math.max(1, Math.round(Math.max(l.width, l.height) / 500))
       const gw = Math.ceil(l.width / q), gh = Math.ceil(l.height / q)
       const out = new Uint8Array(gw * gh)
@@ -267,6 +297,8 @@
         if (l.rgba[(py * l.width + px) * 4 + 3] <= o.alpha) continue
         const wx = l.place.x + px + 0.5 - l.width / 2, wy = l.place.y + l.height / 2 - py - 0.5
         let inside = false
+        // (in the head's layer only what hangs below the nose: the hair on top of the head is the head)
+        if (job.head && wy > headC[1]) continue
         for (const e of env) if (alphaAt(e, wx, wy, 128)) { inside = true; break }
         if (!inside) out[gy * gw + gx] = 1
       }
@@ -306,11 +338,11 @@
           const si = ((by0 + y) * l.width + bx0 + x) * 4, di = (y * bw + x) * 4
           rgba[di] = l.rgba[si]; rgba[di + 1] = l.rgba[si + 1]; rgba[di + 2] = l.rgba[si + 2]; rgba[di + 3] = l.rgba[si + 3]
         }
-        loose.push({ name: `${l.name}~${loose.length + 1}`, att: l.name, width: bw, height: bh, rgba, place: { x: l.place.x - l.width / 2 + bx0 + bw / 2, y: l.place.y + l.height / 2 - by0 - bh / 2 }, hintOverride: { part: 'cloth', side: null }, noLimb: true, synthetic: true, ofLayer: l.name })
+        loose.push({ name: `${l.name}~${loose.length + 1}`, att: l.name, width: bw, height: bh, rgba, place: { x: l.place.x - l.width / 2 + bx0 + bw / 2, y: l.place.y + l.height / 2 - by0 - bh / 2 }, hintOverride: { part: job.part, side: null }, noLimb: true, synthetic: true, ofLayer: l.name, ofHead: !!job.head })
       }
     }
     for (const c of capes) loose.push(c)
-    return { layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer })), covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
+    return { layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer, head: !!l.ofHead })), headLayer, covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
   }
 
   /**
@@ -335,6 +367,11 @@
     for (const p of partNames) { delete built.slotBone[p]; delete built.attachment[p] }
     // the chains built on a covered layer's loose pieces are that layer's bones too
     for (const lp of fig.loose || []) {
+      if (lp.head && !covered[lp.of]) {
+        // the head's layer stays on the head bone; its mesh is weighted to the head and the hair chains
+        const hb = built.bones.find((b) => b.layer === lp.of && b.kind === 'bone') || built.bones.find((b) => b.name === 'head')
+        covered[lp.of] = hb ? [hb.name] : []
+      }
       for (const b of built.bones) if (b.layer === lp.name && b.kind === 'bone') covered[lp.of].push(b.name)
       delete built.slotBone[lp.name]; delete built.attachment[lp.name]
     }
@@ -363,6 +400,8 @@
       if (k === 'hair') return Object.assign({}, l, { hintOverride: { part: 'hair', side: null } })
       if (k === 'cloth' || k === 'dangle') return Object.assign({}, l, { hintOverride: { part: 'cloth', side: null }, soft: true })
       if (k === 'hard') return Object.assign({}, l, { hintOverride: { part: 'accessory', side: null }, rigid: true })
+      // an eye, a brow, a mouth drawn as its own layer: a face feature on the head, never a chain
+      if (k === 'face') return Object.assign({}, l, { rigid: true, faceFeature: true })
       return l
     })
   }
