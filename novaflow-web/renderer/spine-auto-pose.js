@@ -96,7 +96,29 @@
     const neckTop = J.nose ? lerp(sh, J.nose, 0.55) : [sh[0], sh[1] + 0.22 * torso]
     const up = [(sh[0] - hp[0]) / torso, (sh[1] - hp[1]) / torso]
     const crotch = [hp[0] - up[0] * 0.1 * torso, hp[1] - up[1] * 0.1 * torso]
-    parts.push({ name: 'body', pts: [crotch, sh, neckTop], radii: [rTorso, rTorso, Math.max(6, 0.3 * rTorso)], hint: { part: 'body', side: null } })
+    // the spine follows the torso as drawn, not the straight line from the hips to the shoulders
+    // (a body in three-quarter view or with the chest pushed out curves away from it): at three
+    // heights the middle of the silhouette's run across the body, where that run is a torso wide
+    const mids = []
+    {
+      const AB0 = typeof globalThis !== 'undefined' ? globalThis.NovaFlowAutoBones : null
+      const partOf = (l) => (l.hintOverride && l.hintOverride.part) || (AB0 && AB0.nameHint ? AB0.nameHint(l.name).part : null)
+      const bodyish = layers.filter((l) => l && l.rgba && !l.soft && !l.rigid && !['hair', 'cloth', 'accessory', 'eye', 'mouth', 'nose'].includes(partOf(l)))
+      const opaque = (x, y) => bodyish.some((l) => alphaAt(l, x, y, o.alpha))
+      const px = up[1], py = -up[0]
+      const lim = 0.75 * Math.max(shW, hpW, 0.45 * torso)
+      for (const t of [0.25, 0.5, 0.75]) {
+        const c = lerp(hp, sh, t)
+        if (!opaque(c[0], c[1])) continue
+        let a = 0, b = 0
+        while (a < lim && opaque(c[0] + px * (a + 2), c[1] + py * (a + 2))) a += 2
+        while (b < lim && opaque(c[0] - px * (b + 2), c[1] - py * (b + 2))) b += 2
+        if (a >= lim || b >= lim) continue                      // arms at the sides, a cloak: no clean run
+        const shift = Math.max(-0.3 * lim, Math.min(0.3 * lim, (a - b) / 2))
+        mids.push([c[0] + px * shift, c[1] + py * shift])
+      }
+    }
+    parts.push({ name: 'body', pts: [crotch, ...mids, sh, neckTop], radii: [rTorso, ...mids.map(() => rTorso), rTorso, Math.max(6, 0.3 * rTorso)], hint: { part: 'body', side: null } })
     const limb = (side, kind) => {
       const S = side === 'l' ? 'l' : 'r'
       if (kind === 'arm') {
