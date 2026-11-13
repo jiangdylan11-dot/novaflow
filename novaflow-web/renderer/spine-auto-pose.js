@@ -527,11 +527,11 @@
   const KINDS = ['hair', 'cloth', 'dangle', 'hard', 'body', 'face', 'other']
   /**
    * What each layer is, from the online vision model: { layerName: kind } or null. The page
-   * provides the call as globalThis.NovaFlowRigLayerKinds(dataUrl, count) → { "1": "hair", ... };
+   * provides the call as globalThis.FoartRigLayerKinds(dataUrl, count) → { "1": "hair", ... };
    * without it (or when it fails) 自动架设 goes by names, joints and shape alone.
    */
   async function recognize(layers) {
-    const ask = typeof globalThis !== 'undefined' ? globalThis.NovaFlowRigLayerKinds : null
+    const ask = typeof globalThis !== 'undefined' ? globalThis.FoartRigLayerKinds : null
     if (typeof ask !== 'function') return null
     const sheet = await layerSheet(layers)
     if (!sheet || !sheet.names.length) return null
