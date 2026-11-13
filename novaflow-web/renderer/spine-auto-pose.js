@@ -123,9 +123,22 @@
     const eyeMid = J.lEye && J.rEye ? mid(J.lEye, J.rEye) : null
     let fu = up, fd = 0.12 * torso
     if (J.nose && eyeMid && dist(eyeMid, J.nose) > 0.02 * torso) { fd = dist(eyeMid, J.nose); fu = [(eyeMid[0] - J.nose[0]) / fd, (eyeMid[1] - J.nose[1]) / fd] }
-    let chin = J.nose ? [J.nose[0] - fu[0] * 1.35 * fd, J.nose[1] - fu[1] * 1.35 * fd] : neckTop
-    if (dist(chin, sh) < 0.08 * torso || (chin[0] - sh[0]) * up[0] + (chin[1] - sh[1]) * up[1] <= 0) chin = neckTop
-    const crown = J.nose ? [(eyeMid || J.nose)[0] + fu[0] * 2.3 * fd, (eyeMid || J.nose)[1] + fu[1] * 2.3 * fd] : null
+    // the neck and the head run on one line, from the base of the neck through the middle of the
+    // head (the nose, eyes and ears together): a chin and a crown taken from the eyes alone made
+    // the neck lean one way and the head the other on a tilted or turned face
+    const facePts = [J.nose, J.lEye, J.rEye, J.lEar, J.rEar].filter(Boolean)
+    let chin = neckTop, crown = null
+    if (facePts.length) {
+      const hc = [facePts.reduce((a, q) => a + q[0], 0) / facePts.length, facePts.reduce((a, q) => a + q[1], 0) / facePts.length]
+      const dH = dist(hc, sh)
+      const rH = Math.max(0.2 * torso, Math.min(0.4 * torso, J.lEar && J.rEar ? 0.8 * dist(J.lEar, J.rEar) : 0.27 * torso))
+      if (dH > 0.1 * torso && (hc[0] - sh[0]) * up[0] + (hc[1] - sh[1]) * up[1] > 0) {
+        const ax = [(hc[0] - sh[0]) / dH, (hc[1] - sh[1]) / dH]
+        const neckLen = Math.max(0.3 * dH, Math.min(dH - 0.75 * rH, 0.6 * dH))
+        chin = [sh[0] + ax[0] * neckLen, sh[1] + ax[1] * neckLen]
+        crown = [hc[0] + ax[0] * 1.15 * rH, hc[1] + ax[1] * 1.15 * rH]
+      }
+    }
     const path = [[0, hp]].concat([0.25, 0.5, 0.75].map((t) => { const m = mids.find((q) => q.t === t); return m ? [t, m.p] : null }).filter(Boolean), [[1, sh]])
     const onPath = (t) => { for (let i = 1; i < path.length; i++) if (t <= path[i][0]) return lerp(path[i - 1][1], path[i][1], (t - path[i - 1][0]) / Math.max(1e-6, path[i][0] - path[i - 1][0])); return sh }
     const figureTrunk = { waist: onPath(0.4), neckBase: sh.slice(), neckTop: chin.slice(), headTop: crown }
@@ -375,6 +388,66 @@
       }
     }
     for (const c of capes) loose.push(c)
+    // ---- a limb that has a layer of its own is drawn there: its joints move onto that layer's
+    // axis (the knee and ankle found on the whole picture sit a little off under a dress, and the
+    // foot ends where the leg's layer ends), then everything above is done once more with them
+    if (!o._refined && AB && AB.analyzeLayer && AB._internals && AB._internals.trunkPath) {
+      const own = {}
+      for (const [name, v] of Object.entries(seen)) if (v.fits && covered[name]) (own[v.fits] = own[v.fits] || []).push(layers.find((l) => l && l.name === name))
+      const axisOf = (l) => {
+        try {
+          const g = AB.analyzeLayer(l.rgba, l.width, l.height, {}).graph, tp = AB._internals.trunkPath(g)
+          if (!tp) return null
+          let cur = tp.start; const out = []
+          for (const ei of tp.edges) {
+            const e = g.edges[ei], fwd = e.a === cur
+            for (let k = 0; k < e.poly.length; k += 2) { const q = fwd ? k : e.poly.length - 2 - k; out.push([l.place.x + e.poly[q] - l.width / 2, l.place.y + l.height / 2 - e.poly[q + 1]]) }
+            cur = fwd ? e.b : e.a
+          }
+          return out.length >= 2 ? out : null
+        } catch (e) { return null }
+      }
+      const nearestOn = (axis, pt) => {
+        let best = null
+        for (let k = 1; k < axis.length; k++) {
+          const a0 = axis[k - 1], b0 = axis[k], dx = b0[0] - a0[0], dy = b0[1] - a0[1], l2 = dx * dx + dy * dy || 1
+          const t = Math.max(0, Math.min(1, ((pt[0] - a0[0]) * dx + (pt[1] - a0[1]) * dy) / l2))
+          const q = [a0[0] + t * dx, a0[1] + t * dy], d = dist(q, pt)
+          if (!best || d < best.d) best = { p: q, d }
+        }
+        return best
+      }
+      const IDXS = { arm_l: [7, 9, -1], arm_r: [8, 10, -1], leg_l: [13, 15, 17], leg_r: [14, 16, 18] }
+      const k2 = kps.map((q) => (q ? q.slice() : q))
+      while (k2.length < 19) k2.push([0, 0, 0])
+      let moved = false
+      for (const limb of Object.keys(own)) {
+        const axes = own[limb].filter(Boolean).map(axisOf).filter(Boolean)
+        const ix = IDXS[limb]
+        if (!axes.length || !ix) continue
+        for (const jn of [ix[0], ix[1]]) {
+          if (!(kps[jn] && kps[jn][2] >= o.minConf)) continue
+          let best = null
+          for (const ax of axes) { const r = nearestOn(ax, kps[jn]); if (r && (!best || r.d < best.d)) best = r }
+          if (best && best.d > 1 && best.d <= 0.2 * torso) { k2[jn][0] = best.p[0]; k2[jn][1] = best.p[1]; moved = true }
+        }
+        if (ix[2] >= 0 && k2[ix[1]] && k2[ix[1]][2] >= o.minConf) {
+          // the foot: to the end of the layer the ankle lies on, the end away from the knee
+          const ank = k2[ix[1]], knee = k2[ix[0]]
+          let ax = null, bd = Infinity
+          for (const a2 of axes) { const r = nearestOn(a2, ank); if (r && r.d < bd) { bd = r.d; ax = a2 } }
+          if (ax && bd <= 0.2 * torso) {
+            const e0 = ax[0], e1 = ax[ax.length - 1]
+            // (the end that lies on past the ankle, and only when the layer really runs on into a
+            // foot: a leg layer that stops at the ankle leaves the toe where it was found)
+            const along = (e) => (e[0] - ank[0]) * (ank[0] - knee[0]) + (e[1] - ank[1]) * (ank[1] - knee[1])
+            const far = along(e0) > along(e1) ? e0 : e1
+            if (along(far) > 0 && dist(far, ank) >= 0.2 * torso) { k2[ix[2]] = [far[0], far[1], Math.max(0.5, k2[ix[2]][2] || 0)]; moved = true }
+          }
+        }
+      }
+      if (moved) return figureLayers(layers, k2, Object.assign({}, opts, { _refined: true }))
+    }
     return { layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer, head: !!l.ofHead })), headLayer, covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
   }
 
