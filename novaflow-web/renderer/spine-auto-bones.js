@@ -3027,6 +3027,58 @@
       // sweeps (hair): bands over the core of the mask, the outer bands take the flying
       // strands beyond it
       const cellX0 = sw ? sw.range[0] : a.bbox[0] * sc + 1, cellX1 = sw ? sw.range[1] : a.bbox[2] * sc + 1
+      if (o.stripFlow !== false) {
+        // chains as riggers lay them on a panel or a mass of hair: from the top row down, each at
+        // its own share of the way across the piece AT THAT HEIGHT — the outer ones run a little
+        // inside the two edges and follow them as the piece flares or swings, none climbs. (Bands
+        // of fixed columns gave a chain down the middle of each band: on a panel that swings out
+        // to one side the far band only existed near the hem.)
+        const fr = []
+        for (let i = 0; i < k; i++) fr.push(k === 1 ? 0.5 : 0.15 + 0.7 * i / (k - 1))
+        const rowRuns = (y) => { const runs = []; let x = 0; while (x < ws) { if (M[y * ws + x]) { const x0 = x; while (x < ws && M[y * ws + x]) x++; if (x - x0 >= 2) runs.push([x0, x - 1]) } else x++ } return runs }
+        let yTop = -1
+        for (let y = 0; y < hs && yTop < 0; y++) if (rowRuns(y).length) yTop = y
+        if (yTop < 0) return 0
+        const chains = []
+        for (const f of fr) {
+          const pts = []
+          let px = null, miss = 0
+          for (let y = yTop; y < hs; y++) {
+            const runs = rowRuns(y)
+            if (!runs.length) { if (++miss > 3) break; continue }
+            // the run this chain is in: at the top the one under its share of the whole width,
+            // afterwards the one nearest where it was
+            const want = px === null ? cellX0 + f * (cellX1 - cellX0) : px
+            let best = null, bd = Infinity
+            for (const r of runs) { const d = want < r[0] ? r[0] - want : (want > r[1] ? want - r[1] : 0); if (d < bd) { bd = d; best = r } }
+            if (px !== null && bd > Math.max(4, 0.04 * ws)) { if (++miss > 3) break; continue }
+            miss = 0
+            px = best[0] + f * (best[1] - best[0])
+            pts.push(px, y)
+          }
+          if (pts.length >= 6) chains.push(pts)
+        }
+        // two chains that ran together (a piece that is one lock wide for most of its length) are one
+        const kept = []
+        for (const c of chains) {
+          const same = kept.some((q) => { const n = Math.min(c.length, q.length); let dsum = 0, cnt = 0; for (let i = 0; i < n; i += 2) { dsum += Math.abs(c[i] - q[i]); cnt++ } return Math.abs(c.length - q.length) < 0.25 * q.length && dsum / Math.max(1, cnt) < Math.max(3, 0.03 * ws) })
+          if (!same) kept.push(c)
+        }
+        let made = 0
+        for (const c of kept) {
+          let poly = []
+          const stepRows = Math.max(1, Math.round(c.length / 2 / 40))
+          for (let i = 0; i < c.length; i += 2 * stepRows) { const [wx, wy] = worldOf(l, (c[i] - 1 + 0.5) / sc, (c[i + 1] - 1 + 0.5) / sc); poly.push(wx, wy) }
+          { const i = c.length - 2; const [wx, wy] = worldOf(l, (c[i] - 1 + 0.5) / sc, (c[i + 1] - 1 + 0.5) / sc); if (Math.hypot(wx - poly[poly.length - 2], wy - poly[poly.length - 1]) > 1) poly.push(wx, wy) }
+          const Lc = polyLen(poly)
+          if (Lc < o.boneMin) continue
+          const radii = []; for (let i = 0; i < poly.length; i += 2) radii.push(l.rMean || 4)
+          const pts = cutPolyline(poly, radii, 'strand', Object.assign({}, o, { strandLen: sw && sw.strandLenOf ? sw.strandLenOf(Lc) : strandBoneLen(Lc, l.rMean) }))
+          chainAlong(sk, pts, parentBone, namer, meta)
+          made++
+        }
+        if (made) return made
+      }
       let made = 0
       for (let i = 0; i < k; i++) {
         const x0 = cellX0 + (cellX1 - cellX0) * i / k, x1 = cellX0 + (cellX1 - cellX0) * (i + 1) / k
