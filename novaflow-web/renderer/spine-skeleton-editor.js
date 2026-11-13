@@ -13323,8 +13323,16 @@
 
   // Narrow assistant entry: the same native operations and one ordinary undo step.
   const agentJsonIds = new WeakMap(); let agentJsonSequence = 0
+  // Layers an effect added (fx_<effect>_<n>_…) are 小桃's own: the planner gets one line per effect, not every
+  // bone, slot and picture of it (a coin shower alone is a hundred of each and would crowd the project out).
+  const agentFxName = (name) => /^fx_[a-z]+_?\d+_/.test(String(name || ''))
+  function agentEffects() {
+    const groups = new Map()
+    for (const sl of state.json?.slots || []) { const m = /^fx_([a-z]+)_?(\d+)_/.exec(sl.name); if (m) groups.set(m[1] + ' ' + m[2], (groups.get(m[1] + ' ' + m[2]) || 0) + 1) }
+    return [...groups].slice(0, 30).map(([key, layers]) => ({ effect: key.split(' ')[0], layers }))
+  }
   function agentAttachments() {
-    return (state.json?.skins || []).flatMap(skin=>Object.entries(skin.attachments || {}).flatMap(([slotName,items])=>Object.entries(items).map(([name,a])=>({skinName:skin.name,slotName,name,type:a.type||'region',vertexCount:a.uvs?.length/2||0,hull:a.hull||0,weighted:!!(a.uvs&&a.vertices?.length>a.uvs.length)})))).slice(0,100)
+    return (state.json?.skins || []).flatMap(skin=>Object.entries(skin.attachments || {}).filter(([slotName])=>!agentFxName(slotName)).flatMap(([slotName,items])=>Object.entries(items).map(([name,a])=>({skinName:skin.name,slotName,name,type:a.type||'region',vertexCount:a.uvs?.length/2||0,hull:a.hull||0,weighted:!!(a.uvs&&a.vertices?.length>a.uvs.length)})))).slice(0,100)
   }
   function agentEditVertices() {
     if (!state.weightEdit && !state.meshEdit) return []
@@ -13346,9 +13354,9 @@
       fps: FPS, frame: state.frame, playing: !!state.playing, mode: state.mode, animation: state.anim,
       axes: state.axes, displayedTransform: shownTarget?xformValues(shownTarget):null,
       animations: Object.keys(state.json.animations || {}).slice(0, 40), selectedBones: selected,
-      bones: state.json.bones.slice(0, 100).map(({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})=>({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})),
-      boneCount: state.json.bones.length, slotCount: state.json.slots.length,
-      slots: state.json.slots.slice(0,60).map(({name,bone,attachment,color,blend})=>({name,bone,attachment,color,blend})),
+      bones: state.json.bones.filter(b=>!agentFxName(b.name)).slice(0, 100).map(({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})=>({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})),
+      boneCount: state.json.bones.filter(b=>!agentFxName(b.name)).length, slotCount: state.json.slots.filter(x=>!agentFxName(x.name)).length, effects: agentEffects(),
+      slots: state.json.slots.filter(x=>!agentFxName(x.name)).slice(0,60).map(({name,bone,attachment,color,blend})=>({name,bone,attachment,color,blend})),
       skins: state.json.skins.map(s=>s.name).slice(0,60),
       constraints: ['ik','transform','path'].flatMap(kind=>(state.json[kind]||[]).slice(0,40).map(c=>({kind,...c,bones:c.bones.slice()}))),
       picking: state.pick?{want:state.pick.want,text:state.pick.text}:null,

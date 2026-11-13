@@ -1859,7 +1859,7 @@
         await closeFoartOperation();
         if(operation===serial){state.error=turnFailureText(plainFoartError(error),turnCharge(billing));state.status=signal.aborted?'已停止等待；请按工具当前状态确认未结束任务':'工具操作未全部完成';
           if(receipts.length){
-            const meaningful=receipts.filter(row=>row.phase==='completed'||row.action==='set_control'||row.action==='draw'||row.action==='ui_layout'||row.action==='image_optimize'&&row.phase==='applied');
+            const meaningful=receipts.filter(row=>row.phase==='completed'||row.action==='set_control'||row.action==='draw'||row.action==='ui_layout'||row.action==='image_optimize'&&row.phase==='applied'||row.action==='animation'&&row.phase==='applied'&&!!row.message);
             const rows=[...new Map(meaningful.map(row=>[row.action+'|'+row.control+'|'+String(row.value)+'|'+row.id,row])).values()];
             const facts=rows.length?summarize(rows.slice(-8)):'已打开工具，但实际修改尚未完成。';
             const downloads=receipts.flatMap(row=>(row.outputs||[]).map(output=>output.downloadId).filter(Boolean));
@@ -2030,7 +2030,7 @@
       const operationVision=operationTextOnly && selectedPricingPayload().operationVisionBillingV3===true;
       const visionUploads=operationVision && invocationUploads.length>0 && invocationUploads.every(item=>item?.kind==='image');
       const operationNeedsTools=!reverseImage&&(includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
-        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|设计|新建|创建|建立|添加|增加|做(?:一|个|张|段|套)|来(?:一|个|张|段)|配乐|配音|转成|转换|合成|渲染|改|换|抠|去掉|去除|擦|放大|扩|拆|补|裁|压缩|画|加上|加个|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
+        /打开|关闭|进入|切换|操作|执行|调用|生成|制作|设计|新建|创建|建立|添加|增加|配上|配个|配一|配齐|特效|光效|动效|扫光|刀光|背光|转光|金币|做(?:一|个|张|段|套)|来(?:一|个|张|段)|配乐|配音|转成|转换|合成|渲染|改|换|抠|去掉|去除|擦|放大|扩|拆|补|裁|压缩|画|加上|加个|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
       const operationGeneral=state.provider==='api'&&!capabilityOnly&&!!operationNeedsTools;
       deferDrawing=operationGeneral;
       if (!(await ensureStaged())) return false;

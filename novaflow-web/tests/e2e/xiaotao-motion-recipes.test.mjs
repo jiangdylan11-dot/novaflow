@@ -220,3 +220,14 @@ test('a set of effects: a holding layer stays, a settled one is simply there, an
  assert.ok(editorSource.includes("if (def.native === 'particle') fx = await fxParticle(op, ctx, part, def)"));
  assert.ok(editorSource.includes('const parts = await P.spineParts(systems, D)'));
 });
+
+test('effect layers stay out of what the planner is sent, effect requests count as software operations, a made change is reported',async()=>{
+ assert.ok(editorSource.includes("bones: state.json.bones.filter(b=>!agentFxName(b.name)).slice(0, 100)"));
+ assert.ok(editorSource.includes("slots: state.json.slots.filter(x=>!agentFxName(x.name)).slice(0,60)"));
+ assert.ok(editorSource.includes("filter(([slotName])=>!agentFxName(slotName))"));
+ assert.ok(editorSource.includes("effects: agentEffects()"));
+ const agent=await readFile(new URL('../../renderer/xiaotao-art-agent.js',import.meta.url),'utf8');
+ for(const word of ['配上','特效','光效','动效','扫光','金币'])assert.ok(agent.includes('|'+word+'|'),word+' routes to the tools');
+ assert.ok(agent.includes("row.action==='animation'&&row.phase==='applied'&&!!row.message"));
+ assert.ok(FOART_TOOL_SYSTEM.length<34500,'the tool brief stays inside its budget: '+FOART_TOOL_SYSTEM.length);
+});
