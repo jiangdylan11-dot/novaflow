@@ -276,7 +276,7 @@
         }
         if (all && near < 0.3 * all) l = Object.assign({}, l, { offHead: true })
       }
-      if (l && l.rgba && hintOf(l) === 'hair') {
+      if (l && l.rgba && hintOf(l) === 'hair' && !l.seenAsHair) {   // (a NAME may be wrong about hair; a look at the picture is not)
         // "hair" that hardly rises above the shoulders is a cape or a cloak: it hangs from the
         // body, not from the head (a knight's cloak labelled back hair swung from the helmet)
         let all = 0, above = 0
@@ -401,7 +401,39 @@
     const headL = headLayer ? layers.find((l) => l && l.name === headLayer) : null
     if (headL && headC) {
       const ring = (r) => [capsuleLayer('face', [headC, [headC[0], headC[1] + 1]], [r, r], null)]
-      jobs.push({ l: headL, env: ring(1.15 * rFace), far: ring(1.15 * rFace + 0.1 * torso), minArea: Math.pow(0.09 * torso, 2), minSpan: 0.18 * torso, part: 'hair', head: true })
+      // by colour when the skin can be read: the cheeks and the nose give the skin's colour, what
+      // is opaque and not that colour is hair (hair hugging the cheeks cannot be cut off by shape)
+      let skinOf = null
+      if (J.nose) {
+        const sm = []
+        for (const [cx, cy] of [[J.nose[0], J.nose[1]], [J.nose[0] - 0.3 * rFace, J.nose[1]], [J.nose[0] + 0.3 * rFace, J.nose[1]], [J.nose[0], J.nose[1] - 0.22 * rFace]]) {
+          for (let dy = -4; dy <= 4; dy += 2) for (let dx = -4; dx <= 4; dx += 2) {
+            const px = Math.floor(cx + dx - headL.place.x + headL.width / 2), py = Math.floor(headL.place.y + headL.height / 2 - cy - dy)
+            if (px < 0 || py < 0 || px >= headL.width || py >= headL.height) continue
+            const qi = (py * headL.width + px) * 4
+            if (headL.rgba[qi + 3] > 200) sm.push([headL.rgba[qi], headL.rgba[qi + 1], headL.rgba[qi + 2]])
+          }
+        }
+        if (sm.length >= 20) {
+          const md = (i) => sm.map((v) => v[i]).sort((x, y) => x - y)[sm.length >> 1]
+          const ycc = (r, g, b2) => [0.299 * r + 0.587 * g + 0.114 * b2, -0.169 * r - 0.331 * g + 0.5 * b2, 0.5 * r - 0.419 * g - 0.081 * b2]
+          const s0 = ycc(md(0), md(1), md(2))
+          const isSkin = (qi) => { const c = ycc(headL.rgba[qi], headL.rgba[qi + 1], headL.rgba[qi + 2]); return Math.hypot(2 * (c[1] - s0[1]), 2 * (c[2] - s0[2]), 0.45 * (c[0] - s0[0])) < 30 }
+          // (hair lies around the face: a face drawn alone has its eyes, lips and shading as the
+          // only other colours, all inside it — that is not hair)
+          let all = 0, hair = 0, around = 0
+          const st = Math.max(1, Math.round(Math.max(headL.width, headL.height) / 200))
+          for (let py = 0; py < headL.height; py += st) for (let px = 0; px < headL.width; px += st) {
+            const qi = (py * headL.width + px) * 4; if (headL.rgba[qi + 3] <= o.alpha) continue
+            all++; if (isSkin(qi)) continue
+            hair++
+            if (Math.hypot(headL.place.x + px - headL.width / 2 - headC[0], headL.place.y + headL.height / 2 - py - (headC[1] - 0.1 * rFace)) > 0.85 * rFace) around++
+          }
+          if (all && around >= 0.15 * all && around >= 0.6 * hair && hair <= 0.9 * all) skinOf = isSkin
+        }
+      }
+      if (skinOf) jobs.push({ l: headL, env: [], far: [], minArea: Math.pow(0.09 * torso, 2), minSpan: 0.18 * torso, part: 'hair', head: true, skinOf })
+      else jobs.push({ l: headL, env: ring(1.15 * rFace), far: ring(1.15 * rFace + 0.1 * torso), minArea: Math.pow(0.09 * torso, 2), minSpan: 0.18 * torso, part: 'hair', head: true })
     }
     for (const job of jobs) {
       const { l, env, far, minArea, minSpan } = job
@@ -414,6 +446,7 @@
         const wx = l.place.x + px + 0.5 - l.width / 2, wy = l.place.y + l.height / 2 - py - 0.5
         let inside = false
         // (in the head's layer only what hangs below the nose: the hair on top of the head is the head)
+        if (job.skinOf) { if (!job.skinOf((py * l.width + px) * 4)) out[gy * gw + gx] = 1; continue }
         if (job.head && wy > headC[1]) continue
         for (const e of env) if (alphaAt(e, wx, wy, 128)) { inside = true; break }
         if (!inside) out[gy * gw + gx] = 1
@@ -444,7 +477,7 @@
           for (const e of far) if (alphaAt(e, wx, wy, 128)) { inside = true; break }
           if (!inside) clear++
         }
-        if (clear < 0.25 * area && clear * q * q < minArea) continue
+        if (!job.skinOf && clear < 0.25 * area && clear * q * q < minArea) continue
         // the piece as a picture of its own (its pixels only), in the layer's place
         const bx0 = x0 * q, by0 = y0 * q, bw = Math.min(l.width, (x1 + 1) * q) - bx0, bh = Math.min(l.height, (y1 + 1) * q) - by0
         const rgba = new Uint8ClampedArray(bw * bh * 4)
@@ -454,7 +487,7 @@
           const si = ((by0 + y) * l.width + bx0 + x) * 4, di = (y * bw + x) * 4
           rgba[di] = l.rgba[si]; rgba[di + 1] = l.rgba[si + 1]; rgba[di + 2] = l.rgba[si + 2]; rgba[di + 3] = l.rgba[si + 3]
         }
-        loose.push({ name: `${l.name}~${loose.length + 1}`, att: l.name, width: bw, height: bh, rgba, place: { x: l.place.x - l.width / 2 + bx0 + bw / 2, y: l.place.y + l.height / 2 - by0 - bh / 2 }, hintOverride: { part: job.part, side: null }, noLimb: true, synthetic: true, ofLayer: l.name, ofHead: !!job.head })
+        loose.push({ name: `${l.name}~${loose.length + 1}`, att: l.name, width: bw, height: bh, rgba, place: { x: l.place.x - l.width / 2 + bx0 + bw / 2, y: l.place.y + l.height / 2 - by0 - bh / 2 }, hintOverride: { part: job.part, side: null }, noLimb: true, synthetic: true, ofLayer: l.name, ofHead: !!job.head, seenAsHair: !!job.head, offHead: true })
       }
     }
     for (const c of capes) loose.push(c)
@@ -515,7 +548,7 @@
       }
       if (moved) return figureLayers(layers, k2, Object.assign({}, opts, { _refined: true }))
     }
-    return { layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer, head: !!l.ofHead })), headLayer, covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
+    return { layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer, head: !!l.ofHead })), headLayer, rigid: headLayer && headC && loose.some((l) => l.ofHead) ? { [headLayer]: { c: [headC[0], headC[1] - 0.1 * rFace], r: 0.85 * rFace } } : null, covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
   }
 
   /**
@@ -548,7 +581,7 @@
       for (const b of built.bones) if (b.layer === lp.name && b.kind === 'bone') covered[lp.of].push(b.name)
       delete built.slotBone[lp.name]; delete built.attachment[lp.name]
     }
-    built.figure = { covered, joints: fig.joints, parts: fig.parts.map((p) => p.name) }
+    built.figure = { covered, joints: fig.joints, parts: fig.parts.map((p) => p.name), rigid: fig.rigid || null }
     return built
   }
 
@@ -570,7 +603,7 @@
     return layers.map((l) => {
       const k = l && kinds[l.name]
       if (!k || (l.hintOverride && l.hintOverride.part) || (AB && AB.nameHint && AB.nameHint(l.name).part)) return l
-      if (k === 'hair') return Object.assign({}, l, { hintOverride: { part: 'hair', side: null } })
+      if (k === 'hair') return Object.assign({}, l, { hintOverride: { part: 'hair', side: null }, seenAsHair: true })
       if (k === 'cloth' || k === 'dangle') return Object.assign({}, l, { hintOverride: { part: 'cloth', side: null }, soft: true })
       if (k === 'hard') return Object.assign({}, l, { hintOverride: { part: 'accessory', side: null }, rigid: true })
       // an eye, a brow, a mouth drawn as its own layer: a face feature on the head, never a chain

@@ -2746,7 +2746,7 @@
             const wide = o.hairSweepsWide !== false && coreW >= 1.2 * unit && bh >= 0.45 * bw && fill >= 0.15
             if ((behindHair && fwW > 0 && bh >= 0.9 * bw && fill >= 0.2 && rowW >= 1.2 * fwW) || wide) {
               const k = wide ? Math.max(2, Math.min(4, Math.round(coreW / (1.3 * unit)))) : Math.max(2, Math.min(4, Math.round(coreW / (1.1 * fwW))))
-              const sweeps = clothStrips(l, chainParent, namer, meta, { k, range: [x10, x90], analysis: a, mask: M, strandLenOf: (L) => (fhW > 0 ? Math.max(0.2 * fhW, Math.min(0.8 * fhW, 0.2 * L)) : strandBoneLen(L, l.rMean, 'hair')) })
+              const sweeps = clothStrips(l, chainParent, namer, meta, { k, range: [x10, x90], analysis: a, mask: M, strandLenOf: (L) => (fhW > 0 && !chainH ? Math.max(0.2 * fhW, Math.min(0.8 * fhW, 0.2 * L)) : strandBoneLen(L, l.rMean, 'hair')) })
               if (sweeps) { flowDone = true; plan.layers[l.name] = Object.assign(plan.layers[l.name] || {}, { sweeps }) }
             }
           }
@@ -2764,7 +2764,9 @@
               if (d1 < d0) { poly = reversePts(poly); radii = radii.slice().reverse() }
               const Lw = polyLen(poly)
               if (Lw >= o.boneMin) {
-                const strandLen = Math.max(0.2 * fhW, Math.min(0.8 * fhW, 0.2 * Lw))
+                // (bone lengths as riggers cut them, against the figure's height: the face box of a head
+                // drawn with its hair made every thin lock one bone)
+                const strandLen = chainH ? strandBoneLen(Lw, l.rMean, 'hair') : Math.max(0.2 * fhW, Math.min(0.8 * fhW, 0.2 * Lw))
                 const pts = cutPolyline(poly, radii, 'strand', Object.assign({}, o, { strandLen }))
                 const ids = chainAlong(sk, pts, chainParent, namer, meta)
                 if (ids.length) { flowDone = true; plan.layers[l.name] = Object.assign(plan.layers[l.name] || {}, { trunk: 1 }) }
@@ -2798,7 +2800,7 @@
               const Lw = polyLen(poly)
               // (front locks are animated finely — the template's longest fringe bone is 35 px
               // on a 111-px face; a fall behind the head moves in 70–110-px bones)
-              const strandLen = fhW > 0 ? Math.max(0.2 * fhW, Math.min((behindHair ? 0.8 : 0.3) * fhW, 0.2 * Lw)) : strandBoneLen(Lw, rM, 'hair')
+              const strandLen = fhW > 0 && !chainH ? Math.max(0.2 * fhW, Math.min((behindHair ? 0.8 : 0.3) * fhW, 0.2 * Lw)) : strandBoneLen(Lw, rM, 'hair')
               const pts = cutPolyline(poly, radii, 'strand', Object.assign({}, o, { strandLen }))
               const ids = chainAlong(sk, pts, par2, namer, meta)
               if (ids.length && par2 === tip) { const b = sk.bones[ids[0]]; const tb = sk.bones[tip]; b.ax = tb.bx; b.ay = tb.by; b.len = Math.hypot(b.bx - b.ax, b.by - b.ay) }

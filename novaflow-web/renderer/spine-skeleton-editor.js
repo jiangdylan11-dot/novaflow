@@ -8357,6 +8357,19 @@
       W = AW.confineToOwn(V, T, W, kept, isOwn, [first.worldX, first.worldY], ownLength)
     }
     W = AW.rigidIslands(V, T, W, kept.length).W
+    // a head drawn with its hair: the face itself (a disc about the nose) stays whole on the head
+    // bone, the hair chains only take the hair
+    const disc = cover && rec.rigid && rec.rigid[L.slot]
+    if (disc) {
+      const hb = kept.indexOf(ids.find((i) => names[i] === cover[0]))
+      if (hb >= 0) for (let i = 0; i < n; i++) {
+        const dd = Math.hypot(V[2 * i] - disc.c[0], V[2 * i + 1] - disc.c[1])
+        const keep = dd <= 0.8 * disc.r ? 0 : (dd >= disc.r ? 1 : (dd - 0.8 * disc.r) / (0.2 * disc.r))
+        if (keep >= 1) continue
+        for (let k = 0; k < kept.length; k++) W[i * kept.length + k] *= keep
+        W[i * kept.length + hb] += 1 - keep
+      }
+    }
     return controlled(json, L, ctx, V, names, parents, roles, rec, kept, W)
   }
 
@@ -13273,7 +13286,7 @@
     // what was built for which layer, by bone name (自动权重 binds each layer to its own bones)
     const roles = new Map()
     next.bones.forEach((bn, i) => { const rb = built.bones[i]; if (rb) roles.set(bn.name, { layer: rb.layer || null, role: rb.role || null, kind: rb.kind || null }) })
-    state.autoRig = { roles, slotBone: built.slotBone || {}, covered: (built.figure && built.figure.covered) || null, face: built.face && built.face.det ? built.face : null }
+    state.autoRig = { roles, slotBone: built.slotBone || {}, covered: (built.figure && built.figure.covered) || null, rigid: (built.figure && built.figure.rigid) || null, face: built.face && built.face.det ? built.face : null }
     const r = edit(`自动架设完成 · ${built.bones.length} 根骨`, () => ({ json: Ops.tidy(Ops.prepare(next)) }))
     if (!r) throw new Error('自动架设的结果没能载入')
     return { bones: built.bones.length, ik: ((built.json && built.json.ik) || []).length, layers: layers.length }
