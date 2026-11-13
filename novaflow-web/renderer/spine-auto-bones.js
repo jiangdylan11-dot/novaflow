@@ -3018,7 +3018,7 @@
       const a = sw && sw.analysis ? sw.analysis : l.analysis
       const M = sw && sw.mask ? sw.mask : a.mask
       const bw = a.bbox[2] - a.bbox[0]
-      const stripW = (l.hint.part === 'cloth' ? 0.17 : (o.panelStrip || 0.12)) * heightAll
+      const stripW = (o.panelStrip || 0.12) * heightAll   // (was 0.17 for a named cloth: riggers run two chains on a panel a quarter of the figure wide)
       const k = sw ? sw.k : Math.max(1, Math.min(4, Math.round(bw / stripW)))
       if (k < 2) return 0
       const { ws, hs, scale: sc } = a
