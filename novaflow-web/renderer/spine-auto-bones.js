@@ -1903,7 +1903,19 @@
     }
     // the shoulder line: the neck base, where the chest ends (the template's shoulder_r /
     // shoulder_l hang from the chest and run level from here to the arm pivots)
-    const neckBase = pointAt(poly, cuts[2])
+    // the figure pass knows where the waist, the base of the neck, the chin and the crown are:
+    // the abdomen runs hips → waist, the chest waist → neck base (between the shoulders), the neck
+    // neck base → chin, the head chin → crown — each segment where a rigger would put it, not at
+    // fixed fractions of the axis
+    const FT = rootLayer.figureTrunk || null
+    if (FT && trunkIds.length === 3) {
+      const set = (id, a, b2) => { const q = sk.bones[id]; q.ax = a[0]; q.ay = a[1]; q.bx = b2[0]; q.by = b2[1]; q.len = Math.hypot(b2[0] - a[0], b2[1] - a[1]) }
+      set(trunkIds[0], [hipsX, hipsY], FT.waist)
+      if (waistPivot >= 0) { const wp = sk.bones[waistPivot]; wp.ax = wp.bx = FT.waist[0]; wp.ay = wp.by = FT.waist[1] }
+      set(trunkIds[1], FT.waist, FT.neckBase)
+      set(trunkIds[2], FT.neckBase, FT.neckTop)
+    }
+    const neckBase = FT ? FT.neckBase.slice() : pointAt(poly, cuts[2])
     const chestId = trunkIds.length >= 3 ? trunkIds[1] : trunkIds[trunkIds.length - 1]
     // ---- the studio's limb mechanism (see mechanize below): per limb a pivot, a joint
     // target and an end target as root-level handles, one stretchy single-bone IK per
@@ -2092,7 +2104,7 @@
       const seg = slicePoly(poly, 0, hipT)
       if (polyLen(seg) >= o.boneMin * 0.5) sk.add('pelvis', hipsId, hipsX, hipsY, seg[0], seg[1], { kind: 'bone', layer: rootLayer.name, role: 'trunk' })
     }
-    const neckTop = pointAt(poly, neckT)
+    const neckTop = FT ? FT.neckTop.slice() : pointAt(poly, neckT)
     let headId = -1
     if (headCentre) {
       // head axis: from the neck top toward the crown. The crown is the top of the
@@ -2129,7 +2141,12 @@
         hx = chin[0] - ux * 0.15 * faceH; hy = chin[1] - uy * 0.15 * faceH
         plan.notes.push('head starts at the chin: trunk top ' + Math.round(chin[1] - neckTop[1]) + ' px below it')
       }
-      const len = Math.min(1.3 * faceH, Math.max(0.6 * faceH, (crownY - hy) / uy))
+      let len = Math.min(1.3 * faceH, Math.max(0.6 * faceH, (crownY - hy) / uy))
+      if (FT && FT.headTop) {
+        // chin → crown, as the joints give them (the layer's top may be a hat or a pair of ears)
+        hx = FT.neckTop[0]; hy = FT.neckTop[1]
+        const dx = FT.headTop[0] - hx, dy = FT.headTop[1] - hy; len = Math.hypot(dx, dy) || 1; ux = dx / len; uy = dy / len
+      }
       headId = sk.add('head', trunkIds[2], hx, hy, hx + ux * len, hy + uy * len, { kind: 'bone', layer: head.name, role: 'trunk' })
       head.rootBone = headId; head.done = true
       plan.layers[head.name] = { role: 'head', part: head.hint.part, parent: rootLayer.name, parentBone: 'neck', bones: ['head'] }

@@ -115,10 +115,21 @@
         while (b < lim && opaque(c[0] - px * (b + 2), c[1] - py * (b + 2))) b += 2
         if (a >= lim || b >= lim) continue                      // arms at the sides, a cloak: no clean run
         const shift = Math.max(-0.3 * lim, Math.min(0.3 * lim, (a - b) / 2))
-        mids.push([c[0] + px * shift, c[1] + py * shift])
+        mids.push({ t, p: [c[0] + px * shift, c[1] + py * shift] })
       }
     }
-    parts.push({ name: 'body', pts: [crotch, ...mids, sh, neckTop], radii: [rTorso, ...mids.map(() => rTorso), rTorso, Math.max(6, 0.3 * rTorso)], hint: { part: 'body', side: null } })
+    // the trunk's joints, for the builder: waist at two fifths of the way up the midline, the neck
+    // base between the shoulders, the chin and the crown from the nose and the eyes
+    const eyeMid = J.lEye && J.rEye ? mid(J.lEye, J.rEye) : null
+    let fu = up, fd = 0.12 * torso
+    if (J.nose && eyeMid && dist(eyeMid, J.nose) > 0.02 * torso) { fd = dist(eyeMid, J.nose); fu = [(eyeMid[0] - J.nose[0]) / fd, (eyeMid[1] - J.nose[1]) / fd] }
+    let chin = J.nose ? [J.nose[0] - fu[0] * 1.35 * fd, J.nose[1] - fu[1] * 1.35 * fd] : neckTop
+    if (dist(chin, sh) < 0.08 * torso || (chin[0] - sh[0]) * up[0] + (chin[1] - sh[1]) * up[1] <= 0) chin = neckTop
+    const crown = J.nose ? [(eyeMid || J.nose)[0] + fu[0] * 2.3 * fd, (eyeMid || J.nose)[1] + fu[1] * 2.3 * fd] : null
+    const path = [[0, hp]].concat([0.25, 0.5, 0.75].map((t) => { const m = mids.find((q) => q.t === t); return m ? [t, m.p] : null }).filter(Boolean), [[1, sh]])
+    const onPath = (t) => { for (let i = 1; i < path.length; i++) if (t <= path[i][0]) return lerp(path[i - 1][1], path[i][1], (t - path[i - 1][0]) / Math.max(1e-6, path[i][0] - path[i - 1][0])); return sh }
+    const figureTrunk = { waist: onPath(0.4), neckBase: sh.slice(), neckTop: chin.slice(), headTop: crown }
+    parts.push({ name: 'body', pts: [crotch, ...mids.map((q) => q.p), sh, chin], radii: [rTorso, ...mids.map(() => rTorso), rTorso, Math.max(6, 0.3 * rTorso)], hint: { part: 'body', side: null }, figureTrunk })
     const limb = (side, kind) => {
       const S = side === 'l' ? 'l' : 'r'
       if (kind === 'arm') {
@@ -145,7 +156,7 @@
     }
     limb('l', 'arm'); limb('r', 'arm'); limb('l', 'leg'); limb('r', 'leg')
     if (parts.length < 2) return null
-    const partLayers = parts.map((p) => Object.assign(capsuleLayer(p.name, p.pts, p.radii, p.hint), p.figure ? { figure: p.figure } : {}, p.name === 'body' ? { figureRoot: true } : {}))
+    const partLayers = parts.map((p) => Object.assign(capsuleLayer(p.name, p.pts, p.radii, p.hint), p.figure ? { figure: p.figure } : {}, p.name === 'body' ? { figureRoot: true, figureTrunk: p.figureTrunk } : {}))
 
     // ---- which real layers the figure lies in
     const headC = J.nose || (J.lEar && J.rEar ? mid(J.lEar, J.rEar) : null), headR = 0.55 * torso
