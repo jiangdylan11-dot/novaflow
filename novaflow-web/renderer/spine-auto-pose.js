@@ -155,6 +155,52 @@
     const onPath = (t) => { for (let i = 1; i < path.length; i++) if (t <= path[i][0]) return lerp(path[i - 1][1], path[i][1], (t - path[i - 1][0]) / Math.max(1e-6, path[i][0] - path[i - 1][0])); return sh }
     const figureTrunk = { waist: onPath(0.4), neckBase: sh.slice(), neckTop: chin.slice(), headTop: crown }
     parts.push({ name: 'body', pts: [crotch, ...mids.map((q) => q.p), sh, chin], radii: [rTorso, ...mids.map(() => rTorso), rTorso, Math.max(6, 0.3 * rTorso)], hint: { part: 'body', side: null }, figureTrunk })
+    /**
+     * The hand past a wrist as a picture of its own, when its fingers can be read: the piece of
+     * the smallest layer drawn there that lies beyond the wrist and ends inside a hand's reach
+     * (a hand resting on the body or holding something runs on and is left as one bone), with
+     * at least three finger ends on its axis.
+     */
+    const handShape = (wrist, dir) => {
+      if (o.fingers === false || !AB || !AB.analyzeLayer) return null
+      const reach = 0.5 * torso, probe = [wrist[0] + dir[0] * 0.1 * torso, wrist[1] + dir[1] * 0.1 * torso]
+      let src = null, srcArea = Infinity
+      for (const l of layers) {
+        if (!l || !l.rgba || l.soft || l.rigid || !alphaAt(l, probe[0], probe[1], o.alpha)) continue
+        let n = 0; const st = Math.max(1, Math.round(Math.max(l.width, l.height) / 150))
+        for (let py = 0; py < l.height; py += st) for (let px = 0; px < l.width; px += st) if (l.rgba[(py * l.width + px) * 4 + 3] > o.alpha) n++
+        if (n * st * st < srcArea) { srcArea = n * st * st; src = l }
+      }
+      if (!src) return null
+      const x0 = Math.floor(wrist[0] - reach), y1 = Math.ceil(wrist[1] + reach), w = Math.ceil(2 * reach), h = w
+      const inside = (gx, gy) => {
+        const wx = x0 + gx + 0.5, wy = y1 - gy - 0.5
+        if ((wx - wrist[0]) * dir[0] + (wy - wrist[1]) * dir[1] < -0.02 * torso) return false
+        return alphaAt(src, wx, wy, o.alpha)
+      }
+      const sx = Math.round(probe[0] - x0), sy = Math.round(y1 - probe[1])
+      if (sx < 0 || sy < 0 || sx >= w || sy >= h || !inside(sx, sy)) return null
+      const mark = new Uint8Array(w * h), stack = [sy * w + sx]; mark[sy * w + sx] = 1
+      let area = 0, bx0 = w, bx1 = 0, by0 = h, by1 = 0, runsOn = false
+      while (stack.length) {
+        const cI = stack.pop(), cx = cI % w, cy = (cI - cx) / w; area++
+        if (cx < bx0) bx0 = cx; if (cx > bx1) bx1 = cx; if (cy < by0) by0 = cy; if (cy > by1) by1 = cy
+        if (Math.hypot(x0 + cx - wrist[0], y1 - cy - wrist[1]) >= reach - 2) { runsOn = true; break }
+        for (const [nx, ny] of [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]]) {
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h || mark[ny * w + nx] || !inside(nx, ny)) continue
+          mark[ny * w + nx] = 1; stack.push(ny * w + nx)
+        }
+      }
+      if (runsOn || area < Math.pow(0.07 * torso, 2)) return null
+      const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1, rgba = new Uint8ClampedArray(bw * bh * 4)
+      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (mark[(by0 + y) * w + bx0 + x]) { const q = (y * bw + x) * 4; rgba[q] = rgba[q + 1] = rgba[q + 2] = 200; rgba[q + 3] = 255 }
+      // read at full size (fingers a few pixels apart merge at the builder's working scale), and
+      // the builder is handed that reading
+      let analysis = null
+      try { analysis = AB.analyzeLayer(rgba, bw, bh, { scale: 1 }) } catch (e) { return null }
+      if (analysis.graph.nodes.filter((nd) => nd.deg === 1).length < 4) return null   // the wrist's end and three fingers at least
+      return { width: bw, height: bh, rgba, analysis, place: { x: x0 + bx0 + bw / 2, y: y1 - by0 - bh / 2 } }
+    }
     const limb = (side, kind) => {
       const S = side === 'l' ? 'l' : 'r'
       if (kind === 'arm') {
@@ -165,7 +211,11 @@
         if (!c) return
         parts.push({ name: `forearm_${side}`, pts: [b, c], radii: [0.9 * r, 0.75 * r], hint: { part: 'arm', side }, figure: { root: b, tip: c, after: `arm_${side}` } })
         const fl = dist(b, c) || 1, tip = [c[0] + (c[0] - b[0]) / fl * Math.max(12, 0.3 * torso * 0.9), c[1] + (c[1] - b[1]) / fl * Math.max(12, 0.3 * torso * 0.9)]
-        parts.push({ name: `hand_${side}`, pts: [c, tip], radii: [0.8 * r, 0.8 * r], hint: { part: 'hand', side }, figure: { root: c, tip, after: `forearm_${side}` } })
+        // a hand drawn with clear fingers is rigged from its own shape (a bone chain per finger,
+        // from the palm), not as one bone: the picture past the wrist, when it stands free
+        const shape = handShape(c, [(c[0] - b[0]) / fl, (c[1] - b[1]) / fl])
+        if (shape) parts.push({ name: `hand_${side}`, pts: [c, tip], radii: [0.8 * r, 0.8 * r], hint: { part: 'hand', side }, shape, figure: { root: c, after: `forearm_${side}` } })
+        else parts.push({ name: `hand_${side}`, pts: [c, tip], radii: [0.8 * r, 0.8 * r], hint: { part: 'hand', side }, figure: { root: c, tip, after: `forearm_${side}` } })
       } else {
         const a = J[S + 'Hip'], b = J[S + 'Knee'], c = J[S + 'Ankle'], t = J[S + 'Toe']
         if (!a || !b) return
@@ -181,7 +231,7 @@
     }
     limb('l', 'arm'); limb('r', 'arm'); limb('l', 'leg'); limb('r', 'leg')
     if (parts.length < 2) return null
-    const partLayers = parts.map((p) => Object.assign(capsuleLayer(p.name, p.pts, p.radii, p.hint), p.figure ? { figure: p.figure } : {}, p.name === 'body' ? { figureRoot: true, figureTrunk: p.figureTrunk } : {}))
+    const partLayers = parts.map((p) => Object.assign(p.shape ? Object.assign({ name: p.name, att: p.name, hintOverride: p.hint, synthetic: true }, p.shape) : capsuleLayer(p.name, p.pts, p.radii, p.hint), p.figure ? { figure: p.figure } : {}, p.name === 'body' ? { figureRoot: true, figureTrunk: p.figureTrunk } : {}))
 
     // ---- which real layers the figure lies in
     const headC = J.nose || (J.lEar && J.rEar ? mid(J.lEar, J.rEar) : null), headR = 0.55 * torso
