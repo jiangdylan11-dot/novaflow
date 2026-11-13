@@ -54,6 +54,50 @@ function uiLayerRegions(reply) {
   for(const region of regions){const parent=region.parent&&byName.get(region.parent);delete region.parent;if(parent&&parent!==region.id)region.parentId=parent;}
   return regions;
 }
+// 动画 自动架设 asks what each split layer of a character is: one JPEG sheet, the whole figure on the left and the
+// numbered layer thumbnails on the right (renderer/spine-auto-pose.js layerSheet). Prompt from work/rig-pose-lab/vlm_one.mjs.
+const RIG_LAYER_KINDS = Object.freeze(['hair', 'cloth', 'dangle', 'hard', 'body', 'face', 'other']);
+const RIG_LAYERS_SYSTEM_TEXT = "你是游戏角色骨骼绑定助手，只读图。只输出一个 JSON 对象，不要前言或 Markdown。";
+const RIG_LAYERS_QUESTION = `图片左边是一个游戏角色的完整立绘，右边是把它拆开后的各个图层缩略图，每格左上角有黄色编号。
+请判断每个编号的图层是什么，用于给角色做骨骼绑定：会摆动的要架一串骨骼，不会变形的整块跟随。每个图层输出一个类别：
+- hair：头发（发束、刘海、辫子、马尾、鬓发）
+- cloth：柔软会飘动的布料（飘带、宽松的袖子、裙摆、披风、丝带、纱、尾巴、羽毛、翅膀）
+- dangle：悬挂着会晃的挂件，即使材质是硬的（流苏、珠串、吊坠、耳坠、垂下来的链子、绳穗、挂着的铃铛或小饰物）
+- hard：固定在身上或拿在手里、不会晃也不会变形的东西（武器、头冠、发簪、盔甲、帽子、鞋、贴身的首饰、腰带扣、道具、机械件）
+- body：身体部位（躯干、手臂、腿、手、脚、脖子，以及紧贴身体的衣物）
+- face：脸或五官（脸、眼、眉、嘴、耳）
+- other：看不出来
+只输出一个 JSON 对象，键是编号，值是类别，例如 {"1":"hair","2":"dangle"}，不要其它文字。必须覆盖所有编号。`;
+// Read every "number":"kind" pair on its own, so a cut-off tail loses only the last entries.
+function rigLayerKinds(reply) {
+  const kinds={};
+  for(const m of String(reply).matchAll(/"(\d{1,3})"\s*:\s*"([a-zA-Z]+)"/g)) {
+    const n=Number(m[1]),kind=m[2].toLowerCase();
+    if(n>=1&&n<=200&&RIG_LAYER_KINDS.includes(kind)&&!Object.hasOwn(kinds,String(n)))kinds[String(n)]=kind;
+  }
+  return kinds;
+}
+// The sheet is a baseline/progressive JPEG no larger than 2048 on either side and 4 MB.
+function validateRigSheet(dataUrl) {
+  const match=/^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl||'');if(!match)fail();
+  const b=Buffer.from(match[1],'base64');if(b.length>4*1024*1024||b.length<4||b[0]!==0xff||b[1]!==0xd8)fail();
+  let pos=2;
+  while(pos+9<b.length) {
+    if(b[pos]!==0xff){pos++;continue;}
+    const marker=b[pos+1];if(marker===0xff){pos++;continue;}
+    if(marker===0xd8||marker===0x01||(marker>=0xd0&&marker<=0xd7)){pos+=2;continue;}
+    const n=b.readUInt16BE(pos+2);if(n<2)fail();
+    if([0xc0,0xc1,0xc2].includes(marker)) {
+      const h=b.readUInt16BE(pos+5),w=b.readUInt16BE(pos+7);
+      if(!w||!h)fail();
+      if(w>2048||h>2048)throw Object.assign(new Error('operation-style-image-size'),{code:'operation-style-image-size',statusCode:400});
+      return;
+    }
+    if(marker===0xda||marker===0xd9)break;
+    pos+=2+n;
+  }
+  fail();
+}
 const fail=()=>{throw Object.assign(new Error('operation-style-invalid'),{code:'operation-style-invalid',statusCode:400});};
 const flat=value=>String(value||'').replace(/\s+/g,' ').trim();
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -99,7 +143,7 @@ function validateStyleImageSize(dataUrl) {
   if(!pixels||pixels.length!==expected||(result.engine&&result.engine.bytesWritten!==input.length))fail();
   for(let row=0;row<h;row++)if(pixels[row*(1+w*channels)]>4)fail();
 }
-export const STYLE_OUTPUT_TOKENS=Object.freeze({style:120,'aifx-material':300,'aifx-supplement':120,'ui-inventory':700,'ui-layers':6000});
+export const STYLE_OUTPUT_TOKENS=Object.freeze({style:120,'aifx-material':300,'aifx-supplement':120,'ui-inventory':700,'ui-layers':6000,'rig-layers':900});
 const codepoints=(value,max)=>Array.from(value).slice(0,max).join('');
 const cleanText=value=>String(value||'').trim().replace(/^```(?:json|text)?/i,'').trim().replace(/```$/,'').trim();
 const quoteStrip=value=>value.replace(/^[\s\"'“”]+|[\s\"'“”]+$/g,'');
@@ -113,15 +157,15 @@ export function canonicalizeXiaotaoV3StyleIntent(raw) {
     const intentHash=hash({schema:'nf.xiaotao.operation.style-material-supplement.v1',materialIntentHash:material.intentHash,supplementIntentHash:supplement.intentHash});
     return {intent,intentHash,compiled:{stages,imageCount:1,textOnly:false,outputTokens:stages[0].outputTokens+stages[1].outputTokens}};
   }
-  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['mode','requestId','kind','images','supplement'].includes(k))||raw.mode!=='style-analysis'||!/^[A-Za-z0-9_-]{8,128}$/.test(raw.requestId||'')||!['style','aifx-material','aifx-supplement','ui-inventory','ui-layers'].includes(raw.kind))fail();
-  const screen=raw.kind==='ui-inventory'||raw.kind==='ui-layers';
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['mode','requestId','kind','images','supplement'].includes(k))||raw.mode!=='style-analysis'||!/^[A-Za-z0-9_-]{8,128}$/.test(raw.requestId||'')||!['style','aifx-material','aifx-supplement','ui-inventory','ui-layers','rig-layers'].includes(raw.kind))fail();
+  const screen=raw.kind==='ui-inventory'||raw.kind==='ui-layers'||raw.kind==='rig-layers';
   const imageRole=raw.kind==='style'?'style':screen?'reference':'material';
   const textOnly=raw.kind==='aifx-supplement';
   if(textOnly ? (Object.hasOwn(raw,'images')||typeof raw.supplement!=='string'||!flat(raw.supplement)||raw.supplement.length>12000) :
     (Object.hasOwn(raw,'supplement')||!Array.isArray(raw.images)||raw.images.length!==1||!raw.images[0]||Object.keys(raw.images[0]).some(k=>!['role','dataUrl'].includes(k))||raw.images[0].role!==imageRole))fail();
   const intent=textOnly?{mode:raw.mode,requestId:raw.requestId,kind:raw.kind,supplement:codepoints(flat(raw.supplement),400)}:{mode:raw.mode,requestId:raw.requestId,kind:raw.kind,images:[{role:raw.images[0].role,dataUrl:raw.images[0].dataUrl}]};
-  const systemText=textOnly?EFFECT_SUPPLEMENT_SYSTEM_TEXT:raw.kind==='style'?ART_STYLE_SYSTEM_TEXT:raw.kind==='ui-inventory'?UI_INVENTORY_SYSTEM_TEXT:raw.kind==='ui-layers'?UI_LAYERS_SYSTEM_TEXT:EFFECT_MATERIAL_SYSTEM_TEXT;
-  const userText=textOnly?EFFECT_SUPPLEMENT_QUESTION+'「'+intent.supplement+'」':raw.kind==='style'?ART_STYLE_QUESTION:raw.kind==='ui-inventory'?UI_INVENTORY_QUESTION:raw.kind==='ui-layers'?UI_LAYERS_QUESTION:EFFECT_MATERIAL_QUESTION;
+  const systemText=textOnly?EFFECT_SUPPLEMENT_SYSTEM_TEXT:raw.kind==='style'?ART_STYLE_SYSTEM_TEXT:raw.kind==='ui-inventory'?UI_INVENTORY_SYSTEM_TEXT:raw.kind==='ui-layers'?UI_LAYERS_SYSTEM_TEXT:raw.kind==='rig-layers'?RIG_LAYERS_SYSTEM_TEXT:EFFECT_MATERIAL_SYSTEM_TEXT;
+  const userText=textOnly?EFFECT_SUPPLEMENT_QUESTION+'「'+intent.supplement+'」':raw.kind==='style'?ART_STYLE_QUESTION:raw.kind==='ui-inventory'?UI_INVENTORY_QUESTION:raw.kind==='ui-layers'?UI_LAYERS_QUESTION:raw.kind==='rig-layers'?RIG_LAYERS_QUESTION:EFFECT_MATERIAL_QUESTION;
   let content=[{type:'input_text',text:userText}];
   if(!textOnly) {
     // Reuse native bounded image and magic-byte validation. The validated original
@@ -129,14 +173,15 @@ export function canonicalizeXiaotaoV3StyleIntent(raw) {
     const validated=companionInput({mode:'chat',requestId:raw.requestId,message:userText,images:[{role:raw.kind==='style'?'style':'reference',dataUrl:intent.images[0].dataUrl}]});
     content=validated.input.at(-1).content;
     // The purpose is assigned by the client, not inferred or renamed by the model.
-    content[1]={type:'input_text',text:raw.kind==='style'?'Image 1: style reference.':screen?'Image 1: game UI screen to read.':'Image 1: effect material reference.'};
-    validateStyleImageSize(intent.images[0].dataUrl);
+    content[1]={type:'input_text',text:raw.kind==='style'?'Image 1: style reference.':raw.kind==='rig-layers'?'Image 1: character and its numbered layers.':screen?'Image 1: game UI screen to read.':'Image 1: effect material reference.'};
+    if(raw.kind==='rig-layers')validateRigSheet(intent.images[0].dataUrl);else validateStyleImageSize(intent.images[0].dataUrl);
   }
   const compiled={input:[{role:'system',content:[{type:'input_text',text:systemText}]},{role:'user',content}],imageCount:textOnly?0:1,textOnly,systemText,userText,outputTokens:STYLE_OUTPUT_TOKENS[raw.kind]};
   return {intent,compiled,intentHash:hash({schema:'nf.xiaotao.operation.style.v1',intent,systemText,userText,outputTokens:STYLE_OUTPUT_TOKENS[raw.kind]})};
 }
 export function inspectXiaotaoV3StyleReply({kind,reply}) {
   if(typeof reply!=='string'||!reply.trim()||reply.length>(kind==='ui-layers'?40000:12000))fail();
+  if(kind==='rig-layers') {const kinds=rigLayerKinds(reply);if(!Object.keys(kinds).length)fail();return {kinds};}
   if(kind==='ui-layers') {const regions=uiLayerRegions(reply);if(!regions.length)fail();return {proposal:{schema:'nf.ui.split.v1',style:'',regions}};}
   if(kind==='style') {
     const rawStyle=codepoints(flat(reply),800);

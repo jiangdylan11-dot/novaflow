@@ -53,6 +53,6 @@ test('edge copy matches the shared source', () => {
 test('the long box list may wait for the model longer than other reads', () => {
   const chat = readFileSync(new URL('../packages/shared/src/xiaotao-operation-v3-chat.mjs', import.meta.url), 'utf8');
   const assembly = readFileSync(new URL('../packages/shared/src/companion-operation-v3-assembly.mjs', import.meta.url), 'utf8');
-  assert.match(chat, /intent\.kind==='ui-layers'\?\{long:true\}/);
+  assert.match(chat, /\['ui-layers','rig-layers'\]\.includes\(intent\.kind\)\?\{long:true\}/);
   assert.match(assembly, /LONG_ONLINE_MODEL_TIMEOUT_MS=240000/);
 });
