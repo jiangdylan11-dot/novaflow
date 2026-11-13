@@ -128,7 +128,7 @@
     // ---- which real layers the figure lies in
     const covered = {}
     const kept = []
-    const strong = new Set(), ownLimbs = new Set()
+    const strong = new Set(), ownLimbs = new Set(), capes = []
     const limbOf = (n) => n.replace(/^(forearm|hand)_/, 'arm_').replace(/^(shin|foot)_/, 'leg_')
     const areas = new Map()
     const areaOf = (p) => { if (!areas.has(p)) { let pa = 0; for (let i = 3; i < p.rgba.length; i += 4) if (p.rgba[i]) pa++; areas.set(p, pa) } return areas.get(p) }
@@ -142,7 +142,22 @@
           if (l.rgba[(py * l.width + px) * 4 + 3] <= o.alpha) continue
           all++; if (l.place.y + l.height / 2 - py > sh[1]) above++
         }
-        if (all && above / all < 0.15) { kept.push(Object.assign({}, l, { hintOverride: Object.assign({}, l.hintOverride, { part: 'cloth', side: null }) })); continue }
+        if (all && above / all < 0.15) {
+          // ...and what little of it is above the shoulders (a helmet's plume drawn in the same
+          // layer) goes with the head: the layer is cut at the shoulder line into two pieces
+          const cutRow = Math.max(0, Math.min(l.height, Math.round(l.place.y + l.height / 2 - sh[1])))
+          const piece = (r0, r1, part) => {
+            let x0 = l.width, x1 = -1, y0 = r1, y1 = -1
+            for (let py = r0; py < r1; py++) for (let px = 0; px < l.width; px++) if (l.rgba[(py * l.width + px) * 4 + 3] > o.alpha) { if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py }
+            if (x1 < x0 || (x1 - x0 + 1) * (y1 - y0 + 1) < 64) return null
+            const w = x1 - x0 + 1, h = y1 - y0 + 1, rgba = new Uint8ClampedArray(w * h * 4)
+            for (let y = 0; y < h; y++) rgba.set(l.rgba.subarray(((y0 + y) * l.width + x0) * 4, ((y0 + y) * l.width + x0 + w) * 4), y * w * 4)
+            return { name: `${l.name}~${part}`, att: l.name, width: w, height: h, rgba, place: { x: l.place.x - l.width / 2 + x0 + w / 2, y: l.place.y + l.height / 2 - y0 - h / 2 }, hintOverride: { part, side: null }, noLimb: true, synthetic: true, ofLayer: l.name }
+          }
+          const top = piece(0, cutRow, 'accessory'), low = piece(cutRow, l.height, 'cloth')
+          if (low) { covered[l.name] = []; capes.push(low); if (top) capes.push(top); continue }
+          kept.push(Object.assign({}, l, { hintOverride: Object.assign({}, l.hintOverride, { part: 'cloth', side: null }) })); continue
+        }
       }
       if (!l || !l.rgba || NEVER.has(hintOf(l))) { kept.push(l); continue }
       let area = 0, on = 0
@@ -169,6 +184,7 @@
         // (one limb only: a layer that fits two is a pair of gloves over crossed arms, not a limb's own)
         const fits = Object.keys(g).filter((limb) => g[limb] >= 0.5 * area && g[limb] * step * step >= 0.25 * ga[limb])
         if (fits.length === 1) ownLimbs.add(fits[0])
+        if (o.report) o.report[l.name] = Object.fromEntries(Object.keys(g).map((limb) => [limb, g[limb] * step * step / Math.max(1, ga[limb])]))
       }
       partLayers.forEach((p, k) => {
         const share = hit[k] * step * step / Math.max(1, areaOf(p))
@@ -180,7 +196,7 @@
       if (partsOn.length && (on / area >= o.coverFrac || (partsOn.length >= 2 && on / area >= 0.3))) covered[l.name] = partsOn
       else kept.push(held ? Object.assign({}, l, { holdLayer: held }) : l)   // lying in a hand: held by it
     }
-    if (!Object.keys(covered).length) return null
+    if (!Object.values(covered).some((ps) => ps.length)) return null
     // an artist's split has every limb in a layer of its own and needs no help: only when one
     // layer carries two different limbs (both legs, both arms, the whole character)
     const limbsOf = new Map()
@@ -190,7 +206,69 @@
     // ...or names them (gebo_1 / tui_5 / arm_l), category names (handwear, legwear) aside
     if (layers.filter((l) => l && ['arm', 'leg', 'hand', 'foot'].includes(hintOf(l)) && !/wear|tail|weiba/i.test(l.name || '')).length >= 2) return null
     // the parts go in at the back, the torso first: the layers that stay hang in front of them
-    return { layers: partLayers.concat(kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
+    // ---- what hangs off the figure inside a covered layer (the sleeves of 上衣, the panels of a
+    // skirt, a coat's tails, a sash): each piece outside the body's envelope becomes a cloth
+    // layer of its own for the builder, which hangs a chain on it from where it leaves the body
+    const env = parts.map((p) => capsuleLayer(p.name, p.pts, p.radii.map((r) => r * (p.name === 'body' ? 1.2 : 1.6)), null))
+    // (a sliver along the outline — the rim of an armour plate, a thick boot — is not cloth: a
+    // piece must reach well clear of the body)
+    const far = parts.map((p) => capsuleLayer(p.name, p.pts, p.radii.map((r) => r * (p.name === 'body' ? 1.2 : 1.6) + 0.22 * torso), null))
+    const loose = []
+    const minArea = Math.pow(0.2 * torso, 2), minSpan = 0.35 * torso
+    for (const l of layers) {
+      if (!l || !covered[l.name] || !covered[l.name].length) continue
+      const q = Math.max(1, Math.round(Math.max(l.width, l.height) / 500))
+      const gw = Math.ceil(l.width / q), gh = Math.ceil(l.height / q)
+      const out = new Uint8Array(gw * gh)
+      for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+        const px = Math.min(l.width - 1, gx * q), py = Math.min(l.height - 1, gy * q)
+        if (l.rgba[(py * l.width + px) * 4 + 3] <= o.alpha) continue
+        const wx = l.place.x + px + 0.5 - l.width / 2, wy = l.place.y + l.height / 2 - py - 0.5
+        let inside = false
+        for (const e of env) if (alphaAt(e, wx, wy, 128)) { inside = true; break }
+        if (!inside) out[gy * gw + gx] = 1
+      }
+      const label = new Int32Array(gw * gh)
+      let n = 0
+      for (let i = 0; i < out.length; i++) {
+        if (!out[i] || label[i]) continue
+        n++
+        const stack = [i]; label[i] = n
+        let area = 0, x0 = gw, x1 = 0, y0 = gh, y1 = 0
+        const cells = []
+        while (stack.length) {
+          const c = stack.pop(); cells.push(c); area++
+          const cx = c % gw, cy = (c - cx) / gw
+          if (cx < x0) x0 = cx; if (cx > x1) x1 = cx; if (cy < y0) y0 = cy; if (cy > y1) y1 = cy
+          if (cx > 0 && out[c - 1] && !label[c - 1]) { label[c - 1] = n; stack.push(c - 1) }
+          if (cx < gw - 1 && out[c + 1] && !label[c + 1]) { label[c + 1] = n; stack.push(c + 1) }
+          if (cy > 0 && out[c - gw] && !label[c - gw]) { label[c - gw] = n; stack.push(c - gw) }
+          if (cy < gh - 1 && out[c + gw] && !label[c + gw]) { label[c + gw] = n; stack.push(c + gw) }
+        }
+        if (area * q * q < minArea || Math.max(x1 - x0, y1 - y0) * q < minSpan) continue
+        let clear = 0
+        for (const c of cells) {
+          const cx = c % gw, cy = (c - cx) / gw
+          const wx = l.place.x + cx * q + 0.5 - l.width / 2, wy = l.place.y + l.height / 2 - cy * q - 0.5
+          let inside = false
+          for (const e of far) if (alphaAt(e, wx, wy, 128)) { inside = true; break }
+          if (!inside) clear++
+        }
+        if (clear < 0.25 * area && clear * q * q < minArea) continue
+        // the piece as a picture of its own (its pixels only), in the layer's place
+        const bx0 = x0 * q, by0 = y0 * q, bw = Math.min(l.width, (x1 + 1) * q) - bx0, bh = Math.min(l.height, (y1 + 1) * q) - by0
+        const rgba = new Uint8ClampedArray(bw * bh * 4)
+        const mine = new Uint8Array(gw * gh); for (const c of cells) mine[c] = 1
+        for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+          if (!mine[Math.floor((by0 + y) / q) * gw + Math.floor((bx0 + x) / q)]) continue
+          const si = ((by0 + y) * l.width + bx0 + x) * 4, di = (y * bw + x) * 4
+          rgba[di] = l.rgba[si]; rgba[di + 1] = l.rgba[si + 1]; rgba[di + 2] = l.rgba[si + 2]; rgba[di + 3] = l.rgba[si + 3]
+        }
+        loose.push({ name: `${l.name}~${loose.length + 1}`, att: l.name, width: bw, height: bh, rgba, place: { x: l.place.x - l.width / 2 + bx0 + bw / 2, y: l.place.y + l.height / 2 - by0 - bh / 2 }, hintOverride: { part: 'cloth', side: null }, noLimb: true, synthetic: true, ofLayer: l.name })
+      }
+    }
+    for (const c of capes) loose.push(c)
+    return { layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer })), covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
   }
 
   /**
@@ -213,16 +291,42 @@
       built.attachment[layer] = { x: Math.round(l.place.x * 100) / 100, y: Math.round(l.place.y * 100) / 100, rotation: 0 }
     }
     for (const p of partNames) { delete built.slotBone[p]; delete built.attachment[p] }
+    // the chains built on a covered layer's loose pieces are that layer's bones too
+    for (const lp of fig.loose || []) {
+      for (const b of built.bones) if (b.layer === lp.name && b.kind === 'bone') covered[lp.of].push(b.name)
+      delete built.slotBone[lp.name]; delete built.attachment[lp.name]
+    }
     built.figure = { covered, joints: fig.joints, parts: fig.parts.map((p) => p.name) }
     return built
   }
 
-  /** buildSkeleton with the figure pass (the plain builder when the picture is not such a figure). */
+  /**
+   * What the builder is given: the figure pass's part layers for a clothing split, else the
+   * layers themselves with those that lie on no limb marked (noLimb) when the joints are known —
+   * a thick strip of cloth beside the legs is then a chain, never a third leg with IK.
+   * Returns { layers, fig } (fig null when the figure pass did not run).
+   */
+  function prepare(layers, kps, opts) {
+    if (!kps) return { layers, fig: null }
+    const report = {}
+    const fig = figureLayers(layers, kps, Object.assign({}, opts, { report }))
+    if (fig) return { layers: fig.layers, fig }
+    const AB = globalThis.NovaFlowAutoBones
+    const named = (l) => { const p = (l.hintOverride && l.hintOverride.part) || (AB && AB.nameHint ? AB.nameHint(l.name).part : null); return p === 'arm' || p === 'leg' || p === 'hand' || p === 'foot' }
+    // a limb belongs to the layer that holds most of it (or a good 40 %): a robe panel that
+    // merely crosses an arm is cloth
+    const best = {}
+    for (const [name, shares] of Object.entries(report)) for (const [limb, v] of Object.entries(shares)) if (!best[limb] || v > best[limb].v) best[limb] = { name, v }
+    const limbLayer = (l) => { const sh = report[l.name]; return Object.entries(sh).some(([limb, v]) => v >= 0.4 || (v >= 0.15 && best[limb].name === l.name)) }
+    return { layers: layers.map((l) => (l && report[l.name] !== undefined && !named(l) && !limbLayer(l) ? Object.assign({}, l, { noLimb: true }) : l)), fig: null }
+  }
+
+  /** buildSkeleton with the joints known (the plain builder when they are not). */
   function buildSkeleton(layers, kps, opts) {
     const AB = globalThis.NovaFlowAutoBones
-    const fig = kps ? figureLayers(layers, kps, opts && opts.figure) : null
-    if (!fig) return AB.buildSkeleton(layers, opts)
-    return finishFigure(AB.buildSkeleton(fig.layers, opts), fig, layers)
+    const pre = prepare(layers, kps, opts && opts.figure)
+    const built = AB.buildSkeleton(pre.layers, opts)
+    return pre.fig ? finishFigure(built, pre.fig, layers) : built
   }
 
   // ------------------------------------------------------------ finding the joints ---
@@ -331,5 +435,5 @@
     return pts.slice(0, 17).concat(K >= 22 ? [pts[20], pts[21]] : [])
   }
 
-  return { DEFAULTS, joints, capsuleLayer, figureLayers, finishFigure, buildSkeleton, detect }
+  return { DEFAULTS, joints, capsuleLayer, figureLayers, prepare, finishFigure, buildSkeleton, detect }
 })

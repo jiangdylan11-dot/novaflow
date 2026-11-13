@@ -76,7 +76,7 @@
     leg: ['leg', 'tui', 'datui', 'xiaotui', 'thigh', 'shin', 'zuodatui', 'youdatui', 'zuoxiaotui', 'youxiaotui', 'tail', 'weiba'],
     foot: ['foot', 'feet', 'jiao', 'zuojiao', 'youjiao', 'xie', 'shoe', 'boot', 'xuezi'],
     cloth: ['skirt', 'qun', 'qunzi', 'qunbai', 'bu', 'dai', 'daizi', 'ribbon', 'piaodai', 'piao', 'cloak', 'pifeng', 'sleeve', 'xiuzi', 'xiu', 'yifu', 'cloth', 'scarf', 'weijin', 'sash', 'yaodai', 'shawl', 'lace', 'cape', 'strap', 'string', 'sui', 'tassel', 'liusu', 'wing', 'chibang', 'feather', 'yumao', 'ear', 'erduo'],
-    accessory: ['fashi', 'fashj', 'toushi', 'yaoshi', 'ershi', 'earwear', 'earring', 'xianlian', 'zhuangshi', 'hua', 'flower', 'shanzi', 'fan', 'jewel', 'gem', 'crown', 'huangguan', 'tiara', 'necklace', 'bracelet', 'shouzhuo', 'ring', 'jiezhi', 'bow', 'ornament', 'deco', 'belt', 'buckle', 'badge', 'weapon', 'sword', 'jian', 'dao', 'staff', 'shield', 'dun', 'bag', 'bao'],
+    accessory: ['fashi', 'fashj', 'toushi', 'yaoshi', 'ershi', 'earwear', 'earring', 'xianlian', 'zhuangshi', 'hua', 'flower', 'shanzi', 'fan', 'jewel', 'gem', 'crown', 'huangguan', 'tiara', 'necklace', 'bracelet', 'shouzhuo', 'ring', 'jiezhi', 'bow', 'ornament', 'deco', 'belt', 'buckle', 'badge', 'weapon', 'wuqi', 'objects', 'object', 'prop', 'props', 'gun', 'axe', 'spear', 'sword', 'jian', 'dao', 'staff', 'shield', 'dun', 'bag', 'bao'],
     bra: ['xiongzhao', 'bra', 'wenxiong', 'neiyi', 'bikini'],
     eye: ['eye', 'yan', 'yanjing', 'yanpi', 'yanbai', 'tongkong', 'pupil', 'eyelid', 'lid', 'iris', 'eyebrow', 'brow', 'meimao', 'mm', 'mei'],
     mouth: ['mouth', 'zui', 'zuiba', 'lip', 'chun', 'teeth', 'ya', 'tongue', 'shetou'],
@@ -1080,6 +1080,17 @@
         let main = 0
         info.forEach((f, i) => { if (f.maxLen > info[main].maxLen) main = i })
         cand.forEach((ei, i) => { if (i !== main && info[i].maxLen < o.branchKeep * info[main].maxLen && info[i].rMean < 0.6 * info[main].rMean) seenEdges.add(ei) })
+      }
+    }
+    if (o.strandLenOf && o.tipFork !== 0 && dist > 0) {
+      // a strand that splits near its end (a frayed hem, the two points of a ribbon's tail) is
+      // still one chain: riggers run one chain to the longest tip, they do not fork it
+      const cand = nd.edges.filter((ei) => ei !== fromEdge && !seenEdges.has(ei))
+      if (cand.length > 1) {
+        const info = cand.map((ei) => subtreeInfo(graph, layer, node, ei, seenEdges))
+        let main = 0
+        info.forEach((f, i) => { if (f.maxLen > info[main].maxLen) main = i })
+        if (info[main].maxLen <= (o.tipFork || 0.35) * (dist + info[main].maxLen)) cand.forEach((ei, i) => { if (i !== main) seenEdges.add(ei) })
       }
     }
     for (const ei of nd.edges) {
@@ -2276,7 +2287,8 @@
           const q = l.trunk.poly, ax = q[0], ay = q[1], bx = q[q.length - 2], by = q[q.length - 1]
           let dev = 0
           for (let i = 2; i < q.length - 2; i += 2) dev = Math.max(dev, segDist(q[i], q[i + 1], ax, ay, bx, by))
-          return dev <= 0.06 * Math.max(1, Math.hypot(bx - ax, by - ay)) ? 'plate' : 'strand'
+          // (only what a hand holds: a straight ribbon or lock of hair is still a chain)
+          return l.holdLayer && dev <= 0.06 * Math.max(1, Math.hypot(bx - ax, by - ay)) ? 'plate' : 'strand'
         }
       }
       if (p === 'arm' || p === 'leg') return 'limb'
@@ -2348,12 +2360,12 @@
         cands.push({ n, wx, wy, dT, near, nearPref, depth, prefDepth, pref, prefLayer, smallest, touching, touchTrunk: dT <= reach && !onHead, onHead, r: nd.r, deg: nd.deg, bridge: false })
       }
       if (!cands.length) { plan.layers[l.name] = { role: 'skipped' }; return }
-      const hanging = role === 'strand' && (part === 'hair' || part === 'cloth' || part === 'accessory')
+      const hanging = role === 'strand' && (part === 'hair' || part === 'cloth' || part === 'accessory' || (!part && o.hangAll !== false))
       cands.sort((A, B) => {
         if (hanging) {
           // hair, ribbons, skirt strips: the root is the highest end that touches something;
           // an ornament with tassels hangs from its thickest part instead
-          const ta = A.touching ? 0 : 1, tb = B.touching ? 0 : 1
+          const ta = A.touching || o.hangPure ? 0 : 1, tb = B.touching || o.hangPure ? 0 : 1
           if (ta !== tb) return ta - tb
           if (part === 'accessory') return B.r - A.r
           const pa = A.pref > 0 ? 0 : 1, pb = B.pref > 0 ? 0 : 1
@@ -2722,7 +2734,8 @@
         // (a broad panel only — a long thin sash or ribbon (elongation > 16) is one chain
         // however it drapes; the template's skirt (7.9) and bu2 (13.6) are strips, its bu3 /
         // bu1 (22–23) and the sash are single chains)
-        const strips = !flowDone && role === 'strand' && part === 'cloth' && l.elong <= 16 && (l.analysis.bbox[3] - l.analysis.bbox[1]) >= 0.8 * (l.analysis.bbox[2] - l.analysis.bbox[0]) ? clothStrips(l, chainParent, namer, meta) : 0
+        // (an unnamed layer too, when it is a broad panel: numbered exports name nothing)
+        const strips = !flowDone && role === 'strand' && (part === 'cloth' ? l.elong <= 16 : (!part && o.panelStrips !== false && l.elong <= 16 && l.analysis.area >= (o.panelFill || 0.4) * (l.analysis.bbox[2] - l.analysis.bbox[0]) * (l.analysis.bbox[3] - l.analysis.bbox[1]))) && (l.analysis.bbox[3] - l.analysis.bbox[1]) >= 0.8 * (l.analysis.bbox[2] - l.analysis.bbox[0]) ? clothStrips(l, chainParent, namer, meta) : 0
         if (strips) plan.layers[l.name] = Object.assign(plan.layers[l.name] || {}, { strips })
         const seen = new Set()
         if (role === 'limb' && g.nodes[rootC.n].deg >= 2) {
@@ -2907,7 +2920,7 @@
       const a = sw && sw.analysis ? sw.analysis : l.analysis
       const M = sw && sw.mask ? sw.mask : a.mask
       const bw = a.bbox[2] - a.bbox[0]
-      const stripW = 0.17 * heightAll
+      const stripW = (l.hint.part === 'cloth' ? 0.17 : (o.panelStrip || 0.12)) * heightAll
       const k = sw ? sw.k : Math.max(1, Math.min(4, Math.round(bw / stripW)))
       if (k < 2) return 0
       const { ws, hs, scale: sc } = a

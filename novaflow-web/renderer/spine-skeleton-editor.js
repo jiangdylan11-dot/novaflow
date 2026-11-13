@@ -13226,11 +13226,10 @@
     // a character split by clothing (or kept as one picture) has both legs / arms in one layer:
     // the body joints are found on the whole picture first and the limbs are built from them
     const AP = P.NovaFlowAutoPose || window.NovaFlowAutoPose
-    let fig = null
+    let fig = null, input = layers
     if (AP && AP.detect) {
-      try { tell('识别人体关节…'); const kps = await AP.detect(layers); fig = kps ? AP.figureLayers(layers, kps) : null } catch (e) { fig = null }
+      try { tell('识别人体关节…'); const pre = AP.prepare(layers, await AP.detect(layers)); fig = pre.fig; input = pre.layers } catch (e) { fig = null; input = layers }
     }
-    const input = fig ? fig.layers : layers
     let built = pool ? await pool(input).catch(() => AB.buildSkeleton(input)) : AB.buildSkeleton(input)
     if (fig) built = AP.finishFigure(built, fig, layers)
     const next = JSON.parse(JSON.stringify(AB.applyToSkeleton(JSON.parse(JSON.stringify(json)), built)))

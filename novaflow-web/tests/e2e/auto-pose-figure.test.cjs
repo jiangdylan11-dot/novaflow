@@ -66,3 +66,15 @@ test('not a figure (weak shoulders and hips): no figure pass', () => {
   const weak = KPS.map((p) => [p[0], p[1], 0.2])
   assert.equal(AP.figureLayers([picture('art', [TORSO, HEAD, LEG_L, LEG_R])], weak), null)
 })
+
+test('cloth hanging off the figure inside a covered layer gets a chain of its own', () => {
+  const FLAP = [[[95, 300], [190, 200], [240, 60]], 18]   // a coat tail swinging out from the hip
+  const layers = [picture('legwear', [LEG_L, LEG_R]), picture('topwear', [TORSO, ARM_L, ARM_R, FLAP]), picture('face', [HEAD])]
+  const built = AP.buildSkeleton(layers, KPS)
+  const chain = built.bones.filter((b) => /^topwear~/.test(b.layer || '') && b.kind === 'bone')
+  assert.ok(chain.length >= 2, 'the flap has a chain')
+  // it starts at its upper end, where it leaves the body, and runs down
+  assert.ok(chain[0].ay > chain[chain.length - 1].by)
+  for (const b of chain) assert.ok(built.figure.covered.topwear.includes(b.name))
+  assert.ok(!Object.keys(built.slotBone).some((k) => k.includes('~')))
+})
