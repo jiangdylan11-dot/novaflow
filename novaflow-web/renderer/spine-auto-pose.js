@@ -392,9 +392,9 @@
       }
     }
     for (const c of capes) loose.push(c)
-    // ---- a limb that has a layer of its own is drawn there: its joints move onto that layer's
-    // axis (the knee and ankle found on the whole picture sit a little off under a dress, and the
-    // foot ends where the leg's layer ends), then everything above is done once more with them
+    // ---- a leg that has a layer of its own which runs on into the foot: the foot's bone goes to
+    // the end of that layer (the toes are often not found), then everything above is done once
+    // more with it
     if (!o._refined && AB && AB.analyzeLayer && AB._internals && AB._internals.trunkPath) {
       const own = {}
       for (const [name, v] of Object.entries(seen)) if (v.fits && covered[name]) (own[v.fits] = own[v.fits] || []).push(layers.find((l) => l && l.name === name))
@@ -429,12 +429,9 @@
         const axes = own[limb].filter(Boolean).map(axisOf).filter(Boolean)
         const ix = IDXS[limb]
         if (!axes.length || !ix) continue
-        for (const jn of [ix[0], ix[1]]) {
-          if (!(kps[jn] && kps[jn][2] >= o.minConf)) continue
-          let best = null
-          for (const ax of axes) { const r = nearestOn(ax, kps[jn]); if (r && (!best || r.d < best.d)) best = r }
-          if (best && best.d > 1 && best.d <= 0.2 * torso) { k2[jn][0] = best.p[0]; k2[jn][1] = best.p[1]; moved = true }
-        }
+        // (the knee, ankle, elbow and wrist stay where they were found: moving them onto the layer's
+        // axis pulled 白晶晶's knees apart and crossed her legs — a leg layer drawn with its drapery
+        // has an axis that is not the leg's)
         if (ix[2] >= 0 && k2[ix[1]] && k2[ix[1]][2] >= o.minConf) {
           // the foot: to the end of the layer the ankle lies on, the end away from the knee
           const ank = k2[ix[1]], knee = k2[ix[0]]
