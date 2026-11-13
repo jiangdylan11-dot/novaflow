@@ -126,6 +126,7 @@
     const partLayers = parts.map((p) => Object.assign(capsuleLayer(p.name, p.pts, p.radii, p.hint), p.figure ? { figure: p.figure } : {}))
 
     // ---- which real layers the figure lies in
+    const headC = J.nose || (J.lEar && J.rEar ? mid(J.lEar, J.rEar) : null), headR = 0.55 * torso
     const covered = {}
     const kept = []
     const strong = new Set(), ownLimbs = new Set(), capes = []
@@ -160,7 +161,7 @@
         }
       }
       if (!l || !l.rgba || NEVER.has(hintOf(l))) { kept.push(l); continue }
-      let area = 0, on = 0
+      let area = 0, on = 0, onHead = 0
       const hit = new Array(partLayers.length).fill(0)
       const step = Math.max(1, Math.round(Math.max(l.width, l.height) / 400))
       for (let py = 0; py < l.height; py += step) {
@@ -168,12 +169,15 @@
           if (l.rgba[(py * l.width + px) * 4 + 3] <= o.alpha) continue
           area++
           const wx = l.place.x + px + 0.5 - l.width / 2, wy = l.place.y + l.height / 2 - py - 0.5
+          if (headC && Math.hypot(wx - headC[0], wy - headC[1]) <= headR) onHead++
           let any = false
           for (let k = 0; k < partLayers.length; k++) if (alphaAt(partLayers[k], wx, wy, 128)) { hit[k]++; any = true }
           if (any) on++
         }
       }
-      if (!area) { kept.push(l); continue }
+      // the head's own layers (the face, a head drawn with its hair, a hat) stay with the builder,
+      // which finds the face among them
+      if (!area || onHead >= 0.7 * area) { kept.push(l); continue }
       const partsOn = []
       let held = null, heldShare = 0.15
       // a limb's own layer (an artist's split): most of the layer lies on that one limb and it
@@ -201,10 +205,12 @@
     // layer carries two different limbs (both legs, both arms, the whole character)
     const limbsOf = new Map()
     for (const k of strong) { const [ln, limb] = k.split('|'); if (!covered[ln]) continue; if (!limbsOf.has(ln)) limbsOf.set(ln, new Set()); limbsOf.get(ln).add(limb) }
+    if (o.always !== true) {
     if (![...limbsOf.values()].some((v) => v.size >= 2)) return null
     if (ownLimbs.size >= 2) return null
     // ...or names them (gebo_1 / tui_5 / arm_l), category names (handwear, legwear) aside
     if (layers.filter((l) => l && ['arm', 'leg', 'hand', 'foot'].includes(hintOf(l)) && !/wear|tail|weiba/i.test(l.name || '')).length >= 2) return null
+    }
     // the parts go in at the back, the torso first: the layers that stay hang in front of them
     // ---- what hangs off the figure inside a covered layer (the sleeves of 上衣, the panels of a
     // skirt, a coat's tails, a sash): each piece outside the body's envelope becomes a cloth

@@ -971,6 +971,20 @@
     } else if (o.strandLen) {
       // a strand with a bone-length target: corners finer than a quarter of it are noise
       const eps = Math.max(2, 0.25 * o.strandLen)
+      if (o.strandSmooth !== false && chainH > 0 && poly.length >= 8) {
+        // the medial axis jogs sideways where a strand widens or meets a fork: average it over
+        // half a bone so the chain bends as the strand does (riggers' joints turn 18° at the
+        // median, the raw axis gave 30°)
+        const acc = [0]; for (let i = 2; i < poly.length; i += 2) acc.push(acc[acc.length - 1] + Math.hypot(poly[i] - poly[i - 2], poly[i + 1] - poly[i - 1]))
+        const half = 0.5 * o.strandLen, total = acc[acc.length - 1], sm = poly.slice()
+        for (let i = 1; i < acc.length - 1; i++) {
+          const w = Math.min(half, acc[i], total - acc[i])
+          let sx = 0, sy = 0, n = 0
+          for (let j = 0; j < acc.length; j++) if (Math.abs(acc[j] - acc[i]) <= w) { sx += poly[2 * j]; sy += poly[2 * j + 1]; n++ }
+          sm[2 * i] = sx / n; sm[2 * i + 1] = sy / n
+        }
+        poly = sm
+      }
       const sp = Array.from(C.dpSimplify(Float64Array.from(poly), eps))
       kept = sp
       keptR = []
@@ -1091,6 +1105,9 @@
         let main = 0
         info.forEach((f, i) => { if (f.maxLen > info[main].maxLen) main = i })
         if (info[main].maxLen <= (o.tipFork || 0.35) * (dist + info[main].maxLen)) cand.forEach((ei, i) => { if (i !== main) seenEdges.add(ei) })
+        // ...and a short twig off the side of a long strand (a curl, a notch in the outline) is
+        // not a chain: riggers have 140 short chains on 14 rigs, the axis produced 430
+        else if (chainH > 0 && o.twig !== 0) cand.forEach((ei, i) => { if (i !== main && info[i].maxLen < (o.twig || 0.08) * chainH && info[i].maxLen < 0.6 * info[main].maxLen) seenEdges.add(ei) })
       }
     }
     for (const ei of nd.edges) {
@@ -1227,7 +1244,15 @@
    * 2 + L/100 bones per chain (a 150-px ribbon gets 3, a 900-px skirt panel 11), never
    * shorter than 1.5 widths or 25 px.
    */
+  // the figure's height while a skeleton is being built: chain bones are sized against it
+  let chainH = 0
   function strandBoneLen(L, rMean, part) {
+    if (chainH > 0) {
+      // as riggers cut them (525 chains on 14 studio rigs): three bones on a short chain, four
+      // at a fifth of the figure's height, six at half of it — longer bones on longer chains
+      const n = Math.max(L < 0.04 * chainH ? 2 : 3, Math.round(2.6 + 7.5 * L / chainH))
+      return Math.max(12, L / n)
+    }
     if (part === 'hair') {
       // hair: short locks get 20–25 px bones, a long fall 60–85 px (≈ √(10 L))
       return Math.max(20, Math.min(90, Math.max(1.5 * 2 * (rMean || 0), Math.sqrt(10 * Math.max(0, L)))))
@@ -2264,6 +2289,7 @@
     let groundAll = Infinity, topAll = -Infinity
     for (const l of layersOk) { groundAll = Math.min(groundAll, worldOf(l, 0, l.analysis.bbox[3])[1]); topAll = Math.max(topAll, worldOf(l, 0, l.analysis.bbox[1])[1]) }
     const heightAll = Math.max(1, topAll - groundAll)
+    chainH = o.chainStyle === 'old' ? 0 : heightAll
     // a layer named hand / foot whose axis is longer than a third of the character is not
     // a hand: a sash held in it, a ribbon (伽夜's left_hand is a 950-px sash the template
     // hangs from the hip pivot)
@@ -2326,6 +2352,24 @@
       const anchorPt = part === 'leg' || part === 'foot' ? [hipsX, hipsY] : (part === 'arm' ? neckBase : null)
       const realBone = (b) => b.kind === 'bone' || (b.kind === 'pivot' && b.role === 'trunk')
       const preferBone = (b) => realBone(b) && b.layer !== l.name && (prefer.has(partOfLayer.get(b.layer)) || (prefer.has('body') && b.layer === rootLayer.name))
+      if (role === 'strand' && o.apexSplit !== false && (part === 'hair' || part === 'cloth' || !part)) {
+        // hair and cloth hang: a chain never climbs. Where the axis arches (a fringe drawn as one
+        // piece, a shawl over both shoulders) riggers start one chain at the top and run it down
+        // each side; the axis is cut at the arch's highest point so the chains can start there
+        const margin = Math.max(12, 0.025 * heightAll)
+        for (let pass = 0; pass < 4; pass++) {
+          let top = null
+          for (const e of g.edges) {
+            const ya = worldOf(l, g.nodes[e.a].x, g.nodes[e.a].y)[1], yb = worldOf(l, g.nodes[e.b].x, g.nodes[e.b].y)[1]
+            for (let i = 2; i < e.poly.length - 2; i += 2) {
+              const [wx, wy] = worldOf(l, e.poly[i], e.poly[i + 1])
+              const rise = wy - Math.max(ya, yb)
+              if (rise > margin && (!top || rise > top.rise)) top = { wx, wy, rise }
+            }
+          }
+          if (!top || !splitGraphAt(l, g, top.wx, top.wy, 3)) break
+        }
+      }
       const cands = []
       for (let n = 0; n < g.nodes.length; n++) {
         const nd = g.nodes[n]
