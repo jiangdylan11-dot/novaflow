@@ -1705,7 +1705,7 @@
       }
     }
     plan.rootLayer = rootLayer.name
-    const head = layersOk.filter((l) => l !== rootLayer && (l.hint.part === 'head' || l.hint.part === 'face')).sort((a, b) => (a.hint.part === 'head') === (b.hint.part === 'head') ? b.analysis.area - a.analysis.area : (a.hint.part === 'head' ? -1 : 1))[0] || null
+    const head = (rootLayer.figureRoot ? L.filter((l) => l.analysis) : layersOk).filter((l) => l !== rootLayer && (l.hint.part === 'head' || l.hint.part === 'face')).sort((a, b) => (a.hint.part === 'head') === (b.hint.part === 'head') ? b.analysis.area - a.analysis.area : (a.hint.part === 'head' ? -1 : 1))[0] || null
     const faceDet = head ? (head.faceDet !== undefined ? head.faceDet : (o.faceDetect && head.rgba ? detectFace(head.rgba, head.width, head.height, o) : null)) : null
     // the face box (skin region, layer px): a whole-head layer's bbox includes hair buns and
     // pigtails, which are not the head

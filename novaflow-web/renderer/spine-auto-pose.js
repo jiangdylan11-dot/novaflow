@@ -262,7 +262,9 @@
     for (let l of layers) {
       if (l && headLayer) {
         if (l.name === headLayer) { kept.push(Object.assign({}, l, { hintOverride: { part: 'face', side: null }, soft: false, rigid: false })); continue }
-        l = Object.assign({}, l, { offHead: true })
+        // one head only: a layer merely named for the head (a hat called headwear) is an ornament on it
+        const hp0 = hintOf(l)
+        l = Object.assign({}, l, { offHead: true }, hp0 === 'head' || hp0 === 'face' ? { hintOverride: Object.assign({}, l.hintOverride, { part: 'accessory', side: null }) } : {})
       } else
       if (l && l.rgba && headC) {
         // away from the head (the joints say where it is): never the face, whatever it looks like

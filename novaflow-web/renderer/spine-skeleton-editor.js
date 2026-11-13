@@ -8316,7 +8316,7 @@
     const skip = AW.mechanismBones(json), parents = AW.logicalParents(json)
     const isBone = (i) => roles[i] && roles[i].kind === 'bone' && !skip.has(i) && !segs[i].skip && !(AW.isController && AW.isController(names[i]))
     const cover = rec.covered && rec.covered[L.slot]
-    let ids, isOwn
+    let ids, isOwn, solid = -1
     if (cover && cover.length) {
       const set = new Set(cover)
       ids = names.map((n, i) => (set.has(n) && isBone(i) ? i : -1)).filter((i) => i >= 0)
@@ -8324,14 +8324,21 @@
     } else {
       const mine = new Set()
       roles.forEach((r, i) => { if (r && r.layer === L.slot && isBone(i)) mine.add(i) })
-      if (!mine.size) return null
+      if (!mine.size) {
+        // no chain of its own (an eye, a brow, an ornament on its controller point): the whole
+        // picture on its slot bone, and the controller rules still apply (eyelids on an eye layer)
+        const sb = names.indexOf(rec.slotBone && rec.slotBone[L.slot])
+        if (sb <= 0 || skip.has(sb)) return null
+        solid = sb
+      }
       const all = new Set(mine)
       for (const i of mine) { const p = parents[i]; if (p > 0 && !mine.has(p) && isBone(p)) all.add(p) }
       ids = Array.from(all)
       isOwn = (id) => mine.has(id)
     }
-    if (!ids.length) return null
     const n = V.length / 2
+    if (solid >= 0) return controlled(json, L, ctx, V, names, parents, roles, rec, [solid], new Float64Array(n).fill(1))
+    if (!ids.length) return null
     const hw = AW.heatWeights(V, T, ids.map((i) => segs[i]))
     const keep = []
     ids.forEach((id, j) => { let mx = 0; for (let i = 0; i < n; i++) mx = Math.max(mx, hw.weights[i * ids.length + j]); if (mx > 1e-4) keep.push(j) })
@@ -8350,6 +8357,33 @@
       W = AW.confineToOwn(V, T, W, kept, isOwn, [first.worldX, first.worldY], ownLength)
     }
     W = AW.rigidIslands(V, T, W, kept.length).W
+    return controlled(json, L, ctx, V, names, parents, roles, rec, kept, W)
+  }
+
+  /** The studio's controller rules on top of a layer's weights (see ownedWeights). */
+  function controlled(json, L, ctx, V, names, parents, roles, rec, kept, W) {
+    const AW = window.NovaFlowAutoWeights
+    // the studio's controller rules on top: eyelids by the lash line, the face turn falling off
+    // from the nose, the body turns over the torso and the legs, the breasts — the same pass the
+    // test line settled on (spine-auto-weights controllerContext / applyControllers)
+    if (AW.controllerContext && AW.applyControllers) {
+      try {
+        const face = rec.face || null
+        let faceWorld = null
+        if (face) {
+          if (face.layer === L.slot) faceWorld = V
+          else {
+            const sd = (json.slots || []).find((q) => q.name === face.layer)
+            try { const fm = sd && sd.attachment ? meshModelOf(json, 'default', sd.name, sd.attachment) : null; if (fm && fm.model && fm.model.points) faceWorld = fm.model.points.flatMap((q) => [q.x, q.y]) } catch (e) { faceWorld = null }
+          }
+        }
+        const mats = ctx.bones.map((b) => ({ name: b.data.name, worldX: b.worldX, worldY: b.worldY, a: b.a, b: b.b, c: b.c, d: b.d, length: b.data.length }))
+        const draw = new Map((json.slots || []).map((q, i) => [q.name, i]))
+        const ctl = AW.controllerContext({ names, parents, mats, roles, face, draw, faceWorld })
+        const res = AW.applyControllers(ctl, L.slot, kept, W, V)
+        if (res && res.ids && res.W) return { ids: res.ids, W: res.W }
+      } catch (e) { /* the heat weights stand */ }
+    }
     return { ids: kept, W }
   }
 
@@ -13239,7 +13273,7 @@
     // what was built for which layer, by bone name (自动权重 binds each layer to its own bones)
     const roles = new Map()
     next.bones.forEach((bn, i) => { const rb = built.bones[i]; if (rb) roles.set(bn.name, { layer: rb.layer || null, role: rb.role || null, kind: rb.kind || null }) })
-    state.autoRig = { roles, slotBone: built.slotBone || {}, covered: (built.figure && built.figure.covered) || null }
+    state.autoRig = { roles, slotBone: built.slotBone || {}, covered: (built.figure && built.figure.covered) || null, face: built.face && built.face.det ? built.face : null }
     const r = edit(`自动架设完成 · ${built.bones.length} 根骨`, () => ({ json: Ops.tidy(Ops.prepare(next)) }))
     if (!r) throw new Error('自动架设的结果没能载入')
     return { bones: built.bones.length, ik: ((built.json && built.json.ik) || []).length, layers: layers.length }
