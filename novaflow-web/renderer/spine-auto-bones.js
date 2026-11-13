@@ -1131,7 +1131,15 @@
         const pb = sk.bones[parentBone]
         if (pb && pb.kind === 'bone' && pb.layer === layer.name) { const g0 = Math.hypot(poly[0] - pb.bx, poly[1] - pb.by); if (g0 > 0.5 && g0 <= 40) { poly[0] = pb.bx; poly[1] = pb.by } }
       }
-      const pts = cutPolyline(poly, r, role, oE)
+      let pts
+      if (o.fingerMax && graph.nodes[far].deg === 1 && nd.deg > 1) {
+        // a finger of a hand read from its own shape: three joints on a long finger, two on a short
+        // one or a thumb, at equal steps along it (riggers give a finger two or three bones)
+        const L = polyLen(poly)
+        const n = L < 12 ? 1 : (L >= 0.75 * o.fingerMax && L >= 24 ? 3 : 2)
+        pts = []
+        for (let k = 0; k <= n; k++) { const q = pointAt(poly, k / n); pts.push(q[0], q[1]) }
+      } else pts = cutPolyline(poly, r, role, oE)
       const ids = chainAlong(sk, pts, parentBone, namer, meta)
       const last = ids.length ? ids[ids.length - 1] : parentBone
       if (o.debug === layer.name) console.log(`[auto-bones] ${layer.name} grow node ${node} edge ${ei} → far ${far} (deg ${graph.nodes[far].deg}) polyLen ${polyLen(poly).toFixed(0)} parent ${sk.bones[parentBone].name} made ${ids.map((i) => sk.bones[i].name).join(',')}`)
@@ -2841,6 +2849,11 @@
           // 伽夜 / 锦瑟 it dropped real front locks and never reduced the long fall)
           const longest = Math.max(0, ...g.nodes[rootC.n].edges.map((ei) => subtreeInfo(g, l, rootC.n, ei, new Set()).maxLen))
           oL = Object.assign({}, o, { strandLenOf: (L, r) => strandBoneLen(L, r, part === 'accessory' ? 'hair' : part), branchKeep: o.branchKeep === undefined ? 0 : o.branchKeep, stubMin: 0.6 * strandBoneLen(longest, l.rMean, part === 'accessory' ? 'hair' : part) })
+        }
+        if (role === 'extremity' && l.fingers) {
+          let fm = 0
+          for (const e of g.edges) if (g.nodes[e.a].deg === 1 || g.nodes[e.b].deg === 1) fm = Math.max(fm, polyLen(e.poly))
+          oL = Object.assign({}, oL, { fingerMax: fm })
         }
         if (!strips && !flowDone) growBranches(sk, l, g, rootC.n, -1, chainParent, cutRole, namer, meta, oL, 0, seen)
         const snapTo = continues >= 0 ? continues : snapTip

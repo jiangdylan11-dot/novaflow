@@ -199,7 +199,7 @@
       let analysis = null
       try { analysis = AB.analyzeLayer(rgba, bw, bh, { scale: 1 }) } catch (e) { return null }
       if (analysis.graph.nodes.filter((nd) => nd.deg === 1).length < 4) return null   // the wrist's end and three fingers at least
-      return { width: bw, height: bh, rgba, analysis, place: { x: x0 + bx0 + bw / 2, y: y1 - by0 - bh / 2 } }
+      return { width: bw, height: bh, rgba, analysis, fingers: true, place: { x: x0 + bx0 + bw / 2, y: y1 - by0 - bh / 2 } }
     }
     const limb = (side, kind) => {
       const S = side === 'l' ? 'l' : 'r'
