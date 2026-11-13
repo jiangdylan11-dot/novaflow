@@ -13993,14 +13993,63 @@
     }
     return { apply, start, hosts: jobs.map((x) => x.host), label: '扫光' }
   }
+  // An effect made by the software's own particle system: a template of its library (the coin ones carry a
+  // turning-coin frame sequence) run through the same Spine export 粒子特效「生成 Spine 动画」uses, handed on as a
+  // library effect so placement, timing and layering work like any other.
+  let fxTemplates = null
+  async function fxParticle(op, ctx, part, def) {
+    const P = ParticleFx(), R = ctx.R
+    if (!P || !P.spineParts || !P.systemsOf) throw new Error('粒子特效没有加载')
+    if (!fxTemplates) { const r = await fetch(new URL('./templates/particle-bundled.json', document.baseURI).href); if (!r.ok) throw new Error('粒子模板库没有读到'); fxTemplates = await r.json() }
+    const tpl = fxTemplates.find((t) => t.id === def.template)
+    if (!tpl) throw new Error('粒子模板不在模板库里：' + def.label)
+    const total = Math.max(R.animationLength(state.json.animations[ctx.anim]), 0.5)
+    const t0 = op.time !== undefined ? op.time : Math.max(0, (def.when === 'land' ? fxLanding(ctx) : 0) + ((part && part.lead) || 0))
+    let systems = P.systemsOf(tpl).map((c) => Object.assign({}, c, def.config || {}))
+    let D = def.duration || 1.5
+    if (def.loop) {
+      // a looping system closes on its longest lifetime: fit that to a whole number of loops of what is left of the animation
+      const left = Math.max(0.5, total - t0)
+      systems = systems.map((c) => { const L0 = Math.max(c.lifetimeMin || 0, c.lifetimeMax || 0) || 1, n = Math.max(1, Math.round(left / L0)), k = left / n / L0; return Object.assign({}, c, { loopAnimation: true, lifetimeMin: (c.lifetimeMin || 0) * k, lifetimeMax: (c.lifetimeMax || 0) * k }) })
+      D = left
+    } else {
+      systems = systems.map((c) => Object.assign({}, c, { loopAnimation: false }))
+      if (ctx.natural) D = Math.max(0.3, Math.min(D, total - t0))
+    }
+    const parts = await P.spineParts(systems, D)
+    const sk = parts.skeleton, A = (sk.animations && sk.animations.animation) || {}
+    let tag = 1; while (state.images.has(lower('fx_' + op.effect + tag + '_01.png'))) tag++
+    const pic = new Map(); parts.images.forEach((im, k) => pic.set(im.regionName, 'fx_' + op.effect + tag + '_' + String(k + 1).padStart(2, '0')))
+    const ren = (n) => (n ? pic.get(n) || n : n)
+    for (const im of parts.images) await addImageFile(new File([await (await fetch(im.dataUrl)).blob()], pic.get(im.regionName) + '.png', { type: 'image/png' }), pic.get(im.regionName))
+    const srcSkin = (sk.skins || []).find((x) => x.name === 'default') || { attachments: {} }
+    const blend = def.blend === 'add' ? 'additive' : def.blend === 'screen' ? 'screen' : null
+    const fx = { id: op.effect, loop: !!def.loop, span: 512, pictures: [], bones: sk.bones.filter((b) => b.name !== 'root').map((b) => Object.assign({}, b, { parent: b.parent || 'root' })), slots: [], attachments: {}, animation: { bones: A.bones || {}, slots: {} } }
+    for (const sl of sk.slots) {
+      const slot = Object.assign({}, sl, sl.attachment ? { attachment: ren(sl.attachment) } : null); delete slot.blend; if (blend) slot.blend = blend
+      fx.slots.push(slot)
+      const out = {}; for (const [an, att] of Object.entries(srcSkin.attachments[sl.name] || {})) out[ren(an)] = Object.assign({}, att, { path: ren(att.path || an) })
+      fx.attachments[sl.name] = out
+      const tl = (A.slots || {})[sl.name]; if (!tl) continue
+      const row = {}; for (const [k, v] of Object.entries(tl)) row[k] = k === 'attachment' && Array.isArray(v) ? v.map((key) => (key.name ? Object.assign({}, key, { name: ren(key.name) }) : key)) : v
+      fx.animation.slots[sl.name] = row
+    }
+    // how far the particles reach (the effect's own size) and how long one pass is
+    let ext = 1, dur = 0
+    for (const tl of Object.values(A.bones || {})) for (const k of tl.translate || []) ext = Math.max(ext, Math.abs(k.x || 0), Math.abs(k.y || 0))
+    JSON.stringify(A, (k, v) => { if (k === 'time' && v > dur) dur = v; return v })
+    fx.span = def.span || Math.round(ext * 2 + 60); fx.duration = def.loop ? dur || D : D
+    return fx
+  }
   // everything an effect needs before it is written: where, how big, when, which tone, its pictures loaded
   async function fxPrepare(op, ctx, part) {
     const R = ctx.R, anim = ctx.anim
     const def = Object.assign({}, fxIndex.effects[op.effect], part && part.at ? { when: part.at } : null)
     if (!fxIndex.effects[op.effect]) throw new Error('没有这个特效：' + op.effect)
     if (def.native === 'sweep') { const sw = await fxSweep(op, ctx, part || { at: 'land', lead: 0.3 }); return { sweep: sw, def } }
-    const rf = await fetch(fxUrl(op.effect + '/fx.json')); if (!rf.ok) throw new Error('特效文件没有读到')
-    let fx = await rf.json()
+    let fx
+    if (def.native === 'particle') fx = await fxParticle(op, ctx, part, def)
+    else { const rf = await fetch(fxUrl(op.effect + '/fx.json')); if (!rf.ok) throw new Error('特效文件没有读到'); fx = await rf.json() }
     let box = R.subjectBox(state.json, anim, op.targets)
     const missed = !box && !!(op.targets && op.targets.length)
     if (missed) box = R.subjectBox(state.json, anim)
@@ -14017,7 +14066,7 @@
       anim, tag: 'fx_' + op.effect, flip: !!op.flip, rotation: op.rotation || 0, stretch,
       x: (box ? box.x + anchor[0] * facing * box.w / 2 : 0) - content.cx * span * fit * stretch, y: (box ? box.y + anchor[1] * box.h / 2 : 0) - content.cy * span * fit,
       scale: fit,
-      time: def.when === 'land' ? fxLanding(ctx) : R.effectTime(state.json, anim, def.when),
+      time: def.when === 'land' ? fxLanding(ctx) : R.effectTime(state.json, anim, def.when || 'start'),
       under: def.under === 'bottom' ? 0 : (op.under !== undefined ? op.under : onTarget ? !!onTarget.under : def.under) && box ? box.under : null
     }
     // read the motion: an arc follows the swing, a burst sits on the side the blow comes from
@@ -14045,7 +14094,7 @@
     for (const k of ['x', 'y', 'scale', 'time', 'rotation']) if (op[k] !== undefined) place[k] = op[k]
     if (op.flip !== undefined) place.flip = !!op.flip
     // the tone: asked for, or (for effects that take the subject's colour) read from the picture
-    let tone = op.tone || null
+    let tone = def.native ? null : op.tone || null
     if (!tone && def.autoTone) { const h = fxSubjectHues(anim); tone = R.toneFromHues(h.bins, h.total) }
     let turn = tone ? R.TONES[tone] - (def.hue || 0) : 0
     turn = ((turn % 360) + 360) % 360; if (turn < 25 || turn > 335) { turn = 0; if (!op.tone) tone = null }

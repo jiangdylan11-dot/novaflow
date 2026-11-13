@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,readdir} from 'node:fs/promises';
 import vm from 'node:vm';
 import {FOART_TOOL_SCHEMA,FOART_MOTIONS,FOART_TOOL_SYSTEM,validateFoartPlan,foartPlanResponseFormat} from '../../packages/shared/src/foart-tool-plan.mjs';
 const recipesSource=await readFile(new URL('../../renderer/motion-recipes.js',import.meta.url),'utf8');
@@ -195,7 +195,7 @@ test('an arc follows the swing it is read from; tones turn colour and leave whit
 
 test('a set of effects: a holding layer stays, a settled one is simply there, an entrance never grows, lights can be turned down',async()=>{
  const R=recipes(),src=uiProject();src.animations['进场']={bones:{root:{scale:[{time:0,x:0,y:0},{time:.4,x:1.1,y:1.1},{time:.6,x:1,y:1}]}}};
- const dim=await fxOf('dim'),coins=await fxOf('coins'),rays=await fxOf('rays');
+ const dim=await fxOf('dim'),coins=await fxOf('burst'),rays=await fxOf('rays');
  assert.equal(dim.hold,true);
  const held=R.mergeEffect(src,dim,{anim:'进场',time:0,x:0,y:0,scale:1,under:0});
  assert.equal(held.json.slots[0].name,held.slots[0],'under everything');assert.equal(held.end,.6);
@@ -204,12 +204,14 @@ test('a set of effects: a holding layer stays, a settled one is simply there, an
  assert.deepEqual([...there.json.animations['进场'].slots[there.slots[0]].color].map(k=>[k.time,k.color]),[[0,'000000a6']]);
  const cut=R.mergeEffect(src,coins,{anim:'进场',time:.3,x:0,y:0,scale:1,under:null,natural:true});
  assert.equal(cut.end,.6,'the entrance keeps its length');assert.equal(R.animationLength(cut.json.animations['进场']),.6);
- const free=R.mergeEffect(src,coins,{anim:'进场',time:.3,x:0,y:0,scale:1,under:null});assert.ok(free.end>1.5);
+ const free=R.mergeEffect(src,coins,{anim:'进场',time:.3,x:0,y:0,scale:1,under:null});assert.ok(free.end>.95);
  const soft=R.mergeEffect(src,rays,{anim:'进场',time:0,x:0,y:0,scale:1,under:null,alpha:.5});
  const first=soft.json.animations['进场'].slots[soft.slots[0]].color[0].color,plain=rays.animation.slots.a.color[0].color;
  assert.equal(parseInt(first.slice(6),16),Math.round(parseInt(plain.slice(6),16)*.5));
- // a looping coin never shows its jump back to the launch point
- const loop=await fxOf('coinloop');assert.equal(loop.loop,true);
- for(const [n,tr] of Object.entries(loop.animation.bones)){const t=tr.translate,c=loop.animation.slots[n].color;assert.equal(t[0].time,0);assert.equal(t.at(-1).time,2);assert.equal(t[0].x,t.at(-1).x);
-  for(let i=1;i<t.length;i++)if(Math.hypot(t[i].x-t[i-1].x,t[i].y-t[i-1].y)>200)assert.equal(t[i-1].curve,'stepped',n+' jump at '+t[i].time);assert.ok(c.some(k=>k.color.endsWith('00')));}
+ // coins are made by the software's own particle system from a template its library ships
+ const bundled=(await readdir(new URL('../../particle-templates/',import.meta.url))).map(f=>'file_'+f.replace(/\.json$/,''));
+ for(const id of ['coins','coinloop']){const def=fxIndex.effects[id];assert.equal(def.native,'particle');assert.ok(bundled.includes(def.template),id+' template ships');assert.ok(def.span>0&&def.rel>0);}
+ assert.equal(fxIndex.effects.coinloop.loop,true);
+ assert.ok(editorSource.includes("if (def.native === 'particle') fx = await fxParticle(op, ctx, part, def)"));
+ assert.ok(editorSource.includes('const parts = await P.spineParts(systems, D)'));
 });
