@@ -2724,12 +2724,12 @@
           // template's hair_back: three chains over a 250-px fall), not lock by lock — its
           // inside is painted soft, the strokes are at the outline; bands of the mask, one
           // chain each, like a skirt's strips, one band per 0.9 face widths of the core
-          if (behindHair && fwW > 0) {
+          if ((behindHair && fwW > 0) || o.hairSweepsWide !== false) {
             // the full silhouette: the sweeps start at the crown and run behind the face
             // (the template animates the hidden part too), minus the scalp cap
             const a = l.analysisFull || l.analysis, sc = a.scale
             const M = new Uint8Array(a.mask)
-            if (capFn) for (let y = 0; y < a.hs; y++) for (let x = 0; x < a.ws; x++) { if (!M[y * a.ws + x]) continue; const [wx, wy] = worldOf(l, (x - 1 + 0.5) / sc, (y - 1 + 0.5) / sc); if (capFn(wx, wy)) M[y * a.ws + x] = 0 }
+            if (capFn && behindHair) for (let y = 0; y < a.hs; y++) for (let x = 0; x < a.ws; x++) { if (!M[y * a.ws + x]) continue; const [wx, wy] = worldOf(l, (x - 1 + 0.5) / sc, (y - 1 + 0.5) / sc); if (capFn(wx, wy)) M[y * a.ws + x] = 0 }
             const colN = new Float64Array(a.ws); let area = 0; const rowsSeen = new Set()
             for (let y = 0; y < a.hs; y++) for (let x = 0; x < a.ws; x++) if (M[y * a.ws + x]) { colN[x]++; area++; rowsSeen.add(y) }
             const bw = (a.bbox[2] - a.bbox[0]) * sc, bh = (a.bbox[3] - a.bbox[1]) * sc
@@ -2738,9 +2738,15 @@
             for (let x = 0; x < a.ws; x++) { acc += colN[x]; if (x10 < 0 && acc >= 0.1 * area) x10 = x; if (x90 < 0 && acc >= 0.9 * area) x90 = x }
             const coreW = (x90 - x10) / sc
             if (o.debug) console.log(`[autobones] hair behind ${l.name}: bbox ${Math.round(bw / sc)}×${Math.round(bh / sc)} fill ${fill.toFixed(2)} rowW ${rowW.toFixed(0)} core ${coreW.toFixed(0)} (face ${fwW})`)
-            if (bh >= 0.9 * bw && fill >= 0.2 && rowW >= 1.2 * fwW) {
-              const k = Math.max(2, Math.min(4, Math.round(coreW / (1.1 * fwW))))
-              const sweeps = clothStrips(l, chainParent, namer, meta, { k, range: [x10, x90], analysis: a, mask: M, strandLenOf: (L) => Math.max(0.2 * fhW, Math.min(0.8 * fhW, 0.2 * L)) })
+            // riggers do this for every broad mass of hair, in front too (a fringe, a fan of locks
+            // on the back): two to four chains from the top down, spread over its width — measured
+            // on the studio's rigs a hair layer has 2–4 chains where one axis chain was built
+            // (sized against the figure, not the face box: a head drawn with its hair has a wide one)
+            const unit = 0.045 * heightAll
+            const wide = o.hairSweepsWide !== false && coreW >= 1.2 * unit && bh >= 0.45 * bw && fill >= 0.15
+            if ((behindHair && fwW > 0 && bh >= 0.9 * bw && fill >= 0.2 && rowW >= 1.2 * fwW) || wide) {
+              const k = wide ? Math.max(2, Math.min(4, Math.round(coreW / (1.3 * unit)))) : Math.max(2, Math.min(4, Math.round(coreW / (1.1 * fwW))))
+              const sweeps = clothStrips(l, chainParent, namer, meta, { k, range: [x10, x90], analysis: a, mask: M, strandLenOf: (L) => (fhW > 0 ? Math.max(0.2 * fhW, Math.min(0.8 * fhW, 0.2 * L)) : strandBoneLen(L, l.rMean, 'hair')) })
               if (sweeps) { flowDone = true; plan.layers[l.name] = Object.assign(plan.layers[l.name] || {}, { sweeps }) }
             }
           }
