@@ -3025,7 +3025,18 @@
       // (counted on six studio rigs: of 19 cloth pieces this wide, riggers gave 12 a single chain
       // and only the broadest two or more — a piece gets strips when its own width, not its
       // box, is 7 % of the figure's height)
-      const k = sw ? sw.k : (2 * l.rMean >= (o.clothWide || 0.07) * heightAll ? Math.max(2, Math.min(4, Math.round(bw / stripW))) : 1)
+      // and long: its middle row is 12 % of the figure's height across and it is a third of the
+      // figure tall — a cloak, a broad skirt panel, a long back cloth; the four pieces riggers gave
+      // two chains pass, of the fifteen they gave one only one does)
+      let k = 1
+      if (sw) k = sw.k
+      else {
+        const rowsW = []
+        for (let y = 0; y < a.hs; y++) { let c = 0; for (let x = 0; x < a.ws; x++) if (M[y * a.ws + x]) c++; if (c) rowsW.push(c) }
+        rowsW.sort((p, q) => p - q)
+        const medW = rowsW.length ? rowsW[rowsW.length >> 1] / a.scale : 0, tall = rowsW.length / a.scale
+        if (medW >= (o.clothWide || 0.12) * heightAll && tall >= 0.33 * heightAll) k = Math.max(2, Math.min(4, Math.round(bw / stripW / 1.5)))
+      }
       if (k < 2) return 0
       const { ws, hs, scale: sc } = a
       // sweeps (hair): bands over the core of the mask, the outer bands take the flying
