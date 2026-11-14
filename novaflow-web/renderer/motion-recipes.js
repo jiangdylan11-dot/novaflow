@@ -848,7 +848,8 @@
     const reach = (n) => (by.get(n).length || 0) + Math.max(0, ...ch(n).filter(free).map(reach))
     const H = o.height || 1000
     const lay = (n, d, phase, sign, cap, deep) => {
-      const amp = (7 + (cap - 7) * Math.min(1, d / Math.max(2, deep * 0.6))) * I * sign
+      const root = Math.max(7, 0.55 * cap)
+      const amp = (root + (cap - root) * Math.min(1, d / Math.max(2, deep * 0.6))) * I * sign
       const tr = tracks(a, n), keys = sineKeys(T, amp, phase % 1)
       if (tr.rotate && tr.rotate.length === 1) { const base = tr.rotate[0].angle || 0; tr.rotate = keys.map(([t, v, e]) => ({ time: t3(t), angle: r2(v + base), ...curveOf(e) })) }
       else if (!tr.rotate) keyRotate(a, n, keys)
@@ -862,8 +863,11 @@
       if (chainLen(n) < 2) continue
       chains++
       const h = hash(n)
-      // measured: chains longer than a third of the figure reach 25–43°, short ones stay at 7–16°
-      const cap = 11 + 45 * Math.min(0.4, reach(n) / H)
+      // measured on the studio's template idle (骨骼蒙版模板): the swing goes with how long the BONES
+      // are, not the chain — a skirt panel on 130 px bones stays within 7–9°, a sleeve on 85 px
+      // bones reaches 15°, a ribbon on 55 px bones 18°, a string of beads on 28 px bones 29°.
+      // (Long chains were given up to 29° before: a whole skirt flew out sideways.)
+      const cap = Math.max(8, Math.min(30, 31 - 230 * (reach(n) / chainLen(n)) / H))
       lay(n, 0, h, h > 0.5 ? 1 : -1, cap, chainLen(n))
     }
     return { chains, bones }
