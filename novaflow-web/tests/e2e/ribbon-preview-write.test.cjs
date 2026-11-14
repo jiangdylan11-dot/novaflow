@@ -21,7 +21,7 @@ function fixture() {
   const state = { json, anim: 'idle', skin: 'default', mode: 'animate', multiSlots: [], temp: new Map(), history: [], future: [], dope: { filter: { keyedOnly: true }, keySel: [] } }
   let pushed = 0
   const rt = {}, ctx = vm.createContext({ console, state, rt, Ops, KEY_COLOR: {}, durations: new Map(), hostSeen: {}, extStep: null,
-    computeRoles() {}, setSkin() {}, validateSelection() {}, refresh() {}, selectedBones: () => ['b1'], currentSlot: () => null, animOn: () => true,
+    computeRoles() {}, setSkin() {}, validateSelection() {}, refresh() {}, selectedBones: () => ['b1'], selectedAttachments: () => [], currentSlot: () => null, animOn: () => true,
     pathId: JSON.stringify, signature: JSON.stringify, timeSec: () => 0.5, snapshot: () => ({ json: state.json }), pushToReact: () => { pushed++; return true }, motionOpen: true,
     motionPanelOpen: () => ctx.motionOpen, getRibbonReactProjectContext: () => ({ project: state.json, animationName: 'idle' }),
     cancelPendingRibbonPreviewProjectCommit() {}, normalizeRibbonElasticityApplyReason: s => s, scheduleFullLayoutRefresh() {},

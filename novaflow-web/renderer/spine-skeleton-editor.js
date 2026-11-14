@@ -491,6 +491,7 @@
     for (const k of PROJECT_KEYS) state[k] = snap[k]
     state.multiAtts = snap.multiAtts || []
     state.attachmentAnchor = snap.attachmentAnchor || null
+    state.selMark = state.sel
     state.temp.clear()
     for (const [k, v] of snap.temp || []) state.temp.set(k, v)
     rt.atlasKey = null
@@ -2209,7 +2210,14 @@
       if (!state.multiSkins.includes(state.sel.name)) state.multiSkins = [state.sel.name]
     } else state.multiSkins = []
     if (state.skinAnchor && !has('skin', state.skinAnchor)) state.skinAnchor = null
-    if (state.multiSlots.length && !(state.sel && state.sel.kind === 'slot')) state.multiSlots = []
+    if (state.sel !== state.selMark) {
+      // the pick was set directly (an edit's new item, history…): only its own kind stays picked
+      const k = state.sel && state.sel.kind
+      if (k !== 'slot') state.multiSlots = []
+      if (k !== 'att') { state.multiAtts = []; state.attachmentAnchor = null }
+      if (!['ik', 'transform', 'path'].includes(k)) state.multiCons = []
+      state.selMark = state.sel
+    }
     for (const n of [...state.temp.keys()]) if (!has('bone', n)) state.temp.delete(n)
     if (state.anim && !j.animations[state.anim]) state.anim = Object.keys(j.animations)[0] || ''
   }
@@ -2237,8 +2245,19 @@
     const chainRoots = state.chainPick ? (state.chainRoots || []).slice() : null
     state.chainPick = null
     state.chainRoots = null
-    if (!sel || sel.kind !== 'att') { state.multiAtts = []; state.attachmentAnchor = null }
+    // 混选 (user 2026-11-14): Ctrl adds any kind to the pick; a plain click starts over
+    const mixed = additive && sel && ['bone', 'slot', 'att', 'ik', 'transform', 'path'].includes(sel.kind)
+    if (!mixed && (!sel || sel.kind !== 'att')) { state.multiAtts = []; state.attachmentAnchor = null }
     if (!sel || sel.kind !== 'skin') { state.multiSkins = []; state.skinAnchor = null }
+    // the pick so far, as lists, before the new item changes state.sel
+    if (mixed) {
+      const s0 = state.sel
+      if (s0 && s0.kind === 'bone' && !state.multi.length) state.multi = [s0.name]
+      if (s0 && s0.kind === 'slot' && !state.multiSlots.length) state.multiSlots = [s0.name]
+      if (s0 && s0.kind === 'att' && !(state.multiAtts || []).length) state.multiAtts = [{ ...s0 }]
+      if (s0 && ['ik', 'transform', 'path'].includes(s0.kind) && !(state.multiCons || []).length) state.multiCons = [{ kind: s0.kind, name: s0.name }]
+      if (s0 && !['bone', 'slot', 'att', 'ik', 'transform', 'path'].includes(s0.kind)) state.sel = null
+    }
     if (sel && sel.kind === 'skin') {
       const list = additive ? selectedSkins() : []
       for (const name of (opts && opts.skins) || [sel.name]) {
@@ -2260,27 +2279,28 @@
       state.multiAtts = list
       state.sel = list.find((a) => sameAttachment(a, sel)) || list[list.length - 1] || null
       if (!(opts && opts.attachments)) state.attachmentAnchor = { ...sel }
-      state.multi = []; state.multiSlots = []; state.multiCons = []
+      if (!additive) { state.multi = []; state.multiSlots = []; state.multiCons = [] }
+      else if (!state.sel) state.sel = lastPicked()
       if (list.length > 1) { state.meshEdit = null; state.meshDrag = null; meCache = null; state.clipEdit = null; state.clipDrag = null; state.pathEdit = null; state.pathDrag = null; state.weightEdit = null; state.weightStroke = null; weCache = null }
     } else if (additive && sel && sel.kind === 'bone') {
       const set = new Set(chainRoots ? chainRoots : (state.multi.length ? state.multi : (state.sel && state.sel.kind === 'bone' ? [state.sel.name] : [])))
       if (set.has(sel.name)) set.delete(sel.name)
       else set.add(sel.name)
       state.multi = [...set]
-      state.sel = state.multi.length ? { kind: 'bone', name: state.multi[state.multi.length - 1] } : (state.multiSlots.length ? { kind: 'slot', name: state.multiSlots[state.multiSlots.length - 1] } : null)
+      state.sel = state.multi.length ? { kind: 'bone', name: state.multi[state.multi.length - 1] } : lastPicked()
     } else if (additive && sel && sel.kind === 'slot') {
       // Spine: Ctrl+click adds layers too; they are edited together
       const set = new Set(state.multiSlots.length ? state.multiSlots : (state.sel && state.sel.kind === 'slot' ? [state.sel.name] : []))
       if (set.has(sel.name)) set.delete(sel.name)
       else set.add(sel.name)
       state.multiSlots = [...set]
-      state.sel = state.multiSlots.length ? { kind: 'slot', name: state.multiSlots[state.multiSlots.length - 1] } : (state.multi.length ? { kind: 'bone', name: state.multi[state.multi.length - 1] } : null)
+      state.sel = state.multiSlots.length ? { kind: 'slot', name: state.multiSlots[state.multiSlots.length - 1] } : lastPicked()
     } else if (additive && sel && (sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path')) {
       const list = state.multiCons.length ? state.multiCons.slice() : (state.sel && (state.sel.kind === 'ik' || state.sel.kind === 'transform' || state.sel.kind === 'path') ? [{ kind: state.sel.kind, name: state.sel.name }] : [])
       const i = list.findIndex((c) => c.kind === sel.kind && c.name === sel.name)
       if (i >= 0) list.splice(i, 1); else list.push({ kind: sel.kind, name: sel.name })
       state.multiCons = list
-      state.sel = list.length ? { kind: list[list.length - 1].kind, name: list[list.length - 1].name } : null
+      state.sel = list.length ? { kind: list[list.length - 1].kind, name: list[list.length - 1].name } : lastPicked()
     } else {
       state.sel = sel
       state.multi = sel && sel.kind === 'bone' ? [sel.name] : []
@@ -2295,13 +2315,24 @@
       const boneSel = document.querySelector('#layerDock select[data-frame-bone]')
       if (boneSel) boneSel.value = state.frameBone
     }
+    state.selMark = state.sel
     if (!(opts && opts.fromHistory)) pushHistory()
     refresh()
   }
 
+  /** What stays the current pick when the last one of its kind leaves a mixed pick. */
+  function lastPicked() {
+    if (state.multi.length) return { kind: 'bone', name: state.multi[state.multi.length - 1] }
+    if (state.multiSlots.length) return { kind: 'slot', name: state.multiSlots[state.multiSlots.length - 1] }
+    const c = (state.multiCons || [])[(state.multiCons || []).length - 1]
+    if (c) return { kind: c.kind, name: c.name }
+    const a = (state.multiAtts || [])[(state.multiAtts || []).length - 1]
+    return a ? { ...a } : null
+  }
+
   /** Spine: Page Up / Page Down walk the selection history. */
   function pushHistory() {
-    const entry = JSON.stringify({ sel: state.sel, multi: state.multi, multiSlots: state.multiSlots, multiAtts: state.multiAtts, attachmentAnchor: state.attachmentAnchor, multiSkins: state.multiSkins, skinAnchor: state.skinAnchor })
+    const entry = JSON.stringify({ sel: state.sel, multi: state.multi, multiSlots: state.multiSlots, multiCons: state.multiCons, multiAtts: state.multiAtts, attachmentAnchor: state.attachmentAnchor, multiSkins: state.multiSkins, skinAnchor: state.skinAnchor })
     const h0 = state.selHistory
     if (h0[state.selIdx] === entry) return
     h0.splice(state.selIdx + 1)
@@ -2319,6 +2350,8 @@
     state.attachmentAnchor = e.attachmentAnchor || null
     state.multiSkins = e.multiSkins || []
     state.skinAnchor = e.skinAnchor || null
+    state.multiCons = e.multiCons || []
+    state.selMark = state.sel
     validateSelection()
     if (state.sel) revealInTree(state.sel)
     refresh()
@@ -2355,6 +2388,62 @@
     return state.sel && state.sel.kind === 'bone' ? [state.sel.name] : []
   }
 
+  // 多选规则（用户 2026-11-14）：在多选状态下，任何操作（显隐、K帧、删除、复制、设置父级…）作用于全部选中项。
+  function selectedSlots() {
+    if (state.multiSlots.length) return state.multiSlots.slice()
+    return state.sel && state.sel.kind === 'slot' ? [state.sel.name] : []
+  }
+  function selectedCons() {
+    if ((state.multiCons || []).length) return state.multiCons.map((c) => ({ kind: c.kind, name: c.name }))
+    const s = state.sel
+    return s && (s.kind === 'ik' || s.kind === 'transform' || s.kind === 'path') ? [{ kind: s.kind, name: s.name }] : []
+  }
+  function selectionCount() {
+    return selectedBones().length + selectedSlots().length + selectedCons().length + selectedAttachments().length
+  }
+  /** True when a row's own button should act on the whole multi-selection (the row is one of several picked). */
+  function inMultiSelection(kind, name, extra) {
+    if (selectionCount() < 2) return false
+    if (kind === 'bone') return selectedBones().includes(name)
+    if (kind === 'slot') return selectedSlots().includes(name)
+    if (kind === 'att') return selectedAttachments().some((a) => a.slot === extra.slot && a.name === name && a.skin === (extra.skin || 'default'))
+    return selectedCons().some((c) => c.kind === kind && c.name === name)
+  }
+
+  /** The eye of a picked bone / slot row: every picked bone and slot hides or shows with it. */
+  function setSelectedVisible(visible, branches, clickedAtt) {
+    const bones = selectedBones(), slots = selectedSlots()
+    const names = branches ? [...new Set(bones.flatMap((b) => Ops.branch(state.json, b)))] : bones
+    for (const n of names) visible ? state.hiddenBones.delete(n) : state.hiddenBones.add(n)
+    for (const n of slots) visible ? state.hiddenSlots.delete(n) : state.hiddenSlots.add(n)
+    // picked images show / hide in their slots too (an edit; the flags above are view-only)
+    if (selectedAttachments().length && showSelectedAttachments(clickedAtt || selectedAttachments()[0], visible, names.length + slots.length)) return
+    refresh()
+    status(`已${visible ? '显示' : '隐藏'} ${names.length + slots.length} 项`)
+  }
+
+  /** The eye of a picked attachment row: every picked attachment shows (on its slot) or hides with it. */
+  function showSelectedAttachments(clicked, show, others = 0) {
+    const list = selectedAttachments()
+    const want = new Map()
+    for (const a of list) {
+      if (show) { if (!want.has(a.slot) || (a.slot === clicked.slot && a.name === clicked.name)) want.set(a.slot, a.name) }
+      else {
+        const sl = rt.skeleton && rt.skeleton.findSlot(a.slot)
+        const cur = sl && sl.getAttachment()
+        if (cur && (cur.name === a.name || (attachmentKey(a.slot, cur) || {}).name === a.name)) want.set(a.slot, null)
+      }
+    }
+    if (!want.size) return false
+    const anim = state.mode === 'animate' && state.anim
+    const more = others ? `，另 ${others} 项骨骼 / 插槽` : ''
+    return !!edit(anim ? `已在第 ${state.frame} 帧${show ? '显示' : '隐藏'} ${want.size} 个附件${more}` : `已${show ? '显示' : '隐藏'} ${want.size} 个附件${more}`, (j) => {
+      let r = { json: j }
+      for (const [slot, name] of want) r = anim ? Ops.keyAttachment(r.json, state.anim, slot, timeSec(), name) : Ops.setSlotProps(r.json, slot, { attachment: name })
+      return r
+    })
+  }
+
   // Community selection requires a current screenshot and a real user click.
   let communityBoneSelection = null, communityBoneImage = null
   function agentPreviewImage() {
@@ -2375,7 +2464,7 @@
     return JSON.stringify({sel:state.sel,multi:state.multi,multiSlots:state.multiSlots,multiCons:state.multiCons,multiAtts:state.multiAtts,multiSkins:state.multiSkins,animation:state.anim,mode:state.mode,fileName:state.fileName,frame:state.frame,skin:state.skin,axes:state.axes,offset:state.offset,hiddenBones:[...(state.hiddenBones || [])],hiddenSlots:[...(state.hiddenSlots || [])],camera:rt.cam,width:rt.w,height:rt.h,dpr:rt.dpr})
   }
   function applyCommunityBoneSelection(sel) {
-    const keys=['sel','multi','multiSlots','multiCons','multiAtts','multiSkins','attachmentAnchor','skinAnchor','chainPick','chainRoots','dopeExtra','selIdx']
+    const keys=['sel','selMark','multi','multiSlots','multiCons','multiAtts','multiSkins','attachmentAnchor','skinAnchor','chainPick','chainRoots','dopeExtra','selIdx']
     const prior=Object.fromEntries(keys.map(key=>[key,state[key]])),history=state.selHistory?.slice()
     try { select(sel,false,{noReveal:true}) }
     catch (error) { Object.assign(state,prior); if(history)state.selHistory=history; throw error }
@@ -2535,6 +2624,7 @@
     const s = state.sel
     if (!s) return
     if (s.kind === 'project') { duplicateProject(activeProject); return }
+    if (['bone', 'slot', 'att'].includes(s.kind) && selectedBones().length + selectedSlots().length > 0 && selectionCount() > 1) { duplicatePicked(); return }
     if (s.kind === 'bone') {
       const run = (animation) => edit((r) => `已复制骨骼 ${s.name} → ${r.bone}（${r.bones.length} 骨骼 / ${r.slots.length} 插槽 / ${r.constraints.length} 约束${animation ? '，带关键帧' : ''}）`,
         (j) => Ops.duplicateBone(j, s.name, { ...state.dup, animation }),
@@ -2566,6 +2656,32 @@
   }
 
   /** Whether a copy would carry animation keys: the copy with and without them differ. */
+  function duplicatePicked() {
+    const picked = new Set(selectedBones())
+    const top = [...picked].filter((b) => { let p = bone(b) && bone(b).parent; while (p) { if (picked.has(p)) return false; p = bone(p) && bone(p).parent } return !!(bone(b) && bone(b).parent) })
+    const covered = new Set(top.flatMap((b) => Ops.branch(state.json, b)))
+    const slots = selectedSlots().filter((n) => { const sl = slotOf(n); return sl && !covered.has(sl.bone) })
+    // images that are not copied with their slot / bone are copied in their own slot (placeholders cannot be)
+    const atts = selectedAttachments().filter((a) => { const sl = slotOf(a.slot); return sl && !slots.includes(a.slot) && !covered.has(sl.bone) && !Ops.isPlaceholder(state.json, a.slot, a.name) })
+    const copy = (j, animation) => {
+      const made = { bones: [], slots: [], atts: [] }
+      let r = { json: j }
+      for (const b of top) { r = Ops.duplicateBone(r.json, b, { ...state.dup, animation }); made.bones.push(r.bone) }
+      for (const n of slots) { r = Ops.duplicateSlot(r.json, n, { animation }); made.slots.push(r.slot) }
+      for (const a of atts) { r = Ops.duplicateAttachment(r.json, a.skin, a.slot, a.name, { animation }); made.atts.push({ ...a, name: r.attachment }) }
+      return { ...r, made }
+    }
+    if (!top.length && !slots.length && !atts.length) return
+    const run = (animation) => edit((r) => `已复制 ${r.made.bones.length + r.made.slots.length + r.made.atts.length} 项${animation ? '（带关键帧）' : ''}`, (j) => copy(j, animation), (r) => {
+      state.multi = r.made.bones; state.multiSlots = r.made.slots; state.multiCons = []; state.multiAtts = r.made.atts
+      // picked slots stay picked only while the current pick is a slot (validateSelection)
+      state.sel = lastPicked(); state.selMark = state.sel
+      revealInTree(state.sel)
+    })
+    if (!copiesKeys(copy)) { run(false); return }
+    askDialog('复制', ['选中的内容已在动画中设为关键帧。', '要复制这些关键帧吗？'], run)
+  }
+
   function copiesKeys(copy) {
     try {
       return JSON.stringify(copy(state.json, true).json.animations || {}) !== JSON.stringify(copy(state.json, false).json.animations || {})
@@ -2631,6 +2747,7 @@
     const s = state.sel
     if (!s) return
     if (s.kind === 'project') { deleteProject(activeProject); return }
+    if (s.kind !== 'skin' && selectionCount() > 1 && selectedAttachments().length < selectionCount()) { deletePicked(); return }
     if (s.kind === 'bone') edit(`已删除骨骼 ${s.name}`, (j) => Ops.deleteBone(j, s.name), () => { state.sel = null })
     else if (s.kind === 'slot' && state.multiSlots.length > 1) {
       const names = state.multiSlots.slice()
@@ -2650,6 +2767,21 @@
       edit(names.length > 1 ? `已删除 ${names.length} 个皮肤` : `已删除皮肤 ${s.name}`, (j) => Ops.deleteSkins(j, names),
         () => { state.sel = null; state.multiSkins = []; state.skinAnchor = null; if (names.includes(state.skin)) state.skin = 'default' })
     }
+  }
+
+  /** Several bones / slots / constraints picked: all of them go, one undo step (a root bone stays). */
+  function deletePicked() {
+    const bones = selectedBones().filter((b) => bone(b) && bone(b).parent), slots = selectedSlots(), cons = selectedCons()
+    const atts = selectedAttachments().filter((a) => !slots.includes(a.slot))
+    const n = bones.length + slots.length + cons.length + atts.length
+    if (!n) { status('根骨骼不能删除'); return }
+    edit(`已删除 ${n} 项`, (j) => {
+      let r = atts.length ? deleteAttachments(j, atts) : { json: j }
+      for (const b of bones) if (r.json.bones.some((x) => x.name === b)) r = Ops.deleteBone(r.json, b)
+      for (const sl of slots) if (r.json.slots.some((x) => x.name === sl)) r = Ops.deleteSlot(r.json, sl)
+      for (const c of cons) if ((r.json[c.kind] || []).some((x) => x.name === c.name)) r = Ops.deleteConstraint(r.json, c.kind, c.name)
+      return r
+    }, () => { state.sel = null; state.multi = []; state.multiSlots = []; state.multiCons = []; state.multiAtts = []; state.attachmentAnchor = null })
   }
 
   function newChildBone(parent) {
@@ -6141,8 +6273,15 @@
    * changes its x / y / rotation / scale; a mesh moves as a whole - every vertex (each bone entry of
    * a weighted one) takes the same world transform, so the picture keeps its shape (Spine).
    */
-  function attDrag(sel, sx, sy) {
-    if (selectedAttachments().length > 1) return null
+  function attDrag(sel, sx, sy, one) {
+    // several images picked: each one shown in its slot moves / turns / scales with the drag (one undo step)
+    if (!one && selectedAttachments().length > 1) {
+      const group = selectedAttachments().filter((a) => {
+        const shown = rt.skeleton.findSlot(a.slot) && rt.skeleton.findSlot(a.slot).getAttachment()
+        return shown && (shown.name === a.name || (attachmentKey(a.slot, shown) || {}).name === a.name)
+      }).map((a) => attDrag(a, sx, sy, true)).filter(Boolean)
+      return group.length ? { kind: 'att', group, sel, tool: group[0].tool, sx, sy, moved: false } : null
+    }
     const slot = rt.skeleton.findSlot(sel.slot)
     const att = slot && slot.getAttachment()
     // a clipping is a polygon of vertices: it moves / turns / scales / shears as a whole like a mesh
@@ -6291,6 +6430,7 @@
   }
 
   function applyAttDrag(drag, sx, sy, shift) {
+    if (drag.group) { for (const d of drag.group) applyAttDrag(d, sx, sy, shift); return }
     const [wx, wy] = toWorld(sx, sy)
     const [w0x, w0y] = toWorld(drag.sx, drag.sy)
     const { att, B, start, centre } = drag
@@ -6322,18 +6462,31 @@
   }
 
   function finishAttDrag(drag) {
+    const verb = { move: '移动', rotate: '旋转', scale: '缩放', shear: '斜切' }[drag.tool]
+    if (drag.group) {
+      const jobs = drag.group.map(attDragJob).filter(Boolean)
+      if (!jobs.length) { pose(); return }
+      edit(animOn() ? `第 ${state.frame} 帧：已${verb} ${jobs.length} 个附件（形状已打关键帧）` : `已${verb} ${jobs.length} 个附件`, (j) => jobs.reduce((r, job) => job.run(r.json), { json: j }))
+      return
+    }
+    const job = attDragJob(drag)
+    if (!job) { pose(); return }
+    edit(job.label, job.run)
+  }
+
+  /** What a finished image drag writes: { label, run(json) }, or null when nothing changed. */
+  function attDragJob(drag) {
     const { att, sel } = drag
     const verb = { move: '移动', rotate: '旋转', scale: '缩放', shear: '斜切' }[drag.tool]
     if (drag.animT) {
       const T = drag.animT, off = drag.offsets
-      if (!off || off.every((x, i) => Math.abs(x - drag.base[i]) < 1e-6)) { pose(); return }
-      edit(`第 ${state.frame} 帧：已${verb}${shapeWord(att)} ${sel.name}（形状已打关键帧）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
-      return
+      if (!off || off.every((x, i) => Math.abs(x - drag.base[i]) < 1e-6)) return null
+      return { label: `第 ${state.frame} 帧：已${verb}${shapeWord(att)} ${sel.name}（形状已打关键帧）`, run: (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off) }
     }
     if (drag.mesh) {
       const moved = Array.from(att.vertices)
       // the preview changed the runtime mesh only; the JSON (and so undo) starts from the untouched one
-      edit(`已${verb}${shapeWord(att)} ${sel.name}`, (j) => {
+      return { label: `已${verb}${shapeWord(att)} ${sel.name}`, run: (j) => {
         const json = Ops.prepare(j)
         let skin = sel.skin, name = sel.name
         let map = (json.skins.find((x) => x.name === skin) || {}).attachments
@@ -6350,11 +6503,10 @@
         // a path's curve lengths follow its new shape
         if (a.type === 'path') return Ops.updatePathLengths(json, skin, sel.slot, name, setupMatrices())
         return { json: Ops.tidy(json) }
-      })
-      return
+      } }
     }
     const props = drag.tool === 'move' ? { x: att.x, y: att.y } : drag.tool === 'rotate' ? { rotation: normDeg(att.rotation) } : { scaleX: att.scaleX, scaleY: att.scaleY }
-    edit(`已${verb}图片 ${sel.name}`, (j) => Ops.setAttachmentProps(j, sel.skin, sel.slot, sel.name, props))
+    return { label: `已${verb}图片 ${sel.name}`, run: (j) => Ops.setAttachmentProps(j, sel.skin, sel.slot, sel.name, props) }
   }
 
   function bindViewport() {
@@ -6581,13 +6733,14 @@
       if (e.ctrlKey || e.metaKey) {
         // Ctrl+click adds, Ctrl+drag box selects
         if (bh) { select({ kind: 'bone', name: bh }, true); return }
-        state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: true }
+        const img = hitImage(sx, sy)
+        state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: true, img: img ? { kind: 'att', name: img.name, slot: img.slot, skin: img.skin } : null }
         drag = { kind: 'box' }
         capturePointer(e)
         return
       }
       // the picked image under the cursor drags, bones underneath or not (its handles are what Spine shows)
-      const onPicked = state.sel && state.sel.kind === 'att' && state.mode === 'setup' ? (() => { const hit = hitImage(sx, sy); return !!(hit && hit.slot === state.sel.slot && hit.name === state.sel.name) })() : false
+      const onPicked = state.sel && state.sel.kind === 'att' && state.mode === 'setup' ? (() => { const hit = hitImage(sx, sy); return !!(hit && selectedAttachments().some((a) => a.slot === hit.slot && a.name === hit.name)) })() : false
       if (onPicked && attDrag(state.sel, sx, sy)) {
         drag = attDrag(state.sel, sx, sy)
       } else if (bh) {
@@ -6599,7 +6752,9 @@
         select({ kind: 'att', name: oh.name, slot: oh.slot, skin: oh.skin })
       } else if (ih) {
         const s = state.sel
-        if (!(s && s.kind === 'att' && s.slot === ih.slot && s.name === ih.name)) select({ kind: 'att', name: ih.name, slot: ih.slot, skin: ih.skin }, false, { quiet: true })
+        // pressing one of several picked images drags them all (the pick stays)
+        const inPicked = s && s.kind === 'att' && selectedAttachments().some((a) => a.slot === ih.slot && a.name === ih.name)
+        if (!inPicked) select({ kind: 'att', name: ih.name, slot: ih.slot, skin: ih.skin }, false, { quiet: true })
         drag = attDrag(state.sel, sx, sy)
       } else if (state.tool === 'pose') {
         // Spine's pose tool: empty space = deselect on click, box select on drag
@@ -6738,12 +6893,14 @@
           status(`已选 ${state.vsel.indices.size} 个顶点`)
           return
         }
-        if (x1 - x0 < 3 && y1 - y0 < 3) { if (b.clickClears) select(null); return }
+        if (x1 - x0 < 3 && y1 - y0 < 3) { if (b.add && b.img) select(b.img, true, { noReveal: true }); else if (b.clickClears) select(null); return }
         const inside = boneSegments().filter((s) => s.o[0] >= x0 && s.o[0] <= x1 && s.o[1] >= y0 && s.o[1] <= y1).map((s) => s.name)
         const names = b.add ? [...new Set([...state.multi, ...inside])] : inside
         if (!names.length) { if (!b.add) select(null); return }
         state.multi = names
         state.sel = { kind: 'bone', name: names[names.length - 1] }
+        // Ctrl+box adds the bones to a mixed pick; a plain box starts over
+        if (b.add) state.selMark = state.sel
             refresh()
         status(`已框选 ${names.length} 根骨骼`)
         return
@@ -6862,6 +7019,8 @@
   /** K — key every changed property (Spine's Key Edited). */
   function keyEdited() {
     if (!animOn()) return
+    // nothing edited with several things picked: K keys all of them (bones, slots, constraints, meshes)
+    if (!state.temp.size && selectionCount() > 1 && keySelectedNow()) return
     if (!state.temp.size && state.sel && state.sel.kind === 'event') { keyEventNow(state.sel.name); return }
     if (!state.temp.size && meshTarget()) { keyDeformNow(); return }
     const jobs = []
@@ -7077,7 +7236,7 @@
   function meshKeyEnd(slotName, attName, cls) {
     const T = meshRowTarget(slotName, attName)
     if (!T) return null
-    return h('span', { class: cls || 'end' }, keyBtn([['deform', T.skin, slotName, T.attName]], () => keyDeformNow(T), `给 ${attName} 的${shapeWord(T.att)}形状打关键帧`))
+    return h('span', { class: cls || 'end' }, keyBtn([['deform', T.skin, slotName, T.attName]], () => { if (!(inMultiSelection('att', attName, { slot: slotName }) && keySelectedNow())) keyDeformNow(T) }, `给 ${attName} 的${shapeWord(T.att)}形状打关键帧`))
   }
 
   const BONE_TRACKS = (name) => ['rotate', 'translate', 'scale', 'shear'].map((k) => ['bones', name, k])
@@ -7085,14 +7244,19 @@
 
   /** Key a bone's current (posed) values; `rows` = which of rotate / translate / scale / shear. */
   function keyBoneNow(name, rows) {
+    const job = boneKeyJob(name, rows)
+    if (job) edit(`第 ${state.frame} 帧：${name} ${job.want.map((r) => KEY_LABEL[r]).join(' / ')}已打关键帧`, job.run)
+  }
+
+  function boneKeyJob(name, rows) {
     const b = rt.skeleton.findBone(name)
-    if (!b) return
+    if (!b) return null
     const want = rows || ['rotate', 'translate', 'scale', ...(keyedTrack(['bones', name, 'shear']) ? ['shear'] : [])]
     const v = {}
     for (const r of want) for (const k of KEY_ROWS[r]) v[k] = b[k]
     const t = state.temp.get(name)
     if (t) { for (const r of want) for (const k of KEY_ROWS[r]) delete t[k]; if (!Object.keys(t).length) state.temp.delete(name) }
-    edit(`第 ${state.frame} 帧：${name} ${want.map((r) => KEY_LABEL[r]).join(' / ')}已打关键帧`, (j) => Ops.keyBone(j, state.anim, name, timeSec(), v))
+    return { want, run: (j) => Ops.keyBone(j, state.anim, name, timeSec(), v) }
   }
 
   const keyedTrack = (path) => state.dope.tracks.has(JSON.stringify(path))
@@ -7113,25 +7277,55 @@
   /** Key a slot's current attachment and / or colour. */
   function keySlotNow(name, what) {
     const parts = what || ['attachment', 'color']
+    edit(`第 ${state.frame} 帧：${name} ${parts.map((x) => (x === 'color' ? '颜色' : '附件')).join(' / ')}已打关键帧`, slotKeyJob(name, parts))
+  }
+
+  function slotKeyJob(name, what) {
+    const parts = what || ['attachment', 'color']
     const att = liveAttachmentName(name)
     const col = liveColorHex(name)
-    edit(`第 ${state.frame} 帧：${name} ${parts.map((x) => (x === 'color' ? '颜色' : '附件')).join(' / ')}已打关键帧`, (j) => {
+    return (j) => {
       let r = { json: j }
       if (parts.includes('attachment')) r = Ops.keyAttachment(r.json, state.anim, name, timeSec(), att)
       if (parts.includes('color')) r = Ops.keyColor(r.json, state.anim, name, timeSec(), col)
       return r
-    })
+    }
   }
 
   /** Key a constraint's current mixes (IK: mix + bend + softness; transform: the four mixes). */
   function keyConstraintNow(kind, name) {
     if (kind === 'path') { keyPathNow(name, ['position', 'spacing', 'mix']); return }
+    const run = consKeyJob(kind, name)
+    if (run) edit(`第 ${state.frame} 帧：${name} 已打关键帧`, run)
+  }
+
+  function consKeyJob(kind, name) {
+    if (kind === 'path') return pathKeyJob(name, ['position', 'spacing', 'mix'])
     const live = kind === 'ik' ? rt.skeleton.findIkConstraint(name) : rt.skeleton.findTransformConstraint(name)
-    if (!live) return
+    if (!live) return null
     const v = kind === 'ik'
       ? { mix: live.mix, softness: live.softness, bendPositive: live.bendDirection > 0, compress: live.compress, stretch: live.stretch }
       : { rotateMix: live.rotateMix, translateMix: live.translateMix, scaleMix: live.scaleMix, shearMix: live.shearMix }
-    edit(`第 ${state.frame} 帧：${name} 已打关键帧`, (j) => Ops.keyConstraint(j, state.anim, kind, name, timeSec(), v))
+    return (j) => Ops.keyConstraint(j, state.anim, kind, name, timeSec(), v)
+  }
+
+  /**
+   * With several things picked, a key button on one of their rows (or K) keys every picked
+   * thing (bones, slots, constraints, mesh attachments) on this frame as one undo step.
+   */
+  function keySelectedNow() {
+    if (!animOn()) return false
+    const jobs = []
+    for (const b of selectedBones()) { const job = boneKeyJob(b); if (job) jobs.push(job.run) }
+    for (const s of selectedSlots()) jobs.push(slotKeyJob(s))
+    for (const c of selectedCons()) { const run = consKeyJob(c.kind, c.name); if (run) jobs.push(run) }
+    for (const a of selectedAttachments()) {
+      const T = meshRowTarget(a.slot, a.name)
+      if (T) { const off = deformAt(T); jobs.push((j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off)) }
+    }
+    if (!jobs.length) return false
+    edit(`第 ${state.frame} 帧：${jobs.length} 项已打关键帧`, (j) => jobs.reduce((r, run) => run(r.json), { json: j }))
+    return true
   }
 
   /** Key everything an item has, from its tree row. */
@@ -7537,11 +7731,11 @@
           },
           oncontextmenu: (e) => { e.preventDefault(); sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() },
         },
-        visDot(sVisible, () => { sVisible ? state.hiddenSlots.add(s.name) : state.hiddenSlots.delete(s.name); refresh() }),
+        visDot(sVisible, () => { if (inMultiSelection('slot', s.name)) { setSelectedVisible(!sVisible); return } sVisible ? state.hiddenSlots.add(s.name) : state.hiddenSlots.delete(s.name); refresh() }),
         caret(content.atts.length + content.phs.length ? !sClosed : null, () => { sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() }),
         h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, s.name),
         inOrder ? h('span', { class: 'meta' }, s.bone) : null,
-        animOn() ? h('span', { class: 'lkey' }, keyBtn(SLOT_TRACKS(s.name), () => keySlotNow(s.name), `给 ${s.name} 打关键帧（附件 / 颜色）`)) : null)
+        animOn() ? h('span', { class: 'lkey' }, keyBtn(SLOT_TRACKS(s.name), () => { if (!(inMultiSelection('slot', s.name) && keySelectedNow())) keySlotNow(s.name) }, `给 ${s.name} 打关键帧（附件 / 颜色）`)) : null)
         if (inOrder) wireDrag(srow, { type: 'order', name: s.name }, { type: 'order', name: s.name })
         else wireDrag(srow, { type: 'slot', name: s.name }, { type: 'slot', name: s.name })
         rows.push(srow)
@@ -7559,7 +7753,7 @@
           'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
           onclick: (e) => { if (pick) { resolvePick('slot', s.name); return } selectAttachment({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, e) },
         },
-        visDot(shown, () => showAttachment(s.name, shown ? null : a.name), null, true),
+        visDot(shown, () => { if (inMultiSelection('att', a.name, { slot: s.name, skin: 'default' })) setSelectedVisible(!shown, false, { slot: s.name, name: a.name }); else showAttachment(s.name, shown ? null : a.name) }, null, true),
         caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : a.type === 'path' ? 'color:#ff8a1f' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
         !showSlot ? h('span', { class: 'meta' }, s.name) : null,
         animOn() && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'clipping' || a.type === 'boundingbox' || a.type === 'path') ? meshKeyEnd(s.name, a.name, 'lkey') : null)
@@ -7630,11 +7824,12 @@
             renderTree()
           },
         },
-        visDot(visible, () => { visible ? state.hiddenBones.add(b.name) : state.hiddenBones.delete(b.name); refresh() }, () => toggleBranch(b.name, !visible)),
+        visDot(visible, () => { if (inMultiSelection('bone', b.name)) { setSelectedVisible(!visible); return } visible ? state.hiddenBones.add(b.name) : state.hiddenBones.delete(b.name); refresh() },
+          () => { if (inMultiSelection('bone', b.name)) setSelectedVisible(!visible, true); else toggleBranch(b.name, !visible) }),
         caret(own.length + sub.length ? !closed : null, toggleOpen),
         boneIcon(b, role, isSel('bone', b.name) || multi),
         h('span', { class: 'label' }, b.name),
-        animOn() ? h('span', { class: 'lkey' }, keyBtn(BONE_TRACKS(b.name), () => keyBoneNow(b.name), `给 ${b.name} 打关键帧（旋转 / 平移 / 缩放）`)) : null,
+        animOn() ? h('span', { class: 'lkey' }, keyBtn(BONE_TRACKS(b.name), () => { if (!(inMultiSelection('bone', b.name) && keySelectedNow())) keyBoneNow(b.name) }, `给 ${b.name} 打关键帧（旋转 / 平移 / 缩放）`)) : null,
         // Spine: the constraints this bone is in (as a bone or the target) at the row's end - a click goes to them
         // (more than two: one button with the count, a menu lists them - a row of icons hid the name)
         consRowEnd(consOf(b.name)))
@@ -7658,7 +7853,7 @@
             onclick: (e) => select({ kind, name: c.name }, e.ctrlKey || e.metaKey),
           }, caret(null), h('span', { class: 'ico', 'data-tree-icon': kind, html: ICON[kind] }), h('span', { class: 'label' }, c.name),
           h('span', { class: 'meta' }, { ik: 'IK', transform: '变换', path: '路径' }[kind]),
-          animOn() ? h('span', { class: 'lkey' }, keyBtn(kind === 'path' ? pathTracks(c.name) : [[kind, c.name]], () => keyConstraintNow(kind, c.name), `给 ${c.name} 打关键帧`)) : null)
+          animOn() ? h('span', { class: 'lkey' }, keyBtn(kind === 'path' ? pathTracks(c.name) : [[kind, c.name]], () => { if (!(inMultiSelection(kind, c.name) && keySelectedNow())) keyConstraintNow(kind, c.name) }, `给 ${c.name} 打关键帧`)) : null)
           wireDrag(row, { type: 'cons', kind, name: c.name }, { type: 'cons', kind, name: c.name })
           rows.push(row)
         })
@@ -7673,7 +7868,7 @@
           const sl = slotOf(name)
           const cl = clipped.get(name)
           const visible = !state.hiddenSlots.has(name)
-          const dot = h('span', { 'data-order-control': '' }, visDot(visible, () => { visible ? state.hiddenSlots.add(name) : state.hiddenSlots.delete(name); refresh() }))
+          const dot = h('span', { 'data-order-control': '' }, visDot(visible, () => { if (inMultiSelection('slot', name)) { setSelectedVisible(!visible); return } visible ? state.hiddenSlots.add(name) : state.hiddenSlots.delete(name); refresh() }))
           const jump = h('button', { class: 'cjump', type: 'button', draggable: false,
             'data-order-control': '', title: `\u5728\u5de5\u7a0b\u6811\u4e2d\u5b9a\u4f4d ${name}`, 'aria-label': `\u5728\u5de5\u7a0b\u6811\u4e2d\u5b9a\u4f4d\u63d2\u69fd ${name}`,
             html: ICON.slot,
@@ -8022,9 +8217,9 @@
   }
 
   function selectedAttachments() {
-    const s = state.sel
-    if (!s || s.kind !== 'att') return []
-    return (state.multiAtts || []).some((a) => sameAttachment(a, s)) ? state.multiAtts.slice() : [s]
+    const s = state.sel, list = state.multiAtts || []
+    if (!s || s.kind !== 'att') return list.slice()
+    return list.some((a) => sameAttachment(a, s)) ? list.slice() : [s]
   }
 
   function visibleAttachments(sel) {
@@ -10416,9 +10611,21 @@
   function setParentForSelection() {
     const s = state.sel
     if (!s) return
-    if (s.kind === 'att' && selectedAttachments().length > 1) { status('设置父级：请先选择一个附件'); return }
+    if (s.kind === 'att' && selectedAttachments().length > 1 && selectionCount() === selectedAttachments().length) { status('设置父级：请先选择一个附件'); return }
     if (animOn()) { status('设置父级是设置模式的操作：先切回「设置」'); return }
-    if (s.kind === 'bone' && bone(s.name).parent) setParent(s.name)
+    if (selectionCount() > 1 && (selectedBones().length || (selectedSlots().length && selectionCount() > selectedSlots().length))) {
+      const bones = selectedBones().filter((b) => bone(b) && bone(b).parent), slots = selectedSlots()
+      startPick({ want: 'bone', text: `${bones.length + slots.length} 项挂到哪根骨骼下：点父骨骼`, done: (parent) => {
+        const m = setupMatrices()
+        edit((r) => `已把 ${bones.length + slots.length} 项挂到 ${parent} 下${orderNote(r)}`, (j) => {
+          let r = { json: j }
+          for (const b of bones) if (b !== parent) r = Ops.reparentBone(r.json, b, parent, m)
+          for (const n of slots) r = Ops.setSlotProps(r.json, n, { bone: parent }, m)
+          return withOrder(r)
+        })
+      } })
+    }
+    else if (s.kind === 'bone' && bone(s.name).parent) setParent(s.name)
     else if (s.kind === 'slot' && state.multiSlots.length > 1) {
       const names = state.multiSlots.slice()
       startPick({ want: 'bone', text: `${names.length} 个插槽挂到哪根骨骼：点骨骼`, done: (b) => { const m = setupMatrices(); edit(`已把 ${names.length} 个插槽挂到 ${b}`, (j) => names.reduce((r, n) => Ops.setSlotProps(r.json, n, { bone: b }, m), { json: j })) } })
@@ -11321,13 +11528,18 @@
 
   /** Key a path constraint's current values: `which` ⊂ position, spacing, mix (Spine keys them apart). */
   function keyPathNow(name, which) {
+    const run = pathKeyJob(name, which)
+    if (run) edit(`第 ${state.frame} 帧：${name} 已打关键帧`, run)
+  }
+
+  function pathKeyJob(name, which) {
     const live = rt.skeleton && rt.skeleton.findPathConstraint(name)
-    if (!live) return
+    if (!live) return null
     const v = {}
     if (which.includes('position')) v.position = live.position
     if (which.includes('spacing')) v.spacing = live.spacing
     if (which.includes('mix')) { v.rotateMix = live.rotateMix; v.translateMix = live.translateMix }
-    edit(`第 ${state.frame} 帧：${name} 已打关键帧`, (j) => Ops.keyConstraint(j, state.anim, 'path', name, timeSec(), v))
+    return (j) => Ops.keyConstraint(j, state.anim, 'path', name, timeSec(), v)
   }
 
   /** A value with a slider and a number box (位置 / 间距 / 偏移 / 混合); `scale` = shown per stored unit. */
@@ -11858,9 +12070,10 @@
   /** What the transform panel edits: one bone, or a region image in 设置. */
   function xformTarget() {
     const s = state.sel
-    if (selectedAttachments().length > 1) return null
-    // several bones: one panel for all of them (Spine)
+    // several bones: one panel for all of them (Spine); in a mixed pick only the bones take it
     if (state.multi.length >= 1 && s && s.kind === 'bone') return { kind: 'bone', name: s.name, names: state.multi.includes(s.name) ? state.multi.slice() : [s.name] }
+    if (state.multi.length >= 1 && s && selectionCount() > 1) return { kind: 'bone', name: state.multi[state.multi.length - 1], names: state.multi.slice() }
+    if (selectedAttachments().length > 1) return null
     if (s && s.kind === 'att' && state.mode === 'setup') {
       const att = skinOf(s.skin).attachments[s.slot][s.name]
       const type = att.type || 'region'
@@ -12207,7 +12420,8 @@
     const slot = currentSlot(), extra = state.dopeExtra
     const cons = state.sel && (state.sel.kind === 'ik' || state.sel.kind === 'transform' || state.sel.kind === 'path') ? state.sel : null
     const ev = state.sel && state.sel.kind === 'event' ? state.sel.name : null
-    const slotList = [...new Set([...(slot ? [slot] : []), ...state.multiSlots, ...(extra ? extra.slots : [])])]
+    const attSlots = selectedAttachments().map((a) => a.slot)
+    const slotList = [...new Set([...(slot ? [slot] : []), ...attSlots, ...state.multiSlots, ...(extra ? extra.slots : [])])]
     const consAll = [...(cons ? [cons] : []), ...(state.multiCons || []), ...(extra ? extra.cons : [])]
     const consSeen = new Set(), consList = consAll.filter((c) => { const k = c.kind + ':' + c.name; if (consSeen.has(k)) return false; consSeen.add(k); return true })
     const evList = [...new Set([...(ev ? [ev] : []), ...(extra ? extra.events : [])])]

@@ -21,7 +21,7 @@ function fixture() {
     setAttribute(k,v) { this.attrs[k]=v }, addEventListener(k,v,capture) { (this.listeners[k] ||= []).push({fn:v,capture}) } })
   const ctx = vm.createContext({ state, Ops, rt: {}, h, $: () => tree, projects: [], activeProject: 0, KEY_COLOR: { event: '#fff' },
     ICON: new Proxy({}, { get: (_, key) => String(key) }), skinOf: name => j.skins.find(s => s.name === name),
-    SLOT_TRACKS:()=>[], BONE_TRACKS:()=>[], wireAudioEventDrop() {}, keyBtn() {}, meshKeyEnd() {}, consKeyEnd() {},
+    SLOT_TRACKS:()=>[], BONE_TRACKS:()=>[], wireAudioEventDrop() {}, keyBtn() {}, meshKeyEnd() {}, consKeyEnd() {}, inMultiSelection: () => false,
     bone: name => j.bones.find(b => b.name === name), animOn: () => state.mode === 'animate', isSel: (kind,name) => state.sel?.kind===kind && state.sel?.name===name,
     selectedAttachments: () => [], selectedSkins: () => [], allConstraints: () => [{ kind: 'transform', c: { name: 'follow' } }],
     drawOrderNow: () => j.slots.map(s => s.name), clipRanges: () => new Map(), slotOf: name => j.slots.find(s => s.name === name),

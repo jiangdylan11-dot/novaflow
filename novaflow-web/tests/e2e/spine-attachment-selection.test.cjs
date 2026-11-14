@@ -26,6 +26,7 @@ function fixture() {
   vm.runInContext(section('  function validateSelection(', '  function selectedBones(')
     + section('  function sameAttachment(', '  function propsKind(')
     + section('  function duplicateAttachments(', '  /** A small 是')
+    + section('  function selectedBones(', '  /** The eye of a picked bone')
     + section('  function deleteSelection(', '  function newChildBone('), ctx)
   const click = (i, modifiers = {}) => ctx.selectAttachment(identities[i], modifiers)
   return { state, ctx, click, identities, rows, history, errors, questions, picked: () => plain(ctx.selectedAttachments()).map(a => a.name) }
