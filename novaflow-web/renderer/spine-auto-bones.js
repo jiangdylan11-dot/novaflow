@@ -3455,6 +3455,13 @@
         if (ext < 0 && m.t2 >= 0) ext = childBone(m.t2, lowerLayer)
         if (ext < 0 && m.t2 >= 0) ext = childBone(m.t2, null)
         if (ext >= 0 && sk.bones[ext].role !== 'strand') setName(ext, T.ext[i])
+        // the fingers take the hand's side (they were numbered after the part they were found in,
+        // which is the other side when the template counts sides the other way)
+        if (ext >= 0 && part === 'arm' && sk.bones[ext].role !== 'strand') {
+          const lay = sk.bones[ext].layer, sd = T.ext[i].slice(-1)
+          let n = 0
+          for (let k = 0; k < sk.bones.length; k++) if (k !== ext && sk.bones[k].layer === lay && sk.bones[k].kind === 'bone') setName(k, 'finger_' + sd + '_' + (++n))
+        }
         // the template's toe target is 'foot' on the left foot; the right one is numbered
         if (part === 'leg' && m.footTarget >= 0) setName(m.footTarget, i === 1 ? 'foot' : 'foot2')
         if (part === 'leg' && m.toes >= 0) setName(m.toes, i === 0 ? 'toes_r' : 'toes_l')
