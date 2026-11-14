@@ -8287,6 +8287,33 @@
     select(sel, additive, { noReveal: true })
   }
 
+  function selectEverything() {
+    if (!state.json || state.pick || state.meshEdit || state.weightEdit || state.clipEdit || state.pathEdit) return false
+    const j = state.json, m = searchMatches(), F = state.filter || {}
+    const bones = F.bones === false ? [] : j.bones.filter((b) => !m || m.bones.has(b.name)).map((b) => b.name)
+    const slots = F.slots === false ? [] : j.slots.filter((x) => !m || m.slots.has(x.name)).map((x) => x.name)
+    const cons = ['ik', 'transform', 'path'].flatMap((kind) => (j[kind] || []).map((c) => ({ kind, name: c.name })))
+    const atts = []
+    for (const sk of j.skins) {
+      if (sk.name !== 'default' && sk.name !== state.skin) continue
+      for (const [slot, map] of Object.entries(sk.attachments || {})) for (const name of Object.keys(map || {})) {
+        if (m && !m.atts.has(slot + '/' + name) && !m.slots.has(slot)) continue
+        if (sk.name !== 'default' && Ops.isPlaceholder(j, slot, name)) continue
+        atts.push({ kind: 'att', skin: sk.name, slot, name })
+      }
+    }
+    if (!bones.length && !slots.length && !cons.length && !atts.length) return false
+    state.multi = bones; state.multiSlots = slots; state.multiCons = cons; state.multiAtts = atts
+    state.multiSkins = []; state.skinAnchor = null
+    // the events come along into the dopesheet too
+    state.dopeExtra = { slots: [], cons: [], events: m ? [] : Object.keys(j.events || {}) }
+    state.sel = bones.length ? { kind: 'bone', name: bones[bones.length - 1] } : slots.length ? { kind: 'slot', name: slots[slots.length - 1] } : cons.length ? { ...cons[0] } : { ...atts[0] }
+    state.selMark = state.sel
+    pushHistory(); refresh()
+    status(`已全选：${bones.length} 骨骼 / ${slots.length} 插槽 / ${cons.length} 约束 / ${atts.length} 附件`)
+    return true
+  }
+
   function selectAllAttachments() {
     const s = state.sel
     if (!s || s.kind !== 'att' || state.meshEdit || state.weightEdit || state.clipEdit || state.pathEdit || state.pick) return false
@@ -13338,24 +13365,9 @@
       // tree shows (the matches and their ancestors)
       // With an attachment picked, Ctrl+A selects its visible slot group instead.
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a') e.preventDefault()
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && (selectAllAttachments() || selectAllSkins())) return
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && state.json && state.sel && state.sel.kind === 'bone') {
-        const m = searchMatches(), names = [state.sel.name], j = state.json
-        const walk = (p) => { for (const b of j.bones) if (b.parent === p && (!m || m.bones.has(b.name))) { names.push(b.name); walk(b.name) } }
-        walk(state.sel.name)
-        // everything keyable under the branch comes along into the dopesheet: its slots, the
-        // constraints on its bones, and (from a root bone) the events
-        const set = new Set(names), F = state.filter
-        const slots = F.slots === false ? [] : j.slots.filter((x) => set.has(x.bone) && (!m || m.slots.has(x.name) || m.bones.has(x.bone))).map((x) => x.name)
-        const cons = ['ik', 'transform', 'path'].flatMap((kind) => (j[kind] || []).filter((c) => (c.bones || []).some((b) => set.has(b)) || set.has(c.target)).map((c) => ({ kind, name: c.name })))
-        const root = !bone(state.sel.name).parent
-        const events = root ? Object.keys(j.events || {}) : []
-        // the slots show as picked in the tree too (多选 edits apply to them)
-        state.multi = F.bones === false ? [] : names; state.multiSlots = slots
-        state.dopeExtra = { slots, cons, events }
-        pushHistory(); refresh()
-        return
-      }
+      // Ctrl+A (user 2026-11-14: 真正的全选): with a skin picked, all skins; otherwise every bone, slot,
+      // constraint and image of the project (a search keeps it to the matches), all kinds together
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && (selectAllSkins() || selectEverything())) return
       if (state.clipEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) {
         e.preventDefault()
         if (e.key === 'Enter' && state.clipEdit.draft) closeClipDraft()
