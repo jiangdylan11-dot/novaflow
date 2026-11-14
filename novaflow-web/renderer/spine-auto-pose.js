@@ -372,7 +372,8 @@
       // on the figure: half of the layer lies on it, or it carries two whole parts (a coat with wide sleeves)
       const variant = held ? Object.assign({}, l, { holdLayer: held }) : l   // lying in a hand: held by it
       if (partsOn.length && !prop && !l.soft && !l.rigid && (on / area >= o.coverFrac || (partsOn.length >= 2 && on / area >= 0.3))) {
-        covered[l.name] = partsOn
+        // (a layer named as a hand holds the forearm and the hand, never the upper arm folded under it; a foot never the thigh)
+        { const hn = hintOf(l); const drop = hn === 'hand' ? /^arm_/ : (hn === 'foot' ? /^leg_/ : null); const kept2 = drop ? partsOn.filter((pn) => !drop.test(pn)) : partsOn; covered[l.name] = kept2.length ? kept2 : partsOn }
         const bodyK = partLayers.findIndex((q) => q.name === 'body')
         seen[l.name] = { variant, fits: ownFit, wholeLimbs, bodyShare: bodyK >= 0 ? hit[bodyK] * step * step / Math.max(1, areaOf(partLayers[bodyK])) : 0 }
       } else kept.push(variant)
@@ -783,7 +784,7 @@
       built.slotBone[layer] = rootName
       built.attachment[layer] = { x: Math.round(l.place.x * 100) / 100, y: Math.round(l.place.y * 100) / 100, rotation: 0 }
     }
-    for (const p of partNames) { delete built.slotBone[p]; delete built.attachment[p] }
+    for (const p of partNames) { if (covered[p]) continue; delete built.slotBone[p]; delete built.attachment[p] }   // (a real layer may be called hand_r too)
     // the chains built on a covered layer's loose pieces are that layer's bones too
     for (const lp of fig.loose || []) {
       if (lp.head && !covered[lp.of]) {

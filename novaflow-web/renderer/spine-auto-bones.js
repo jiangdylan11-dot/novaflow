@@ -2340,6 +2340,8 @@
         // the figure pass built the limbs from the body joints: what is left is never a limb.
         // A straight stiff piece (a sword, a staff, a gun) is one rigid plate, a curved one
         // (a tail, a ribbon) a chain; gloves or boots left over are plates
+        // (a finger drawn as its own layer bends: a short chain, hung from the hand)
+        if (p === 'hand' && rootLayer.figureRoot && !l.figure && l.elong >= 4) return 'strand'
         if (p === 'hand' || p === 'foot') return 'plate'
         if (p === 'arm' || p === 'leg' || !p) {
           if (l.elong < 1.6 || !l.trunk) return 'plate'
@@ -2528,6 +2530,11 @@
       if (continues >= 0) { par = { index: continues, dist: 0 }; why = 'continues-limb' }
       // the figure pass saw this piece lying in a hand (a sword, a staff): it is held
       if (par.index < 0 && l.holdLayer) { const h = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === l.holdLayer && b.kind === 'bone'); if (h.index >= 0) { par = h; why = 'held' } }
+      // a finger layer belongs to the hand it is nearest (the upper arm passing by is not its parent)
+      if (par.index < 0 && rootLayer.figureRoot && part === 'hand' && !l.figure) {
+        const h = sk.nearest(rx, ry, (b) => notMine(b) && b.kind === 'bone' && layersOk.some((k) => k.name === b.layer && k.figure && k.hint.part === 'hand'))
+        if (h.index >= 0 && h.dist <= 0.5 * chainH) { par = h; why = 'own-hand' }
+      }
       // a tassel, a string of beads, a ribbon whose top lies on a hard thing (a weapon, a hat, a
       // lantern): it hangs from that thing, not from whichever body bone is nearest
       if (par.index < 0 && l.soft) {
@@ -2562,7 +2569,10 @@
         const faceHt = faceBox[3] - faceBox[1]
         const nearFace = headCentre && Math.hypot(c0[0] - headCentre[0], c0[1] - headCentre[1]) < 1.6 * faceHt
         const onHead = nearFace || Array.from(l.overlap.keys()).some((k) => k.done && (k.hint.part === 'face' || k.hint.part === 'head')) || (cap && Math.abs(c0[0] - cap.cx) < cap.halfW && c0[1] > cap.yMin - 0.6 * faceHt)
-        if (onHead) { par = { index: headId, dist: 0 }; why = 'head' }
+        // (with the joints known: what lies below the chin — a necklace, a collar — is on the chest)
+        const belowChin = !!(rootLayer.figureTrunk && rootLayer.figureTrunk.neckTop && c0[1] < rootLayer.figureTrunk.neckTop[1])
+        if (onHead && !belowChin) { par = { index: headId, dist: 0 }; why = 'head' }
+        else if (belowChin && l.rigid) { const t = sk.nearest(c0[0], c0[1], (b) => b.role === 'trunk' && b.kind === 'bone' && b.name !== sk.bones[headId].name); if (t.index >= 0) { par = t; why = 'on-trunk' } }
       }
       if (par.index < 0 && rootC.smallest && !(rootLayer.figureRoot && !l.holdLayer && rootC.smallest.hint.part === 'hand' && (l.rigid || part === 'accessory'))) { par = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === rootC.smallest.name); why = 'smallest-containing' }
       if (par.index < 0 && part === 'accessory') {
@@ -2634,7 +2644,7 @@
         const lb0 = l.analysis.bbox, diag0 = Math.hypot(lb0[2] - lb0[0], lb0[3] - lb0[1])
         if (best >= 0 && bd <= Math.max(40, 0.6 * sk.bones[best].len)) { parentBone = best; if (role !== 'strand' || bd <= Math.max(8, 0.2 * diag0)) snapTip = best }
       }
-      if (role === 'extremity' && parentBone >= 0) {
+      if (role === 'extremity' && parentBone >= 0 && !fig) {
         // a cuff, a sleeve end, a boot shaft: the layer runs along the limb that carries
         // it instead of beyond the limb's end → it has no bones of its own
         const pl0 = sk.bones[parentBone].layer
