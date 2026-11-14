@@ -9460,11 +9460,17 @@
    * a second run of the same scheme gets a number on the scheme.
    */
   function sweepFolderFor(image, scheme, resourceName = '') {
-    const stem = image.split('/').pop()
+    // everything that lands in the project is ASCII (2026-11-14 用户：特效生成的资源不能是中文): a Chinese resource
+    // name or picture name gives way to the picture's ASCII part and the scheme id
+    const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
+    const ascii = (v, fb) => (R && R.asciiName ? R.asciiName(v, fb) : (/^[A-Za-z0-9_-]+$/.test(String(v || '')) ? String(v) : fb))
+    const stem = ascii(image.split('/').pop(), 'img')
+    scheme = ascii(scheme, 'sweep')
     // beside the base picture (a project keeping its pictures in img/ gets img/sweep/…, not a second root)
-    const dir = image.includes('/') ? image.slice(0, image.lastIndexOf('/') + 1) : ''
+    const dir = image.includes('/') ? image.slice(0, image.lastIndexOf('/')).split('/').map((seg) => ascii(seg, 'img')).join('/') + '/' : ''
     const taken = (n) => !!(rt.atlas && rt.atlas.findRegion(n))
-    const name = resourceName ? window.NovaFlowFxMaker.resourceOutputName({ resourceName }, '') : ''
+    const typed = resourceName ? window.NovaFlowFxMaker.resourceOutputName({ resourceName }, '') : ''
+    const name = typed && ascii(typed, '') === typed ? typed : ''
     const paths = (k) => {
       const suffix = k > 1 ? `_${k}` : ''
       if (name) return { folder: `${dir}sweep/${name}${suffix}`, prefix: `${name}${suffix}` }

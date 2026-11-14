@@ -87,9 +87,9 @@ test('美工 layers become a loadable layered project, back to front, bottom-cen
  const R=recipes();
  const src=R.projectFromLayers([{name:'身体',dataUrl:'data:image/png;base64,AA',x:10,y:20,width:100,height:200},{name:'头/发',dataUrl:'data:image/png;base64,BB',x:30,y:0,width:60,height:60}],{width:200,height:400},{name:'hero.png'});
  const j=JSON.parse(src.skeleton.text);
- assert.equal(src.skeleton.fileName,'hero.json');assert.deepEqual(j.slots.map(s=>s.name),['身体','头_发']);
- assert.deepEqual(JSON.parse(JSON.stringify(j.skins[0].attachments['身体']['身体'])),{x:-40,y:280,width:100,height:200});
- assert.deepEqual([...src.images.map(i=>i.fileName)],['身体.png','头_发.png']);assert.match(src.atlas.text,/头_发\.png\nsize: 60,60/);
+ assert.equal(src.skeleton.fileName,'hero.json');assert.deepEqual(j.slots.map(s=>s.name),['layer_01','layer_02'],'Chinese layer names become ASCII');
+ assert.deepEqual(JSON.parse(JSON.stringify(j.skins[0].attachments['layer_01']['layer_01'])),{x:-40,y:280,width:100,height:200});
+ assert.deepEqual([...src.images.map(i=>i.fileName)],['layer_01.png','layer_02.png']);assert.match(src.atlas.text,/layer_02\.png\nsize: 60,60/);
  assert.throws(()=>R.projectFromLayers([],{width:1,height:1}));
 });
 
@@ -241,4 +241,21 @@ test('a motion named after an existing animation goes into it; the planner conte
  assert.ok(editorSource.includes('return agentBudget({ active: true, loaded: true'));
  assert.ok(editorSource.includes('agentLean({kind,...c,bones:c.bones.slice()},AGENT_CONSTRAINT_DEFAULTS)'));
  assert.match(FOART_TOOL_SYSTEM,/an animation the project already had is left as it is/);
+});
+
+test('names written into a project by effects and motions are ASCII',async()=>{
+ const R=recipes();
+ assert.equal(R.asciiName('10 · 金尾反光','x'),'10');assert.equal(R.asciiName('金尾反光','fb'),'fb');assert.equal(R.asciiName('back_hair','x'),'back_hair');assert.equal(R.asciiName('_头发-1','p'),'1');
+ // 特效扫光: a Chinese resource name or picture gives way to ASCII
+ const start=editorSource.indexOf('  function sweepFolderFor('),end=editorSource.indexOf('\n  }\n',start)+4;assert.ok(start>0);
+ const sandbox={window:{NovaFlowMotionRecipes:R,NovaFlowFxMaker:{resourceOutputName:(p,fb)=>String(p.resourceName||fb)}},rt:{atlas:null}};sandbox.window.parent=sandbox.window;vm.createContext(sandbox);
+ vm.runInContext(editorSource.slice(start,end)+';this.sweepFolderFor=sweepFolderFor;',sandbox);
+ for(const [img,scheme,res] of [['10','gold','10 · 金尾反光'],['素材/金币','edge-rim-02','金尾反光'],['coin','gold','']]){
+  const r=sandbox.sweepFolderFor(img,scheme,res);for(const v of [r.folder,r.prefix])assert.match(v,/^[A-Za-z0-9_\/-]+$/,img+' → '+v);}
+ assert.equal(sandbox.sweepFolderFor('coin','gold','gold_burst').prefix,'gold_burst','an ASCII name typed by the user is kept');
+ // 美工 layers → project, UI motion bones
+ const proj=R.projectFromLayers([{name:'头发',x:0,y:0,width:4,height:4,dataUrl:'data:image/png;base64,AA'},{name:'身体',x:0,y:0,width:4,height:4,dataUrl:'data:image/png;base64,AA'}],{width:8,height:8});
+ for(const s of proj.json?proj.json.slots:JSON.parse(proj.skeleton.text).slots)assert.match(s.name,/^[A-Za-z0-9_-]+$/);
+ const aifx=await readFile(new URL('../../renderer/aifx-repaint-runtime.js',import.meta.url),'utf8');
+ assert.ok(aifx.includes("return ['aifx', asciiPart(template)"));assert.ok(aifx.includes("await adoptSource(blob, (asciiPart(info.name) || 'template') + '.mp4')"));
 });

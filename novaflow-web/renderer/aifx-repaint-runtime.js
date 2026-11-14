@@ -2740,19 +2740,17 @@
   // automatic save (dozens of raw PNG frames per candidate), and nothing else
   // put the result anywhere. The plate is the finished clip and doubles as a
   // template for another pass.
+  const asciiPart = (value) => String(value == null ? '' : value).normalize('NFKD').replace(/[^\x00-\x7f]/g, '').replace(/[^A-Za-z0-9+-]+/g, '_').replace(/_+/g, '_').replace(/^[_+-]+|[_+-]+$/g, '').slice(0, 40)
   const candidateFileName = (candidate) => {
-    const restyle = RESTYLE()
     const saved = state.userTemplates.find(item => item.id === state.userTemplateId)
     const template = saved ? saved.label
       : String(state.source && state.source.fileName || 'template').replace(/\.[^.]+$/, '')
     const recipe = candidate.recipe || {}
     const referenceCount = (recipe.references || []).length
-    const labels = restyle ? (recipe.presets || []).map((id) => restyle.getPreset(id)?.label).filter(Boolean) : []
-    const material = referenceCount ? [...labels, '参考图' + (referenceCount > 1 ? referenceCount + '张' : '')].join('+')
-      : labels.length ? labels.join('+')
-        : String(recipe.supplement || '').trim().slice(0, 20) || '自定义'
-    const clean = (value) => String(value || '').replace(/[\\/<>:"|?*\u0000-\u001f\s·]+/g, '_').replace(/^_+|_+$/g, '')
-    return ['AI特效', clean(template), clean(material), candidate.seed].filter(Boolean).join('_') + '.mp4'
+    // file names are ASCII (2026-11-14 用户：特效生成的资源不能是中文): the template's ASCII part (or its id), the preset ids, the seed
+    const presetIds = (recipe.presets || []).map((id) => asciiPart(id)).filter(Boolean)
+    const mat = referenceCount ? [...presetIds, 'ref' + referenceCount].join('+') : presetIds.length ? presetIds.join('+') : (asciiPart(recipe.supplement) || 'custom')
+    return ['aifx', asciiPart(template) || asciiPart(saved && saved.id) || 'template', asciiPart(mat) || 'custom', candidate.seed].filter(Boolean).join('_') + '.mp4'
   }
 
   const saveCandidateToWarehouse = async (candidate) => {
@@ -3143,7 +3141,7 @@
         if (warehouse && typeof warehouse.save === 'function') await warehouse.save({ blob, name: 'template.mp4' })
       },
       onUse: async (blob, info) => {
-        await adoptSource(blob, (info.name || '模板') + '.mp4')
+        await adoptSource(blob, (asciiPart(info.name) || 'template') + '.mp4')
         const ai = info.ai || {}
         const shapes = SHAPES()
         if (ai.archetype && shapes && shapes.ARCHETYPES[ai.archetype]) {

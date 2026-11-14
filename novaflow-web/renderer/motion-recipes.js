@@ -485,7 +485,7 @@
       if (s.bone !== rootName && owners === 1) continue
       const b = json.bones.find((x) => x.name === s.bone)
       if (b && (b.rotation || b.scaleX && b.scaleX !== 1 || b.scaleY && b.scaleY !== 1 || b.parent)) continue
-      let bn = name; let k = 2; while (taken.has(bn)) bn = name + '_' + k++
+      const want = asciiName(name, 'part'); let bn = want; let k = 2; while (taken.has(bn)) bn = want + '_' + k++
       taken.add(bn)
       const bx = Math.round(c.x * 100) / 100, by = Math.round(c.y * 100) / 100
       json.bones.push({ name: bn, parent: rootName, x: bx, y: by })
@@ -719,6 +719,15 @@
     }
   }
 
+  /**
+   * A name the recipes write into a project (bone, slot, attachment, picture): ASCII only — letters, digits, _ and -,
+   * starting with a letter or digit. Anything else is dropped; an empty result takes the fallback.
+   */
+  function asciiName(value, fallback) {
+    const s = String(value == null ? '' : value).normalize('NFKD').replace(/[^\x00-\x7f]/g, '').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/_+/g, '_').replace(/^[_-]+|[_-]+$/g, '').slice(0, 60)
+    return /^[A-Za-z0-9]/.test(s) ? s : fallback
+  }
+
   // ---------------------------------------------------------------- entry ----
   function synthesize(source, opts) {
     const o = Object.assign({}, opts || {})
@@ -817,8 +826,8 @@
     const W = Math.round((size && size.width) || Math.max(...list.map((l) => (l.x || 0) + l.width)))
     const H = Math.round((size && size.height) || Math.max(...list.map((l) => (l.y || 0) + l.height)))
     const taken = new Set(), slots = [], atts = {}, atlas = [], images = []
-    for (const l of list) {
-      let name = String(l.name || l.id || 'layer').replace(/[\\/:*?"<>|\s]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'layer'
+    for (const [li, l] of list.entries()) {
+      let name = asciiName(l.name, '') || asciiName(l.id, '') || 'layer_' + String(li + 1).padStart(2, '0')
       const base = name; let k = 2
       while (taken.has(name.toLowerCase())) name = base + '_' + k++
       taken.add(name.toLowerCase())
@@ -1223,5 +1232,5 @@
     return e ? e.time || 0 : t3(animationLength(A) * 0.4)
   }
 
-  return { MOTIONS, synthesize, resolveTargets, extractClip, applyClip, subjectBox, mergeEffect, effectTime, animationLength, swingFromTracks, placeArc, driftFromTracks, TONES, toneFromHues, shiftHue, renameEffectPictures, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
+  return { MOTIONS, synthesize, asciiName, resolveTargets, extractClip, applyClip, subjectBox, mergeEffect, effectTime, animationLength, swingFromTracks, placeArc, driftFromTracks, TONES, toneFromHues, shiftHue, renameEffectPictures, rigMap, ensureLayerBones, slotCenters, projectFromLayers, _internals: { sineKeys, bakeSprings, setupWorld, basePose, chainWaves } }
 })
