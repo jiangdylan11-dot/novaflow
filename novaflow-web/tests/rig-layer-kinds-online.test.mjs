@@ -32,4 +32,6 @@ test('the page provides FoartRigLayerKinds on the online style-analysis route', 
   assert.match(runtime, /root\.FoartRigLayerKinds = async \(dataUrl, count\)/);
   assert.match(runtime, /purpose: 'rig-layers'/);
   assert.match(runtime, /kind==='rig-layers'\?900/);
+  // the sheet must reach the server as the JPEG it validates (it was re-encoded to a 768 px PNG and refused: operation-style-invalid)
+  assert.match(runtime, /kind==='rig-layers'\?await prepareOnlineStyleImage\(intent\.images\[0\]\.dataUrl,\{maxSide:2048,type:'image\/jpeg'\}\)/);
 });

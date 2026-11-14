@@ -831,7 +831,7 @@
     companionCloudRequests.set(id,abort);
     try {
       if(!current())return no('assistant-selection-changed','模型、会话或素材已变化，未提交。');
-      if(hasImage){try{intent.images[0].dataUrl=await prepareOnlineStyleImage(intent.images[0].dataUrl);}catch{return no('style-reference-invalid','参考图无法安全解码和缩放，未提交。');}if(!current())return no('assistant-selection-changed','模型、会话或素材已变化，未提交。');Object.freeze(intent.images[0]);Object.freeze(intent.images);}
+      if(hasImage){try{intent.images[0].dataUrl=kind==='rig-layers'?await prepareOnlineStyleImage(intent.images[0].dataUrl,{maxSide:2048,type:'image/jpeg'}):await prepareOnlineStyleImage(intent.images[0].dataUrl);}catch{return no('style-reference-invalid','参考图无法安全解码和缩放，未提交。');}if(!current())return no('assistant-selection-changed','模型、会话或素材已变化，未提交。');Object.freeze(intent.images[0]);Object.freeze(intent.images);}
       Object.freeze(intent);
       const pricing=await companionPricing(),policy=pricing?.policy,terms=policy?.config?.xiaotao_online;
       if(!current()||pricing?.ok!==true||!/^sha256:[a-f0-9]{64}$/.test(policy?.version||'')||!Number.isFinite(policy.expiresAt)||Date.now()>=policy.expiresAt||
