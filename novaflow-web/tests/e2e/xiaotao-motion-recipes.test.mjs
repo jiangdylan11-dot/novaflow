@@ -222,7 +222,7 @@ test('a set of effects: a holding layer stays, a settled one is simply there, an
 });
 
 test('effect layers stay out of what the planner is sent, effect requests count as software operations, a made change is reported',async()=>{
- assert.ok(editorSource.includes("bones: state.json.bones.filter(b=>!agentFxName(b.name)).slice(0, 100)"));
+ assert.ok(editorSource.includes("bones: state.json.bones.filter(b=>!agentFxName(b.name)).sort("));
  assert.ok(editorSource.includes("slots: state.json.slots.filter(x=>!agentFxName(x.name)).slice(0,60)"));
  assert.ok(editorSource.includes("filter(([slotName])=>!agentFxName(slotName))"));
  assert.ok(editorSource.includes("effects: agentEffects()"));
@@ -230,4 +230,15 @@ test('effect layers stay out of what the planner is sent, effect requests count 
  for(const word of ['配上','特效','光效','动效','扫光','金币'])assert.ok(agent.includes('|'+word+'|'),word+' routes to the tools');
  assert.ok(agent.includes("row.action==='animation'&&row.phase==='applied'&&!!row.message"));
  assert.ok(FOART_TOOL_SYSTEM.length<34500,'the tool brief stays inside its budget: '+FOART_TOOL_SYSTEM.length);
+});
+
+test('a motion named after an existing animation goes into it; the planner context stays lean',()=>{
+ const R=recipes(),src=uiProject();src.animations['弹出']={};src.animations['中奖']={bones:{root:{scale:[{time:0,x:1,y:1},{time:.5,x:1.2,y:1.2}]}}};
+ const filled=R.synthesize(src,{motion:'ui_pop',name:'弹出',replace:true});assert.equal(filled.name,'弹出');assert.ok(R.animationLength(filled.json.animations['弹出'])>0);
+ const merged=R.synthesize(src,{motion:'ui_pop',name:'中奖',merge:true});assert.equal(merged.name,'中奖');assert.ok(!merged.json.animations['中奖_2']);
+ assert.ok(editorSource.includes("const merge = op.merge !== undefined ? op.merge : named && !empty"));
+ assert.ok(editorSource.includes("merge, replace: empty, facing: op.facing"));
+ assert.ok(editorSource.includes('return agentBudget({ active: true, loaded: true'));
+ assert.ok(editorSource.includes('agentLean({kind,...c,bones:c.bones.slice()},AGENT_CONSTRAINT_DEFAULTS)'));
+ assert.match(FOART_TOOL_SYSTEM,/naming an existing animation writes into it/);
 });

@@ -13449,27 +13449,52 @@
     }).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y) && point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1)
       .sort((a, b) => Math.hypot(a.x - .5, a.y - .5) - Math.hypot(b.x - .5, b.y - .5)).slice(0, 64)
   }
+  const agentNum = (v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)
+  // a row without the fields that only say "default" (0 offsets, scale 1, false/empty flags)
+  function agentLean(row, defaults) {
+    const out = {}
+    for (const [k, v] of Object.entries(row)) {
+      if (v === undefined || v === null || v === false || (Array.isArray(v) && !v.length)) continue
+      const n = agentNum(v)
+      if (defaults && Object.prototype.hasOwnProperty.call(defaults, k) && defaults[k] === n) continue
+      out[k] = Array.isArray(n) ? n.map(agentNum) : n
+    }
+    return out
+  }
+  const AGENT_BONE_DEFAULTS = { length: 0, x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1, shearX: 0, shearY: 0 }
+  const AGENT_CONSTRAINT_DEFAULTS = { order: 0, mix: 1, softness: 0, rotateMix: 1, translateMix: 1, scaleMix: 1, shearMix: 1, x: 0, y: 0, rotation: 0, scaleX: 0, scaleY: 0, shearY: 0, position: 0, spacing: 0, bendPositive: true }
+  function agentBudget(ctx) {
+    // what the planner is sent shares one size cap with the tool brief and the conversation: keep the project part small
+    const steps = [['attachments', 40], ['slots', 40], ['bones', 60], ['constraints', 20], ['attachments', 0], ['bones', 40], ['slots', 20]]
+    for (const [key, keep] of steps) {
+      if (JSON.stringify(ctx).length <= 12000) break
+      if (Array.isArray(ctx[key]) && ctx[key].length > keep) { ctx[key] = ctx[key].slice(0, keep); ctx.truncated = Object.assign({}, ctx.truncated, { [key]: keep }) }
+    }
+    return ctx
+  }
   function agentContext() {
     if (!state.json) return { active: true, loaded: false, fps: FPS }
     if (!agentJsonIds.has(state.json)) agentJsonIds.set(state.json, 'project-' + (++agentJsonSequence))
     const selected = selectedBones(), activeAnimation = state.json.animations?.[state.anim] || {}
     const shownTarget=typeof xformTarget==='function'?xformTarget():null
-    return { active: true, loaded: true, revision: agentJsonIds.get(state.json), name: state.fileName,
+    const selectedSet = new Set(selected)
+    return agentBudget({ active: true, loaded: true, revision: agentJsonIds.get(state.json), name: state.fileName,
       fps: FPS, frame: state.frame, playing: !!state.playing, mode: state.mode, animation: state.anim,
       axes: state.axes, displayedTransform: shownTarget?xformValues(shownTarget):null,
       animations: Object.keys(state.json.animations || {}).slice(0, 40), selectedBones: selected,
-      bones: state.json.bones.filter(b=>!agentFxName(b.name)).slice(0, 100).map(({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})=>({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})),
+      // selected bones first, so a trimmed list still holds what the user is working on
+      bones: state.json.bones.filter(b=>!agentFxName(b.name)).sort((a,b)=>(selectedSet.has(b.name)?1:0)-(selectedSet.has(a.name)?1:0)).slice(0, 100).map(({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY})=>agentLean({name,parent,length,x,y,rotation,scaleX,scaleY,shearX,shearY},AGENT_BONE_DEFAULTS)),
       boneCount: state.json.bones.filter(b=>!agentFxName(b.name)).length, slotCount: state.json.slots.filter(x=>!agentFxName(x.name)).length, effects: agentEffects(),
-      slots: state.json.slots.filter(x=>!agentFxName(x.name)).slice(0,60).map(({name,bone,attachment,color,blend})=>({name,bone,attachment,color,blend})),
+      slots: state.json.slots.filter(x=>!agentFxName(x.name)).slice(0,60).map(({name,bone,attachment,color,blend})=>agentLean({name,bone,attachment,color,blend},{color:'ffffffff',blend:'normal'})),
       skins: state.json.skins.map(s=>s.name).slice(0,60),
-      constraints: ['ik','transform','path'].flatMap(kind=>(state.json[kind]||[]).slice(0,40).map(c=>({kind,...c,bones:c.bones.slice()}))),
+      constraints: ['ik','transform','path'].flatMap(kind=>(state.json[kind]||[]).slice(0,40).map(c=>agentLean({kind,...c,bones:c.bones.slice()},AGENT_CONSTRAINT_DEFAULTS))),
       picking: state.pick?{want:state.pick.want,text:state.pick.text}:null,
       exportProjects: typeof projectExportInfo==='function'?projectExportInfo():[], exportVersion: typeof ownVersion==='function'?ownVersion():null,
       attachments: agentAttachments(), selectedAttachment: state.sel?.kind==='att'?{skinName:state.sel.skin,slotName:state.sel.slot,name:state.sel.name}:null,
       editingVertices: agentEditVertices(),
       weightEditing: state.weightEdit?{skinName:state.weightEdit.skin,slotName:state.weightEdit.slot,name:state.weightEdit.name,boneIndex:state.weightEdit.bone,mode:state.weightEdit.mode,direct:state.weightEdit.direct,brushSize:state.weightEdit.size,strength:state.weightEdit.strength}:null,
       meshEditing: state.meshEdit?{skinName:state.meshEdit.skin,slotName:state.meshEdit.slot,name:state.meshEdit.name}:null,
-      selectedKeys: Object.fromEntries(selected.slice(0, 4).map(name=>[name, Object.fromEntries(Object.entries(activeAnimation.bones?.[name] || {}).map(([kind,keys])=>[kind,keys.slice(0,64)]))])) }
+      selectedKeys: Object.fromEntries(selected.slice(0, 4).map(name=>[name, Object.fromEntries(Object.entries(activeAnimation.bones?.[name] || {}).map(([kind,keys])=>[kind,keys.slice(0,64)]))])) })
   }
   // Read-only, bounded snapshot of existing animation tracks. Never select a
   // bone or expose a partial response as a complete relative-edit baseline.
@@ -13997,13 +14022,18 @@
     }
     let out = null
     const label = '小桃动作 ' + (op.name || def.label)
+    // 小桃 names the animation it means: an existing one is written into (an empty one filled, one with keys
+    // gets this motion added on top), never copied to <name>_2 — the planner then chased the copies' names.
+    const named = op.name !== undefined && !!(state.json.animations || {})[op.name]
+    const empty = named && R.animationLength(state.json.animations[op.name]) <= 0
+    const merge = op.merge !== undefined ? op.merge : named && !empty
     const applied = edit(label, (j) => {
-      out = R.synthesize(j, { motion: op.motion, name: op.name || def.label, targets: op.targets, duration: op.duration, intensity: op.intensity, loop: op.loop, delay: op.delay, merge: op.merge, facing: op.facing })
+      out = R.synthesize(j, { motion: op.motion, name: op.name || def.label, targets: op.targets, duration: op.duration, intensity: op.intensity, loop: op.loop, delay: op.delay, merge, replace: empty, facing: op.facing })
       return { json: out.json }
     })
     if (applied === null || !out || !state.json.animations[out.name]) throw new Error('动作没有写入，已保留原工程')
     state.anim = out.name; setMode('animate'); state.frame = 0; refresh()
-    return { phase: 'applied', operation: 'motion', motion: op.motion, animation: out.name, report: out.report, prepared, context: agentContext() }
+    return { phase: 'applied', operation: 'motion', motion: op.motion, animation: out.name, into: named ? (empty ? 'filled' : 'merged') : 'new', report: out.report, prepared, context: agentContext() }
   }
 
   // 小桃 特效 (fx-library + motion-recipes.js mergeEffect): one of the built-in effects laid into an
