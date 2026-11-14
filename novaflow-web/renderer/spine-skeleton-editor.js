@@ -2316,6 +2316,7 @@
       if (boneSel) boneSel.value = state.frameBone
     }
     state.selMark = state.sel
+    if (!(opts && opts.fromHistory)) state.rangeAnchor = sel ? { ...sel } : null
     if (!(opts && opts.fromHistory)) pushHistory()
     refresh()
   }
@@ -2464,7 +2465,7 @@
     return JSON.stringify({sel:state.sel,multi:state.multi,multiSlots:state.multiSlots,multiCons:state.multiCons,multiAtts:state.multiAtts,multiSkins:state.multiSkins,animation:state.anim,mode:state.mode,fileName:state.fileName,frame:state.frame,skin:state.skin,axes:state.axes,offset:state.offset,hiddenBones:[...(state.hiddenBones || [])],hiddenSlots:[...(state.hiddenSlots || [])],camera:rt.cam,width:rt.w,height:rt.h,dpr:rt.dpr})
   }
   function applyCommunityBoneSelection(sel) {
-    const keys=['sel','selMark','multi','multiSlots','multiCons','multiAtts','multiSkins','attachmentAnchor','skinAnchor','chainPick','chainRoots','dopeExtra','selIdx']
+    const keys=['sel','selMark','rangeAnchor','multi','multiSlots','multiCons','multiAtts','multiSkins','attachmentAnchor','skinAnchor','chainPick','chainRoots','dopeExtra','selIdx']
     const prior=Object.fromEntries(keys.map(key=>[key,state[key]])),history=state.selHistory?.slice()
     try { select(sel,false,{noReveal:true}) }
     catch (error) { Object.assign(state,prior); if(history)state.selHistory=history; throw error }
@@ -7652,6 +7653,50 @@
     })
   }
 
+  /** The pickable item a tree row stands for (bones, slots, draw-order slots, constraints, images). */
+  function treeRowItem(r) {
+    const k = r.dataset.key || ''
+    if (r.dataset.attName) return { kind: 'att', skin: r.dataset.attSkin, slot: r.dataset.attSlot, name: r.dataset.attName }
+    if (k.startsWith('b:')) return { kind: 'bone', name: k.slice(2) }
+    if (k.startsWith('slot:')) return { kind: 'slot', name: k.slice(5) }
+    if (k.startsWith('order:')) return { kind: 'slot', name: k.slice(6) }
+    const m = /^(ik|transform|path):(.*)$/.exec(k)
+    return m ? { kind: m[1], name: m[2] } : null
+  }
+  const sameItem = (a, b) => !!(a && b && a.kind === b.kind && a.name === b.name && (a.kind !== 'att' || (a.slot === b.slot && a.skin === b.skin)))
+
+  /**
+   * Shift+click (user 2026-11-14: Shift picks across kinds too): everything listed between the
+   * last clicked row and this one - bones, slots, constraints and images alike; Ctrl+Shift adds
+   * the range to what is picked.
+   */
+  function selectTreeRange(rowEl, additive) {
+    const clicked = treeRowItem(rowEl)
+    if (!clicked) return
+    const rows = [...document.querySelectorAll('#tree .row[data-key]')]
+    const to = rows.indexOf(rowEl)
+    const inOrder = (r) => (r.dataset.key || '').startsWith('order:')
+    const anchor = state.rangeAnchor
+    let from = rows.findIndex((r) => inOrder(r) === inOrder(rowEl) && sameItem(treeRowItem(r), anchor))
+    if (from < 0) from = rows.findIndex((r) => sameItem(treeRowItem(r), anchor))
+    if (from < 0 || to < 0) { select(clicked, additive); return }
+    const items = rows.slice(Math.min(from, to), Math.max(from, to) + 1).map(treeRowItem).filter(Boolean)
+    const bones = additive ? selectedBones() : [], slots = additive ? selectedSlots() : []
+    const cons = additive ? selectedCons() : [], atts = additive ? selectedAttachments() : []
+    for (const it of items) {
+      if (it.kind === 'bone') { if (!bones.includes(it.name)) bones.push(it.name) }
+      else if (it.kind === 'slot') { if (!slots.includes(it.name)) slots.push(it.name) }
+      else if (it.kind === 'att') { if (!atts.some((a) => sameAttachment(a, it))) atts.push(it) }
+      else if (!cons.some((c) => c.kind === it.kind && c.name === it.name)) cons.push({ kind: it.kind, name: it.name })
+    }
+    state.dopeExtra = null
+    state.multi = bones; state.multiSlots = slots; state.multiCons = cons; state.multiAtts = atts
+    state.multiSkins = []; state.skinAnchor = null
+    state.sel = { ...clicked }; state.selMark = state.sel
+    pushHistory()
+    refresh()
+  }
+
   function selectSlotRange(name, prefix) {
     const pre = prefix || 'slot:'
     const rows = [...document.querySelectorAll(`#tree .row[data-key^="${pre}"]`)].map((r) => r.dataset.key.slice(pre.length))
@@ -7726,7 +7771,7 @@
           'data-match': m && m.direct.has('s:' + s.name) ? '1' : null, style: pad(depth),
           onclick: (e) => {
             if (pick) { resolvePick('slot', s.name); return }
-            if (e.shiftKey) { selectSlotRange(s.name); return }
+            if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return }
             select({ kind: 'slot', name: s.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
           },
           oncontextmenu: (e) => { e.preventDefault(); sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() },
@@ -7751,7 +7796,7 @@
           'data-rename': JSON.stringify({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }),
           'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(attDepth),
           'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
-          onclick: (e) => { if (pick) { resolvePick('slot', s.name); return } selectAttachment({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, e) },
+          onclick: (e) => { if (pick) { resolvePick('slot', s.name); return } if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return } selectAttachment({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, e) },
         },
         visDot(shown, () => { if (inMultiSelection('att', a.name, { slot: s.name, skin: 'default' })) setSelectedVisible(!shown, false, { slot: s.name, name: a.name }); else showAttachment(s.name, shown ? null : a.name) }, null, true),
         caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : a.type === 'path' ? 'color:#ff8a1f' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
@@ -7810,7 +7855,7 @@
           'data-match': m && m.direct.has(key) ? '1' : null, style: pad(depth),
           onclick: (e) => {
             if (pick) { resolvePick('bone', b.name); return }
-            if (e.shiftKey) { selectRange(b.name); return }
+            if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return }
             state.anchor = b.name
             // a pick from search results opens its parents, so it stays in view once the search is cleared
             select({ kind: 'bone', name: b.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
@@ -7850,7 +7895,7 @@
           const row = h('div', {
             class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && ((state.multiCons || []).some((x) => x.kind === kind && x.name === c.name) || (state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name))) ? '1' : null, style: pad(2),
             'data-key': `${kind}:${c.name}`,
-            onclick: (e) => select({ kind, name: c.name }, e.ctrlKey || e.metaKey),
+            onclick: (e) => { if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return } select({ kind, name: c.name }, e.ctrlKey || e.metaKey) },
           }, caret(null), h('span', { class: 'ico', 'data-tree-icon': kind, html: ICON[kind] }), h('span', { class: 'label' }, c.name),
           h('span', { class: 'meta' }, { ik: 'IK', transform: '变换', path: '路径' }[kind]),
           animOn() ? h('span', { class: 'lkey' }, keyBtn(kind === 'path' ? pathTracks(c.name) : [[kind, c.name]], () => { if (!(inMultiSelection(kind, c.name) && keySelectedNow())) keyConstraintNow(kind, c.name) }, `给 ${c.name} 打关键帧`)) : null)
@@ -7886,7 +7931,7 @@
             title: `${cl ? `在剪裁「${cl.name}」里；` : ''}+ 上移一层，- 下移一层（支持多选）`, style: pad(2) + (cl ? `;--clip:${cl.tint}` : ''),
             onclick: (e) => {
               if (pick) { resolvePick('slot', name); return }
-              if (e.shiftKey) { selectSlotRange(name, 'order:'); return }
+              if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return }
               select({ kind: 'slot', name }, e.ctrlKey || e.metaKey, { noReveal: true })
             },
           }, dot, caret(null), h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, name), h('span', { class: 'meta' }, sl ? sl.bone : ''), h('span', { class: 'end' }, jump))
