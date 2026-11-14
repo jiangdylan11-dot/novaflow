@@ -83,7 +83,8 @@
     if (!hips) { const cs = (kids.get(rootName) || []).filter((c) => !ikTargets.has(c)); hips = cs.sort((a, b) => size(b) - size(a))[0] || rootName }
     const chest = has('chest') ? 'chest' : null, neck = has('neck') ? 'neck' : null, head = has('head') ? 'head' : null
     const armTargets = ['arm2', 'arm4', 'arm1', 'arm3'].filter((n) => has(n) && ikTargets.has(n) || has(n) && by.get(n).parent === rootName)
-    const legTargets = [...ikTargets].filter((n) => /^(leg\d|foot\d*)$/.test(n))
+    // (a toe target that rides on its ankle target moves with it: only the free ones are moved)
+    const legTargets = [...ikTargets].filter((n) => /^(leg\d|foot\d*)$/.test(n) && !ikTargets.has(by.get(n).parent))
     const base = { by, kids, trunk, templ, secondary, depth, hips, chest, neck, head, root: rootName, armTargets, legTargets, ikTargets, tcBones }
     if (!templ) { const g = structuralRig(json, base, size); if (g) return g }
     return base
@@ -145,7 +146,7 @@
     for (const c of json.ik || []) {
       for (const b of c.bones) limbBones.add(b)
       const first = c.bones[0]
-      if (!W.get(c.target) || under(c.target, hub) && ikBones.has(by.get(c.target).parent)) continue
+      if (!W.get(c.target) || under(c.target, hub) && ikBones.has(by.get(c.target).parent) || ikTargets.has(by.get(c.target).parent)) continue
       const arm = chest && under(first, chest)
       const list = arm ? armTargets : legTargets
       if (!list.includes(c.target)) list.push(c.target)

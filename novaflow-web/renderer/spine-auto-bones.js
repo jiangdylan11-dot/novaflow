@@ -3238,7 +3238,9 @@
           toes = sk.add(`${m.name}_toes`, foot, jx, jy, ex, ey, { kind: 'bone', layer: F.layer, role: F.role, side: F.side })
           for (const k of childrenOf(foot)) { if (k === toes) continue; const c = sk.bones[k]; if (segDist(c.ax, c.ay, jx, jy, ex, ey) < segDist(c.ax, c.ay, F.ax, F.ay, jx, jy)) c.parent = toes }
         }
-        const t = sk.add(`${m.name}_foot`, rootId, F.bx, F.by, F.bx, F.by, { kind: 'ikTarget', layer: F.layer, role: 'ik' })
+        // (the toe target rides on the ankle target: dragging the ankle moves the whole foot; the
+        // template hangs both from the root, where the ankle alone stretched the foot out of shape)
+        const t = sk.add(`${m.name}_foot`, m.t2, F.bx, F.by, F.bx, F.by, { kind: 'ikTarget', layer: F.layer, role: 'ik' })
         for (const k of childrenOf(foot)) if (sk.bones[k].layer === F.layer && sk.bones[k].role !== 'strand') { sk.bones[k].parent = t; m.toes = k }
         sk.addIk({ name: `${m.name}_foot_ik`, bones: [F.name], target: sk.bones[t].name, compress: true, stretch: true, phase: 3 })
         m.foot = foot; m.footTarget = t
