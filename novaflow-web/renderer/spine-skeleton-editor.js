@@ -8211,10 +8211,11 @@
    * pushing only the edges that cut them), its long edges split at the density's edge length,
    * and the builder only supplies the inside vertices; the triangles keep the outline's edges.
    */
-  function autoMeshModel(model, px, W, Hh) {
-    const gen = window.NovaFlowAutoMesh.buildMesh(px, W, Hh, { density: state.meshDensity, coverage: false })
+  function autoMeshModel(model, px, W, Hh, density) {
+    density = density || state.meshDensity
+    const gen = window.NovaFlowAutoMesh.buildMesh(px, W, Hh, { density, coverage: false })
     if (!gen) throw new Error('图片没有不透明的地方')
-    const edge = gen.edge || Math.hypot(W, Hh) / state.meshDensity
+    const edge = gen.edge || Math.hypot(W, Hh) / density
     const outline = ME().traceOutline(px, W, Hh, CORE(), { eps: Math.max(0.8, 0.03 * edge), concavity: 92, refine: 100, padding: 1 })
     const hull = []
     outline.forEach((a, i) => {
@@ -8238,6 +8239,32 @@
     return ME().fromImageMesh(model, { vertices: verts, hull: hull.length, triangles: ME().triangulate(tmp, CORE()) })
   }
 
+  /**
+   * 密度 for one layer, as riggers spend vertices (measured on the studio template: body 224 and
+   * face 269 points, a skirt panel 128, a leg 66, a necklace 26, a hair pin 20): the torso and
+   * the face keep the slider's density, limbs and chains about half, a piece that moves as one
+   * with a single bone a third. Only when 自动架设 recorded what each layer is; else the slider.
+   */
+  function layerDensity(json, L) {
+    const rec = state.autoRig
+    if (!rec || !rec.roles) return state.meshDensity
+    const at = (f) => Math.max(4, Math.round(state.meshDensity * f))
+    const cover = rec.covered && rec.covered[L.slot]
+    if (cover && cover.length) {
+      const trunk = cover.filter((n) => /^(chest|abdomen|waist|neck|head|hip_|shoulder_)/.test(n)).length
+      return trunk >= 2 || cover.includes('head') ? state.meshDensity : at(0.6)
+    }
+    let own = 0
+    for (const r of rec.roles.values()) if (r && r.layer === L.slot && r.kind === 'bone') own++
+    if (own >= 2) return at(0.5)
+    // a face feature (eye, brow, mouth) bends under its controllers
+    const slot = (json.slots || []).find((x) => x.name === L.slot)
+    const by = new Map((json.bones || []).map((bn) => [bn.name, bn]))
+    let p = slot && by.get(slot.bone), underHead = false
+    for (let i = 0; i < 6 && p; i++) { if (p.name === 'head') { underHead = true; break } p = by.get(p.parent) }
+    return at(underHead ? 0.6 : 0.3)
+  }
+
   /** One layer's mesh (a region becomes a mesh first). */
   function meshOneLayer(json, L) {
     let r = { json }
@@ -8248,7 +8275,7 @@
     const W = Math.round(ctx.model.width), Hh = Math.round(ctx.model.height)
     const px = regionPixels(ctx.region, W, Hh)
     if (!px) throw new Error('读不到图片像素')
-    const m = autoMeshModel(ctx.model, px, W, Hh)
+    const m = autoMeshModel(ctx.model, px, W, Hh, layerDensity(r.json, L))
     return { ...Ops.setMesh(r.json, L.skin, L.slot, L.name, ME().toAttachment(m, ctx.mats, ctx.slotBone), ME().remapOf(m)), verts: m.points.length }
   }
 

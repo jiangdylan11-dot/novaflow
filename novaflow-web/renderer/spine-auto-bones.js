@@ -2530,6 +2530,22 @@
       if (continues >= 0) { par = { index: continues, dist: 0 }; why = 'continues-limb' }
       // the figure pass saw this piece lying in a hand (a sword, a staff): it is held
       if (par.index < 0 && l.holdLayer) { const h = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === l.holdLayer && b.kind === 'bone'); if (h.index >= 0) { par = h; why = 'held' } }
+      // a skirt panel, a sash, a waist chain: what starts at the hips hangs from the hip on its
+      // side (the template: every panel from kua1 / kua2), never from another panel's chain
+      if (par.index < 0 && rootLayer.figureRoot && rootLayer.figureTrunk && (l.soft || part === 'cloth' || part === 'accessory') && !l.holdLayer && !l.figure && role === 'strand') {
+        const ft = rootLayer.figureTrunk, T0 = Math.max(1, ft.neckBase[1] - ft.waist[1])
+        const hips = []
+        for (let i = 0; i < sk.bones.length; i++) { const hb = sk.bones[i]; if (hb.role === 'connector' && hb.layer === rootLayer.name && /^hip_/.test(hb.name)) hips.push(i) }
+        if (o.debug && (o.debug === true || o.debug === l.name)) console.log('[auto-bones]', l.name, 'hip rule: hips', hips.length, 'root', Math.round(rx), Math.round(ry), 'waist', ft.waist.map(Math.round), 'T0', Math.round(T0), sk.bones.filter((q) => q.role === 'connector').map((q) => q.name + '@' + q.layer).join(' '))
+        if (hips.length) {
+          let lowY = Infinity; for (const i of hips) lowY = Math.min(lowY, sk.bones[i].by, sk.bones[i].ay)
+          if (ry <= ft.waist[1] + 0.1 * T0 && ry >= lowY - 0.3 * T0) {
+            let best = -1, bd = Infinity
+            for (const i of hips) { const d = Math.hypot(sk.bones[i].bx - rx, sk.bones[i].by - ry); if (d < bd) { bd = d; best = i } }
+            if (best >= 0 && bd <= 1.2 * T0) { par = { index: best, dist: bd }; why = 'on-hip' }
+          }
+        }
+      }
       // a finger layer belongs to the hand it is nearest (the upper arm passing by is not its parent)
       if (par.index < 0 && rootLayer.figureRoot && part === 'hand' && !l.figure) {
         const h = sk.nearest(rx, ry, (b) => notMine(b) && b.kind === 'bone' && layersOk.some((k) => k.name === b.layer && k.figure && k.hint.part === 'hand'))
@@ -2615,7 +2631,7 @@
           if (alt.index >= 0 && alt.dist <= reach) { par = alt; why = 'rigid-off-strand'; break }
         }
       }
-      if (part === 'cloth' && role === 'strand' && continues < 0) {
+      if (part === 'cloth' && role === 'strand' && continues < 0 && why !== 'on-hip') {
         // a ribbon that starts where another ribbon's chain ends continues it
         let bestB = -1, bd = Infinity
         for (let i = 0; i < sk.bones.length; i++) { const b = sk.bones[i]; if (b.kind !== 'bone' || b.role !== 'strand' || b.layer === l.name || partOfLayer.get(b.layer) !== 'cloth') continue; const d = Math.hypot(b.bx - rx, b.by - ry); if (d < bd) { bd = d; bestB = i } }
@@ -3456,6 +3472,9 @@
           ? { pivot: ['kua1', 'kua2'], helper: [['kua3', 'kua4'], ['kua5', 'kua6']], t: [['leg1', 'leg2'], ['leg3', 'leg4']], upper: ['leg_r', 'leg_l'], lower: ['lowerLeg_r', 'lowerLeg_l'], ext: ['foot_r', 'foot_l'], conn: ['hip_r', 'hip_l'] }
           : { pivot: ['jian1', 'jian2'], helper: [['jian3', 'jian4'], ['jian5', 'jian6']], t: [['arm1', 'arm2'], ['arm3', 'arm4']], upper: ['Upper_arm_r', 'Upper_arm_l'], lower: ['forearm_r', 'forearm_l'], ext: ['hand_r', 'hand_l'], conn: ['shoulder_r', 'shoulder_l'] }
         setName(m.pivot, T.pivot[i])
+        // what hangs from a hip hangs from the hip's pivot (kua1 / kua2), which carries the sway of
+        // the hips; the hip bone itself is stretched by its IK
+        if (part === 'leg' && m.connector >= 0 && m.pivot >= 0) for (let k = 0; k < sk.bones.length; k++) { const cb = sk.bones[k]; if (cb.parent === m.connector && cb.kind === 'bone' && cb.role === 'strand') cb.parent = m.pivot }
         if (m.connector >= 0) setName(m.connector, T.conn[i])
         if (m.upper >= 0) setName(m.upper, T.upper[i])
         if (m.lower >= 0) setName(m.lower, T.lower[i])
