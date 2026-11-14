@@ -337,9 +337,17 @@
         // (crossed legs: each leg's own layer also lies on the other leg where they cross — it is
         // the leg it lies on most; a pair of trousers lies on both alike and stays a pair)
         if (globalThis.__rigDebug && /leg/.test(Object.keys(g).filter((k) => g[k] > 0.1 * area).join())) console.log('[limb-fit]', l.name, 'area', area, JSON.stringify(Object.fromEntries(Object.keys(g).map((k) => [k, [+(g[k] / area).toFixed(2), +(g[k] * step * step / ga[k]).toFixed(2)]]))), 'fits', fits.join())
-        if (fits.length === 2 && fits[0].split('_')[0] === fits[1].split('_')[0] && (o.kinds || l.seenAsBody)) {
-          fits.sort((p, q) => g[q] - g[p])
-          if (g[fits[0]] >= 1.2 * g[fits[1]]) fits.length = 1
+        if (o.kinds || l.seenAsBody) {
+          // the lower segments tell two overlapping limbs apart (thighs lie over each other, shins part)
+          const low = (limb) => { const k = partLayers.findIndex((q) => q.name === limb.replace(/^arm_/, 'forearm_').replace(/^leg_/, 'shin_')); return k >= 0 ? hit[k] : 0 }
+          for (const kind of ['leg', 'arm']) {
+            const two = [kind + '_l', kind + '_r'].filter((limb) => g[limb] >= 0.3 * area && g[limb] * step * step >= 0.25 * ga[limb])
+            if (two.length !== 2 || !(fits.includes(two[0]) || fits.includes(two[1]))) continue
+            two.sort((p, q) => low(q) - low(p))
+            let pick = low(two[0]) >= 1.3 * low(two[1]) && low(two[0]) > 0 ? two[0] : null
+            if (!pick) { two.sort((p, q) => g[q] - g[p]); if (g[two[0]] >= 1.2 * g[two[1]]) pick = two[0] }
+            if (pick) { for (const t of two) { const i = fits.indexOf(t); if (i >= 0) fits.splice(i, 1) } fits.push(pick) }
+          }
         }
         if (fits.length === 1) ownLimbs.add(fits[0])
         ownFit = fits.length === 1 ? fits[0] : null
@@ -555,11 +563,73 @@
         }
         if (best) { used.add(best.l.name); k3[iw] = [best.w[0], best.w[1], Math.max(0.5, Wr[2])]; movedHand = true }
       }
+      // both legs found on ONE leg (the other stands half hidden behind it): the hidden leg is
+      // drawn as a long layer of bare skin of its own whose lower end is somewhere else. Its
+      // knee and ankle are read off that layer, and the two legs go to the hips without crossing.
+      let legsDone = false
+      {
+        const aL = kps[15], aR = kps[16], kL = kps[13], kR = kps[14], hL = kps[11], hR = kps[12]
+        if (aL && aR && kL && kR && [aL, aR, kL, kR].every((q) => q[2] >= o.minConf) && Math.hypot(aL[0] - aR[0], aL[1] - aR[1]) < 0.2 * torso && Math.hypot(kL[0] - kR[0], kL[1] - kR[1]) < 0.2 * torso) {
+          const [fK, fA] = aL[2] >= aR[2] ? [kL, aL] : [kR, aR]          // the leg that was really seen
+          const legLen = Math.hypot(hL[0] - fK[0], hL[1] - fK[1]) + Math.hypot(fK[0] - fA[0], fK[1] - fA[1])
+          let best = null, bd = 0
+          for (const l of layers) {
+            if (!l || !l.rgba || !l.seenAsBody || l.synthetic || l.name === headLayer || headKept.has(l.name)) continue
+            if (l.height < 0.5 * legLen || l.place.y > Math.max(hL[1], hR[1]) || l.place.y < fA[1]) continue
+            // the lower end: centre of the lowest rows
+            let sx = 0, n = 0, yb = null
+            for (let py = l.height - 1; py >= 0 && n < 40; py--) for (let px = 0; px < l.width; px++) if (l.rgba[(py * l.width + px) * 4 + 3] > o.alpha) { sx += px; n++; if (yb === null) yb = py }
+            if (!n) continue
+            const end = [l.place.x + sx / n + 0.5 - l.width / 2, l.place.y + l.height / 2 - yb - 0.5]
+            const off = Math.hypot(end[0] - fA[0], end[1] - fA[1])
+            if (off < 0.12 * torso || off > 0.7 * torso || end[1] > fK[1]) continue
+            if (off > bd) { bd = off; best = { l, end } }
+          }
+          if (best) {
+            // its knee: on the layer at the seen knee's height, the run nearest the straight hip → ankle line
+            const l = best.l, hipMid = [(hL[0] + hR[0]) / 2, (hL[1] + hR[1]) / 2]
+            const py = Math.round(l.place.y + l.height / 2 - fK[1])
+            let knee = null
+            if (py >= 0 && py < l.height) {
+              const t = (hipMid[1] - fK[1]) / Math.max(1, hipMid[1] - best.end[1]), lineX = hipMid[0] + t * (best.end[0] - hipMid[0])
+              let x = 0, kd = Infinity
+              while (x < l.width) {
+                if (l.rgba[(py * l.width + x) * 4 + 3] > o.alpha) { const x0s = x; while (x < l.width && l.rgba[(py * l.width + x) * 4 + 3] > o.alpha) x++; const cx = l.place.x + (x0s + x) / 2 - l.width / 2; if (Math.abs(cx - lineX) < kd) { kd = Math.abs(cx - lineX); knee = [cx, fK[1]] } } else x++
+              }
+            }
+            if (!knee) knee = [(hipMid[0] + best.end[0]) / 2, fK[1]]
+            // which hip: the pairing with the least sideways travel (legs side by side, not crossed)
+            const straight = Math.abs(hL[0] - fA[0]) + Math.abs(hR[0] - best.end[0]), swapped = Math.abs(hR[0] - fA[0]) + Math.abs(hL[0] - best.end[0])
+            const seenIsL = straight <= swapped
+            const [sk_, sa_, st_, ok_, oa_, ot_] = seenIsL ? [13, 15, 17, 14, 16, 18] : [14, 16, 18, 13, 15, 17]
+            const seenToe = kps[aL[2] >= aR[2] ? 17 : 18]
+            k3[sk_] = [fK[0], fK[1], fK[2]]; k3[sa_] = [fA[0], fA[1], fA[2]]
+            if (seenToe && k3[st_]) k3[st_] = seenToe.slice()
+            k3[ok_] = [knee[0], knee[1], 0.5]; k3[oa_] = [best.end[0], best.end[1], 0.5]
+            if (k3[ot_]) {
+              // the toe: the far end of the small piece under that ankle (the foot's own layer), else straight on
+              let toe = null, td = 0
+              for (const f of layers) {
+                if (!f || !f.rgba || f.synthetic || f.soft || f === l || Math.max(f.width, f.height) > 0.8 * torso) continue
+                if (Math.hypot(f.place.x - best.end[0], f.place.y - best.end[1]) > 0.35 * torso || f.place.y > best.end[1] + 0.1 * torso) continue
+                const st2 = Math.max(1, Math.round(Math.max(f.width, f.height) / 60))
+                for (let py2 = 0; py2 < f.height; py2 += st2) for (let px2 = 0; px2 < f.width; px2 += st2) {
+                  if (f.rgba[(py2 * f.width + px2) * 4 + 3] <= o.alpha) continue
+                  const wx = f.place.x + px2 + 0.5 - f.width / 2, wy = f.place.y + f.height / 2 - py2 - 0.5
+                  const d = Math.hypot(wx - best.end[0], wy - best.end[1]); if (wy < best.end[1] && d > td) { td = d; toe = [wx, wy] }
+                }
+              }
+              k3[ot_] = toe && td >= 0.08 * torso ? [toe[0], toe[1], 0.5] : [best.end[0], best.end[1] - 0.12 * torso, 0.3]
+            }
+            movedHand = true; legsDone = true
+          }
+        }
+      }
       // two ankles found on the same foot (one leg stands behind the other): the foot drawn as
       // its own layer of bare skin that no part lies on is the other leg's
       {
         const aL = kps[15], aR = kps[16]
-        if (aL && aR && aL[2] >= o.minConf && aR[2] >= o.minConf && Math.hypot(aL[0] - aR[0], aL[1] - aR[1]) < 0.2 * torso) {
+        if (!legsDone && aL && aR && aL[2] >= o.minConf && aR[2] >= o.minConf && Math.hypot(aL[0] - aR[0], aL[1] - aR[1]) < 0.2 * torso) {
           const [ik, ia, it] = aL[2] < aR[2] ? [13, 15, 17] : [14, 16, 18]
           const K = kps[ik], A = kps[ia]
           if (K && K[2] >= o.minConf) {
