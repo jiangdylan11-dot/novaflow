@@ -166,7 +166,8 @@
       const reach = 0.5 * torso, probe = [wrist[0] + dir[0] * 0.1 * torso, wrist[1] + dir[1] * 0.1 * torso]
       let src = null, srcArea = Infinity
       for (const l of layers) {
-        if (!l || !l.rgba || l.soft || l.rigid || !alphaAt(l, probe[0], probe[1], o.alpha)) continue
+        // (a ribbon or a lock crossing the hand is not the hand's picture)
+        if (!l || !l.rgba || l.soft || l.rigid || l.seenAsHair || ['cloth', 'hair', 'accessory'].includes(hintOf(l)) || !alphaAt(l, probe[0], probe[1], o.alpha)) continue
         let n = 0; const st = Math.max(1, Math.round(Math.max(l.width, l.height) / 150))
         for (let py = 0; py < l.height; py += st) for (let px = 0; px < l.width; px += st) if (l.rgba[(py * l.width + px) * 4 + 3] > o.alpha) n++
         if (n * st * st < srcArea) { srcArea = n * st * st; src = l }
@@ -198,7 +199,9 @@
       // the builder is handed that reading
       let analysis = null
       try { analysis = AB.analyzeLayer(rgba, bw, bh, { scale: 1 }) } catch (e) { return null }
-      if (analysis.graph.nodes.filter((nd) => nd.deg === 1).length < 4) return null   // the wrist's end and three fingers at least
+      // the wrist's end and two fingers at least: fingers drawn together still part at the thumb and
+      // the index, and riggers give those two short chains (the template's hands: 2 chains x 2 bones)
+      if (analysis.graph.nodes.filter((nd) => nd.deg === 1).length < 3) return null
       return { width: bw, height: bh, rgba, analysis, fingers: true, place: { x: x0 + bx0 + bw / 2, y: y1 - by0 - bh / 2 } }
     }
     const limb = (side, kind) => {
