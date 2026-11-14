@@ -2580,9 +2580,18 @@
       if (rootLayer.figureRoot && !l.holdLayer && (l.rigid || role === 'plate') && why !== 'on-hard' && why !== 'head' && par.index >= 0 && sk.bones[par.index] && sk.bones[par.index].role === 'strand') {
         // a hard thing nobody holds (a flower at the belt, a pouch, a buckle) sits on the body:
         // never on the lock of hair or the sleeve that happens to pass under it
-        const figL = new Set(layersOk.filter((k) => (k.figure || k.figureTrunk || k.figureRoot) && k.hint.part !== 'hand').map((k) => k.name))
+        const figL = new Set(layersOk.filter((k) => (k.figure || k.figureTrunk || k.figureRoot) && (l.bodyPiece || k.hint.part !== 'hand')).map((k) => k.name))
         const alt = sk.nearest(rx, ry, (b) => notMine(b) && b.kind === 'bone' && figL.has(b.layer))
         if (alt.index >= 0) { par = alt; why = 'on-figure' }
+      }
+      if (rootLayer.figureRoot && !l.holdLayer && l.rigid && !l.bodyPiece && !l.faceFeature && why !== 'on-hard' && why !== 'head' && par.index >= 0 && sk.bones[par.index]) {
+        // nor on the arm it merely lies under: a bracelet lies IN the arm, a waist plate or a big
+        // flower that a resting forearm crosses belongs to the trunk
+        const pk = layersOk.find((k) => k.name === sk.bones[par.index].layer)
+        if (pk && pk.figure && (pk.hint.part === 'arm' || pk.hint.part === 'hand') && (l.overlap.get(pk) || 0) < 0.4 * l.analysis.area) {
+          const alt = sk.nearest(rx, ry, (b) => notMine(b) && b.kind === 'bone' && layersOk.some((k) => k.name === b.layer && (k.figure || k.figureTrunk || k.figureRoot) && k.hint.part !== 'arm' && k.hint.part !== 'hand'))
+          if (alt.index >= 0) { par = alt; why = 'on-trunk' }
+        }
       }
       if (role === 'plate' && par.index >= 0 && sk.bones[par.index] && sk.bones[par.index].role === 'strand' && (!rootLayer.figureRoot || l.holdLayer)) {
         // held pieces belong to the hand: hand bones first, then the arm, then any rigid bone
@@ -2620,7 +2629,10 @@
         const pl0 = sk.bones[parentBone].layer
         let best = -1, bd = Infinity
         for (let i = 0; i < sk.bones.length; i++) { const b = sk.bones[i]; if (b.kind !== 'bone' || b.layer !== pl0) continue; const d = Math.hypot(b.bx - rx, b.by - ry); if (d < bd) { bd = d; best = i } }
-        if (best >= 0 && bd <= Math.max(40, 0.6 * sk.bones[best].len)) { parentBone = best; snapTip = best }
+        // (the first bone is pulled to that bone end only when the end is near for the piece itself:
+        // a small tassel under a long bone kept its place and was drawn out into a long first bone)
+        const lb0 = l.analysis.bbox, diag0 = Math.hypot(lb0[2] - lb0[0], lb0[3] - lb0[1])
+        if (best >= 0 && bd <= Math.max(40, 0.6 * sk.bones[best].len)) { parentBone = best; if (role !== 'strand' || bd <= Math.max(8, 0.2 * diag0)) snapTip = best }
       }
       if (role === 'extremity' && parentBone >= 0) {
         // a cuff, a sleeve end, a boot shaft: the layer runs along the limb that carries

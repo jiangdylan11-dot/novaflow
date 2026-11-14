@@ -236,6 +236,7 @@
     // ---- which real layers the figure lies in
     const headC = J.nose || (J.lEar && J.rEar ? mid(J.lEar, J.rEar) : null), headR = 0.55 * torso
     const covered = {}
+    const headKept = new Set()
     const kept = []
     const strong = new Set(), ownLimbs = new Set(), capes = [], seen = {}
     const limbOf = (n) => n.replace(/^(forearm|hand)_/, 'arm_').replace(/^(shin|foot)_/, 'leg_')
@@ -321,7 +322,9 @@
       }
       // the head's own layers (the face, a head drawn with its hair, a hat) stay with the builder,
       // which finds the face among them
-      if (!area || onHead >= 0.7 * area) { kept.push(l); continue }
+      // (a hand raised to the cheek is no head layer: bare skin that lies in a hand part)
+      const handAtHead = !!area && l.seenAsBody && partLayers.some((q, k) => /^hand_/.test(q.name) && hit[k] >= 0.3 * area)
+      if (!area || (onHead >= 0.7 * area && !handAtHead)) { headKept.add(l.name); kept.push(l); continue }
       const partsOn = []
       let held = null, heldShare = 0.15, ownFit = null, wholeLimbs = 0
       // a limb's own layer (an artist's split): most of the layer lies on that one limb and it
@@ -331,6 +334,13 @@
         partLayers.forEach((p, k) => { if (p.name === 'body') return; const limb = limbOf(p.name); g[limb] = (g[limb] || 0) + hit[k]; ga[limb] = (ga[limb] || 0) + areaOf(p) })
         // (one limb only: a layer that fits two is a pair of gloves over crossed arms, not a limb's own)
         const fits = Object.keys(g).filter((limb) => g[limb] >= 0.5 * area && g[limb] * step * step >= 0.25 * ga[limb])
+        // (crossed legs: each leg's own layer also lies on the other leg where they cross — it is
+        // the leg it lies on most; a pair of trousers lies on both alike and stays a pair)
+        if (globalThis.__rigDebug && /leg/.test(Object.keys(g).filter((k) => g[k] > 0.1 * area).join())) console.log('[limb-fit]', l.name, 'area', area, JSON.stringify(Object.fromEntries(Object.keys(g).map((k) => [k, [+(g[k] / area).toFixed(2), +(g[k] * step * step / ga[k]).toFixed(2)]]))), 'fits', fits.join())
+        if (fits.length === 2 && fits[0].split('_')[0] === fits[1].split('_')[0] && (o.kinds || l.seenAsBody)) {
+          fits.sort((p, q) => g[q] - g[p])
+          if (g[fits[0]] >= 1.2 * g[fits[1]]) fits.length = 1
+        }
         if (fits.length === 1) ownLimbs.add(fits[0])
         ownFit = fits.length === 1 ? fits[0] : null
         wholeLimbs = Object.keys(g).filter((limb) => g[limb] * step * step >= 0.35 * ga[limb]).length
@@ -503,6 +513,97 @@
     // ---- a leg that has a layer of its own which runs on into the foot: the foot's bone goes to
     // the end of that layer (the toes are often not found), then everything above is done once
     // more with it
+    // a forearm hidden in a wide sleeve: the joints model guesses the wrist (it hangs the arm down,
+    // a mirror of the other one) while the hand is drawn somewhere else — a small layer of bare
+    // skin that no part lies on, within the forearm's reach of the elbow. The wrist goes there.
+    if (!o._refinedHand) {
+      const k3 = kps.map((q) => q.slice())
+      let movedHand = false
+      const used = new Set()
+      for (const [side, ie, iw] of [['l', 7, 9], ['r', 8, 10]]) {
+        const E = kps[ie], Wr = kps[iw]
+        if (!E || !Wr || !(E[2] >= o.minConf) || !(Wr[2] >= o.minConf)) continue
+        const fore = Math.hypot(Wr[0] - E[0], Wr[1] - E[1])
+        const handK = partLayers.findIndex((q) => q.name === `hand_${side}`)
+        // is there bare skin where the hand was put?
+        let sup = 0, tot = 0
+        for (let i = 0; i < 9; i++) {
+          const hx = Wr[0] + ((i % 3) - 1) * 0.12 * torso, hy = Wr[1] + (Math.floor(i / 3) - 1) * 0.12 * torso
+          tot++
+          if (layers.some((l) => l && l.rgba && (l.seenAsBody || covered[l.name]) && !l.soft && alphaAt(l, hx, hy, o.alpha))) sup++
+        }
+        if (globalThis.__rigDebug) console.log('[hand-refine]', side, 'sup', sup, tot, 'fore', Math.round(fore), 'cands', layers.filter((l) => l && l.seenAsBody).map((l) => l.name + (covered[l.name] ? ':cov' : '')).join(' '))
+        if (sup >= 0.34 * tot) continue
+        let best = null, bd = Infinity
+        for (const l of layers) {
+          if (!l || !l.rgba || !l.seenAsBody || l.synthetic || covered[l.name] || used.has(l.name) || l.name === headLayer) continue
+          if (Math.max(l.width, l.height) > 0.6 * torso || Math.max(l.width, l.height) < 0.12 * torso) continue
+          // its opaque point nearest the elbow, and its centre
+          let nx = 0, ny = 0, nd = Infinity, cx = 0, cy = 0, n = 0
+          const st = Math.max(1, Math.round(Math.max(l.width, l.height) / 80))
+          for (let py = 0; py < l.height; py += st) for (let px = 0; px < l.width; px += st) {
+            if (l.rgba[(py * l.width + px) * 4 + 3] <= o.alpha) continue
+            const wx = l.place.x + px + 0.5 - l.width / 2, wy = l.place.y + l.height / 2 - py - 0.5
+            cx += wx; cy += wy; n++
+            const dd = Math.hypot(wx - E[0], wy - E[1]); if (dd < nd) { nd = dd; nx = wx; ny = wy }
+          }
+          if (!n) continue
+          cx /= n; cy /= n
+          if (nd > 1.4 * fore || nd < 0.4 * fore) continue
+          if (headC && Math.hypot(cx - headC[0], cy - headC[1]) < 0.5 * headR) continue
+          if (nd < bd) { bd = nd; best = { l, w: [nx + 0.15 * (cx - nx), ny + 0.15 * (cy - ny)] } }
+        }
+        if (best) { used.add(best.l.name); k3[iw] = [best.w[0], best.w[1], Math.max(0.5, Wr[2])]; movedHand = true }
+      }
+      // two ankles found on the same foot (one leg stands behind the other): the foot drawn as
+      // its own layer of bare skin that no part lies on is the other leg's
+      {
+        const aL = kps[15], aR = kps[16]
+        if (aL && aR && aL[2] >= o.minConf && aR[2] >= o.minConf && Math.hypot(aL[0] - aR[0], aL[1] - aR[1]) < 0.2 * torso) {
+          const [ik, ia, it] = aL[2] < aR[2] ? [13, 15, 17] : [14, 16, 18]
+          const K = kps[ik], A = kps[ia]
+          if (K && K[2] >= o.minConf) {
+            const shin = Math.hypot(A[0] - K[0], A[1] - K[1])
+            let best = null, bd = Infinity
+            for (const l of layers) {
+              if (!l || !l.rgba || !l.seenAsBody || l.synthetic || covered[l.name] || used.has(l.name) || l.name === headLayer || headKept.has(l.name)) continue
+              if (Math.max(l.width, l.height) > 0.8 * torso || Math.max(l.width, l.height) < 0.12 * torso) continue
+              if (l.place.y > K[1]) continue                      // a foot is below its knee
+              const pts = []
+              let cx = 0, cy = 0
+              const st = Math.max(1, Math.round(Math.max(l.width, l.height) / 80))
+              for (let py = 0; py < l.height; py += st) for (let px = 0; px < l.width; px += st) {
+                if (l.rgba[(py * l.width + px) * 4 + 3] <= o.alpha) continue
+                const wx = l.place.x + px + 0.5 - l.width / 2, wy = l.place.y + l.height / 2 - py - 0.5
+                pts.push([wx, wy]); cx += wx; cy += wy
+              }
+              if (!pts.length) continue
+              cx /= pts.length; cy /= pts.length
+              const dc = Math.hypot(cx - K[0], cy - K[1])
+              if (dc > 1.6 * shin || dc < 0.5 * shin) continue
+              // the ankle: the layer's point about a shin's length from the knee, on the way to its centre
+              const want = [K[0] + (cx - K[0]) / dc * shin, K[1] + (cy - K[1]) / dc * shin]
+              let an = null, ad = Infinity, toe = null, td = -1
+              for (const q of pts) {
+                const d1 = Math.hypot(q[0] - want[0], q[1] - want[1]); if (d1 < ad) { ad = d1; an = q }
+                const d2 = Math.hypot(q[0] - K[0], q[1] - K[1]); if (d2 > td) { td = d2; toe = q }
+              }
+              if (ad > 0.25 * shin) continue
+              const far = Math.hypot(cx - A[0], cy - A[1])
+              if (far < 0.12 * torso) continue                    // the foot both ankles are already on
+              if (dc < bd) { bd = dc; best = { l, an, toe } }
+            }
+            if (best) {
+              used.add(best.l.name)
+              k3[ia] = [best.an[0], best.an[1], Math.max(0.5, A[2])]
+              if (k3[it]) k3[it] = [best.toe[0], best.toe[1], Math.max(0.5, k3[it][2] || 0)]
+              movedHand = true
+            }
+          }
+        }
+      }
+      if (movedHand) return figureLayers(layers, k3, Object.assign({}, opts, { _refinedHand: true }))
+    }
     if (!o._refined && AB && AB.analyzeLayer && AB._internals && AB._internals.trunkPath) {
       const own = {}
       for (const [name, v] of Object.entries(seen)) if (v.fits && covered[name]) (own[v.fits] = own[v.fits] || []).push(layers.find((l) => l && l.name === name))
@@ -590,7 +691,7 @@
         }
       }
     }
-    return { wraps, layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer, head: !!l.ofHead })), headLayer, rigid: headLayer && headC && loose.some((l) => l.ofHead) ? { [headLayer]: { c: [headC[0], headC[1] - 0.1 * rFace], r: 0.85 * rFace } } : null, covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
+    return { wraps, layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }, l.seenAsBody && !l.rigid && !headKept.has(l.name) && l.name !== headLayer ? { rigid: true, bodyPiece: true } : {}) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer, head: !!l.ofHead })), headLayer, rigid: headLayer && headC && loose.some((l) => l.ofHead) ? { [headLayer]: { c: [headC[0], headC[1] - 0.1 * rFace], r: 0.85 * rFace } } : null, covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
   }
 
   /**
@@ -656,6 +757,7 @@
       if (k === 'hard') return Object.assign({}, l, { hintOverride: { part: 'accessory', side: null }, rigid: true })
       // an eye, a brow, a mouth drawn as its own layer: a face feature on the head, never a chain
       if (k === 'face') return Object.assign({}, l, { rigid: true, faceFeature: true })
+      if (k === 'body') return Object.assign({}, l, { seenAsBody: true })
       return l
     })
   }
