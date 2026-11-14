@@ -661,6 +661,26 @@
       const score = (fm ? Math.sqrt(A.area * B.area) * (0.2 + 0.8 * Math.min(fA, fB)) : Math.min(A.area, B.area) * (0.5 + ratio)) * (0.3 + sym)
       if (score > bestScore) { bestScore = score; pair = [A, B] }
     }
+    // the joints model saw both eyes: the dark blob nearest each is that eye (a three-quarter
+    // face, where the far eye is small and off the middle, failed the pairing and got one lid)
+    if (!pair && opts && opts.eyeHints && opts.eyeHints.length === 2) {
+      const [h0, h1] = opts.eyeHints, hd = Math.hypot(h0[0] - h1[0], h0[1] - h1[1])
+      const pool0 = upper.filter((b) => !isBrow(b))
+      // (the far eye of a turned face is flat and was taken for a brow: next to the hint any dark blob counts)
+      const pool = pool0.concat(darkBlobs.filter((b) => !pool0.includes(b)))
+      const near = (h, not) => { let best = null, bd = 0.45 * hd; for (const b of pool) { if (b === not) continue; const d = Math.hypot(b.cx - h[0], b.cy - h[1]); if (d < bd) { bd = d; best = b } } return best }
+      const A = near(h0, null), B = A ? near(h1, A) : null
+      if (globalThis.__rigDebug) console.log('[eye-hints]', JSON.stringify(opts.eyeHints.map((q) => q.map(Math.round))), 'pool', pool.map((b) => Math.round(b.cx) + ',' + Math.round(b.cy) + ':' + b.area).join(' '), 'cands', eyeCands.length, 'picked', !!A, !!B, 'face', [fx0, fy0, fx1, fy1].map(Math.round).join())
+      if (A && B) pair = [A, B]
+      else if (A || near(h1, null)) {
+        // one eye found, the other hidden in dark hair or too faint: it is the same shape, where the joints put it
+        const S = A || near(h1, null), from = A ? h0 : h1, to = A ? h1 : h0
+        const dx = Math.round(to[0] - from[0]), dy = Math.round(to[1] - from[1])
+        const C = Object.assign({}, S, { cx: S.cx + dx, cy: S.cy + dy, bx0: S.bx0 + dx, bx1: S.bx1 + dx, by0: S.by0 + dy, by1: S.by1 + dy, guessed: true })
+        if (S.px) C.px = S.px.map((i) => i + dy * w + dx).filter((i) => i >= 0 && i < w * h)
+        if (C.bx0 >= 0 && C.by0 >= 0 && C.bx1 < w && C.by1 < h) pair = [S, C]
+      }
+    }
     const eyes = pair ? pair.slice().sort((p, q) => p.cx - q.cx) : (eyeCands.length ? [eyeCands[0]] : [])
     if (!eyes.length) return null
     // face axis: along the eye line, "up" toward the image top
@@ -719,7 +739,8 @@
       const rx = b.cx - midX, ry = b.cy - midY
       const along = rx * upx + ry * upy, across = rx * dxA + ry * dyA
       if (along > -0.16 * fh || along < -0.75 * fh) continue
-      if (Math.abs(across) > (eyes.length === 2 ? 0.45 * Math.abs(eyes[1].cx - eyes[0].cx) + 0.1 * fw : 0.3 * fw)) continue
+      // (a turned face: the eyes are close together and the mouth sits off their middle)
+      if (Math.abs(across) > (eyes.length === 2 ? Math.max(0.45 * Math.abs(eyes[1].cx - eyes[0].cx) + 0.1 * fw, opts && opts.eyeHints ? 0.3 * fw : 0) : 0.3 * fw)) continue
       const score = b.area * (1 + 4 * b.red / 255 + b.dark / 255)
       if (score > mScore) { mScore = score; mouth = b }
     }
@@ -1552,7 +1573,9 @@
           const cy = (t.top + t.bottom) / 2
           if (cy < yTop - 0.45 * H || t.area > 0.4 * maxArea || t.area < 0.002 * maxArea) continue
           const img = faceComposite(t.l, L)
-          const det = detectFace(img.rgba, img.w, img.h, Object.assign({}, o, { featureMask: img.feat || null }))
+          const ftL = L.find((q) => q.figureTrunk && q.figureTrunk.eyes)
+          const eyeHints = ftL ? ftL.figureTrunk.eyes.map((e) => [e[0] - t.l.place.x + t.l.width / 2, t.l.place.y + t.l.height / 2 - e[1]]) : null
+          const det = detectFace(img.rgba, img.w, img.h, Object.assign({}, o, { featureMask: img.feat || null, eyeHints }))
           if (!det || !det.eyes || !det.eyes.length) continue
           const score = 10 * det.eyes.length + (det.mouth ? 3 : 0) + 5 * (cy - yBot) / H
           if (!best || score > best.score) best = { l: t.l, det, score, img }
@@ -1578,7 +1601,7 @@
     // the face, found first: the head bone, the crown and the scalp cap all depend on it
     const headEarly = L.filter((l) => l.analysis && (l.hint.part === 'head' || l.hint.part === 'face')).sort((a, b) => (a.hint.part === 'head') === (b.hint.part === 'head') ? b.analysis.area - a.analysis.area : (a.hint.part === 'head' ? -1 : 1))[0] || null
     if (headEarly && headEarly.rgba && !headEarly.faceImg) headEarly.faceImg = faceComposite(headEarly, L)
-    const faceDetEarly = headEarly && headEarly.faceDet !== undefined ? headEarly.faceDet : (o.faceDetect && headEarly && headEarly.faceImg ? detectFace(headEarly.faceImg.rgba, headEarly.faceImg.w, headEarly.faceImg.h, Object.assign({}, o, { featureMask: headEarly.faceImg.feat || null })) : null)
+    const faceDetEarly = headEarly && headEarly.faceDet !== undefined ? headEarly.faceDet : (o.faceDetect && headEarly && headEarly.faceImg ? detectFace(headEarly.faceImg.rgba, headEarly.faceImg.w, headEarly.faceImg.h, Object.assign({}, o, { featureMask: headEarly.faceImg.feat || null, eyeHints: (() => { const q = L.find((k) => k.figureTrunk && k.figureTrunk.eyes); return q ? q.figureTrunk.eyes.map((e) => [e[0] - headEarly.place.x + headEarly.width / 2, headEarly.place.y + headEarly.height / 2 - e[1]]) : null })() })) : null)
     if (headEarly) headEarly.faceDet = faceDetEarly
     const faceBoxEarly = faceDetEarly && faceDetEarly.faceBox && faceDetEarly.faceBox[3] - faceDetEarly.faceBox[1] >= 0.3 * (headEarly.analysis.bbox[3] - headEarly.analysis.bbox[1]) ? faceDetEarly.faceBox : (headEarly ? headEarly.analysis.bbox.slice() : null)
     // hair drawn BEHIND the face or the body is invisible where they cover it, and hair
@@ -1706,7 +1729,7 @@
     }
     plan.rootLayer = rootLayer.name
     const head = (rootLayer.figureRoot ? L.filter((l) => l.analysis) : layersOk).filter((l) => l !== rootLayer && (l.hint.part === 'head' || l.hint.part === 'face')).sort((a, b) => (a.hint.part === 'head') === (b.hint.part === 'head') ? b.analysis.area - a.analysis.area : (a.hint.part === 'head' ? -1 : 1))[0] || null
-    const faceDet = head ? (head.faceDet !== undefined ? head.faceDet : (o.faceDetect && head.rgba ? detectFace(head.rgba, head.width, head.height, o) : null)) : null
+    const faceDet = head ? (head.faceDet !== undefined ? head.faceDet : (o.faceDetect && head.rgba ? detectFace(head.rgba, head.width, head.height, Object.assign({}, o, { eyeHints: rootLayer.figureTrunk && rootLayer.figureTrunk.eyes ? rootLayer.figureTrunk.eyes.map((e) => [e[0] - head.place.x + head.width / 2, head.place.y + head.height / 2 - e[1]]) : null })) : null)) : null
     // the face box (skin region, layer px): a whole-head layer's bbox includes hair buns and
     // pigtails, which are not the head
     const faceBox = faceDet && faceDet.faceBox && faceDet.faceBox[3] - faceDet.faceBox[1] >= 0.3 * (head.analysis.bbox[3] - head.analysis.bbox[1]) ? faceDet.faceBox : (head ? [head.analysis.bbox[0], head.analysis.bbox[1], head.analysis.bbox[2], head.analysis.bbox[3]] : null)

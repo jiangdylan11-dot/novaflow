@@ -153,7 +153,7 @@
     }
     const path = [[0, hp]].concat([0.25, 0.5, 0.75].map((t) => { const m = mids.find((q) => q.t === t); return m ? [t, m.p] : null }).filter(Boolean), [[1, sh]])
     const onPath = (t) => { for (let i = 1; i < path.length; i++) if (t <= path[i][0]) return lerp(path[i - 1][1], path[i][1], (t - path[i - 1][0]) / Math.max(1e-6, path[i][0] - path[i - 1][0])); return sh }
-    const figureTrunk = { waist: onPath(0.4), neckBase: sh.slice(), neckTop: chin.slice(), headTop: crown }
+    const figureTrunk = { waist: onPath(0.4), neckBase: sh.slice(), neckTop: chin.slice(), headTop: crown, eyes: J.lEye && J.rEye ? [J.lEye.slice(0, 2), J.rEye.slice(0, 2)] : null }
     parts.push({ name: 'body', pts: [crotch, ...mids.map((q) => q.p), sh, chin], radii: [rTorso, ...mids.map(() => rTorso), rTorso, Math.max(6, 0.3 * rTorso)], hint: { part: 'body', side: null }, figureTrunk })
     /**
      * The hand past a wrist as a picture of its own, when its fingers can be read: the piece of

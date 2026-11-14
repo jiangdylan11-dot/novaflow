@@ -347,6 +347,15 @@
           if (rig.head) { const h0 = lean(rig.head, 2.5 * I * F), h1 = lean(rig.head, 9 * I * F); keyRotate(a, rig.head, [[0, h0, 'io'], [T / 6, 0, 'io'], [T * 2 / 3, h1, 'io'], [T, h0]]) }
           if (rig.by.has('body_up_turn')) keyTranslate(a, 'body_up_turn', [[0, [0, 0], 'io'], [T / 2, [-H * 0.08 * I, 0], 'io'], [T, [0, 0]]])
           arms.forEach((n, i) => keyTranslate(a, n, [[0, [0, 0], 'io'], [T / 2, [H * 0.005 * I, H * (i === 0 ? 0.025 : 0.004) * I], 'io'], [T, [0, 0]]]))
+          // the rest of the template idle, on the controllers a template rig has: the lower-body
+          // turn swings against the upper one, the breasts lag the breath, the face dips, the
+          // mouth eases, the eyes blink once at the start of the loop
+          if (rig.by.has('body_down_turn')) keyTranslate(a, 'body_down_turn', [[0, [0, 0], 'io'], [T / 2, [H * 0.1 * I, 0], 'io'], [T, [0, 0]]])
+          for (const n of ['breast_l', 'breast_r']) if (rig.by.has(n)) keyTranslate(a, n, [[0, [H * 0.0071 * I, H * 0.0013 * I], 'io'], [T / 4, [-H * 0.0078 * I, -H * 0.0028 * I], 'io'], [3 * T / 4, [H * 0.0218 * I, H * 0.0053 * I], 'io'], [T, [H * 0.0071 * I, H * 0.0013 * I]]])
+          if (rig.by.has('face_turn')) keyTranslate(a, 'face_turn', [[0, [0, 0], 'io'], [T / 2, [0, -H * 0.013 * I], 'io'], [T, [0, 0]]])
+          if (rig.by.has('mouth_down')) keyTranslate(a, 'mouth_down', [[0, [0, 0], 'io'], [T / 2, [H * 0.0098 * I, 0], 'io'], [T, [0, 0]]])
+          // (both lids or none: a rig with one eyelid controller would wink)
+          if (rig.by.has('eyes_l_up') && rig.by.has('eyes_r_up')) for (const n of ['eyes_l_up', 'eyes_r_up']) keyTranslate(a, n, [[0, [0, 0], 'io'], [0.1, [-H * 0.0096, 0], 'io'], [0.2, [0, 0], 'io'], [T, [0, 0]]])
           wind = 0.05 * I
           break
         }
