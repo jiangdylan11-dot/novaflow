@@ -266,5 +266,5 @@ test('the effect and motion entries run without a parent window',()=>{
  const sandbox={window:{NovaFlowFxMaker:{resourceOutputName:(p,fb)=>String(p.resourceName||fb)}},rt:{atlas:null}};vm.createContext(sandbox);
  vm.runInContext(editorSource.slice(start,end)+';this.sweepFolderFor=sweepFolderFor;',sandbox);
  assert.match(sandbox.sweepFolderFor('coin','gold','').prefix,/^[A-Za-z0-9_-]+$/);
- assert.ok(!/window\.parent !== window \? window\.parent\.NovaFlowMotionRecipes/.test(editorSource));void R;
+ assert.ok(!editorSource.includes('(window.parent !== window ? window.parent.NovaFlowMotionRecipes'));void R;
 });
