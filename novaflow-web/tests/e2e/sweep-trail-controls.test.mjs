@@ -46,16 +46,19 @@ test('resource names keep Chinese and punctuation; invalid paths are rejected be
   for(const name of ['../escape','a/b','a\\b','NUL','room.','x'.repeat(121)]) assert.throws(()=>FX.resourceOutputName({resourceName:name},'auto'));
 });
 
-test('slice folders and prefixes preserve names and number only actual collisions', () => {
+test('slice folders and prefixes are ASCII and number only actual collisions', () => {
   const text=source('spine-skeleton-editor.js');
   const func=text.slice(text.indexOf('  function sweepFolderFor('),text.indexOf('  const sweepDataUrl'));
-  const names=new Set();sandbox.rt={atlas:{findRegion:name=>names.has(name)}};sandbox.window={NovaFlowFxMaker:FX};
+  const names=new Set();sandbox.rt={atlas:{findRegion:name=>names.has(name)}};sandbox.window={NovaFlowFxMaker:FX};sandbox.window.parent=sandbox.window;
   vm.runInContext(func,sandbox);
   const paths=(...args)=>JSON.parse(JSON.stringify(sandbox.sweepFolderFor(...args)));
-  const first=paths('images/room','edge-stardust','星尘-A');
-  assert.deepEqual(first,{folder:'images/sweep/星尘-A',prefix:'星尘-A'});
+  // 2026-11-14 用户：特效生成的资源不能是中文. A Chinese resource name gives way to the picture and the scheme.
+  assert.deepEqual(paths('images/room','edge-stardust','星尘-A'),{folder:'images/sweep/room/edge-stardust',prefix:'room_edgestardust'});
+  const first=paths('images/room','edge-stardust','Stardust-A');
+  assert.deepEqual(first,{folder:'images/sweep/Stardust-A',prefix:'Stardust-A'});
   names.add('images/sweep/another/another_01');
-  assert.deepEqual(paths('images/room','edge-stardust','星尘-A'),first);
+  assert.deepEqual(paths('images/room','edge-stardust','Stardust-A'),first);
   names.add(first.folder+'/'+first.prefix+'_01');
-  assert.deepEqual(paths('images/room','edge-stardust','星尘-A'),{folder:'images/sweep/星尘-A_2',prefix:'星尘-A_2'});
+  assert.deepEqual(paths('images/room','edge-stardust','Stardust-A'),{folder:'images/sweep/Stardust-A_2',prefix:'Stardust-A_2'});
+  for(const p of Object.values(paths('图片/房间','edge-stardust','')))assert.match(p,/^[\x00-\x7f]+$/);
 });
