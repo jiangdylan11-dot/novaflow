@@ -8356,6 +8356,33 @@
       let ownLength = 0; for (const id of own) ownLength += Number(ctx.bones[id].data.length) || 0
       W = AW.confineToOwn(V, T, W, kept, isOwn, [first.worldX, first.worldY], ownLength)
     }
+    // a sleeve over an arm (a trouser leg, a glove): what lies on the limb follows the limb's
+    // bones, the chains keep what hangs off it
+    const wrap = !cover && rec.wraps && rec.wraps[L.slot]
+    if (wrap && wrap.length) {
+      const wl = wrap.map((w) => ({ id: names.indexOf(w.bone), r: w.r })).filter((w) => w.id > 0 && !segs[w.id].skip)
+      if (wl.length) {
+        const cols = wl.map((w) => { let k = kept.indexOf(w.id); if (k < 0) { kept.push(w.id); k = kept.length - 1 } return k })
+        const nb0 = W.length / n, nb = kept.length
+        if (nb !== nb0) { const W2 = new Float64Array(n * nb); for (let i = 0; i < n; i++) for (let k = 0; k < nb0; k++) W2[i * nb + k] = W[i * nb0 + k]; W = W2 }
+        for (let i = 0; i < n; i++) {
+          const x = V[2 * i], y = V[2 * i + 1]
+          let share = 0, tot = 0
+          const part = wl.map((w) => {
+            const g = segs[w.id], dx = g.bx - g.ax, dy = g.by - g.ay, l2 = dx * dx + dy * dy || 1
+            const t = Math.max(0, Math.min(1, ((x - g.ax) * dx + (y - g.ay) * dy) / l2))
+            const d = Math.hypot(x - g.ax - t * dx, y - g.ay - t * dy)
+            const sh = d <= 1.2 * w.r ? 1 : (d >= 2.5 * w.r ? 0 : (2.5 * w.r - d) / (1.3 * w.r))
+            share = Math.max(share, sh)
+            const q = 1 / Math.pow(d + 0.25 * w.r, 4); tot += q
+            return q
+          })
+          if (share <= 0) continue
+          for (let k = 0; k < nb; k++) W[i * nb + k] *= 1 - share
+          cols.forEach((k, j) => { W[i * nb + k] += share * part[j] / tot })
+        }
+      }
+    }
     W = AW.rigidIslands(V, T, W, kept.length).W
     // a head drawn with its hair: the face itself (a disc about the nose) stays whole on the head
     // bone, the hair chains only take the hair
@@ -13286,7 +13313,7 @@
     // what was built for which layer, by bone name (自动权重 binds each layer to its own bones)
     const roles = new Map()
     next.bones.forEach((bn, i) => { const rb = built.bones[i]; if (rb) roles.set(bn.name, { layer: rb.layer || null, role: rb.role || null, kind: rb.kind || null }) })
-    state.autoRig = { roles, slotBone: built.slotBone || {}, covered: (built.figure && built.figure.covered) || null, rigid: (built.figure && built.figure.rigid) || null, face: built.face && built.face.det ? built.face : null }
+    state.autoRig = { roles, slotBone: built.slotBone || {}, covered: (built.figure && built.figure.covered) || null, rigid: (built.figure && built.figure.rigid) || null, wraps: (built.figure && built.figure.wraps) || null, face: built.face && built.face.det ? built.face : null }
     const r = edit(`自动架设完成 · ${built.bones.length} 根骨`, () => ({ json: Ops.tidy(Ops.prepare(next)) }))
     if (!r) throw new Error('自动架设的结果没能载入')
     return { bones: built.bones.length, ik: ((built.json && built.json.ik) || []).length, layers: layers.length }

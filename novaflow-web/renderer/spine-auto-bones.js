@@ -2528,6 +2528,19 @@
       if (continues >= 0) { par = { index: continues, dist: 0 }; why = 'continues-limb' }
       // the figure pass saw this piece lying in a hand (a sword, a staff): it is held
       if (par.index < 0 && l.holdLayer) { const h = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === l.holdLayer && b.kind === 'bone'); if (h.index >= 0) { par = h; why = 'held' } }
+      // a tassel, a string of beads, a ribbon whose top lies on a hard thing (a weapon, a hat, a
+      // lantern): it hangs from that thing, not from whichever body bone is nearest
+      if (par.index < 0 && l.soft) {
+        const rr = 12 + (rootC.r || 0)
+        let bestK = null, bestA = Infinity
+        for (const k of layersOk) {
+          if (!k.done || !(k.rigid || k.holdLayer) || k === l) continue
+          let on = depthAt(k, rx, ry) > 0
+          for (let q = 0; q < 16 && !on; q++) { const rq = q < 8 ? rr : 2 * rr; on = depthAt(k, rx + rq * Math.cos(q * Math.PI / 4), ry + rq * Math.sin(q * Math.PI / 4)) > 0 }
+          if (on && k.analysis.area < bestA) { bestA = k.analysis.area; bestK = k }
+        }
+        if (bestK) { const h = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === bestK.name && (b.kind === 'bone' || !b.kind)); if (h.index >= 0) { par = h; why = 'on-hard' } }
+      }
       if (par.index < 0 && !part && role === 'strand') {
         // an unnamed wisp: on the head when it lies on the face / head layer, else on the
         // hair lock it overlaps most (the studio hangs stray wisps from the hair, not from
@@ -2551,17 +2564,27 @@
         const onHead = nearFace || Array.from(l.overlap.keys()).some((k) => k.done && (k.hint.part === 'face' || k.hint.part === 'head')) || (cap && Math.abs(c0[0] - cap.cx) < cap.halfW && c0[1] > cap.yMin - 0.6 * faceHt)
         if (onHead) { par = { index: headId, dist: 0 }; why = 'head' }
       }
-      if (par.index < 0 && rootC.smallest) { par = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === rootC.smallest.name); why = 'smallest-containing' }
+      if (par.index < 0 && rootC.smallest && !(rootLayer.figureRoot && !l.holdLayer && rootC.smallest.hint.part === 'hand' && (l.rigid || part === 'accessory'))) { par = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === rootC.smallest.name); why = 'smallest-containing' }
       if (par.index < 0 && part === 'accessory') {
         // anything else hangs from the layer it overlaps most
-        let bestK = null, bestOv = 0; for (const [k, ov] of l.overlap) if (k.done && ov > bestOv) { bestOv = ov; bestK = k }
+        // (with the joints known the figure pass says what a hand holds: a flower at the belt that a
+        // resting hand lies on is not in that hand)
+        const noHand = (k) => !!rootLayer.figureRoot && !l.holdLayer && k.hint.part === 'hand'
+        let bestK = null, bestOv = 0; for (const [k, ov] of l.overlap) if (k.done && !noHand(k) && ov > bestOv) { bestOv = ov; bestK = k }
         if (bestK) { par = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === bestK.name); why = 'most-overlap' }
       }
       if (par.index < 0 && rootC.touchTrunk) { par = sk.nearest(rx, ry, (b) => b.role === 'trunk' || (b.role === 'connector' && b.layer === rootLayer.name)); why = 'trunk' }
       if (par.index < 0) { par = sk.nearest(rx, ry, (b) => notMine(b) && (allowed.has(b.layer) || b.role === 'trunk')); why = 'nearest-overlapping' }
       if (par.index < 0) { par = sk.nearest(rx, ry, notMine); why = 'nearest' }
       if (par.index < 0) par = { index: rootId, dist: 0 }
-      if (role === 'plate' && par.index >= 0 && sk.bones[par.index] && sk.bones[par.index].role === 'strand') {
+      if (rootLayer.figureRoot && !l.holdLayer && (l.rigid || role === 'plate') && why !== 'on-hard' && why !== 'head' && par.index >= 0 && sk.bones[par.index] && sk.bones[par.index].role === 'strand') {
+        // a hard thing nobody holds (a flower at the belt, a pouch, a buckle) sits on the body:
+        // never on the lock of hair or the sleeve that happens to pass under it
+        const figL = new Set(layersOk.filter((k) => (k.figure || k.figureTrunk || k.figureRoot) && k.hint.part !== 'hand').map((k) => k.name))
+        const alt = sk.nearest(rx, ry, (b) => notMine(b) && b.kind === 'bone' && figL.has(b.layer))
+        if (alt.index >= 0) { par = alt; why = 'on-figure' }
+      }
+      if (role === 'plate' && par.index >= 0 && sk.bones[par.index] && sk.bones[par.index].role === 'strand' && (!rootLayer.figureRoot || l.holdLayer)) {
         // held pieces belong to the hand: hand bones first, then the arm, then any rigid bone
         const lb = l.analysis.bbox
         const reach = Math.max(2 * R, 120, 0.5 * Math.hypot(lb[2] - lb[0], lb[3] - lb[1]))
@@ -2638,6 +2661,7 @@
         }
       }
       const meta = { kind: 'bone', layer: l.name, role, side: l.hint.side }
+      if (o.debug && (o.debug === true || o.debug === l.name)) console.log(`[auto-bones] ${l.name} parent ${par.index >= 0 ? sk.bones[par.index].name : "-"} why ${why}`)
       const base = l.name.replace(/[^A-Za-z0-9_\u4e00-\u9fff]+/g, '_')
       let counter = 0
       const namer = () => `${base}_${++counter}`
@@ -2865,6 +2889,13 @@
           oL = Object.assign({}, oL, { fingerMax: fm })
         }
         if (!strips && !flowDone) growBranches(sk, l, g, rootC.n, -1, chainParent, cutRole, namer, meta, oL, 0, seen)
+        if (role === 'extremity' && l.fingers) {
+          // every finger hangs from the palm bone (a finger that left the axis at the wrist itself
+          // was hung from the wrist's parent and stayed behind when the hand turned)
+          const own = []
+          for (let i = created; i < sk.bones.length; i++) if (sk.bones[i].layer === l.name && sk.bones[i].kind === 'bone') own.push(i)
+          if (own.length > 1) for (const i of own.slice(1)) if (!own.includes(sk.bones[i].parent)) sk.bones[i].parent = own[0]
+        }
         const snapTo = continues >= 0 ? continues : snapTip
         if (snapTo >= 0) {
           // the shin starts at the thigh's tip, the hand at the wrist, a branching lock at
@@ -3138,6 +3169,7 @@
       const ready = (l) => {
         if (l.figure && l.figure.after && remaining.some((k) => k.name === l.figure.after)) return false
         if (l.holdLayer && remaining.some((k) => k.name === l.holdLayer)) return false
+        if (l.soft && remaining.some((k) => k !== l && (k.rigid || k.holdLayer))) return false
         const waits = WAIT_FOR[l.hint.part] || []
         for (const k of remaining) if (k !== l && waits.includes(k.hint.part) && !(WAIT_FOR[k.hint.part] || []).includes(l.hint.part)) return false
         return true

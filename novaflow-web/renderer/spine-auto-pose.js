@@ -342,6 +342,15 @@
         if (share >= o.partFrac) partsOn.push(p.name)
         if (share >= o.limbFrac && p.name !== 'body') strong.add(l.name + '|' + limbOf(p.name))
       })
+      // (a hand resting on the hip lies on the skirt, the belt flower, the bead string there: cloth
+      // and what sits on the trunk is not in the hand)
+      { const bk = partLayers.findIndex((q) => q.name === 'body'); if (held && (l.soft || (bk >= 0 && hit[bk] >= 0.35 * area))) held = null
+        // nor is a round thing beside the trunk (a flower at the belt, a pouch): what a hand holds
+        // is long, or held away from the body
+        if (held && Math.max(l.width, l.height) < 2 * Math.min(l.width, l.height)) {
+          const dx = sh[0] - hp[0], dy = sh[1] - hp[1], t = Math.max(0, Math.min(1, ((l.place.x - hp[0]) * dx + (l.place.y - hp[1]) * dy) / (dx * dx + dy * dy)))
+          if (Math.hypot(l.place.x - hp[0] - t * dx, l.place.y - hp[1] - t * dy) < Math.max(shW, hpW)) held = null
+        } }
       // on the figure: half of the layer lies on it, or it carries two whole parts (a coat with wide sleeves)
       const variant = held ? Object.assign({}, l, { holdLayer: held }) : l   // lying in a hand: held by it
       if (partsOn.length && !prop && !l.soft && !l.rigid && (on / area >= o.coverFrac || (partsOn.length >= 2 && on / area >= 0.3))) {
@@ -548,7 +557,40 @@
       }
       if (moved) return figureLayers(layers, k2, Object.assign({}, opts, { _refined: true }))
     }
-    return { layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer, head: !!l.ofHead })), headLayer, rigid: headLayer && headC && loose.some((l) => l.ofHead) ? { [headLayer]: { c: [headC[0], headC[1] - 0.1 * rFace], r: 0.85 * rFace } } : null, covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
+    // a sleeve, a trouser leg, a glove: a layer of its own that is drawn over a limb and lies on
+    // most of that limb's length follows the limb there (its chains only carry what hangs off).
+    // A cloak that passes BEHIND the arm is drawn under the layer that shows the arm and is left.
+    const wraps = {}
+    {
+      const order = new Map(); layers.forEach((l, i) => { if (l) order.set(l.name, i) })
+      for (const l of kept) {
+        if (!l || l.synthetic || l.rigid || l.faceFeature || l.seenAsHair || l.name === headLayer) continue
+        const hp = hintOf(l)
+        if (hp === 'hair' || hp === 'accessory' || hp === 'face' || hp === 'head') continue
+        const on0 = {}
+        for (const pt of parts) {
+          if (!/^(arm|forearm|leg|shin)_/.test(pt.name)) continue
+          const A = pt.pts[0], B = pt.pts[pt.pts.length - 1]
+          let on = 0; const n = 12
+          for (let i = 0; i < n; i++) { const t = (i + 0.5) / n; if (alphaAt(l, A[0] + t * (B[0] - A[0]), A[1] + t * (B[1] - A[1]), o.alpha)) on++ }
+          on0[pt.name] = on / n
+          if (on < 0.6 * n) continue
+          let under = false
+          for (const [cl, ps] of Object.entries(covered)) if (ps.includes(pt.name) && order.get(cl) > order.get(l.name)) under = true
+          if (under) continue
+          ;(wraps[l.name] = wraps[l.name] || []).push({ part: pt.name, r: Math.max(pt.radii[0], pt.radii[pt.radii.length - 1]) })
+        }
+        // the sleeve that wraps the upper arm and runs on over part of the forearm follows both
+        // (and the other way round): the elbow must not tear it
+        if (wraps[l.name]) for (const [u, v] of [['arm', 'forearm'], ['forearm', 'arm'], ['leg', 'shin'], ['shin', 'leg']]) for (const sd of ['l', 'r']) {
+          const has = (nm) => wraps[l.name].some((w) => w.part === nm)
+          if (!has(`${u}_${sd}`) || has(`${v}_${sd}`) || !(on0[`${v}_${sd}`] >= 0.25)) continue
+          const pt = parts.find((q) => q.name === `${v}_${sd}`)
+          if (pt) wraps[l.name].push({ part: pt.name, r: Math.max(pt.radii[0], pt.radii[pt.radii.length - 1]) })
+        }
+      }
+    }
+    return { wraps, layers: partLayers.concat(loose, kept.map((l) => (l && !l.synthetic ? Object.assign({}, l, { noLimb: true }) : l))), loose: loose.map((l) => ({ name: l.name, of: l.ofLayer, head: !!l.ofHead })), headLayer, rigid: headLayer && headC && loose.some((l) => l.ofHead) ? { [headLayer]: { c: [headC[0], headC[1] - 0.1 * rFace], r: 0.85 * rFace } } : null, covered, parts: parts.map((p) => ({ name: p.name, pts: p.pts, radii: p.radii })), joints: J }
   }
 
   /**
@@ -581,7 +623,13 @@
       for (const b of built.bones) if (b.layer === lp.name && b.kind === 'bone') covered[lp.of].push(b.name)
       delete built.slotBone[lp.name]; delete built.attachment[lp.name]
     }
-    built.figure = { covered, joints: fig.joints, parts: fig.parts.map((p) => p.name), rigid: fig.rigid || null }
+    const wraps = {}
+    for (const [layer, ws] of Object.entries(fig.wraps || {})) {
+      if (covered[layer]) continue
+      const list = ws.flatMap((w) => (bonesOf[w.part] || []).map((bone) => ({ bone, r: w.r })))
+      if (list.length) wraps[layer] = list
+    }
+    built.figure = { covered, wraps, joints: fig.joints, parts: fig.parts.map((p) => p.name), rigid: fig.rigid || null }
     return built
   }
 
