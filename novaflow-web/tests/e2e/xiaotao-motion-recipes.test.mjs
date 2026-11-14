@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import {FOART_TOOL_SCHEMA,FOART_MOTIONS,FOART_TOOL_SYSTEM,validateFoartPlan,foartPlanResponseFormat} from '../../packages/shared/src/foart-tool-plan.mjs';
 const recipesSource=await readFile(new URL('../../renderer/motion-recipes.js',import.meta.url),'utf8');
 const opsSource=await readFile(new URL('../../renderer/spine-structure.ops.js',import.meta.url),'utf8');
-const editorSource=await readFile(new URL('../../renderer/spine-skeleton-editor.js',import.meta.url),'utf8');
+const editorSource=(await readFile(new URL('../../renderer/spine-skeleton-editor.js',import.meta.url),'utf8')).replace(/\r\n/g,'\n');
 const toolsSource=await readFile(new URL('../../renderer/xiaotao-foart-tools.js',import.meta.url),'utf8');
 const htmlSource=await readFile(new URL('../../renderer/spine-skeleton-editor.html',import.meta.url),'utf8');
 const indexSource=await readFile(new URL('../../renderer/index.html',import.meta.url),'utf8');
@@ -258,4 +258,13 @@ test('names written into a project by effects and motions are ASCII',async()=>{
  for(const s of proj.json?proj.json.slots:JSON.parse(proj.skeleton.text).slots)assert.match(s.name,/^[A-Za-z0-9_-]+$/);
  const aifx=await readFile(new URL('../../renderer/aifx-repaint-runtime.js',import.meta.url),'utf8');
  assert.ok(aifx.includes("return ['aifx', asciiPart(template)"));assert.ok(aifx.includes("await adoptSource(blob, (asciiPart(info.name) || 'template') + '.mp4')"));
+});
+
+test('the effect and motion entries run without a parent window',()=>{
+ const R=recipes();
+ const start=editorSource.indexOf('  function sweepFolderFor('),end=editorSource.indexOf('\n  }\n',start)+4;
+ const sandbox={window:{NovaFlowFxMaker:{resourceOutputName:(p,fb)=>String(p.resourceName||fb)}},rt:{atlas:null}};vm.createContext(sandbox);
+ vm.runInContext(editorSource.slice(start,end)+';this.sweepFolderFor=sweepFolderFor;',sandbox);
+ assert.match(sandbox.sweepFolderFor('coin','gold','').prefix,/^[A-Za-z0-9_-]+$/);
+ assert.ok(!/window\.parent !== window \? window\.parent\.NovaFlowMotionRecipes/.test(editorSource));void R;
 });

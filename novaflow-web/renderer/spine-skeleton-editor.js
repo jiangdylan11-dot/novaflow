@@ -9462,7 +9462,7 @@
   function sweepFolderFor(image, scheme, resourceName = '') {
     // everything that lands in the project is ASCII (2026-11-14 用户：特效生成的资源不能是中文): a Chinese resource
     // name or picture name gives way to the picture's ASCII part and the scheme id
-    const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
+    const R = window.NovaFlowMotionRecipes || (window.parent && window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
     const ascii = (v, fb) => (R && R.asciiName ? R.asciiName(v, fb) : (/^[A-Za-z0-9_-]+$/.test(String(v || '')) ? String(v) : fb))
     const stem = ascii(image.split('/').pop(), 'img')
     scheme = ascii(scheme, 'sweep')
@@ -14009,7 +14009,7 @@
   // animations 小桃 made in this editor session (its own motions may be added onto; the artist's are left alone)
   const agentMadeAnims = new Set(), agentBeside = new Map()
   async function agentMotion(op) {
-    const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
+    const R = window.NovaFlowMotionRecipes || (window.parent && window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
     if (!R) throw new Error('动作合成模块未加载')
     const def = R.MOTIONS[op.motion]
     if (!def) throw new Error('不支持的动作：' + op.motion)
@@ -14351,7 +14351,7 @@
     return { fx, place, def, read, tone: turn ? tone : null }
   }
   async function agentAddEffect(op) {
-    const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
+    const R = window.NovaFlowMotionRecipes || (window.parent && window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
     if (!R || !R.mergeEffect) throw new Error('特效模块未加载')
     const allowed = ['action', 'operation', 'effect', 'name', 'time', 'targets', 'scale', 'x', 'y', 'under', 'flip', 'rotation', 'tone']
     if (Object.keys(op).some((k) => !allowed.includes(k))) throw new Error('特效参数无效')
