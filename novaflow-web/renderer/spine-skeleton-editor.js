@@ -14000,6 +14000,8 @@
   // 小桃 动作 (motion-recipes.js): one sentence → a whole animation in one undo step. A character
   // project that has no rig yet (only root + picture layers, e.g. fresh from 美工 一键拆图) first
   // runs the app's own 自动架设 → 自动蒙皮 → 自动权重 on every picture, as the panels would.
+  // animations 小桃 made in this editor session (its own motions may be added onto; the artist's are left alone)
+  const agentMadeAnims = new Set(), agentBeside = new Map()
   async function agentMotion(op) {
     const R = window.NovaFlowMotionRecipes || (window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
     if (!R) throw new Error('动作合成模块未加载')
@@ -14022,18 +14024,25 @@
     }
     let out = null
     const label = '小桃动作 ' + (op.name || def.label)
-    // 小桃 names the animation it means: an existing one is written into (an empty one filled, one with keys
-    // gets this motion added on top), never copied to <name>_2 — the planner then chased the copies' names.
+    // 小桃 names the animation it means. An empty one is filled; one 小桃 made earlier gets this motion added on
+    // top (copying it to <name>_2 made the planner chase the copies' names). An animation the artist made is never
+    // changed unless merge is asked for: the motion goes into a new animation next to it.
+    // the artist's animation named again: the copy made beside it last time takes the motion
+    const besideOf = op.name !== undefined && op.merge === undefined && agentBeside.has(op.name) && (state.json.animations || {})[agentBeside.get(op.name)] ? agentBeside.get(op.name) : null
+    if (besideOf) op = { ...op, name: besideOf }
     const named = op.name !== undefined && !!(state.json.animations || {})[op.name]
     const empty = named && R.animationLength(state.json.animations[op.name]) <= 0
-    const merge = op.merge !== undefined ? op.merge : named && !empty
+    const own = named && agentMadeAnims.has(op.name)
+    const merge = op.merge !== undefined ? op.merge : named && !empty && own
     const applied = edit(label, (j) => {
       out = R.synthesize(j, { motion: op.motion, name: op.name || def.label, targets: op.targets, duration: op.duration, intensity: op.intensity, loop: op.loop, delay: op.delay, merge, replace: empty, facing: op.facing })
       return { json: out.json }
     })
     if (applied === null || !out || !state.json.animations[out.name]) throw new Error('动作没有写入，已保留原工程')
+    agentMadeAnims.add(out.name)
+    if (named && !empty && !merge) agentBeside.set(op.name, out.name)
     state.anim = out.name; setMode('animate'); state.frame = 0; refresh()
-    return { phase: 'applied', operation: 'motion', motion: op.motion, animation: out.name, into: named ? (empty ? 'filled' : 'merged') : 'new', report: out.report, prepared, context: agentContext() }
+    return { phase: 'applied', operation: 'motion', motion: op.motion, animation: out.name, into: named ? (empty ? 'filled' : merge ? 'merged' : 'beside') : 'new', ...(named && !empty && !merge ? { kept: op.name } : {}), report: out.report, prepared, context: agentContext() }
   }
 
   // 小桃 特效 (fx-library + motion-recipes.js mergeEffect): one of the built-in effects laid into an

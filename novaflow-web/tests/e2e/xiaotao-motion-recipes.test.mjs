@@ -102,7 +102,7 @@ test('the editor wires motion through one undo step and rigs a bare character fi
   runBatch:async(layers,label)=>{calls.push(label);return {done:layers.length}},
   edit:(label,fn)=>{calls.push(label);const r=fn(state.json);state.history.push(state.json);state.json=r.json;return r}};
  sandbox.window.parent=sandbox.window;vm.createContext(sandbox);
- const start=editorSource.indexOf('  async function agentMotion(op) {'),end=editorSource.indexOf('  function agentAction(op) {',start);assert.ok(start>0&&end>start);
+ const start=editorSource.indexOf('  const agentMadeAnims = new Set()'),end=editorSource.indexOf('  function agentAction(op) {',start);assert.ok(start>0&&end>start);
  vm.runInContext(editorSource.slice(start,end)+';this.agentMotion=agentMotion;',sandbox);
  const r=await sandbox.agentMotion({action:'animation',operation:'motion',motion:'idle'});
  assert.deepEqual(calls,['rig','自动蒙皮','自动权重','小桃动作 待机']);assert.equal(r.animation,'待机');assert.equal(r.prepared.bones,12);
@@ -236,9 +236,9 @@ test('a motion named after an existing animation goes into it; the planner conte
  const R=recipes(),src=uiProject();src.animations['弹出']={};src.animations['中奖']={bones:{root:{scale:[{time:0,x:1,y:1},{time:.5,x:1.2,y:1.2}]}}};
  const filled=R.synthesize(src,{motion:'ui_pop',name:'弹出',replace:true});assert.equal(filled.name,'弹出');assert.ok(R.animationLength(filled.json.animations['弹出'])>0);
  const merged=R.synthesize(src,{motion:'ui_pop',name:'中奖',merge:true});assert.equal(merged.name,'中奖');assert.ok(!merged.json.animations['中奖_2']);
- assert.ok(editorSource.includes("const merge = op.merge !== undefined ? op.merge : named && !empty"));
+ assert.ok(editorSource.includes("const merge = op.merge !== undefined ? op.merge : named && !empty && own"));
  assert.ok(editorSource.includes("merge, replace: empty, facing: op.facing"));
  assert.ok(editorSource.includes('return agentBudget({ active: true, loaded: true'));
  assert.ok(editorSource.includes('agentLean({kind,...c,bones:c.bones.slice()},AGENT_CONSTRAINT_DEFAULTS)'));
- assert.match(FOART_TOOL_SYSTEM,/naming an existing animation writes into it/);
+ assert.match(FOART_TOOL_SYSTEM,/an animation the project already had is left as it is/);
 });
