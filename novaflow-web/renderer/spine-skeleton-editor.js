@@ -7668,9 +7668,10 @@
   /**
    * Shift+click (user 2026-11-14: Shift picks across kinds too): everything listed between the
    * last clicked row and this one - bones, slots, constraints and images alike; Ctrl+Shift adds
-   * the range to what is picked.
+   * the range to what is picked. Alt+Shift keeps the old same-kind range (user 2026-11-15): only rows
+   * of the clicked row's kind (bones, slots, draw-order slots, one constraint kind, images).
    */
-  function selectTreeRange(rowEl, additive) {
+  function selectTreeRange(rowEl, additive, sameKind) {
     const clicked = treeRowItem(rowEl)
     if (!clicked) return
     const rows = [...document.querySelectorAll('#tree .row[data-key]')]
@@ -7680,7 +7681,8 @@
     let from = rows.findIndex((r) => inOrder(r) === inOrder(rowEl) && sameItem(treeRowItem(r), anchor))
     if (from < 0) from = rows.findIndex((r) => sameItem(treeRowItem(r), anchor))
     if (from < 0 || to < 0) { select(clicked, additive); return }
-    const items = rows.slice(Math.min(from, to), Math.max(from, to) + 1).map(treeRowItem).filter(Boolean)
+    const items = rows.slice(Math.min(from, to), Math.max(from, to) + 1)
+      .filter((r) => !sameKind || inOrder(r) === inOrder(rowEl)).map(treeRowItem).filter((it) => it && (!sameKind || it.kind === clicked.kind))
     const bones = additive ? selectedBones() : [], slots = additive ? selectedSlots() : []
     const cons = additive ? selectedCons() : [], atts = additive ? selectedAttachments() : []
     for (const it of items) {
@@ -7771,7 +7773,7 @@
           'data-match': m && m.direct.has('s:' + s.name) ? '1' : null, style: pad(depth),
           onclick: (e) => {
             if (pick) { resolvePick('slot', s.name); return }
-            if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return }
+            if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey, e.altKey); return }
             select({ kind: 'slot', name: s.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
           },
           oncontextmenu: (e) => { e.preventDefault(); sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() },
@@ -7796,7 +7798,7 @@
           'data-rename': JSON.stringify({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }),
           'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(attDepth),
           'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
-          onclick: (e) => { if (pick) { resolvePick('slot', s.name); return } if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return } selectAttachment({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, e) },
+          onclick: (e) => { if (pick) { resolvePick('slot', s.name); return } if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey, e.altKey); return } selectAttachment({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, e) },
         },
         visDot(shown, () => { if (inMultiSelection('att', a.name, { slot: s.name, skin: 'default' })) setSelectedVisible(!shown, false, { slot: s.name, name: a.name }); else showAttachment(s.name, shown ? null : a.name) }, null, true),
         caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : a.type === 'path' ? 'color:#ff8a1f' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
@@ -7855,7 +7857,7 @@
           'data-match': m && m.direct.has(key) ? '1' : null, style: pad(depth),
           onclick: (e) => {
             if (pick) { resolvePick('bone', b.name); return }
-            if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return }
+            if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey, e.altKey); return }
             state.anchor = b.name
             // a pick from search results opens its parents, so it stays in view once the search is cleared
             select({ kind: 'bone', name: b.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
@@ -7895,7 +7897,7 @@
           const row = h('div', {
             class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && ((state.multiCons || []).some((x) => x.kind === kind && x.name === c.name) || (state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name))) ? '1' : null, style: pad(2),
             'data-key': `${kind}:${c.name}`,
-            onclick: (e) => { if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return } select({ kind, name: c.name }, e.ctrlKey || e.metaKey) },
+            onclick: (e) => { if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey, e.altKey); return } select({ kind, name: c.name }, e.ctrlKey || e.metaKey) },
           }, caret(null), h('span', { class: 'ico', 'data-tree-icon': kind, html: ICON[kind] }), h('span', { class: 'label' }, c.name),
           h('span', { class: 'meta' }, { ik: 'IK', transform: '变换', path: '路径' }[kind]),
           animOn() ? h('span', { class: 'lkey' }, keyBtn(kind === 'path' ? pathTracks(c.name) : [[kind, c.name]], () => { if (!(inMultiSelection(kind, c.name) && keySelectedNow())) keyConstraintNow(kind, c.name) }, `给 ${c.name} 打关键帧`)) : null)
@@ -7931,7 +7933,7 @@
             title: `${cl ? `在剪裁「${cl.name}」里；` : ''}+ 上移一层，- 下移一层（支持多选）`, style: pad(2) + (cl ? `;--clip:${cl.tint}` : ''),
             onclick: (e) => {
               if (pick) { resolvePick('slot', name); return }
-              if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey); return }
+              if (e.shiftKey) { selectTreeRange(e.currentTarget, e.ctrlKey || e.metaKey, e.altKey); return }
               select({ kind: 'slot', name }, e.ctrlKey || e.metaKey, { noReveal: true })
             },
           }, dot, caret(null), h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, name), h('span', { class: 'meta' }, sl ? sl.bone : ''), h('span', { class: 'end' }, jump))
