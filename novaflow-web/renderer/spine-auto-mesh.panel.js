@@ -407,7 +407,7 @@
     if (!operation) { setStatus('已取消'); return { canceled: true } }
     const depth = (f) => (f.webkitRelativePath || f.name).split('/').length
     // NovaFlow's own project file (保存工程 → NovaFlow 工程): every project in it opens in the editor
-    const nfproj = list.filter((f) => /\.nfproj$/i.test(f.name)).sort((x, y) => depth(x) - depth(y))[0]
+    const nfproj = list.filter((f) => /\.(?:foart|nfproj)$/i.test(f.name)).sort((x, y) => depth(x) - depth(y))[0]
     if (nfproj) {
       if (!nfproj.size) {
         const message = '工程文件为空（0 字节），无法打开，请让对方重新保存后再发送'
@@ -3415,12 +3415,12 @@
     // a line between the file-by-file import above and the project buttons (user 2026-10-13)
     const divider = el('div', { height: '1px', margin: '4px 0', background: '#272727', width: '100%' })
     divider.setAttribute('data-novaflow-import-divider', '1')
-    // 导入工程 / 保存工程: NovaFlow's own project file (.nfproj, every project of the tree in one file).
+    // 导入工程 / 保存工程: NovaFlow's own project file (.foart, every project of the tree in one file).
     // 导入工程 picks the file (a folder picker cannot), 保存工程 writes it straight away (user 2026-10-13)
     const editorApi = () => { const ed = window.NovaFlowSkeletonEditor; return ed && ed.api ? ed.api() : null }
     const nfPicker = el('input', { position: 'fixed', left: '-10000px', top: '0', width: '1px', height: '1px', opacity: '0' })
     nfPicker.type = 'file'
-    nfPicker.accept = '.nfproj'
+    nfPicker.accept = '.foart,.nfproj'
     nfPicker.setAttribute('data-nf-project-open-input', '1')
     nfPicker.addEventListener('change', () => {
       const f = nfPicker.files && nfPicker.files[0]
@@ -3485,7 +3485,7 @@
     open.type = 'button'
     styleButton(open, false)
     open.setAttribute('data-nf-project-open', '1')
-    open.title = '选择工程所在的文件夹（放 .nfproj 的那个），工程和图片一起打开；工程文件夹搬到哪里都能打开。打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
+    open.title = '选择工程所在的文件夹（放 .foart 工程文件的那个），工程和图片一起打开；工程文件夹搬到哪里都能打开。打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
     // the folder, not the file: a browser grants a picked file only, never the img folder beside
     // it, so a moved project lost its pictures (user 2026-11-06, D: → E:). The folder grant covers both.
     open.addEventListener('click', async () => {
@@ -3508,7 +3508,7 @@
     save.type = 'button'
     styleButton(save, false)
     save.setAttribute('data-nf-project-save', '1')
-    save.title = '保存骨架、动画和外部图片路径（.nfproj），图片默认在工程同目录；Ctrl+S 保存，Ctrl+Shift+S 另存为'
+    save.title = '保存骨架、动画和外部图片路径（.foart），图片默认在工程同目录；Ctrl+S 保存，Ctrl+Shift+S 另存为'
     const saveProject = (as) => {
       const a = editorApi()
       if (!a || !a.loaded || !a.loaded()) { sayHere('先导入工程', 'warn'); return }

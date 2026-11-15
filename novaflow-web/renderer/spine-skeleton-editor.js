@@ -670,9 +670,15 @@
     status(`已删除工程 ${name}`, 'ok')
   }
 
-  // .nfproj v2 contains data and external image references only. The image directory defaults
+  // .foart v2 contains data and external image references only. The image directory defaults
   // to the project file's own directory; v1 embedded images remain readable for migration.
-  const PROJECT_FILE_FORMAT = 'novaflow-spine-projects'
+  // Saves always write .foart with the Foart format id; older .nfproj files (legacy format id)
+  // still open, and saving one writes a new .foart beside it instead of overwriting the old file.
+  const PROJECT_FILE_FORMAT = 'foart-spine-projects'
+  const PROJECT_FILE_FORMATS = [PROJECT_FILE_FORMAT, 'novaflow-spine-projects']
+  const PROJECT_EXT = '.foart'
+  const PROJECT_FILE_RE = /\.(?:foart|nfproj)$/i
+  const projectStem = (name) => String(name || '').replace(PROJECT_FILE_RE, '')
   const externalPageUploads = new WeakMap()
 
   // Old project references may call an ordinary PNG "PMA". Validate its soft pixels,
@@ -706,7 +712,7 @@
    * changed or went away on disk (edited, replaced or deleted in the image folder) the browser will
    * not read it any more (NotReadableError - user 2026-10-16: 保存工程 showed "The requested file
    * could not be read…"). Then the picture as the editor holds and shows it is written instead, and
-   * kept in memory for the next save. These bytes never go into .nfproj.
+   * kept in memory for the next save. These bytes never go into .foart.
    */
   async function projectImageBlob(im) {
     try { await im.blob.arrayBuffer(); return im.blob } catch {
@@ -746,7 +752,7 @@
     if (!dir) return null
     if (handle && dir.resolve) {
       const parts = await dir.resolve(handle)
-      if (!parts || !parts.length) throw new Error('请选择 .nfproj 所在目录，或包含它的上级目录')
+      if (!parts || !parts.length) throw new Error('请选择工程文件所在目录，或包含它的上级目录')
       return projectSubdir(dir, parts.slice(0, -1))
     }
     return dir
@@ -862,7 +868,7 @@
       images.push({ fileName, path, pma: pagePma(s.images, fileName, s.pma) })
     }
     s.projectImageRefs = images; s.imagePath = imagePath; s.projectDirectory = directory
-    // A copied .nfproj keeps its folderKey until the image directory changes. Do not
+    // A copied .foart keeps its folderKey until the image directory changes. Do not
     // overwrite the other file's slot with this directory.
     let existing = null
     try { existing = await folderDbDo('readonly', (store) => store.get(s.folderKey)) } catch { existing = null }
@@ -885,7 +891,7 @@
     return { bytes: new Uint8Array(await gz.arrayBuffer()), count: list.length, missing }
   }
 
-  // The .nfproj this tree was saved to (or opened from, when nothing else was open): 保存工程 and
+  // The .foart this tree was saved to (or opened from, when nothing else was open): 保存工程 and
   // Ctrl+S write over it without a dialog; Ctrl+Shift+S (另存为) picks a new one (user 2026-10-16:
   // 保存了工程后 CTRL+S 快捷覆盖保存，否则每次都弹框). Kept for the page's session.
   let projectFile = null
@@ -907,7 +913,7 @@
             h('div', {}, `当前已打开 ${projects.length} 个工程，选中：${state.name}`),
             h('div', {}, '新增独立工程：保留已打开的工程，新增一个工程。'),
             h('div', {}, '替换全部工程：关闭当前所有工程，清空编辑状态，再打开新内容；全部未保存的修改会丢失。'),
-            h('div', {}, '打开 .nfproj 后保存回新文件；其他导入首次保存时重新选择位置。')),
+            h('div', {}, '打开工程文件后保存回该文件（旧工程另存为 .foart）；其他导入首次保存时重新选择位置。')),
           h('div', { class: 'ft' },
             h('button', { class: 'btn', type: 'button', onclick: () => done('replace') }, '替换全部工程'),
             h('button', { class: 'btn primary', type: 'button', onclick: () => done('append') }, '新增独立工程'))))
@@ -916,7 +922,7 @@
     })
     return projectChoice
   }
-  const NFPROJ_TYPES = [{ description: 'Foart 工程', accept: { 'application/octet-stream': ['.nfproj'] } }]
+  const NFPROJ_TYPES = [{ description: 'Foart 工程', accept: { 'application/octet-stream': [PROJECT_EXT] } }]
 
   const EMPTY_PROJECT_MESSAGE = '工程文件为空（0 字节），无法打开，请让对方重新保存后再发送'
 
@@ -1027,7 +1033,7 @@
   }
 
   /**
-   * 保存工程: every open project into one .nfproj. The dialog stays inside the user gesture
+   * 保存工程: every open project into one .foart. The dialog stays inside the user gesture
    * (a big tree must not be serialized first, or the browser drops the click). showSaveFilePicker
    * still creates an empty file immediately, and createWritable() without keepExistingData
    * truncates before write — so the bytes are checked first (non-empty gzip, 1f 8b) and only
@@ -1048,12 +1054,12 @@
       if (as) separateFolderKeys()
       const { bytes, count, missing } = await projectFileBytes(directory)
       assertProjectBytes(bytes)
-      const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' })), download: name + '.nfproj' })
+      const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' })), download: name + PROJECT_EXT })
       document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
-      status(`已保存 ${name}.nfproj：请将工程文件放在「${directory.name}」，图片保留在外部文件夹${missing.length ? `；缺少 ${missing.length} 张图片，已保留引用和全部编辑内容` : ''}`, 'ok')
-      return { name: name + '.nfproj', count, missing }
+      status(`已保存 ${name}${PROJECT_EXT}：请将工程文件放在「${directory.name}」，图片保留在外部文件夹${missing.length ? `；缺少 ${missing.length} 张图片，已保留引用和全部编辑内容` : ''}`, 'ok')
+      return { name: name + PROJECT_EXT, count, missing }
     }
-    let handle = !as && projectFile ? projectFile : null
+    let handle = !as && projectFile && !/\.nfproj$/i.test(projectFile.name || '') ? projectFile : null
     if (handle) {
       let perm = handle.queryPermission ? await handle.queryPermission({ mode: 'readwrite' }) : 'granted'
       if (perm !== 'granted' && handle.requestPermission) perm = await handle.requestPermission({ mode: 'readwrite' }).catch(() => 'denied')
@@ -1063,7 +1069,7 @@
     let createdEmpty = false
     let directory = null
     if (!handle) {
-      try { handle = await window.showSaveFilePicker({ suggestedName: opts && opts.name ? name + '.nfproj' : (projectFile && projectFile.name) || name + '.nfproj', types: NFPROJ_TYPES, ...(state.imageFolder && state.imageFolder.handle ? { startIn: state.imageFolder.handle } : {}) }) } catch (error) { if(error?.name==='AbortError')return null;throw error }
+      try { handle = await window.showSaveFilePicker({ suggestedName: (opts && opts.name ? name : (projectFile && projectStem(projectFile.name)) || name) + PROJECT_EXT, types: NFPROJ_TYPES, ...(state.imageFolder && state.imageFolder.handle ? { startIn: state.imageFolder.handle } : {}) }) } catch (error) { if(error?.name==='AbortError')return null;throw error }
       const created = await handle.getFile().catch(() => null)
       createdEmpty = !created || created.size === 0
     }
@@ -1093,7 +1099,7 @@
     saveProjectFileNow({ as }).catch((e) => status('保存工程失败：' + ((e && e.message) || e), 'error'))
   }
 
-  /** A folder key that is not shared with another .nfproj cache slot. */
+  /** A folder key that is not shared with another .foart cache slot. */
   function mintFolderKey() {
     if (typeof newFolderKey === 'function') return newFolderKey()
     mintFolderKey.n = (mintFolderKey.n || 0) + 1
@@ -1152,7 +1158,7 @@
   }
 
   /**
-   * Two .nfproj files that share a folderKey must not share one cache slot once
+   * Two .foart files that share a folderKey must not share one cache slot once
    * their image directories differ. A matching path keeps the key.
    */
   async function folderKeyIsDuplicate(key, imagePath, directory, parentParts, record) {
@@ -1263,13 +1269,13 @@
   /**
    * 导入工程 picks the project's folder, not the file (user 2026-11-06: "SPINE 工程随便怎么放都能打开").
    * A browser grants a picked file only, never the img folder beside it, so a project moved
-   * from D: to E: opened without pictures. The folder grant covers the .nfproj and its pictures.
+   * from D: to E: opened without pictures. The folder grant covers the .foart and its pictures.
    */
   async function openProjectFolder(dir, options = {}) {
-    if (!dir || typeof dir.entries !== 'function') throw new Error('请选择存放 .nfproj 的工程文件夹')
+    if (!dir || typeof dir.entries !== 'function') throw new Error('请选择存放 Foart 工程文件的文件夹')
     const found = []
-    for await (const [name, child] of dir.entries()) if (child && child.kind === 'file' && /\.nfproj$/i.test(name)) found.push(child)
-    if (!found.length) throw new Error(`文件夹「${dir.name}」里没有 Foart 工程文件（.nfproj），请选择存放 .nfproj 的那个文件夹`)
+    for await (const [name, child] of dir.entries()) if (child && child.kind === 'file' && PROJECT_FILE_RE.test(name)) found.push(child)
+    if (!found.length) throw new Error(`文件夹「${dir.name}」里没有 Foart 工程文件（.foart），请选择存放工程文件的那个文件夹`)
     found.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }))
     const picked = found.length === 1 ? found[0] : await chooseProjectInFolder(found, dir.name)
     if (!picked) return 0
@@ -1294,7 +1300,7 @@
     })
   }
 
-  /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
+  /** Opens a .foart: its projects come in after the ones already open; its picked one is picked. */
   async function openProjectFile(data, handle, options = {}) {
     const blob = data instanceof Blob ? data : new Blob([data])
     if (!blob.size) {
@@ -1304,7 +1310,7 @@
     const wasEmpty = !projects.length
     let d
     try { d = JSON.parse(await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text()) } catch { throw new Error('不是 Foart 工程文件') }
-    if (!d || d.format !== PROJECT_FILE_FORMAT || ![1, 2].includes(d.version) || !Array.isArray(d.projects) || !d.projects.length) throw new Error('不是受支持的 Foart 工程文件')
+    if (!d || !PROJECT_FILE_FORMATS.includes(d.format) || ![1, 2].includes(d.version) || !Array.isArray(d.projects) || !d.projects.length) throw new Error('不是受支持的 Foart 工程文件')
     const operation = await chooseProjectOperation('import', options.operation)
     if (!operation) return 0
     let directory = options.directory && options.directory.handle
@@ -1439,7 +1445,7 @@
     return d.projects.length
   }
 
-  /** A file picker grants the .nfproj only, not its sibling PNGs. Reconnect in place,
+  /** A file picker grants the .foart only, not its sibling PNGs. Reconnect in place,
    * keeping current edits and the original file untouched; never borrow a different rig's folder. */
   async function connectProjectImageDirectory() {
     const project = projects[activeProject], json = state.json, context = state.projectAccessContext
@@ -1447,7 +1453,7 @@
     const root = await pickDirectory({ mode: 'read', startIn: context.handle })
     if (!root) return false
     const found = await locateReadableProject(context.data, context.handle, [root])
-    if (!found) throw new Error(`请选择包含「${context.handle?.name || context.data.name || '.nfproj'}」的工程文件夹`)
+    if (!found) throw new Error(`请选择包含「${context.handle?.name || context.data.name || PROJECT_EXT}」的工程文件夹`)
     if (projects[activeProject] !== project || state.json !== json) throw new Error('工程已切换或修改，请返回此工程重新连接')
     const directory = await projectSubdir(root, found.parentParts)
     const imageDir = await projectSubdir(root, projectPath(state.imagePath || '.', found.parentParts))
@@ -3429,7 +3435,7 @@
 
   // The image folder survives the project file (user 2026-10-16: 导入了工程为什么还要重新指定文件夹，
   // 不是应该默认和上次一样吗): a file cannot hold a folder, so every project carries a key
-  // (folderKey, saved in the .nfproj) and the folder handle is kept in this browser's IndexedDB
+  // (folderKey, saved in the .foart) and the folder handle is kept in this browser's IndexedDB
   // under it. Opening the project file gets the folder back - at once when the browser still
   // allows it (the 启动助手 always does), else after one click (浏览器要求重新确认).
   const FOLDER_DB = 'novaflow-skeleton-image-folders'
@@ -4236,8 +4242,8 @@
         body.append(
           h('label', { class: 'fl' }, '工程名称'), nameIn,
           h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'Foart 工程'))),
-          h('div', { class: 'hint' }, `${projects.length} 个工程的骨架、动画和图片路径存成 .nfproj；图片保留在外部文件夹，默认与工程同目录，传给别人时一起复制。`),
-          h('button', { class: 'btn primary big', onclick: runNovaflow }, `保存 Foart 工程（${o.name || '工程'}.nfproj）`))
+          h('div', { class: 'hint' }, `${projects.length} 个工程的骨架、动画和图片路径存成 .foart；图片保留在外部文件夹，默认与工程同目录，传给别人时一起复制。`),
+          h('button', { class: 'btn primary big', onclick: runNovaflow }, `保存 Foart 工程（${o.name || '工程'}.foart）`))
         return
       }
       body.append(
@@ -14885,9 +14891,9 @@
     rigUsed: () => !!(state.json && state.json.bones.length > 1 && Object.values(state.json.animations || {}).some((a) => a && a.bones && Object.keys(a.bones).length)),
     restoreProject: () => { if (state.initialJson && state.initialJson !== state.json) edit('已还原为导入时的工程', () => ({ json: state.initialJson })) },
     openExport: (opts) => openExportDialog(opts),
-    /** NovaFlow's own project file (.nfproj): every project in it comes in after the open ones. */
+    /** NovaFlow's own project file (.foart): every project in it comes in after the open ones. */
     openProjectFile: (data, handle, options) => openProjectFile(data, handle, options),
-    /** 导入工程: the picked folder's .nfproj (one asks which) with its pictures */
+    /** 导入工程: the picked folder's .foart (one asks which) with its pictures */
     openProjectFolder: (dir, options) => openProjectFolder(dir, options),
     newProject: (name, options) => newProject(name, options),
     chooseProjectOperation,
@@ -14899,7 +14905,7 @@
     useImageFolder: (files) => useImageFolder(files),
     /** A folder picked on disk (showDirectoryPicker) as the project's live image folder; the atlas, if any, unpacked into it. */
     useFolderHandle: (handle) => useFolderHandle(handle),
-    /** 保存工程: every open project into one .nfproj (a save dialog), no options. */
+    /** 保存工程: every open project into one .foart (a save dialog), no options. */
     saveProjectFile: (opts) => saveProjectFileNow(opts),
     projectCount: () => projects.length,
     openAtlasSettings: () => openAtlasSettings(),

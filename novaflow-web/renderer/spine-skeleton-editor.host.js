@@ -223,7 +223,7 @@
     }
     return null
   }
-  // A .nfproj opens directly in the editor; the native tool host can still have a null project.
+  // A .foart (or legacy .nfproj) opens directly in the editor; the native tool host can still have a null project.
   const projectProps = () => reactProps((p) => p.spineSubEditor === 'bone' && typeof p.setProject === 'function' && 'activeAnimationName' in p && 'selectedBoneName' in p)
   const isWorkspaceProps = (p) => typeof p.onSelectedBoneNameChange === 'function' && typeof p.onActiveAnimationNameChange === 'function'
   const workspaceProps = () => reactProps(isWorkspaceProps)

@@ -89,7 +89,7 @@
   ],
   "fileAssociations": [
     {
-      "ext": "nfproj",
+      "ext": "foart",
       "name": "Foart 工程",
       "description": "Foart 工程（骨骼动画）",
       "icon": "electron/assets/foart-brush.ico"

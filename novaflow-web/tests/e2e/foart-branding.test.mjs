@@ -46,7 +46,7 @@ test('product rename keeps license, protocol and persisted configuration identit
   assert.equal(worker.executableName, 'Foart');
   assert.equal(worker.appId, 'com.novaflow.worker');
   assert.deepEqual(worker.protocols[0].schemes, ['novaflow']);
-  assert.equal(worker.fileAssociations[0].ext, 'nfproj');
+  assert.equal(worker.fileAssociations[0].ext, 'foart');
   assert.equal(worker.nsis.shortcutName, 'Foart');
   const adminPackage = JSON.parse(await read('admin/electron-builder.json'));
   assert(adminPackage.files.includes('build/foart-logo-dark.svg'), 'admin installer must include its new wordmark');

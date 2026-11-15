@@ -13,4 +13,4 @@
 
 `node novaflow-web/tools/sync-brand-assets.mjs` 同步网页、启动助手、后台和 React 入口，`--check` 验证副本；网页和后台构建自动同步。旧资源别名继续提供当前画稿。网页资源使用笔刷修订查询参数或新图标文件名，避免命中旧图标缓存。
 
-为了保留用户数据，原有 appId、授权载荷产品标识、`novaflow:` 协议、`.nfproj`、用户数据目录、环境变量和内部 API 不改名。
+为了保留用户数据，原有 appId、授权载荷产品标识、`novaflow:` 协议、用户数据目录、环境变量和内部 API 不改名。工程文件新保存统一为 `.foart`（格式标识 `foart-spine-projects`），旧 `.nfproj` 仍可打开。
