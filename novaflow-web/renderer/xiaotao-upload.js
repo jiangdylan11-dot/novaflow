@@ -503,12 +503,21 @@
           const node = await ready(() => slotNode(doc, destination.slots), `${destination.label}尚未就绪，素材已保留，请重试`);
           const key=destination.id==='last_frame'?'last_frame':'first_frame';
           const beforeResource=scope.NovaFlowAiSequenceGeneration?.optimizationContext?(await scope.NovaFlowAiSequenceGeneration.optimizationContext()).resources.find(resource=>resource.key===key):null;
-          assignFiles(node.querySelector?.('input') || node, [file], true);
-          node.setAttribute?.('data-novaflow-resource-occupied', '1');
-          if(scope.NovaFlowAiSequenceGeneration?.optimizationContext) await ready(async()=>{
+          const imported=async()=>{
             const context=await scope.NovaFlowAiSequenceGeneration.optimizationContext();
             return context.resources.some(resource=>resource.key===key&&resource.occupied&&resource.fileName===file.name&&resource.sourceId&&resource.sourceId!==beforeResource?.sourceId);
-          },'参考图片仍未导入完成，未提交生成');
+          };
+          // A slot drawn right after the mode switch can be redrawn once more and drop the file: hand it over again.
+          for(let attempt=0;attempt<3;attempt++){
+            const slot=attempt?slotNode(doc, destination.slots)||node:node;
+            assignFiles(slot.querySelector?.('input') || slot, [file], true);
+            slot.setAttribute?.('data-novaflow-resource-occupied', '1');
+            if(!scope.NovaFlowAiSequenceGeneration?.optimizationContext)break;
+            let done=false;
+            for(let i=0;i<(attempt<2?40:100)&&!done;i++){done=await imported();if(!done)await pause();}
+            if(done)break;
+            if(attempt===2)throw new Error('参考图片仍未导入完成，未提交生成');
+          }
         }
         // Importing the same file into the general resource list triggers another
         // React upload/render cycle. Generation references already own the file.
