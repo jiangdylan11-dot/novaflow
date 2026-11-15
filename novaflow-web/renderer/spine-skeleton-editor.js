@@ -6052,6 +6052,9 @@
       if (tool === 'aim' && names.length > 1) chain = poseChain(names, primary)
       if (chain) tool = 'chain'
     }
+    // a picked bone under another picked bone already moves with it: moving it too would double the offset
+    const picked = new Set(names)
+    for (const it of items) for (let q = rt.skeleton.findBone(it.name).parent; q; q = q.parent) if (picked.has(q.data.name)) { it.follows = true; break }
     const drag = { kind: 'bones', tool, items, pivot: [p.worldX, p.worldY], sx, sy, moved: false, axis: opts && opts.axis, chain }
     // Spine compensation (setup mode): children / images keep their place while their bone moves
     if (state.mode === 'setup' && (state.comp.bones || state.comp.images)) {
@@ -6107,6 +6110,7 @@
     for (const it of drag.items) {
       const t = { ...(state.temp.get(it.name) || {}) }
       if (drag.tool === 'move') {
+        if (it.follows) continue
         const nx = it.originW[0] + dx, ny = it.originW[1] + dy
         const p = it.parentM ? Ops.toLocal(it.parentM, nx, ny) : [nx, ny]
         t.x = p[0]; t.y = p[1]
@@ -6755,6 +6759,15 @@
         const s = state.sel
         // pressing one of several picked images drags them all (the pick stays)
         const inPicked = s && s.kind === 'att' && selectedAttachments().some((a) => a.slot === ih.slot && a.name === ih.name)
+        // several bones picked (Ctrl+A, Shift range): an image on a picked bone, or a picked image/slot, drags all picked bones
+        const slotBone = rt.skeleton.findSlot(ih.slot) && rt.skeleton.findSlot(ih.slot).bone.data.name
+        const ofPicked = state.multi.length > 1 && !inPicked && (state.multi.includes(slotBone) || state.multiSlots.includes(ih.slot) ||
+          (state.multiAtts || []).some((a) => a.slot === ih.slot && a.name === ih.name))
+        if (ofPicked) {
+          drag = boneDrag(state.multi.includes(slotBone) ? slotBone : state.sel && state.sel.kind === 'bone' && state.multi.includes(state.sel.name) ? state.sel.name : state.multi[0], sx, sy)
+          if (drag) capturePointer(e)
+          return
+        }
         if (!inPicked) select({ kind: 'att', name: ih.name, slot: ih.slot, skin: ih.skin }, false, { quiet: true })
         drag = attDrag(state.sel, sx, sy)
       } else if (state.tool === 'pose') {
