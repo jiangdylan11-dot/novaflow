@@ -7423,13 +7423,32 @@
   function dropRules(payload, target) {
     if (!payload || !target) return null
     if (payload.type === 'bone' && target.type === 'bone') {
-      if (payload.name === target.name || Ops.branch(state.json, payload.name).includes(target.name)) return null
-      if (bone(payload.name).parent === target.name || !bone(payload.name).parent) return null
-      return { mode: 'in', run: () => reparent(payload.name, target.name) }
+      // dragging one of several picked bones moves them all (user 2026-11-15); a picked bone under
+      // another picked bone stays with it, and the ones that cannot go there are left alone
+      const picked = selectedBones().includes(payload.name) ? selectedBones() : [payload.name]
+      const set = new Set(picked)
+      const names = picked.filter((n) => {
+        const b = bone(n)
+        if (!b || !b.parent || b.parent === target.name || Ops.branch(state.json, n).includes(target.name)) return false
+        for (let p = bone(b.parent); p; p = p.parent ? bone(p.parent) : null) if (set.has(p.name)) return false
+        return true
+      })
+      if (!names.length) return null
+      if (names.length === 1) return { mode: 'in', run: () => reparent(names[0], target.name) }
+      return { mode: 'in', run: () => {
+        const m = setupMatrices()
+        edit((r) => `已把 ${names.length} 根骨骼挂到 ${target.name} 下${orderNote(r)}`, (j) => {
+          let r = { json: j }
+          for (const n of names) r = Ops.reparentBone(r.json, n, target.name, m)
+          return withOrder(r)
+        })
+      } }
     }
     if (payload.type === 'slot' && target.type === 'bone') {
-      if (slotOf(payload.name).bone === target.name) return null
-      return { mode: 'in', run: () => setSlotBone(payload.name, target.name) }
+      const names = (state.multiSlots.includes(payload.name) ? state.multiSlots : [payload.name]).filter((n) => slotOf(n) && slotOf(n).bone !== target.name)
+      if (!names.length) return null
+      if (names.length === 1) return { mode: 'in', run: () => setSlotBone(names[0], target.name) }
+      return { mode: 'in', run: () => { const m = setupMatrices(); edit(`已把 ${names.length} 个插槽挂到 ${target.name}`, (j) => names.reduce((r, n) => Ops.setSlotProps(r.json, n, { bone: target.name }, m), { json: j })) } }
     }
     if (payload.type === 'att' && target.type === 'slot' && target.name !== payload.slot) {
       return { mode: 'in', run: (e) => transferAtt(payload, !(e && (e.ctrlKey || e.altKey)), target.name) }
