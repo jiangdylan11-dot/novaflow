@@ -98,7 +98,7 @@ test('failed native open cancels the pending operation and displays its known ch
 test('confirmed cancellation preserves the actual receipt instead of claiming no submission',async()=>{
   const current=policy();current.config.xiaotao_online.operation_text_chat_v3=true;
   const e=setup(()=>current,()=>({ok:false,billingConfirmed:true,providerSubmitted:true,error:'回复未完成',data:{quota:{status:'settled',settled_credits:1}}}));
-  e.sandbox.NovaFlowXiaotaoUpload={inferTask:()=>({surface:'chat',discussion:false,revision:false,named:[]})};
+  e.sandbox.NovaFlowXiaotaoUpload={inferTask:()=>({surface:'chat',discussion:false,revision:false,named:[]}),smallTalk:()=>true};
   e.controller.setModel('xai/grok-4.7');await e.controller.refreshPricingPolicy();
   assert.equal(await e.controller.send('你好'),false);
   assert.match(e.controller.state.status,/已按实际用量结算/);

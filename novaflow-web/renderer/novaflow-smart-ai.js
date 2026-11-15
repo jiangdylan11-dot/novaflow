@@ -1707,7 +1707,7 @@
     const placeholders = new Set();
     for (const token of tokens) {
       const placeholder = String(token?.placeholder || "");
-      if (!placeholder || placeholders.has(placeholder) || nextText.split(placeholder).length !== 2) {
+      if (!placeholder || placeholders.has(placeholder) || nextText.split(placeholder).length < 2) {
         return { ok: false, text: originalText, error: "AI 返回内容中的资源引用已损坏" };
       }
       placeholders.add(placeholder);
@@ -5235,7 +5235,11 @@
         throw new Error('绘图优化合同不匹配，未应用结果。');
       // A style redraw's prompt is assembled on the server and names pictures by <imageN>, not by the request's mentions.
       const assembled=response.modelPromptPolicy==='qwen21-style-redraw-v1';
-      const display=assembled?{ok:true,text:response.displayPrompt}:restoreSmartAiResourceMentions(response.displayPrompt,protectedPrompt),model=assembled?{ok:true,text:response.modelPrompt}:restoreSmartAiResourceMentions(response.modelPrompt,protectedPrompt);
+      // A planner's brief is working text: when the rewrite names a picture its own way (<image1>, 参考图1) instead of
+      // echoing the brief's mention, that is still the same picture, not a broken reference.
+      const restoreMention=text=>{const restored=restoreSmartAiResourceMentions(text,protectedPrompt);
+        return restored.ok||options.plannerBrief!==true?restored:{ok:true,text:(protectedPrompt?.tokens||[]).reduce((out,token)=>out.split(token.placeholder).join(token.token),String(text||''))};};
+      const display=assembled?{ok:true,text:response.displayPrompt}:restoreMention(response.displayPrompt),model=assembled?{ok:true,text:response.modelPrompt}:restoreMention(response.modelPrompt);
       if(!display.ok||!model.ok)throw smartAiResourceMentionError(display.error||model.error);
       // Engines that do not accept negative prompts must not erase the
       // user's existing editor value when a draft is reviewed or applied.

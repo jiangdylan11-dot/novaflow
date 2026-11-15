@@ -991,6 +991,57 @@
       } catch {}
       return null;
     }
+    // The generation page in front of the person, as a task: a sentence that names no kind of work is about it.
+    function pageTask(){
+      // Only a brain that can act reads a sentence this way; the local model keeps to chat and prompt writing.
+      const info=state.provider==='api'?activePromptSource():null;if(!info)return null;
+      if(info.surface==='video')return {surface:'video',mode:root.NovaFlowAiSequenceGeneration?.capture?.()?.genType||''};
+      if(info.surface==='audio')return {surface:'audio',mode:info.kind||''};
+      return {surface:'image',mode:root.__NovaFlowArtGenerate?.state?.mode||''};
+    }
+    // A prompt that already produced its result is finished business. It stays in the box, but it is the
+    // base of a new request only when that request is about it; a new picture or a new topic starts clean.
+    const usedKey='foart.xiaotao.used-prompts';
+    let usedPrompts={},seenOutputs=null,turnStalePrompt='',turnStaleRefs=false;
+    try{usedPrompts=JSON.parse(root.localStorage?.getItem(usedKey)||'{}')||{};}catch{}
+    function pagePictures(surface){
+      try{
+        if(surface==='video'){const video=root.NovaFlowAiSequenceGeneration?.capture?.();
+          return JSON.stringify([video?.genType,(video?.referenceSlots||[]).map(slot=>slot?.occupied?slot.name||slot.fileName||'1':''),(video?.h3References||[]).map(ref=>ref?.name||ref?.fileName||ref?.key||'')]);}
+        if(surface==='image')return JSON.stringify(Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).map(ref=>ref?(ref.name||'')+':'+(ref.file?.size||String(ref.dataUrl||'').length):''));
+      }catch{}
+      return '';
+    }
+    function markPromptUsed(surface){
+      const info=activePromptSource(),key=info?.surface==='video'?'video':info?.surface==='audio'?'audio':info?'image':'';
+      if(!key||key!==surface||!info.pagePrompt.trim())return;
+      usedPrompts[key]={text:info.pagePrompt.trim().slice(0,6000),pictures:pagePictures(key)};
+      try{root.localStorage?.setItem(usedKey,JSON.stringify(usedPrompts));}catch{}
+    }
+    // Generations started by hand count too: the page's results are watched, whoever pressed the button.
+    function watchFinished(){
+      try{
+        const now={image:Array.from(root.__NovaFlowArtGenerate?.state?.results||[]).length,video:(root.NovaFlowAiSequenceGeneration?.resources?.()||[]).filter(item=>item?.promptId).length};
+        if(seenOutputs)for(const key of ['image','video'])if(now[key]>seenOutputs[key])markPromptUsed(key);
+        seenOutputs=now;
+      }catch{}
+    }
+    // A prompt in the box that has not been generated yet: "开始吧" means this one.
+    function promptWaiting(){
+      const info=activePromptSource(),text=info?.pagePrompt?.trim();
+      return !!text&&usedPrompts[info.surface==='video'?'video':info.surface==='audio'?'audio':'image']?.text!==text.slice(0,6000);
+    }
+    // Whether the text left in the page's prompt box belongs to this request.
+    function pagePromptCarries(message,task,newPictures){
+      const info=activePromptSource(),text=info?.pagePrompt?.trim();
+      if(!text)return true;
+      if(/提示词|提示语|prompt|描述词|文案|输入框|页面(?:上|里)|写好的/i.test(message)||/^(?:请|帮我|给我|再)*(?:优化|润色|改写|整理|完善|增强)(?:一下)?[。.!！\s]*$/.test(message.trim())
+        ||uploadApi()?.goAhead?.(message)||uploadApi()?.missedResultRequest?.(message)===true)return true;
+      if(newPictures)return false;
+      const key=info.surface==='video'?'video':info.surface==='audio'?'audio':'image',used=usedPrompts[key];
+      if(!used||used.text!==text.slice(0,6000))return true;
+      return task?.revision===true&&used.pictures===pagePictures(key);
+    }
     function sourceBindingCurrent(pending,info) {
       try {const selected=businessModelSnapshot();
         return !!info && info.surface===pending.info.surface && info.kind===pending.info.kind && info.pagePrompt===pending.info.pagePrompt && Number.isSafeInteger(info.routeRevision) && info.routeRevision===pending.info.routeRevision &&
@@ -1052,7 +1103,7 @@
       if(!helper?.classifyPromptAction||!helper?.resolvePromptSource){
         if(/优化|润色|改写|整理|完善/.test(message)){state.error='提示词来源组件尚未就绪，未提交或扣费。';notify();return {stop:true};}return null;
       }
-      const action=helper.classifyPromptAction(message);if(action==='none')return null;
+      const action=helper.classifyPromptAction(message,{promptBrain:state.provider!=='api',hasResult:!!state.activeTask&&state.activeTask.surface===pageTask()?.surface});if(action==='none')return null;
       // "改成…再生成" is one request for the planner, never a reason to refuse.
       if(action==='compound')return null;
       let workspace;try{workspace=capturePromptWorkspace(info);}catch{state.error='无法确认当前工作区，请稍后重试；未提交或扣费。';state.status='未提交';notify();return {stop:true};}
@@ -1158,7 +1209,7 @@
       const taskText=uploads.positiveTaskText?.(message)??message;
       const nativeArtRequest=/抠图|拆图|钢笔|放大|扩图|画布|去背|姿势参考|智能补图|局部编辑|蒙版|对象替换/.test(taskText)&&!/视频|音视|音频|音效|音乐/.test(taskText);
       const productionRequest=nativeArtRequest||uploads.effectsPanelRequest?.(message)===true||/压缩|去黑|图集|查看器|粒子|模板|(?:转换|转为|转成).{0,8}(?:MP4|GIF|WEBM|MOV|AVI|MKV|格式)/i.test(taskText)||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
-      const plan = productionRequest||!place?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask);
+      const plan = productionRequest||!place?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask,pageTask());
       const notes = []; let failed = plan.reject.length > 0;
       deferredDrawing = deferDrawing ? plan.place.filter(item => item.destination?.id === 'img2img') : [];
       for (const item of plan.place) {
@@ -1176,7 +1227,7 @@
       state.pendingUploads=[];state.pendingUploadId='';
       if (notes.length) carryAsk = {role:'status', content:notes.join('\n')};
       state.staged = state.staged.filter(item => !ready.includes(item));
-      const task=uploads.inferTask?.(message,ready,state.activeTask);lastPreparedTask=task?task.surface+':'+task.mode:'';
+      const task=uploads.inferTask?.(message,ready,state.activeTask,pageTask());lastPreparedTask=task?task.surface+':'+task.mode:'';
       return true;
       } finally {state.uploading=false;notify();}
     }
@@ -1377,6 +1428,7 @@
     function invalidate(message = '绘图内容已变化，原建议已失效') {if (state.proposal || state.applied) {bridge.clearPrepared(); state.proposal = null; state.proposalSnapshot = null; state.applied = false; state.status = message; notify();}}
     function refreshContext() {
       if (state.localSession?.state === 'warm' && Number.isFinite(state.localSession.idleExpiresAt) && state.localSession.idleExpiresAt <= Date.now()) {state.localSession = null; onChange(state);}
+      watchFinished();
       if(activeMode==='media')return; // Media execution validates its own complete snapshot.
       if (state.applying) return;
       try {
@@ -1388,7 +1440,7 @@
       if(!explicitIncludeResult && !state.staged.length && qwenCapabilityQuestion(message))
         return {text:message,history:'',outputTokens:2048,contextText:'',files:[]};
       const staged = state.staged.filter(item => item.status === 'ready');
-      const placements = uploadApi()?.planRoutes?.(message, staged)?.place || [];
+      const placements = uploadApi()?.planRoutes?.(message, staged, null, pageTask())?.place || [];
       const destination = placements.at(-1)?.destination;
       const drawingPlacement = destination?.id === 'img2img';
       const includeResult = chatRequestsCurrentResult(message,explicitIncludeResult);
@@ -1415,9 +1467,16 @@
     // The candidate path reads the selected bone natively before model planning.
     // Frame and angle come from the explicit request; edits require confirmation.
     // Operation billing sends names and sizes of attachments, never pixels.
-    function foartWireContext(snapshot){
+    function foartWireContext(snapshot,stalePrompt=''){
       const media=/^(?:dataUrl|imageUrl|previewUrl|blob|bytes)$/i;
-      return JSON.parse(JSON.stringify(snapshot,(key,value)=>media.test(key)||typeof value==='string'&&/^data:/i.test(value)?undefined:value));
+      const wire=JSON.parse(JSON.stringify(snapshot,(key,value)=>media.test(key)||typeof value==='string'&&/^data:/i.test(value)?undefined:value));
+      // A finished task's prompt still sitting in the box is not shown to the planner, or its content leaks into the new brief.
+      if(stalePrompt){
+        const drop=(owner,key)=>{if(owner&&typeof owner[key]==='string'&&owner[key].trim()===stalePrompt)owner[key]='';};
+        drop(wire.art,'prompt');drop(wire.media?.generation,'prompt');
+        for(const control of wire.controls||[])if(['image_prompt','video_prompt'].includes(control.purpose))drop(control,'value');
+      }
+      return wire;
     }
     async function sendFoart(message,{recordMessage=true,requestMessage=message,intent,animationIntent=false}={}) {
       const tools=root.NovaFlowFoartTools,contract=root.NovaFlowFoartToolContract,operation=++serial;
@@ -1437,6 +1496,13 @@
         for(const item of drawingPending.splice(0)){await host().place(item);notes.push('已放入'+item.destination.label+'：'+item.name);}
         if(notes.length){state.messages.push({role:'status',content:notes.join('\n')});notify();}
       };
+      // Decided once, before anything is written: a later round shows whatever this turn itself put in the box.
+      const turnBroughtFiles=!!carryAttachments?.length,stalePrompt=pagePromptCarries(message,intent,turnBroughtFiles)?'':String(activePromptSource()?.pagePrompt||'').trim();
+      turnStalePrompt=stalePrompt;
+      // The pictures left in the reference slots by that finished task are finished business too.
+      const staleSurface=activePromptSource()?.surface==='video'?'video':'image';
+      turnStaleRefs=!!stalePrompt&&!turnBroughtFiles&&['drawing','video'].includes(activePromptSource()?.surface)&&usedPrompts[staleSurface]?.pictures===pagePictures(staleSurface)
+        &&(staleSurface==='video'?(root.NovaFlowAiSequenceGeneration?.capture?.()?.referenceSlots||[]).some(slot=>slot?.occupied)||(root.NovaFlowAiSequenceGeneration?.capture?.()?.h3References||[]).length>0:Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).some(Boolean));
       const preferUploads=!!carryAttachments?.some(item=>item.kind==='image'),freshPictures=(carryAttachments||[]).filter(item=>item.kind==='image'&&item.dataUrl).slice(0,3);
       const positiveRequest=uploadApi()?.positiveTaskText?.(message)??message.replace(/(?:不要|不用|无需|不需要|不生成)[^，。；,;\n]*/g,'');
       const mediaEditIntent=/剪辑|裁切|截取|分割|淡入|淡出|音量|变速|时间轴|帧编辑|倒放|静音|音轨|独奏|片段/.test(positiveRequest)&&!/(?:生成|制作|做)(?:一[段个]|[0-9.]+秒|新的?|这个)?(?:视频|动画)/.test(positiveRequest);
@@ -1555,7 +1621,8 @@
         // framework the panel uses, so the model never decides the final format.
         let videoDraft='';
         const frameworkPrompt=async op=>{
-          const action=op.operation?.action,selected=businessModelSnapshot(),requestId=root.crypto.randomUUID(),terms=currentPricingPolicy()?.config?.xiaotao_online;
+          // A price that lapsed while the earlier steps ran (60 s) must not silently drop the framework: the brief would go out raw.
+          const action=op.operation?.action,selected=businessModelSnapshot(),requestId=root.crypto.randomUUID(),terms=(currentPricingPolicy()||await refreshPricingPolicy())?.config?.xiaotao_online;
           const same=()=>{const now=businessModelSnapshot();return !signal.aborted&&now.provider===selected.provider&&now.modelId===selected.modelId&&now.epoch===selected.epoch;};
           const brief=String(op.operation?.prompt||'').trim().slice(0,1500),scope={assistantSelectionScope:'xiaotao',assistantProvider:selected.provider,assistantModelId:selected.modelId,assistantSelectionEpoch:selected.epoch,signal};
           if(!brief)return op;
@@ -1564,7 +1631,7 @@
               if(videoDraft)return {...op,operation:{...op.operation,prompt:videoDraft}};
               // "好的，开始生成" changes nothing: the finished draft on the page goes out as it is.
               const h3=root.NovaFlowAiSequenceMiniMaxH3PromptWorkflow,page=root.NovaFlowAiSequenceGeneration?.capture?.();
-              if(action==='generate_video'&&h3?.hasDraft?.(page?.genType,page?.prompt)&&uploadApi()?.bareGenerateCommand?.(message)===true)return {...op,operation:{...op.operation,prompt:page.prompt}};
+              if(action==='generate_video'&&h3?.hasDraft?.(page?.genType,page?.prompt)&&(uploadApi()?.bareGenerateCommand?.(message)===true||intent?.go===true))return {...op,operation:{...op.operation,prompt:page.prompt}};
               const capture=root.NovaFlowMediaAgent?.captureH3TextDraft,method=api()?.promptAssistantVideoDraft;
               if(terms?.operation_video_rewrite_v3!==true||typeof capture!=='function'||typeof method!=='function')return op;
               onStatus('正在按视频框架整理提示词…');
@@ -1617,6 +1684,14 @@
           }catch(error){root.console?.warn?.('[Foart tools] framework prompt skipped:',String(error?.message||error));}
           return op;
         };
+        // Outside an explicit prompt request, what the person wants is the result: a description, a change to the
+        // last result or a go-ahead all end in a generation, never in a rewritten box.
+        const promptOnly=/提示词|提示语|prompt/i.test(message)&&uploadApi()?.videoRequestKind?.(message)!=='generate'||forbidsGeneration(message)||/只优化|只修改提示词/.test(message);
+        const resultSurface=!intent?.discussion&&!promptOnly&&['image','video','audio'].includes(intent?.surface)?intent.surface:'';
+        const wantsResult=!resultSurface?'':intent.go?'用户让你现在就开始：按页面上已有的提示词和素材直接生成，不要改写内容，也不要再询问。'
+          :intent.fromPage||intent.revision?'用户正停在'+({image:'绘图',video:'视频生成',audio:'音频生成'}[resultSurface])+'页面，这句话'+(intent.revision?'是对刚完成的结果提的修改':'没有点名别的功能，说的就是这个页面要出的内容')+'：直接用生成操作出结果，不要只优化提示词，也不要让用户自己点生成。'+(resultSurface==='image'?'该先问绘图线路时照常先问一次。':''):'';
+        // A picture brought after a finished task starts over: the earlier turns would only lend it their scene (live: a new toy picture kept the last picture's dusk).
+        const ownPictureTask=turnBroughtFiles&&!!priorTask&&!intent?.revision&&resultSurface==='image';
         let pictureFacts='';
         // 图生 and 首尾帧 hand their frames to the framework itself, so they need no separate look.
         const framesInDraft=['image_video','first_last'].includes(intent?.mode)&&api()?.onlineVideoVisionAvailableSync?.()===true;
@@ -1663,6 +1738,9 @@
             // The framework adds sound and music itself; a brief saying "no music" would switch that off.
             +(/视频|首尾帧|多参|图生|文生/.test(positiveRequest)||intent?.surface==='video'?'\n视频 prompt 只写画面和动作，用户没提声音就不要写声音或音乐。':'')
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
+            +(wantsResult?'\n'+wantsResult:'')
+            +(ownPictureTask?'\n这次带来了新图片，是一个新任务：只处理这次的图片，画面内容只来自这句话和这张图。'+(priorTask.surface==='image'?'绘图线路本对话已经定过，沿用当前选中的，不要再问。':''):'')
+            +(stalePrompt?'\n页面输入框里留着的是上一个已完成任务的旧提示词，和这次无关：不要沿用它的任何内容，只按这次的要求'+(turnBroughtFiles?'和这次的图片':'')+'重新写。'+(turnStaleRefs?'参考位置里还留着上一个任务的'+(staleSurface==='video'?'素材：这句话说的是它就接着用，是全新的内容就先切到文生视频。':'图：这句话说的是那张图就接着用（图生图），是全新的画面就用文生图。'):''):'')
             +(invalidPlanRetries?'\n上一步方案不符合工具规则，未执行'+(invalidPlanIssue?'（'+invalidPlanIssue+'）':'')+'。只用 currentFoart 里真实存在的 ID；提示词不要用 set_control 写入，视频用 media 的 optimize_video_prompt 或 generate_video，绘图用 image_optimize 或 image_generate。这次只输出一个合法操作。':'')
             +(exportScopeRetries?'\n上轮方案未执行：导出范围与本轮最新要求不符。只安排本轮要求的动画文件，不重复背景中的工程/视频导出。':'')
             +(mixRemovalRetries?'\n上轮移除旧声音的方案未执行：旧混音仍保留。先完成新混音并把它导入当前剪辑，再替换旧混音片段，避免中途失败把原来的声音丢掉。':'')
@@ -1683,12 +1761,12 @@
           if(!finishNow&&billing){billing.inFlight=true;publishBilling(billing);}
           const plannerSource=imageSourceBinding(snapshot),plannerImages=images.map(item=>({role:item?.role||'reference',dataUrl:item?.dataUrl}));
           const plannerImageGuard=()=>imageGuard()&&imageSourceBinding(tools.capture())===plannerSource&&sameImages(plannerImages,images.map(item=>({role:item?.role||'reference',dataUrl:item?.dataUrl})));
-          const responsePromise=finishNow?Promise.resolve({ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:receipts.find(r=>r?.plannerPrompt===true)?.message||summarize(terminalFacts.length?terminalFacts:receipts),operations:[]}}}):foartOperationSession?api()?.foartOperationResume?.({requestId:activeRequest,session:foartOperationSession,previousContext:foartPreviousContext,receipt:receipts.at(-1),context:foartWireContext(snapshot),signal})
-              :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),message:planMessage,history:memoryHistory(compactFoartHistory(previousHistory)),promptLanguage:'en',foartContext:foartWireContext(snapshot),signal})
+          const responsePromise=finishNow?Promise.resolve({ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:receipts.find(r=>r?.plannerPrompt===true)?.message||summarize(terminalFacts.length?terminalFacts:receipts),operations:[]}}}):foartOperationSession?api()?.foartOperationResume?.({requestId:activeRequest,session:foartOperationSession,previousContext:foartPreviousContext,receipt:receipts.at(-1),context:foartWireContext(snapshot,stalePrompt),signal})
+              :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),message:planMessage,history:memoryHistory(ownPictureTask?[]:compactFoartHistory(previousHistory)),promptLanguage:'en',foartContext:foartWireContext(snapshot,stalePrompt),signal})
           if(!finishNow)startStatusPolling(operation,activeRequest);let response=await responsePromise;stopStatusPolling();
           // The tool already finished; a planner round that times out or outlives its ticket must not turn real work into an error.
           if(response&&response.ok!==true&&response.errorCode!=='operation-planner-incomplete'&&receipts.at(-1)?.phase==='completed'){if(response.errorCode==='invalid-operation-ticket')foartOperationSession=null;response={ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:summarize(receipts.slice(-1)),operations:[]},...(response.data?.quota?{quota:response.data.quota}:{})}};billing.inFlight=false;billing.unknown=false;}
-          if(response?.data?.foartOperationSession||response?.session){foartOperationSession=response.data?.foartOperationSession||response.session;foartPreviousContext=foartWireContext(snapshot);billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
+          if(response?.data?.foartOperationSession||response?.session){foartOperationSession=response.data?.foartOperationSession||response.session;foartPreviousContext=foartWireContext(snapshot,stalePrompt);billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
           else if(!finishNow){if(response?.data?.quota?.status==='settled'){billing.unknown=false;foartOperationSession=null;}collectBilling(billing,response);}
           if(signal.aborted||operation!==serial)return false;
           // Refused on price before anything was sent: nothing is held, so take the current price and send once more. Only a second refusal is real.
@@ -1717,6 +1795,8 @@
             else if(!receipts.some(r=>r.phase==='completed'))plan={...plan,reply:videoWanted&&!videoReady?(emptySlot?'视频还没有提交：参考图位置还没放满，请把图片放进对应位置后再让我生成。':'视频还没有提交：请先在音视里选好视频生成模式，再让我生成。'):promisesWork?'这一步还没有实际执行。请再说一次要做什么，我会直接执行。':plan.reply};
           }
           if(plan.status==='act'&&videoWanted)plan={...plan,operations:plan.operations.map(op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?{...op,operation:{...op.operation,action:'generate_video'}}:op)};
+          // The same for pictures: a brain that stops at the prompt step would leave the person to press 生成.
+          if(plan.status==='act'&&resultSurface==='image')plan={...plan,operations:plan.operations.map(op=>op.action==='image_optimize'?{...op,action:'image_generate'}:op)};
           if(namedEnhancements.length===1&&plan.operations.some(op=>{const name=op.action==='art_action'?op.name:op.action==='activate_control'?Object.keys(enhancementNames).find(key=>snapshot.controls.find(control=>control.id===op.controlId)?.label===enhancementNames[key]):null;return name&&enhancementNames[name]&&name!==namedEnhancements[0];})){
             if(++artActionRetries>2)fail('方案仍未选择本次要求的'+enhancementNames[namedEnhancements[0]]+'，未执行其他增强功能');
             continue;
@@ -1842,11 +1922,12 @@
             if(imageRunPlans.has(op)){drawingPending.length=0;receipt=await runImageRuns(imageRunPlans.get(op),signal,message);}
             else if(['image_optimize','image_generate'].includes(op.action)){
               if(op.generationMode!=='txt2img'&&op.useResult!==true)await placeDrawingPending();
-              receipt=await plannerDrawingPrompt(op,message);
+              receipt=await plannerDrawingPrompt(op,message,{asIs:intent?.go===true});
               // "先画…然后做成视频": a finished picture is one step of the request, so the planner gets the next round.
               if(op.action==='image_generate'&&receipt?.phase==='completed'&&/然后|接着|之后|再把|再用|再做|做成|转成|导出|保存|配乐|配音|视频|动画/.test(positiveRequest))delete receipt.plannerPrompt;
             } else receipt=await tools.execute(state.provider==='api'&&op.action==='media'?await frameworkPrompt(op):op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
             receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op,current));
+            if(receipt?.phase==='completed'&&(op.action==='image_generate'||op.action==='media'&&op.operation?.action==='generate_video'))markPromptUsed(op.action==='media'?'video':'image');
             // A finished generation with nothing queued after it needs no paid planner round to say so.
             if(op.action==='media'&&/^(?:generate_|optimize_video_prompt$)/.test(op.operation?.action||'')&&receipt.phase==='completed'&&!/然后|接着|之后|导出|保存|裁|剪|配乐|配音|加音|合成/.test(positiveRequest.replace(/^[\s，,。]*(?:然后|接着|之后)/,'')))receipt.plannerPrompt=true;
             if(receipt.phase==='review'&&receipt.optimization?.reviewRequired===true){
@@ -1934,7 +2015,7 @@
         const selected=state.modelId,operation=serial,knownPrice=state.pricingPolicy?.version;await refreshPricingPolicy();
         if(state.modelId!==selected || serial!==operation || state.pending || state.generating || state.applying)return false;
         // A quote lapsing after 60 s with the same price is no reason to stop the person; only a real change asks them.
-        if(!currentPricingPolicy()||currentPricingPolicy().version!==knownPrice){state.error=state.pricingError || '积分价格已刷新，请确认后重新发送';state.status='未提交，不扣积分';notify();return false;}
+        if(!currentPricingPolicy()||knownPrice&&currentPricingPolicy().version!==knownPrice){state.error=state.pricingError || '积分价格已刷新，请确认后重新发送';state.status='未提交，不扣积分';notify();return false;}
       }
       if (!modelAvailable(state.modelId)) {state.error = state.modelId==='qwen3.5-9b-heretic' ? (state.qwen35CpuTrialChecked===true?'当前算力节点没有可用的 Qwen3.5 9B 本地服务，未提交任务。':'本地模型设备待检测，请稍后重试；未提交任务。')+CHAT_MODELS[state.modelId].detail : CHAT_MODELS[state.modelId]?.detail || '所选模型尚未接入'; state.status = '未提交，不扣积分'; notify(); return false;}
       if(promptSelection){
@@ -1947,7 +2028,15 @@
           return prepareSelectedUiDraft(original,{recordMessage:record,source});
         }
         if(info.surface==='drawing'){
-          if(state.provider==='api')return prepareOnlineCurrentDrawingPrompt(original,{recordMessage:record,source,generateAfterReview:promptSelection.generateAfterReview===true});
+          if(state.provider==='api'){
+            const written=await prepareOnlineCurrentDrawingPrompt(original,{recordMessage:record,source,generateAfterReview:promptSelection.generateAfterReview===true});
+            const last=state.messages.at(-1);
+            if(written===true&&promptSelection.generateAfterReview!==true&&last?.role==='assistant'&&last.content==='绘图提示词已优化并更新到输入框。'){
+              last.content+='要现在直接生成吗？';
+              pendingIntent={surface:'image',mode:root.__NovaFlowArtGenerate?.state?.mode||'',foart:true,offer:true,go:true,message:'按页面上刚写好的绘图提示词直接生成图片，不要再改写。'};notify();
+            }
+            return written;
+          }
           if(state.provider==='local'&&state.modelId==='qwen3.5-9b-heretic')return prepareQwenCurrentDrawingPrompt(original,{recordMessage:record,source});
           state.error='当前所选模型的绘图提示词优化尚未接通，未提交。';state.status='未提交';notify();return false;
         }
@@ -2004,20 +2093,29 @@
         /提示词|prompt/i.test(message)&&/优化|改写|整理|润色/.test(message)&&!/(?:不要|不用|无需|别|不必).{0,5}(?:优化|改写|整理|润色)/.test(message))
         return rewriteQwenAudioText(message,qwenAudioIntent,{recordMessage});
       recoverActiveTask();
-      let task=capabilityOnly||reverseImage?{surface:'chat',mode:'chat',discussion:true,named:[]}:uploadApi()?.inferTask?.(message,invocationUploads,state.activeTask);
+      let task=capabilityOnly||reverseImage?{surface:'chat',mode:'chat',discussion:true,named:[]}:uploadApi()?.inferTask?.(message,invocationUploads,state.activeTask,pageTask());
       // The local model only chats and rewrites prompts; every software
       // operation belongs to an online model.
       if(communityChatOnly && !promptDiscussion && localOperationIntent(message))return offerLocalPrompt(message,{recordMessage});
       // 和在线大脑同一套框架：在线大脑会去写页面提示词的请求（视频 H3 / 绘图页面上的画面描述，
       // 或带着素材的描述），本地大脑也直接写进提示词框，不在对话里回一段方案。
       if(communityChatOnly && !capabilityOnly && !promptDiscussion && localPagePromptRequest(message,task))return writeLocalPagePrompt(message,{recordMessage});
-      const continuation=answersQuestion(message) && !task?.discussion ? pendingIntent : null;
-      const requestMessage=reverseImage ? '用户要求：'+message+'\n请看图片，写出能重新生成这张图的完整中文提示词，写清主体、动作、服饰、场景、构图、光线和画风。只输出提示词，不解释、不提问。' : continuation?.foart ? continuation.message+'\n用户回答：'+message+'\n这是对上一条提问的回答，结合上文现在直接执行，不要再询问。' : continuation ? continuation.message+'\n用户补充：'+message : task?.revision
+      const affirms=!!uploadApi()?.goAhead?.(message)||uploadApi()?.smallTalk?.(message)===true;
+      const ownWork=!!task&&task.surface!=='chat'&&!task.fromPage&&!task.revision&&!affirms&&!!pendingIntent&&pendingIntent.surface!=='foart'&&pendingIntent.surface!==task.surface;
+      if(pendingIntent?.offer&&/^(?:不用|不了|不要|不需要|先不|算了|等等|等一下|暂时不)/.test(message)){
+        pendingIntent=null;if(recordMessage)pushUser(message);state.messages.push({role:'assistant',content:'好的，提示词留在输入框里，需要时再叫我。'});state.error='';state.status='已回复';notify();return true;
+      }
+      const continuation=answersQuestion(message) && !task?.discussion && !ownWork ? pendingIntent : null;
+      const requestMessage=reverseImage ? '用户要求：'+message+'\n请看图片，写出能重新生成这张图的完整中文提示词，写清主体、动作、服饰、场景、构图、光线和画风。只输出提示词，不解释、不提问。' : continuation?.foart ? continuation.message+'\n用户回答：'+message+'\n这是用户对上一条提问的回复：是回答就结合上文现在直接执行，不要再询问；如果说的是另一件事，就按这句新的要求做。' : continuation ? continuation.message+'\n用户补充：'+message : task?.revision
         ? '继续修改同一个'+({video:'视频',audio:'音频',image:'图片',animation:'骨骼动画'}[state.activeTask.surface] || '')+'任务。\n原始用户需求：'+state.activeTask.baseRequest
           +'\n此前修改要求：'+(state.activeTask.revisions || []).join('；')
           +'\n上次实际执行信息（仅为事实，可根据需求选择合适工具）：'+JSON.stringify({mode:state.activeTask.mode,seconds:state.activeTask.seconds,loop:state.activeTask.loop,status:state.activeTask.status,outputs:state.activeTask.outputs})
           +'\n本次最新要求优先，替换与它冲突的旧描述：'+message : message;
-      if(continuation)task={...continuation};
+      if(continuation)task={...continuation,go:continuation.go===true&&affirms};
+      // "开始吧 / 继续 / 就按这个来" with a prompt waiting on the page means: run it.
+      else if(task?.surface==='chat'&&!task.discussion&&uploadApi()?.goAhead?.(message)==='strong'&&promptWaiting())task={...task,...pageTask(),go:true};
+      // A greeting or a bare "好的" that answers nothing is talk, even right after a finished task.
+      const talkOnly=!continuation&&!invocationUploads.length&&uploadApi()?.smallTalk?.(message)===true;
       const predictionInput = state.provider === 'api' ? onlineEstimateInput(message,{includeResult}) : null;
       const prediction = predictionInput ? predictOnline(predictionInput) : null;
       let stagedReady = false;
@@ -2042,10 +2140,18 @@
         return true;
       }
       if (/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message)) {reset(); return true;}
+      // "怎么还没出来" when the last request did finish: say where the result is, instead of quietly making it again.
+      if(state.provider==='api'&&!invocationUploads.length&&!continuation&&uploadApi()?.missedResultRequest?.(message)===true&&state.activeTask?.status==='completed'&&state.activeTask.outputs?.some(output=>output?.name)){
+        const made=state.activeTask.outputs.filter(output=>output?.name).slice(-3).map(output=>output.name).join('、');
+        pushUser(message);
+        state.messages.push({role:'assistant',content:'上一条已经做好了：'+made+'，就在'+({video:'视频',audio:'音频',image:'绘图',animation:'动画',effects:'特效'}[state.activeTask.surface]||'当前')+'页面的结果里。没看到或者想重做，告诉我一声。'});
+        state.error='';state.status='已回复';notify();return true;
+      }
       const operationTextOnly=state.provider==='api' && selectedPricingPayload().operationBillingV3===true;
       const operationVision=operationTextOnly && selectedPricingPayload().operationVisionBillingV3===true;
       const visionUploads=operationVision && invocationUploads.length>0 && invocationUploads.every(item=>item?.kind==='image');
-      const operationNeedsTools=!reverseImage&&(includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||
+      // Anything that is not a question or small talk is something to do: the planner reads it with the page in view.
+      const operationNeedsTools=!reverseImage&&!talkOnly&&(includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||!invocationUploads.length&&!task.discussion||
         /打开|关闭|进入|切换|操作|执行|调用|生成|制作|设计|新建|创建|建立|添加|增加|配上|配个|配一|配齐|特效|光效|动效|扫光|刀光|背光|转光|金币|做(?:一|个|张|段|套)|来(?:一|个|张|段)|配乐|配音|转成|转换|合成|渲染|改|换|抠|去掉|去除|擦|放大|扩|拆|补|裁|压缩|画|加上|加个|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
       const operationGeneral=state.provider==='api'&&!capabilityOnly&&!!operationNeedsTools;
       deferDrawing=operationGeneral;
@@ -2285,7 +2391,8 @@
         if(draft?.status!=='preview-only'||draft.applyAvailable!==false||draft.textOnly!==!includeReferenceImages||typeof draft.displayPrompt!=='string'||typeof draft.modelPrompt!=='string'||draft.h3Mode!==snapshot.request.h3Mode||draft.durationSeconds!==snapshot.request.durationSeconds)throw Error('视频草稿格式无效，未应用。');
         root.NovaFlowAiSequenceMiniMaxH3PromptWorkflow?.rememberDraft?.({mode:draft.h3Mode,prompt:draft.displayPrompt,modelText:draft.modelPrompt});
         await applyOptimizedMediaPrompt({surface:'video',prompt:draft.displayPrompt,snapshot,bindingCurrent});
-        state.messages.push({role:'assistant',content:'视频提示词已优化并更新到输入框。',receipts:[`本次实扣 ${displayCredits(result.quota.settled_credits)} 积分。`]});
+        state.messages.push({role:'assistant',content:'视频提示词已优化并更新到输入框。要现在直接生成吗？',receipts:[`本次实扣 ${displayCredits(result.quota.settled_credits)} 积分。`]});
+        pendingIntent={surface:'video',mode:draft.h3Mode,foart:true,offer:true,go:true,message:'按页面上刚写好的视频提示词直接生成视频，不要再改写。'};
         state.status='视频提示词已优化并更新。';return true;
       }catch(error){state.error=String(error?.message||error);state.status='视频草稿未完成，未回填或生成。';return false;}
       finally{if(promptAbort===abort)promptAbort=null;state.pending=loopRunning();notify();}
@@ -2521,7 +2628,7 @@
       if(rt?.captureContext?.()?.generationSurface!=='drawing'||rt.state?.active===true||split?.maskEditor?.active||split?.selectionTool?.active||split?.penTool?.active||split?.objectTransfer?.active)return false;
       rt.activate?.();return rt.state?.active===true;
     }
-    async function plannerDrawingPrompt(op,message,{rolesSet=false}={}){
+    async function plannerDrawingPrompt(op,message,{rolesSet=false,asIs=false}={}){
       const rt=root.__NovaFlowArtGenerate;let info=activePromptSource();
       // A collapsed 生图 panel or another section is no reason to stop: the planner chose drawing.
       if(!info){await root.NovaFlowFoartTools?.execute?.({action:'open',surface:'drawing'},{});info=activePromptSource();}
@@ -2547,6 +2654,16 @@
         try{await root.NovaFlowFoartTools.execute({action:'use_result'},{});}
         catch(error){if(!Array.from(rt?.references?.()||[]).some(Boolean))throw error;root.console?.warn?.('[Foart tools] use_result skipped:',String(error?.message||error));}
       }
+      // A finished task's prompt leaves the box before anything else: its 图N marks belong to pictures this request may not use.
+      if(turnStalePrompt&&rt?.state&&String(rt.state.prompt||'').trim()===turnStalePrompt){
+        rt.state.prompt='';
+        const box=root.document?.querySelector?.('[data-novaflow-art-generate-prompt-kind="positive"] textarea');
+        if(box){box.value='';box.dispatchEvent?.(new root.Event('input',{bubbles:true}));}
+      }
+      // A new picture asked for in words (文生图) does not start from the pictures that task left in the reference slots.
+      if(turnStaleRefs&&op.generationMode==='txt2img'&&typeof rt?.setReference==='function'){
+        Array.from(rt.references?.()||[]).forEach((ref,index)=>{if(ref)rt.setReference(index,null);});rt.refreshReferences?.();turnStaleRefs=false;
+      }
       // The planner picked 文生图 or 图生图 for this request; switch the page the way the mode buttons do, as long as its references fit that mode.
       const pageRefCount=Array.from(rt?.references?.()||[]).filter(Boolean).length;
       if(['txt2img','img2img'].includes(op.generationMode)&&rt?.state&&rt.state.mode!==op.generationMode&&typeof rt.setMode==='function'&&(op.generationMode==='img2img'?pageRefCount>0:pageRefCount===0))rt.setMode(op.generationMode);
@@ -2558,8 +2675,10 @@
           if(styleAt.has(i))ref.drawingRole='style';else if(!subjectSeen){ref.drawingRole='subject';subjectSeen=true;}else if(!ref.drawingRole||ref.drawingRole==='subject')ref.drawingRole='reference';});}
       }
       let workspace;try{workspace=capturePromptWorkspace(info);}catch(error){throw Error('当前绘图页面还没准备好：'+String(error?.message||error));}
-      const prompt=String(op.prompt||'').trim()||info.pagePrompt.trim()||message;
-      const ok=await prepareOnlineCurrentDrawingPrompt(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,plannerBrief:!!String(op.prompt||'').trim(),requirements:message,...workspace}});
+      const prompt=String(op.prompt||'').trim()||(info.pagePrompt.trim()!==turnStalePrompt?info.pagePrompt.trim():'')||message;
+      // "好，生成吧" after the prompt was written: that text goes out untouched.
+      const ready=asIs&&op.action==='image_generate'&&!!info.pagePrompt.trim();
+      const ok=ready||await prepareOnlineCurrentDrawingPrompt(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,plannerBrief:!!String(op.prompt||'').trim(),requirements:message,...workspace}});
       state.pending=true;
       if(!ok)throw Error(state.error||'提示词优化未完成');
       if(op.action!=='image_generate')return {action:op.action,phase:'applied',plannerPrompt:true,prompt:String(rt?.state?.prompt||''),message:'提示词已优化并写入绘图输入框。'};

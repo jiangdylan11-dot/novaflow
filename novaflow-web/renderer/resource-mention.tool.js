@@ -284,16 +284,17 @@
     for (let index = 0; index < tokens.length; index += 1) {
       const entry = tokens[index] || {};
       const placeholder = stringValue(entry.placeholder);
-      if (!placeholder || occurrenceCount(restoredText, placeholder) !== 1) {
+      // A rewrite that names the same resource twice still names it; only a dropped mention is a loss.
+      if (!placeholder || occurrenceCount(restoredText, placeholder) < 1) {
         return {
           ok: false,
           text: restoredText,
-          reason: "protected resource mention is missing or duplicated"
+          reason: "protected resource mention is missing"
         };
       }
     }
     tokens.forEach(function (entry) {
-      restoredText = restoredText.replace(entry.placeholder, entry.token);
+      restoredText = restoredText.split(entry.placeholder).join(entry.token);
     });
     return { ok: true, text: restoredText };
   }

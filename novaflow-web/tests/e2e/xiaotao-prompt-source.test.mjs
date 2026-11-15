@@ -49,7 +49,12 @@ test('prompt optimization intent does not turn refusals, questions or mixed gene
   assert.equal(classify('解释提示词是什么'),'none');
   assert.equal(classify('优化提示词并生成图片'),'compound');
   assert.equal(classify('优化提示词，不要生成图片'),'optimize');
-  assert.equal(classify('改成夜景'),'optimize');
-  assert.equal(classify('把它改成夜景'),'optimize');
+  // A change to the picture or video is a request for the result; only the prompt named as such is prompt work.
+  assert.equal(classify('改成夜景'),'none');
+  assert.equal(classify('把它改成夜景'),'none');
+  assert.equal(classify('把提示词改成夜景'),'optimize');
+  assert.equal(classify('优化一下'),'optimize');
+  assert.equal(classify('优化一下',{hasResult:true}),'none');
+  assert.equal(classify('优化一下提示词',{hasResult:true}),'optimize');
   assert.equal(classify('删除图层'),'none');
 });

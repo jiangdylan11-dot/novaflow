@@ -25,12 +25,19 @@
       || /(?:优化|润色|改写|提示词).{0,16}(?:失败|报错|不正常|不成功|很慢|太慢|不能用|用不了)/.test(head);
   }
 
-  function classifyPromptAction(instruction) {
+  // Only a request about the prompt text itself is prompt work. "改成夜晚" or "加点烟雾" asks for
+  // the result to change, and after a finished result so does a bare "优化一下": those are not
+  // answered by rewriting the box and leaving the person to press 生成.
+  const promptWord = /提示词|提示语|prompt|描述词|咒语|文案/i;
+  // promptBrain: a brain that can only write prompts (the local model). For it a change is still a rewrite of the box.
+  function classifyPromptAction(instruction, {hasResult = false, promptBrain = false} = {}) {
     const request=text(instruction);
     if(isPromptConversation(request))return 'none';
     if(!request||/(?:不|不要|不用|无需|别|禁止)(?:再|直接|自动)?\s*(?:优化|润色|改写|整理|完善|增强)/.test(request))return 'none';
-    const revisionOnly=revision.test(request) && !/(?:骨骼|图层|插槽|工程|素材|文件|参数|时长|帧率|关键帧|镜头轨道)/.test(request);
-    if(!revisionOnly&&!/(?:优化|润色|改写|整理|完善|增强)/.test(request))return 'none';
+    const named=promptWord.test(request.split(/[:：]/,1)[0]);
+    const revisionOnly=(promptBrain ? revision.test(request) : named && (revision.test(request)||/改成|改为|换成|换为|调整成|调整为|增加|加入|添加|去掉|移除|删除|缩短|延长|改得|写得|改短|改长/.test(request))) && !/(?:骨骼|图层|插槽|工程|素材|文件|参数|时长|帧率|关键帧|镜头轨道)/.test(request);
+    const polish=/(?:优化|润色|改写|整理|完善|增强)/.test(request) && (named || promptBrain || !hasResult || extractTurnPrompt(request));
+    if(!revisionOnly&&!polish)return 'none';
     const withoutNegated=request.replace(/(?:不|不要|不用|无需|别)(?:再|直接|自动)?\s*(?:生成|绘制|生图|制作|执行|应用|保存|导出|提交|删除)(?:视频|图片|音频|素材)?/g,'');
     if(/(?:生成|绘制|生图|制作|执行|应用|保存|导出|提交|删除)/.test(withoutNegated.replace(/生成草稿/g,'')))return 'compound';
     return 'optimize';

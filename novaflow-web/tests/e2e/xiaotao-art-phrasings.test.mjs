@@ -78,7 +78,8 @@ test('a folded 生图 panel does not switch the page off during a 小桃 run',()
 
 test('a lapsed quote at the same price refreshes and carries on',()=>{
   assert.match(source,/const policy=currentPricingPolicy\(\)\|\|await refreshPricingPolicy\(\),terms=/);
-  assert.match(source,/if\(!currentPricingPolicy\(\)\|\|currentPricingPolicy\(\)\.version!==knownPrice\)\{state\.error=/);
+  // A first message sent before any price was shown has nothing to compare with: it goes out at the price just fetched.
+  assert.match(source,/if\(!currentPricingPolicy\(\)\|\|knownPrice&&currentPricingPolicy\(\)\.version!==knownPrice\)\{state\.error=/);
 });
 
 test('internal check wording never reaches the panel',()=>{

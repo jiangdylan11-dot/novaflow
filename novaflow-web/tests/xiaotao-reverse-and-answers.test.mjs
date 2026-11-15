@@ -72,10 +72,10 @@ test('a request for details with no question mark still waits for the answer',as
 });
 test('a question asked in plain chat is answered through the tools with its context',async()=>{
   const f=await fixture({refs:refs(),chat:['你想把衣服换成什么样？'],foart:[done('好的')]});
-  await f.c.send('这件衣服不太好看');
+  await f.c.send('这件衣服是不是不太好看？');
   await f.c.send('黑色的吊带背心');
   assert.equal(f.starts.length,1);
-  assert.match(f.starts[0].message,/这件衣服不太好看[\s\S]*用户回答：黑色的吊带背心/);
+  assert.match(f.starts[0].message,/这件衣服是不是不太好看？[\s\S]*用户回答：黑色的吊带背心/);
 });
 test('an edit request with no prompt anywhere goes to the tools instead of asking for a prompt',async()=>{
   const f=await fixture({refs:refs(),foart:[done('好的')]});

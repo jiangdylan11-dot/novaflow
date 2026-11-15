@@ -182,14 +182,29 @@
   // A complaint that the result never came ("怎么没有生成视频") is a request to produce it now.
   function missedResultRequest(message){
     const text=latestRequest(message);
-    return /(?:怎么|为什么|为啥|咋|怎么还|还)(?:还)?(?:是)?(?:没|没有|不)(?:有)?(?:开始|帮我|给我|直接)?(?:生成|出片|出图|制作|提交|做)/.test(text)&&!/(?:不要|不用|别|先不|暂不)(?:再)?(?:生成|制作|提交)/.test(text);
+    return /(?:怎么|为什么|为啥|咋|怎么还|还)(?:还)?(?:是)?(?:没|没有|不)(?:有)?(?:开始|帮我|给我|直接)?(?:生成|出片|出图|出来|出结果|结果|动静|反应|制作|提交|做)/.test(text)&&!/(?:不要|不用|别|先不|暂不)(?:再)?(?:生成|制作|提交)/.test(text);
   }
-  function inferTask(message, files = [], previous = null) {
+  // Words that carry no request of their own: a greeting, thanks, a bare "好的".
+  function smallTalk(message){
+    return /^(?:你好|您好|嗨|哈喽|在吗|hi|hello|谢谢|多谢|感谢|辛苦了?|好的?|好吧|好哒|行|可以|嗯+|哦+|噢|ok|okay|收到|明白了?|知道了|了解|不错|挺好的?|很好|厉害|真棒|太棒了|哈+|再见|拜拜|晚安)[\s，,。.!！~～啊呀哦呢吧]*$/i.test(String(message||'').trim());
+  }
+  // "开始吧 / 继续 / 就按这个来": go ahead with what is already prepared. `strong` ones name the doing;
+  // the weak ones ("好的", "可以") are a go-ahead only as the answer to an offer.
+  function goAhead(message){
+    const text=latestRequest(message).trim().replace(/[\s，,。.!！~～]+/g,'');
+    if(!text||text.length>16||/[?？]|吗$|不|别|没/.test(text))return '';
+    const rest=text.replace(/那就|那|好的?|可以|行|嗯+|对|是的?|没问题|ok|okay|确认|同意|请|麻烦|帮我|给我|直接|现在|马上|立刻|就|再|按|照|用|这个|这样|这版|这一版|刚才的?|当前的?|上面的?|写好的?|提示词|稿子|方案|来|做|弄|搞|出|跑|开始|继续|下一步|生成|出片|出图|制作|提交|执行|视频|动画|图片|图|一下|它|吧|啊|呀|了|go/gi,'');
+    if(rest)return '';
+    return /开始|继续|下一步|生成|出片|出图|制作|提交|执行|做|弄|搞|来吧|go/i.test(text)?'strong':'weak';
+  }
+  // page: the generation page the person is looking at ({surface:'video'|'image'|'audio',mode}). A sentence
+  // that names no kind of work is about that page: "一只小狗在海边奔跑" on the video page is a video.
+  function inferTask(message, files = [], previous = null, page = null) {
     const text = String(message || '').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1).trim();
     const kinds = Array.from(files || []).map(file => file.kind),positive=positiveTaskText(text),previousSurface=previous?.surface || previous?.kind;
     // 图生视频 holds one picture: two pictures ending on the second are 首尾帧, more go to 多参.
     const imageCount=kinds.filter(kind=>kind==='image').length;
-    let discussion = question(text) || /怎么|如何|为什么|是什么|能不能|可不可以|能否|是否|(?:只|仅).{0,8}(?:分析|看看|提示词|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,8}(?:生成|执行|制作|修改)/.test(text);
+    let discussion = question(text) || /怎么|如何|为什么|是什么|能不能|可不可以|能否|是否|多少(?:积分|钱|分|秒|时间)|要多久|哪(?:个|些|种|条)(?:模型|模式|线路)|什么(?:模式|模型|意思|情况|原因|时候)|(?:只|仅).{0,8}(?:分析|看看|提示词|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,8}(?:生成|执行|制作|修改)/.test(text);
     const promptEdit=/(?:提示词.{0,6}(?:优化|修改|调整|改|写入|填入)|(?:优化|修改|调整|写入|填入).{0,6}提示词)/.test(text);
     const editing=new RegExp(VIDEO_EDIT_WORDS+'|音量|淡入|淡出|循环\\s*\\d+\\s*次|导出|时间轴|帧编辑','i').test(positiveTaskText(text));
     if(editing&&!question(text)&&!/(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,6}(?:执行|制作|修改|处理)/.test(text))discussion=false;
@@ -210,13 +225,21 @@
     if(imageEdit&&!video&&!audio&&/调用|请|帮我|换|改|抠图|去背|拆图|放大|扩图|裁切|导出/.test(positive)&&!question(text)&&!/怎么|如何|为什么|能否|是否|(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不|不)执行/.test(text))discussion=false;
     if(animationAuthoring)surface='animation';
     if (discussion) surface = 'chat';
+    // Work on another part of the app is never a change to the task that just finished.
+    const elsewhere=/打开|进入|切换|关闭|主题|换皮|拆图|拆分|拆一下|压缩|去黑|图集|查看器|粒子|骨骼|积分|价格|多少钱/.test(positive);
+    const unnamed=surface==='chat'&&!discussion&&!elsewhere&&!smallTalk(text)&&!goAhead(text)&&!/特效|导入|导出|保存|下载|模型|线路/.test(positive);
+    const fromPage=unnamed&&!!page?.surface&&(!previous||(previous.surface||previous.kind)===page.surface);
+    if(fromPage)surface=page.surface;
     const newTask=/新建|新的任务|另一个任务|另外做|重新开始|不要原来|独立制作/.test(text);
     const feedback=missedResult||/不符合|不满意|性格|凶悍|凶一点|需要|重新做|重做|换|改|调整|优化|提示词|表情|动作|呲牙|龇牙|刚才|这个|再来|继续|导出|还是|不对|效果|更.{0,8}(?:点|一些|一点)/.test(text);
     const explicitImage=artTool||/图生图|生图|出图|静态图|(?:画|生成|制作).{0,5}(?:一张|图片|张图)/.test(positive);
     const explicitVideo=!animationAuthoring&&/视频|动画|动效|动态/.test(positive)&&!(previousSurface==='animation'&&!/视频|首尾帧|多参|图生|文生/.test(positiveTaskText(text)));
     // "把音频1换成这个" inside a 多参 task swaps a slot; it is not a new audio job.
     const swapsMaterial=previousSurface==='video'&&previous?.mode==='multi_reference'&&/(?:图|视频|音频)\s*[1-9].{0,6}(?:换|替换|改用)|(?:换|替换).{0,6}(?:图|视频|音频)\s*[1-9]/.test(positive);
-    const revision=!!previous && !discussion && !newTask && feedback && (swapsMaterial || (!explicitImage || previousSurface==='image') && (!explicitVideo || previousSurface==='video') && (!(audio&&!explicitVideo)||previousSurface==='audio'));
+    // A picture brought with a request to change it is its own task: the picture made before has nothing to do with it,
+    // unless the words point back ("接着刚才那张…").
+    const ownPictures=kinds.includes('image')&&!swapsMaterial&&(surface==='image'||previousSurface==='image')&&!/刚才|刚刚|上一[个张次版]|上次|之前|继续|接着|同一个|原来/.test(text);
+    const revision=!!previous && !discussion && !newTask && !ownPictures && (feedback&&!elsewhere||fromPage&&!kinds.length) && (swapsMaterial || (!explicitImage || previousSurface==='image') && (!explicitVideo || previousSurface==='video') && (!(audio&&!explicitVideo)||previousSurface==='audio'));
     if(revision)surface=previousSurface;
     const loop = surface === 'video' && (/循环|无缝|loop/i.test(positive) || revision && previous.loop===true);
     const named = discussion ? [] : namedDestinations(positive);
@@ -226,16 +249,17 @@
           : imageCount === 2 && /变成|变为|变回|变到|过渡|最后|最终|结尾|结束/.test(positive) ? 'first_last'
             : imageCount > 1 ? 'multi_reference' : kinds.includes('image') ? 'image_video' : 'text_video' : '';
     if (surface==='image' && imageEdit && kinds.includes('image')) mode = 'img2img';
+    if (fromPage && !kinds.length && page.mode) mode = page.mode;
     const explicitVideoModes=[...positive.matchAll(/文生视频|图生视频|首尾帧(?:视频)?|多参(?:视频)?/g)].map(m=>({'文生视频':'text_video','图生视频':'image_video'}[m[0]]||(/首尾帧/.test(m[0])?'first_last':'multi_reference')));
     if(surface==='video'&&new Set(explicitVideoModes).size===1)mode=explicitVideoModes[0];
     else if(revision && previous.mode&&!named.length)mode=previous.mode;
     const duration = positive.match(/(\d+(?:\.\d+)?)\s*(?:秒|s\b)/i);
-    return {surface, mode, loop, discussion, named,revision, ...(duration ? {seconds:Number(duration[1])} : revision && Number.isFinite(previous.seconds)?{seconds:previous.seconds}:{})};
+    return {surface, mode, loop, discussion, named,revision, ...(fromPage?{fromPage:true}:{}), ...(duration ? {seconds:Number(duration[1])} : revision && Number.isFinite(previous.seconds)?{seconds:previous.seconds}:{})};
   }
-  function planRoutes(message, files, previous=null) {
+  function planRoutes(message, files, previous=null, page=null) {
     const text = String(message || '').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1).trim();
     const asking = question(text);
-    const task = inferTask(message, files,previous);
+    const task = inferTask(message, files,previous,page);
     const named = asking || task.discussion ? [] : namedDestinations(positiveTaskText(text));
     const place = [];
     const ask = [];
@@ -540,7 +564,7 @@
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, positiveTaskText, missedResultRequest, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, smallTalk, goAhead, positiveTaskText, missedResultRequest, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

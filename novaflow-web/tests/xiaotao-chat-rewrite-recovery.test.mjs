@@ -11,7 +11,7 @@ for(const message of ['为什么连简单的提示词优化都做不到','怎么
     assert.equal(intent.classifyPromptAction(message),'none');
   });
 }
-for(const message of ['优化提示词','帮我优化当前美工提示词','优化音频提示词','优化视频提示词','优化提示词：为什么月亮会发光','改成夜景']) {
+for(const message of ['优化提示词','帮我优化当前美工提示词','优化音频提示词','优化视频提示词','优化提示词：为什么月亮会发光','把提示词改成夜景']) {
   test('explicit rewrite remains actionable: '+message,()=>assert.equal(intent.classifyPromptAction(message),'optimize'));
 }
 for(const effort of [undefined,'low','none']) {
