@@ -301,7 +301,7 @@ test('a generated swap frame is persisted separately from the picked source and 
   f.state.images.set('__nf_swap_13.png', { fileName: '__nf_swap_13.png', blob, img: { naturalWidth: 1, naturalHeight: 1 }, pma: false, sessionGenerated: true })
   const saved = await f.save(d.root), ref = saved.projects[0].images[0]
   assert.equal(ref.fileName, '__nf_swap_13.png')
-  assert.equal(ref.path, '__nf_swap_13_2.png', 'never overwrite an unrelated existing disk file')
+  assert.equal(ref.path, 'pic_2.png', 'named after its picture, never overwriting an existing disk file')
   assert.equal(await (await (await d.root.getFileHandle(ref.path)).getFile()).text(), 'padded swap pixels')
   assert.equal(await (await (await d.root.getFileHandle('pic.png')).getFile()).text(), 'unmodified replacement source')
   assert.equal(await (await (await d.root.getFileHandle('__nf_swap_13.png')).getFile()).text(), 'another existing file')

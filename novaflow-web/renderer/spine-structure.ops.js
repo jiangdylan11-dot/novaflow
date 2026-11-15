@@ -1611,6 +1611,103 @@
     return { json: tidy(json) }
   }
 
+  /**
+   * An attachment now shows a picture of another size (换图, or the file changed in the image
+   * folder): it takes the new picture's own size, as in Spine. Pixels keep their density
+   * (attachment size / old picture size), so an export made at another scale stays at that scale.
+   * Region: width/height. Mesh: the vertices (and deform keys) scale along the picture's own axes
+   * around its centre, UVs unchanged, so the new picture is not stretched into the old shape.
+   * A linked mesh shares its parent's vertices and stays as it is.
+   */
+  function fitAttachmentToImage(input, skin, slot, name, ow, oh, nw, nh) {
+    const json = prepare(input)
+    const map = attachmentsOf(json, skin, slot) || fail('这个皮肤里没有该插槽的附件')
+    const att = map[name] || fail(`找不到附件：${name}`)
+    const sx = num(nw, 0) / num(ow, 0), sy = num(nh, 0) / num(oh, 0)
+    if (!(sx > 0 && sy > 0 && Number.isFinite(sx) && Number.isFinite(sy)) || (Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6)) return { json: tidy(json) }
+    const type = att.type || 'region'
+    const r3 = (v) => Math.round(v * 1000) / 1000
+    if (type === 'region') {
+      att.width = r3(num(att.width, num(ow, 0)) * sx)
+      att.height = r3(num(att.height, num(oh, 0)) * sy)
+      return { json: tidy(json) }
+    }
+    if (type !== 'mesh' || !Array.isArray(att.uvs) || !Array.isArray(att.vertices)) return { json: tidy(json) }
+    const n = att.uvs.length / 2, weighted = isWeighted(att)
+    const worlds = weighted ? setupWorlds(json) : null
+    const boneAt = (i) => worlds.get(json.bones[i] && json.bones[i].name)
+    // where each vertex sits: the slot bone's space (unweighted) or the world (weighted)
+    const pos = []
+    if (weighted) {
+      for (let i = 0, v = att.vertices; i < v.length;) {
+        const k = v[i++]; let x = 0, y = 0
+        for (let j = 0; j < k; j++, i += 4) { const m = boneAt(v[i]); if (!m) return { json: tidy(json) }; const [wx, wy] = toWorld(m, v[i + 1], v[i + 2]); x += wx * v[i + 3]; y += wy * v[i + 3] }
+        pos.push([x, y])
+      }
+    } else for (let i = 0; i < n; i++) pos.push([num(att.vertices[i * 2], 0), num(att.vertices[i * 2 + 1], 0)])
+    if (pos.length !== n || n < 3) return { json: tidy(json) }
+    // least-squares affine picture → position: p = A·(u, v) + t
+    let suu = 0, suv = 0, svv = 0, su = 0, sv = 0
+    const bx = [0, 0, 0], by = [0, 0, 0]
+    for (let i = 0; i < n; i++) {
+      const u = num(att.uvs[i * 2], 0), v = num(att.uvs[i * 2 + 1], 0), [x, y] = pos[i]
+      suu += u * u; suv += u * v; svv += v * v; su += u; sv += v
+      bx[0] += u * x; bx[1] += v * x; bx[2] += x; by[0] += u * y; by[1] += v * y; by[2] += y
+    }
+    const M = [[suu, suv, su], [suv, svv, sv], [su, sv, n]]
+    const det3 = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    const D = det3(M)
+    if (Math.abs(D) < 1e-12) return { json: tidy(json) }
+    const solve = (b) => [0, 1, 2].map((c) => det3(M.map((row, r) => row.map((x, k) => (k === c ? b[r] : x)))) / D)
+    const [ax, bxv, tx] = solve(bx), [ay, byv, ty] = solve(by)
+    const det = ax * byv - bxv * ay
+    if (Math.abs(det) < 1e-9) return { json: tidy(json) }
+    // L = A·diag(sx, sy)·A⁻¹; the picture's centre (0.5, 0.5) stays put
+    const ia = byv / det, ib = -bxv / det, ic = -ay / det, id = ax / det
+    const L = { a: ax * sx * ia + bxv * sy * ic, b: ax * sx * ib + bxv * sy * id, c: ay * sx * ia + byv * sy * ic, d: ay * sx * ib + byv * sy * id }
+    const cx = ax * 0.5 + bxv * 0.5 + tx, cy = ay * 0.5 + byv * 0.5 + ty
+    const lin = (x, y) => [L.a * x + L.b * y, L.c * x + L.d * y]
+    const point = (x, y) => { const [dx, dy] = lin(x - cx, y - cy); return [cx + dx, cy + dy] }
+    // a bone-space vector/point through the world map and back
+    const viaBone = (m, x, y, isPoint) => {
+      const [wx, wy] = isPoint ? toWorld(m, x, y) : [m.a * x + m.b * y, m.c * x + m.d * y]
+      const [px, py] = isPoint ? point(wx, wy) : lin(wx, wy)
+      if (isPoint) return toLocal(m, px, py)
+      const dt = m.a * m.d - m.b * m.c || 1
+      return [(m.d * px - m.b * py) / dt, (m.a * py - m.c * px) / dt]
+    }
+    const v = att.vertices
+    if (weighted) {
+      for (let i = 0; i < v.length;) { const k = v[i++]; for (let j = 0; j < k; j++, i += 4) { const [x, y] = viaBone(boneAt(v[i]), v[i + 1], v[i + 2], true); v[i + 1] = r3(x); v[i + 2] = r3(y) } }
+    } else for (let i = 0; i < n; i++) { const [x, y] = point(v[i * 2], v[i * 2 + 1]); v[i * 2] = r3(x); v[i * 2 + 1] = r3(y) }
+    if (att.width != null) att.width = r3(num(att.width, 0) * sx)
+    if (att.height != null) att.height = r3(num(att.height, 0) * sy)
+    // deform keys are offsets in the same spaces: only the linear part applies
+    const bonesOf = []
+    if (weighted) for (let i = 0; i < v.length;) { const k = v[i++]; for (let j = 0; j < k; j++, i += 4) bonesOf.push(v[i]) }
+    for (const a of Object.values(json.animations || {})) {
+      const keys = a && a.deform && a.deform[skin] && a.deform[skin][slot] && a.deform[skin][slot][name]
+      if (!Array.isArray(keys)) continue
+      for (const key of keys) {
+        if (!Array.isArray(key.vertices)) continue
+        const total = weighted ? bonesOf.length * 2 : n * 2
+        const full = new Array(total).fill(0)
+        key.vertices.forEach((x, f) => { const at = num(key.offset, 0) + f; if (at < total) full[at] = num(x, 0) })
+        for (let e = 0; e * 2 < total; e++) {
+          const m = weighted ? boneAt(bonesOf[e]) : null
+          const [x, y] = weighted ? (m ? viaBone(m, full[e * 2], full[e * 2 + 1], false) : [full[e * 2], full[e * 2 + 1]]) : lin(full[e * 2], full[e * 2 + 1])
+          full[e * 2] = r3(x); full[e * 2 + 1] = r3(y)
+        }
+        let first = full.findIndex((x) => Math.abs(x) > 1e-4), last = total - 1
+        if (first < 0) { delete key.vertices; delete key.offset; continue }
+        while (last > first && Math.abs(full[last]) <= 1e-4) last--
+        if (first) key.offset = first; else delete key.offset
+        key.vertices = full.slice(first, last + 1)
+      }
+    }
+    return { json: tidy(json) }
+  }
+
   /** World matrices of every bone in the setup pose (normal inheritance, parents first). */
   function setupWorlds(json) {
     const out = new Map(), I = { a: 1, b: 0, c: 0, d: 1, worldX: 0, worldY: 0 }
@@ -2824,7 +2921,7 @@
     addSlot, addBoneForSlot, duplicateSlot, renameSlot, compensateImages, deleteSlot, setSlotProps, moveSlot,
     addRegionAttachment, setAttachmentProps, renameAttachment, deleteAttachment, transferAttachment,
     // keys
-    keyAttachment, keyColor, keyConstraint, keyBone, keyDeform, moveMeshVertices, setMesh, regionToMesh, meshToRegion, boneKeys, removeKeyAt, slotKeys,
+    keyAttachment, keyColor, keyConstraint, keyBone, keyDeform, moveMeshVertices, setMesh, regionToMesh, meshToRegion, fitAttachmentToImage, boneKeys, removeKeyAt, slotKeys,
     reorderSlots, keyDrawOrder, decodeDrawOrder, encodeDrawOrder, createClipping, setClipping, createBoundingBox, setBoundingBox,
     createPath, setPath, updatePathLengths, pathLengths,
     // dopesheet

@@ -835,6 +835,7 @@
     for (const [fileName, regionsOnPage] of pages) {
       const current = s.images.get(lower(fileName))
       const generated = current && (current.sessionGenerated || /^__nf_swap_\d+\.png$/i.test(fileName) && !current.sourceFolder)
+      if (generated && !usedPages.has(lower(fileName))) continue
       let source = current && current.sourceFolder === folder && current.sourcePath ? files.find((f) => f.rel === current.sourcePath) : null
       if (!generated) source = source || files.find((f) => lower(f.rel) === lower(fileName))
       if (!source && !generated && regionsOnPage.length === 1) {
@@ -843,9 +844,9 @@
       }
       const ref = (s.projectImageRefs || []).find((r) => lower(r.fileName) === lower(fileName))
       const single = regionsOnPage.length === 1 && !regionsOnPage[0].rotate && !regionsOnPage[0].x && !regionsOnPage[0].y
-      const expectedPath = !folder.recordedPaths && single && /^__nf_(?:swap|folder)[/_]/.test(fileName)
+      const expectedPath = !folder.recordedPaths && single && /^__nf_(?:swap|folder|transfer)[/_]/.test(fileName)
         ? regionsOnPage[0].name + ((ref && ref.path && ref.path.match(/\.[^.\/]+$/)) || ['.png'])[0] : ref && ref.path || fileName
-      let path = source ? source.rel : projectPath(generated ? fileName : expectedPath).join('/')
+      let path = source ? source.rel : projectPath(generated ? (single ? regionsOnPage[0].name + '.png' : fileName) : expectedPath).join('/')
       const existsAt = async (rel) => {
         try { const parts = projectPath(rel); const d = await projectSubdir(folder.handle, parts.slice(0, -1)); await d.getFileHandle(parts.at(-1)); return true } catch { return false }
       }
@@ -3052,7 +3053,8 @@
   const folderPictureName = (file) => file.imageName || file.rel.replace(/\.[^.]+$/, '')
 
   // A selected/restored folder supplies current pixels, including replacements with the same name.
-  // Keep the skeleton (attachment sizes, meshes and animation) intact.
+  // Loading keeps the skeleton intact (a packed atlas may be scaled against the folder's originals);
+  // a file replaced while the project is open is 换图 on disk: its attachments take the new size.
   const folderImageVersions = new WeakMap()
   const folderRefreshes = new WeakMap()
   function withoutAtlasPictures(text, names) {
@@ -3113,7 +3115,9 @@
         let blob = file, img = reuse ? loaded.img : await imageFromBlob(blob)
         let fileName = old && [...regions.values()].filter((r) => r.page === old.page).length === 1 ? old.page : `__nf_folder/${name}.png`
         while ((!old || fileName !== old.page) && target.images.has(lower(fileName))) fileName = '_' + fileName
-        updates.push({ name, rel: f.rel, stamp, fileName, blob, img, pma: loaded && loaded.sourceFolder === folder && loaded.sourcePath === f.rel ? pagePma(target.images, old.page, target.pma) : false })
+        const prev = loaded && loaded.sourceFolder === folder && loaded.sourcePath === f.rel && loaded.img
+          ? { width: loaded.img.naturalWidth, height: loaded.img.naturalHeight } : null
+        updates.push({ name, rel: f.rel, stamp, fileName, blob, img, prev, pma: loaded && loaded.sourceFolder === folder && loaded.sourcePath === f.rel ? pagePma(target.images, old.page, target.pma) : false })
       }
       for (const child of list.dirs) await walk(child)
     }
@@ -3134,11 +3138,19 @@
     record.atlasText = target.atlasText
     target.atlasChanged = true
     target.imageFolderGen = (target.imageFolderGen || 0) + 1
+    let fitted = json
+    for (const u of updates) {
+      const nw = u.img.naturalWidth, nh = u.img.naturalHeight
+      if (!u.prev || (u.prev.width === nw && u.prev.height === nh)) continue
+      fitted = Ops.prepare(fitted)
+      for (const t of attachmentsShowing(fitted, u.name)) fitted = Ops.fitAttachmentToImage(fitted, t.skin, t.slot, t.key, u.prev.width, u.prev.height, nw, nh).json
+    }
+    if (fitted !== json) target.json = fitted
     if (target === state) {
       frameThumbs.clear()
       rt.atlasKey = null
       rt.missingPages = new Set()
-      applyJson(json)
+      applyJson(fitted)
       refresh()
       if (removed.length) status(`图片文件已移除：${removed.map(([, im]) => im.sourcePath).join('、')}，请恢复文件或重新指定图片文件夹`, 'error')
     }
@@ -3682,14 +3694,15 @@
         body.append(h('div', { class: 'tile folder', title: d.path, onclick: () => { stack = [...stack, d]; fill() } }, h('div', { class: 'fold', html: ICON.folder }), h('span', {}, d.name)))
       }
       for (const f of list.files) {
+        if (INTERNAL_PICTURE.test(f.name)) continue
         const c = h('canvas', { width: 88, height: 88 })
         const tile = h('div', { class: 'tile' + (picked.has(f.rel) ? ' picked' : ''), title: f.rel.replace(/\.[^.]+$/, '') }, c, h('span', {}, f.name.replace(/\.[^.]+$/, '')))
         tile.onclick = () => pickFile(f, tile)
         body.append(tile)
         thumbOf(f, c)
       }
-      listed = list.files.slice()
-      if (multi) { allBtn.disabled = !list.files.length; allBtn.onclick = () => confirmMulti(list.files.slice()) }
+      listed = list.files.filter((f) => !INTERNAL_PICTURE.test(f.name))
+      if (multi) { allBtn.disabled = !listed.length; allBtn.onclick = () => confirmMulti(listed.slice()) }
       if (!list.dirs.length && !list.files.length) body.append(h('div', { class: 'hint' }, '这个文件夹里没有图片'))
     }
     const importFrom = (dir) => {
@@ -3763,80 +3776,31 @@
   // 换图's 工程里用这张图的都换 (user 2026-10-16): off by default, kept for the session once ticked
   let swapAllUses = false
 
-  /** Prepare an in-project image with the old transparent frame; linked meshes keep their shared UVs. */
-  async function prepareSwapImage(json, sel, name) {
-    const sk = json.skins.find((s) => s.name === sel.skin)
-    const att = sk && (sk.attachments[sel.slot] || {})[sel.name]
-    const old = pictureOf(sel.name, att)
-    if (!old || old === name || !rt.atlas || !Attach.replacementFrame) return null
-    const from = rt.atlas.findRegion(old), to = rt.atlas.findRegion(name)
-    if (!from || !to) return null
-    const width = from.originalWidth, height = from.originalHeight
-    const nw = to.originalWidth, nh = to.originalHeight
-    if (width === nw && height === nh) return null
-    const oldPixels = regionPixels(from, width, height), pixels = regionPixels(to, nw, nh)
-    if (!oldPixels || !pixels) throw new Error('读不到换图所需的图片像素')
-    const frame = Attach.replacementFrame(oldPixels, width, height, pixels, nw, nh)
-    if (!frame) return null
-    const source = document.createElement('canvas'), canvas = document.createElement('canvas')
-    source.width = nw; source.height = nh; canvas.width = width; canvas.height = height
-    source.getContext('2d').putImageData(new ImageData(pixels, nw, nh), 0, 0)
-    const s = frame.source, d = frame.destination
-    canvas.getContext('2d').drawImage(source, s.x, s.y, s.width, s.height, d.x, d.y, d.width, d.height)
-    const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => b ? resolve(b) : reject(new Error('换图图片编码失败')), 'image/png'))
-    const img = await imageFromBlob(blob)
-    // Replacing an unused imported region is safe. A picture already in use gets a separate copy.
-    let path = name
-    if (attachmentsShowing(json, name).length) for (let k = 2; rt.atlas.findRegion(path); k++) path = `${name}_${k}`
-    let fileName = '__nf_swap_1.png'
-    const reservedPages = new Set([...Attach.parseAtlas(state.atlasText).values()].map((region) => lower(region.page)))
-    for (const ref of state.projectImageRefs || []) reservedPages.add(lower(ref.fileName))
-    for (let k = 2; state.images.has(lower(fileName)) || reservedPages.has(lower(fileName)); k++) fileName = `__nf_swap_${k}.png`
-    let atlasText = state.atlasText
-    if (path === name) {
-      // Only this region's declaration is replaced; its old page and all other regions stay intact.
-      let omit = false
-      atlasText = atlasText.split(/\r?\n/).filter((line) => {
-        if (line.trim() === name) { omit = true; return false }
-        if (omit && line.trim() && line.includes(':')) return false
-        omit = false
-        return true
-      }).join('\n')
-    }
-    atlasText = atlasText.replace(/\s+$/, '') + '\n\n' + Attach.synthesizeAtlas([{ fileName, name: path, width, height }]) + '\n'
-    return { path, atlasText, width, height, image: { fileName, img, blob, pma: false, sessionGenerated: true } }
-  }
-
   /**
-   * 换图: the attachment shows another picture (a region takes its size; a mesh keeps its vertices).
+   * 换图: the attachment shows another picture at that picture's own size, like Spine (user
+   * 2026-11-15: the new picture was squeezed into the old one's frame): a region takes its size, a
+   * mesh scales along the picture's axes (Ops.fitAttachmentToImage), a linked mesh keeps its parent's
+   * vertices. No extra image file is made.
    * Its name follows the picture when it was the old picture's name (user 2026-10-16: 换完图了命名
    * 是不是要改下) - a name of one's own stays, and so does a skin placeholder's (shared by every skin);
    * a name the slot already has gets _2, _3. The slot keeps its name. `all`: every attachment in the
    * project that shows the same picture is swapped the same way, as one undo step.
    */
-  async function swapImage(sel, name, opts) {
-    const before = state.json
-    let prepared
-    try { prepared = await prepareSwapImage(before, sel, name) } catch (e) { status('换图失败：' + e.message, 'error'); return }
-    if (state.json !== before) { status('工程已变化，请重新换图', 'error'); return }
-    if (prepared) name = prepared.path
-    const size = prepared ? { width: prepared.width, height: prepared.height } : regionSize(name) || {}
+  function swapImage(sel, name, opts) {
+    const size = regionSize(name)
     const want = shortName(name)
     edit((r) => (r.count > 1 ? `已把 ${r.count} 处「${shortName(r.old)}」换成 ${name}` : `已给「${sel.name}」换图：${name}`) + (r.renamed ? `，附件改名为 ${want}` : ''), (j) => {
-      if (prepared) {
-        state.images.set(lower(prepared.image.fileName), prepared.image)
-        state.atlasText = prepared.atlasText
-        state.atlasChanged = true
-        rt.atlasKey = null
-      }
       const sk = j.skins.find((x) => x.name === sel.skin)
       const a0 = sk && sk.attachments[sel.slot] && sk.attachments[sel.slot][sel.name]
       const old = pictureOf(sel.name, a0) || sel.name
       const targets = opts && opts.all ? attachmentsShowing(j, old)
         : [{ skin: sel.skin, slot: sel.slot, key: sel.name, mesh: !!a0 && (a0.type === 'mesh' || a0.type === 'linkedmesh') }]
       let json = j, picked = sel.name, renamed = 0
+      const from = old !== name && regionSize(old)
       for (const t of targets) {
-        json = Ops.setAttachmentProps(json, t.skin, t.slot, t.key, t.mesh ? { path: name } : { path: name, ...size }).json
+        json = Ops.setAttachmentProps(json, t.skin, t.slot, t.key, { path: name }).json
+        if (size && from) json = Ops.fitAttachmentToImage(json, t.skin, t.slot, t.key, from.width, from.height, size.width, size.height).json
+        else if (size && !t.mesh) json = Ops.setAttachmentProps(json, t.skin, t.slot, t.key, size).json
         if (t.key === want || !namedAfterPicture(t.key, old)) continue
         if (Ops.isPlaceholder(json, t.slot, t.key)) continue
         const taken = (n) => json.skins.some((s) => s.attachments[t.slot] && s.attachments[t.slot][n]) || Ops.isPlaceholder(json, t.slot, n)
@@ -3901,11 +3865,13 @@
   }
 
   /** Every image of the project's image folder (subfolders included): [{ name, file }]. */
+  // old 换图 copies (__nf_swap_N.png) left in image folders: never listed, picked or exported
+  const INTERNAL_PICTURE = /^_+nf_/i
   async function folderImages(source = state) {
     const out = []
     const walk = async (node) => {
       const l = await node.list()
-      for (const f of l.files) out.push({ name: folderPictureName(f), file: f.file })
+      for (const f of l.files) if (!INTERNAL_PICTURE.test(f.name)) out.push({ name: folderPictureName(f), file: f.file })
       for (const d of l.dirs) await walk(d)
     }
     if (source.imageFolder) await walk(source.imageFolder)
