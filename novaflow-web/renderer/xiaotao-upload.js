@@ -179,14 +179,24 @@
   function positiveTaskText(message){return String(message||'').replace(/(?:不要|不用|无需|不需要|(?<![分识区类告差鉴])别|先不|暂不|不(?:再|重新|额外)?(?:生成|生图|制作|导出|保存|新建|修改|改动|改变|合并|隐藏|删除|切换|引用|合成|重绘|执行|处理)|不AI改绘)[^，。；;！？!?\n]*/g,'');}
   // Words that ask to cut or retime an existing clip; these go to the 音视 edit resources, not a generation slot.
   const VIDEO_EDIT_WORDS='剪辑|裁切|裁剪|分割|截取|(?:只|仅)?保留(?:前|后|中间|最后)?.{0,4}\\d+(?:\\.\\d+)?\\s*(?:秒|s\\b)|剪(?:掉|成|短|一下)|截(?:成|短)|去掉(?:前|后|开头|结尾)|删掉(?:前|后|开头|结尾)|缩短|拼接|静音|变速|倍速|加速播放|慢放|倒放|镜像';
+  // A complaint that the result never came ("怎么没有生成视频") is a request to produce it now.
+  function missedResultRequest(message){
+    const text=latestRequest(message);
+    return /(?:怎么|为什么|为啥|咋|怎么还|还)(?:还)?(?:是)?(?:没|没有|不)(?:有)?(?:开始|帮我|给我|直接)?(?:生成|出片|出图|制作|提交|做)/.test(text)&&!/(?:不要|不用|别|先不|暂不)(?:再)?(?:生成|制作|提交)/.test(text);
+  }
   function inferTask(message, files = [], previous = null) {
     const text = String(message || '').split('本次最新要求优先，替换与它冲突的旧描述：').at(-1).trim();
     const kinds = Array.from(files || []).map(file => file.kind),positive=positiveTaskText(text),previousSurface=previous?.surface || previous?.kind;
+    // 图生视频 holds one picture: two pictures ending on the second are 首尾帧, more go to 多参.
+    const imageCount=kinds.filter(kind=>kind==='image').length;
     let discussion = question(text) || /怎么|如何|为什么|是什么|能不能|可不可以|能否|是否|(?:只|仅).{0,8}(?:分析|看看|提示词|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,8}(?:生成|执行|制作|修改)/.test(text);
     const promptEdit=/(?:提示词.{0,6}(?:优化|修改|调整|改|写入|填入)|(?:优化|修改|调整|写入|填入).{0,6}提示词)/.test(text);
     const editing=new RegExp(VIDEO_EDIT_WORDS+'|音量|淡入|淡出|循环\\s*\\d+\\s*次|导出|时间轴|帧编辑','i').test(positiveTaskText(text));
     if(editing&&!question(text)&&!/(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不).{0,6}(?:执行|制作|修改|处理)/.test(text))discussion=false;
     if(promptEdit && !question(text) && !/怎么|如何|为什么|能不能|可不可以|能否|是否|(?:不要|不用|别|先不|暂不).{0,6}(?:优化|修改|写入|填入)|(?:只|仅).{0,6}(?:分析|讨论|解释)/.test(text))discussion=false;
+    // "怎么没有生成视频" asks for the missing result, not for an explanation.
+    const missedResult=missedResultRequest(text);
+    if(missedResult)discussion=false;
     const animationExport=/导出/.test(positive)&&(/骨骼动画|Spine|(?:当前|现有|这个|idle).{0,8}动画/i.test(positive)||previousSurface==='animation'&&!/美工|图层|画布|图片|UI设计|PNG压缩|JPG压缩|工具版块|音视|视频(?:版块|编辑|剪辑)|首尾帧|多参|图生视频|文生视频/.test(positive));
     const animationAuthoring=animationExport||/骨骼|蒙皮|权重|关键帧|\broot\b|(?:动画|Spine).{0,8}(?:工程|版块|模块)|Spine\s*编辑/i.test(positiveTaskText(text))&&!/视频|音视|音频|音效|首尾帧|图生|文生|多参/.test(positiveTaskText(text));
     const artTool=/美工|图层|画布扩展|姿势参考|智能补图|局部编辑|去背|UI设计/.test(positive)&&!/视频|音频|音效|音乐/.test(positive);
@@ -201,7 +211,7 @@
     if(animationAuthoring)surface='animation';
     if (discussion) surface = 'chat';
     const newTask=/新建|新的任务|另一个任务|另外做|重新开始|不要原来|独立制作/.test(text);
-    const feedback=/不符合|不满意|性格|凶悍|凶一点|需要|重新做|重做|换|改|调整|优化|提示词|表情|动作|呲牙|龇牙|刚才|这个|再来|继续|导出|还是|不对|效果|更.{0,8}(?:点|一些|一点)/.test(text);
+    const feedback=missedResult||/不符合|不满意|性格|凶悍|凶一点|需要|重新做|重做|换|改|调整|优化|提示词|表情|动作|呲牙|龇牙|刚才|这个|再来|继续|导出|还是|不对|效果|更.{0,8}(?:点|一些|一点)/.test(text);
     const explicitImage=artTool||/图生图|生图|出图|静态图|(?:画|生成|制作).{0,5}(?:一张|图片|张图)/.test(positive);
     const explicitVideo=!animationAuthoring&&/视频|动画|动效|动态/.test(positive)&&!(previousSurface==='animation'&&!/视频|首尾帧|多参|图生|文生/.test(positiveTaskText(text)));
     // "把音频1换成这个" inside a 多参 task swaps a slot; it is not a new audio job.
@@ -213,7 +223,8 @@
     let mode = surface === 'image' ? (kinds.includes('image') ? 'img2img' : 'txt2img')
       : surface === 'video' ? kinds.some(kind => kind !== 'image') || /多参/.test(positive) ? 'multi_reference'
         : /首尾帧|首帧|尾帧/.test(positive) || loop && kinds.includes('image') ? 'first_last'
-          : kinds.includes('image') ? 'image_video' : 'text_video' : '';
+          : imageCount === 2 && /变成|变为|变回|变到|过渡|最后|最终|结尾|结束/.test(positive) ? 'first_last'
+            : imageCount > 1 ? 'multi_reference' : kinds.includes('image') ? 'image_video' : 'text_video' : '';
     if (surface==='image' && imageEdit && kinds.includes('image')) mode = 'img2img';
     const explicitVideoModes=[...positive.matchAll(/文生视频|图生视频|首尾帧(?:视频)?|多参(?:视频)?/g)].map(m=>({'文生视频':'text_video','图生视频':'image_video'}[m[0]]||(/首尾帧/.test(m[0])?'first_last':'multi_reference')));
     if(surface==='video'&&new Set(explicitVideoModes).size===1)mode=explicitVideoModes[0];
@@ -232,7 +243,7 @@
     const list = Array.from(files || []);
     const images = list.filter(file => file?.kind === 'image');
     const imageHits = [...new Set(named.filter(id => ['image_video', 'first_frame', 'last_frame', 'multi_reference', 'img2img', 'first_last_pair', 'first_last_unspecified'].includes(id)))];
-    const inferred = task.surface === 'image' ? 'img2img' : task.surface === 'video' ? task.mode === 'first_last' ? 'first_frame' : task.mode === 'image_video' ? 'image_video' : task.mode === 'multi_reference' ? 'multi_reference' : '' : '';
+    const inferred = task.surface === 'image' ? 'img2img' : task.surface === 'video' ? task.mode === 'first_last' ? images.length === 2 ? 'first_last_pair' : 'first_frame' : task.mode === 'image_video' ? 'image_video' : task.mode === 'multi_reference' ? 'multi_reference' : '' : '';
     const requestedDecision = imageHits.length === 1 ? imageHits[0] : inferred;
     // "首尾帧" with no word on which picture goes where: one picture opens the clip, two fill both ends.
     const framesNamed=['first_last_pair','first_last_unspecified'].includes(requestedDecision);
@@ -520,7 +531,7 @@
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, positiveTaskText, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, positiveTaskText, missedResultRequest, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

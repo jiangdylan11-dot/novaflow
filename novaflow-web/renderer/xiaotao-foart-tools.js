@@ -884,7 +884,7 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
         }
         if(!ready)fail('图片仍未进入原生压缩工具，未在导入完成前执行处理');
       }
-      await sleep(100);return {action:op.action,phase:'applied',control:label(el)||el.accept||'原生素材输入',...(files.length===1?{uploadId:uploadIds[0],name:files[0].name}:{}),files:files.map((file,i)=>({name:file.name,uploadId:uploadIds[i]})),message:'已将 '+files.map(f=>f.name).join('、')+' 交给当前原生工具',...(viewerImport?{viewer:root.NovaFlowProductionTools.spine_viewer.snapshot().viewer}:{})};
+      await sleep(100);return {action:op.action,phase:'applied',control:label(el)||el.accept||'原生素材输入',...(files.length===1?{uploadId:uploadIds[0],name:files[0].name}:{}),files:files.map((file,i)=>({name:file.name,uploadId:uploadIds[i]})),message:'已放入'+(label(el)||'素材位置')+'：'+files.map(f=>f.name).join('、'),...(viewerImport?{viewer:root.NovaFlowProductionTools.spine_viewer.snapshot().viewer}:{})};
     }
     if(op.action==='set_control'){
       if((el.matches('[data-novaflow-timeline-time-display]')||el.type==='range'&&el.closest('[data-novaflow-bottom-controls="1"]')&&el.parentElement?.querySelector('[data-novaflow-playback-icon]'))&&!/播放(?:位置|进度|时间)|定位(?:到|至)|跳(?:到|至)|预览.{0,4}(?:到|至)/.test(requirements))fail('这是预览播放时间，不是粒子的生命周期参数；请使用基础属性中的生命周期');

@@ -586,5 +586,17 @@ await test('skeletal animation edits keep authoring context while sequence/video
  }
  assert.equal(api.inferTask('去音视视频编辑版块导出视频',[],previous).surface,'video');
 });
+await test('two pictures never share the single 图生视频 slot, and a missed video is asked for again',()=>{
+ const {api}=load();const two=[{kind:'image',name:'a.png'},{kind:'image',name:'b.png'}];
+ const morph=api.planRoutes('@参考图1 @参考图2 猴子落下后小猴子快速一个一个冒出变成参考图2，动画要生动，1秒',two);
+ assert.equal(morph.place.map(item=>item.destination.id).join(),'first_frame,last_frame');
+ assert.equal(api.planRoutes('两个角色在打架，做成视频',two).place.map(item=>item.destination.id).join(),'multi_reference,multi_reference');
+ assert.equal(api.planRoutes('让他动起来',[two[0]]).place[0].destination.id,'image_video');
+ const previous={surface:'video',mode:'first_last',executor:'foart'};
+ const retry=api.inferTask('怎么没有生成视频',[],previous);
+ assert.equal(retry.discussion,false);assert.equal(retry.revision,true);assert.equal(retry.surface,'video');assert.equal(retry.mode,'first_last');
+ assert.equal(api.inferTask('怎么生成视频？',[],previous).discussion,true);
+ assert.equal(api.missedResultRequest('先不要生成，怎么还没写提示词'),false);
+});
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

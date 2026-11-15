@@ -1628,7 +1628,7 @@
           for(const [index,picture] of videoPictures.entries()){const seen=(await lookAt([picture],'用不超过六十字客观描述图片：人物朝向、姿势、服饰、场景和画风。只输出描述。')).trim();if(!seen)break;facts.push('图'+(index+1)+'：'+seen);}
           pictureFacts=facts.join('\n').slice(0,500);
         }
-        let pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
+        let pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=(op,ctx)=>op.action==='assign_upload'?'assign_upload|'+(ctx?.controls?.find(c=>c.id===op.controlId)?.label||op.controlId)+'|'+(op.uploadIds||[op.uploadId]).join(','):op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
         const enhancementNames={split:'一键拆图',generativeSplit:'对象分离',imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
         const namedEnhancements=Object.keys(enhancementNames).filter(name=>positiveRequest.includes(enhancementNames[name]));
         for(let round=0;round<planningLimit;round++){
@@ -1701,7 +1701,22 @@
           // A brain that answers a video prompt request in prose skips the H3 framework: send it through.
           if(plan.status!=='act'&&!receipts.length&&forbidsGeneration(message)&&/视频/.test(positiveRequest)&&/提示词/.test(message))plan={...plan,status:'act',reply:'已按视频框架写好提示词。',operations:[{action:'media',operation:{action:'optimize_video_prompt',target:'video',prompt:positiveRequest.slice(0,1500)}}]};
           // "帮我生成…视频" writes the prompt AND submits; a brain that stops at the prompt step would leave the user waiting.
-          if(plan.status==='act'&&uploadApi()?.videoRequestKind?.(message)==='generate')plan={...plan,operations:plan.operations.map(op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?{...op,operation:{...op.operation,action:'generate_video'}}:op)};
+          // A video asked for by its content ("猴子落下后…，1秒") or by "怎么没有生成视频" is a generation too.
+          const videoWanted=uploadApi()?.videoRequestKind?.(message)==='generate'||uploadApi()?.missedResultRequest?.(message)===true&&(intent?.surface==='video'||priorTask?.surface==='video')
+            ||intent?.surface==='video'&&!intent.discussion&&!/提示词/.test(message)&&!forbidsGeneration(message)&&!mediaEditIntent;
+          // A sentence saying it will submit, with nothing submitted, leaves the user waiting; "如果你…我会…" is an offer and stays.
+          const promisesWork=plan.status!=='act'&&String(plan.reply||'').split(/[。！？!?\n]/).some(s=>!/如果|需要的话|要不要|是否|吗/.test(s)&&/(?:我(?:会|将|这就|马上|现在就?)|马上|这就|立即|立刻|现在就)[^，,]{0,8}(?:提交|生成|制作|执行)/.test(s));
+          // "怎么没有生成视频" with no video made yet asks for it now.
+          const madeVideo=(priorTask?.outputs||[]).some(o=>/\.(?:mp4|webm)$/i.test(o?.name||''))||receipts.some(r=>(r.results||[]).some(v=>v.action==='generate_video'&&v.resources?.length));
+          const missedVideo=plan.status!=='act'&&uploadApi()?.missedResultRequest?.(message)===true&&videoWanted&&!madeVideo;
+          if(promisesWork||missedVideo){
+            const page=root.NovaFlowAiSequenceGeneration?.capture?.(),emptySlot=page?.referenceSlots?.some(slot=>!slot.occupied);
+            const videoReady=page?.mode==='minimax_h3_local'&&['text_video','image_video','first_last','multi_reference'].includes(page.genType)&&!emptySlot&&(page.genType!=='multi_reference'||page.h3References?.length>0);
+            const brief=intent?.revision&&priorTask?.baseRequest?priorTask.baseRequest+'；'+positiveRequest:missedVideo&&String(page?.prompt||'').trim()?page.prompt:positiveRequest;
+            if(videoWanted&&videoReady&&!madeVideo)plan={...plan,status:'act',operations:[{action:'media',operation:{action:'generate_video',target:'video',prompt:brief.slice(0,1500),...(Number.isFinite(intent?.seconds)?{seconds:intent.seconds}:{})}}]};
+            else if(!receipts.some(r=>r.phase==='completed'))plan={...plan,reply:videoWanted&&!videoReady?(emptySlot?'视频还没有提交：参考图位置还没放满，请把图片放进对应位置后再让我生成。':'视频还没有提交：请先在音视里选好视频生成模式，再让我生成。'):promisesWork?'这一步还没有实际执行。请再说一次要做什么，我会直接执行。':plan.reply};
+          }
+          if(plan.status==='act'&&videoWanted)plan={...plan,operations:plan.operations.map(op=>op.action==='media'&&op.operation?.action==='optimize_video_prompt'?{...op,operation:{...op.operation,action:'generate_video'}}:op)};
           if(namedEnhancements.length===1&&plan.operations.some(op=>{const name=op.action==='art_action'?op.name:op.action==='activate_control'?Object.keys(enhancementNames).find(key=>snapshot.controls.find(control=>control.id===op.controlId)?.label===enhancementNames[key]):null;return name&&enhancementNames[name]&&name!==namedEnhancements[0];})){
             if(++artActionRetries>2)fail('方案仍未选择本次要求的'+enhancementNames[namedEnhancements[0]]+'，未执行其他增强功能');
             continue;
@@ -1750,7 +1765,7 @@
           }
           // A planner that repeats a step this turn already ran has finished; running it again would export twice.
           if(plan.status==='act'){
-            const fresh=plan.operations.filter(op=>!finishedOps.has(opKey(op)));
+            const fresh=plan.operations.filter(op=>!finishedOps.has(opKey(op,snapshot)));
             plan=fresh.length?{...plan,operations:fresh}:{...plan,status:'done',reply:summarize(receipts),operations:[]};
           }
           state.model=data.model||state.model;
@@ -1831,7 +1846,7 @@
               // "先画…然后做成视频": a finished picture is one step of the request, so the planner gets the next round.
               if(op.action==='image_generate'&&receipt?.phase==='completed'&&/然后|接着|之后|再把|再用|再做|做成|转成|导出|保存|配乐|配音|视频|动画/.test(positiveRequest))delete receipt.plannerPrompt;
             } else receipt=await tools.execute(state.provider==='api'&&op.action==='media'?await frameworkPrompt(op):op,{snapshot:current,fingerprint,signal,requirements:requestMessage,optimizerRequirements:message,onStatus,provider:state.provider,modelId:initialSelection.modelId,selectionStillCurrent,...(state.provider==='api'?{onlineBusiness:onlineBusinessUi(state.modelId,authorizeImages)}:{})});
-            receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op));
+            receipts.push(receipt);if(!['set_control','activate_control','open'].includes(op.action))finishedOps.add(opKey(op,current));
             // A finished generation with nothing queued after it needs no paid planner round to say so.
             if(op.action==='media'&&/^(?:generate_|optimize_video_prompt$)/.test(op.operation?.action||'')&&receipt.phase==='completed'&&!/然后|接着|之后|导出|保存|裁|剪|配乐|配音|加音|合成/.test(positiveRequest.replace(/^[\s，,。]*(?:然后|接着|之后)/,'')))receipt.plannerPrompt=true;
             if(receipt.phase==='review'&&receipt.optimization?.reviewRequired===true){
@@ -1963,7 +1978,8 @@
       const freshInvocationUploads=state.staged.slice();
       const invocationUploads=freshInvocationUploads.length ? freshInvocationUploads : operationUploadScope && !explicitPreviousImage && !reverseImage ? [] : lastUploads;
       const promptConversation=!includeResult&&!invocationUploads.length&&root.NovaFlowXiaotaoPromptSource?.isPromptConversation?.(message)===true;
-      const capabilityOnly=!reverseImage && !includeResult && !invocationUploads.length && (promptConversation||qwenCapabilityQuestion(message));
+      // "怎么没有生成视频" asks for the missing result; it is not a question about what 小桃 can do.
+      const capabilityOnly=!reverseImage && !includeResult && !invocationUploads.length && uploadApi()?.missedResultRequest?.(message)!==true && (promptConversation||qwenCapabilityQuestion(message));
       const capabilityHistory=capabilityOnly?copy(state.history):null;
       const promptDiscussion=communityChatOnly&&(qwenPromptDiscussion(message)||qwenNoToolExplanation(message));
       // A specifically requested text-only drawing draft has its own operation;
