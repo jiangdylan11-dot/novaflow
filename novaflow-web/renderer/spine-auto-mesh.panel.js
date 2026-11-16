@@ -395,7 +395,8 @@
       try { if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message) } catch { /* the thrown error still reaches the caller */ }
     }
   }
-  async function importPhotoshopProject(files, setStatus) {
+  /** options.operation ('append' | 'replace'): the caller already knows, so nothing is asked (小桃's folder run). */
+  async function importPhotoshopProject(files, setStatus, options) {
     const Attach = window.NovaFlowAutoMeshAttach
     const bridge = window.__NovaFlowSpineImportInlineBridge
     const cache = window.__NovaFlowSpineImportInlineBridgeCache
@@ -403,7 +404,7 @@
     const list = Array.from(files || [])
     const host = window.NovaFlowSkeletonEditor
     const editor = host && host.ready ? await host.ready() : null
-    const operation = editor && editor.chooseProjectOperation ? await editor.chooseProjectOperation('import') : 'append'
+    const operation = editor && editor.chooseProjectOperation ? await editor.chooseProjectOperation('import', options && options.operation) : 'append'
     if (!operation) { setStatus('已取消'); return { canceled: true } }
     const depth = (f) => (f.webkitRelativePath || f.name).split('/').length
     // NovaFlow's own project file (保存工程 → NovaFlow 工程): every project in it opens in the editor

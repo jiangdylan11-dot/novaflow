@@ -59,3 +59,15 @@ test('more than five files wait for one go-ahead',async()=>{
   await p.c.send('开始');
   assert.match(replies(p).at(-1),/做完了 6 个/);
 });
+
+test('project files are opened in 动画 one by one, the pictures beside them are theirs',async()=>{
+  const opened=[];
+  const p=await setup([pic('a.png'),{kind:'file',name:'hero.foart',getFile:async()=>new File([new Uint8Array([1])],'hero.foart')},{kind:'file',name:'boss.foart',getFile:async()=>new File([new Uint8Array([1])],'boss.foart')}],[open,null,open,null]);
+  p.root.NovaFlowSkeletonEditor={active:()=>true,ready:async()=>({openProjectFile:async(file,handle,options)=>{opened.push([file.name,handle.name,options.operation,options.directory.handle.name]);return 1;}})};
+  const hit=p.root.FoartXiaotaoFolder.find('把 D:/素材/角色 里的所有工程都导出一遍');
+  assert.deepEqual([...hit.kinds],['project']);assert.equal(hit.instruction('project'),'把这个工程导出一遍');
+  await p.c.send('把 D:/素材/角色 里的所有工程都导出一遍');await p.c.openFolder();
+  assert.deepEqual(opened,[['boss.foart','boss.foart','append','角色'],['hero.foart','hero.foart','append','角色']]);
+  assert.equal(p.starts.some(s=>/工程「boss.foart」：把这个工程导出一遍/.test(s.message)),true);
+  assert.match(replies(p).at(-1),/做完了 2 个/);assert.equal(p.c.state.staged.length,0);
+});

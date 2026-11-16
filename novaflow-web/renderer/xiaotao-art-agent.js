@@ -1978,7 +1978,8 @@
     const folderApi=()=>root.FoartXiaotaoFolder;
     const folderSay=(content,extra)=>{state.messages.push({role:'assistant',content,...extra});state.error='';notify();return true;};
     const folderAskDone=()=>{for(const row of state.messages)if(row.folderAsk)row.folderAsk=false;};
-    const folderNoun=kind=>kind==='image'?'这张图':kind==='video'?'这个视频':kind==='audio'?'这段音频':'这个文件';
+    const folderNoun=kind=>kind==='image'?'这张图':kind==='video'?'这个视频':kind==='audio'?'这段音频':kind==='project'?'这个工程':'这个文件';
+    const FOLDER_PROJECT=/\.(?:foart|nfproj|json|skel)$/i;
     async function folderTurn(message) {
       const files=folderApi();if(!files||!message)return null;
       const hit=(state.staged||[]).length?null:files.find(message);
@@ -1988,7 +1989,7 @@
         const found=await files.resolve(hit.path);
         if(retired)return false;
         if(found.unsupported)return folderSay('这个浏览器读不了本地文件夹，请用 Chrome 或 Edge 打开 Foart。');
-        folderJob={name:hit.name,path:hit.path,deep:hit.deep,instruction:hit.instruction,stage:'ask'};
+        folderJob={name:hit.name,path:hit.path,deep:hit.deep,kinds:hit.kinds||[],instruction:hit.instruction,stage:'ask'};
         if(found.handle)return folderPrepare(folderJob,found.handle);
         return folderSay(found.ask==='permission'?'「'+hit.name+'」之前允许过。点下面的按钮，在浏览器的确认框里选允许就行。':'第一次用「'+hit.name+'」这个文件夹。点下面的按钮选一下它，以后直接说就行。',{folderAsk:true});
       }
@@ -2023,21 +2024,42 @@
       try{
         listing=await folderApi().list(handle,{deep:job.deep});
         for(const entry of listing.files){
+          // A project file (Foart project, Spine or Photoshop JSON) is opened in 动画, not attached.
+          if(FOLDER_PROJECT.test(entry.name)){job.items.push({name:entry.path,kind:'project',entry});continue;}
           let file=null,verdict=null;try{file=await entry.file();verdict=uploads?.inspectUpload?.(file);}catch{verdict=null;}
           if(verdict?.ok)job.items.push({name:entry.path,kind:verdict.kind,file});else job.left++;
         }
+        // The sentence names what it is about ("所有工程" / "里的图"); unnamed, projects come first:
+        // the pictures beside a project are its own textures, not work of their own.
+        const named=job.kinds.length?job.kinds:job.items.some(item=>item.kind==='project')?['project']:null;
+        if(named){const all=job.items.length;job.items=job.items.filter(item=>named.includes(item.kind));if(named.includes('project')&&job.items.length<all)job.left=0;}
       }catch{listing=null;}
       if(retired||folderJob!==job)return false;
       state.status='';
       if(!listing){folderJob=null;return folderSay('「'+job.name+'」现在读不了，可能被移动或改了名字。');}
       const total=job.items.length,count=kind=>job.items.filter(item=>item.kind===kind).length;
-      if(!total){folderJob=null;return folderSay('「'+job.name+'」里没有我能处理的文件（图片、视频、音频）'+(listing.folders?'，子文件夹里的没有算。要算上的话，说一句“包括子文件夹”。':'。'));}
-      const kinds=[['image','图片'],['video','视频'],['audio','音频']].filter(([kind])=>count(kind)).map(([kind,label])=>label+' '+count(kind)).join('、');
+      if(!total){folderJob=null;return folderSay('「'+job.name+'」里没有'+(job.kinds.length?'这句话说的那类文件':'我能处理的文件（工程、图片、视频、音频）')+(listing.folders?'，子文件夹里的没有算。要算上的话，说一句“包括子文件夹”。':'。'));}
+      const kinds=[['project','工程'],['image','图片'],['video','视频'],['audio','音频']].filter(([kind])=>count(kind)).map(([kind,label])=>label+' '+count(kind)).join('、');
       const summary='「'+job.name+'」里有 '+total+' 个可以处理的文件（'+kinds+'）'+(job.left?'，另有 '+job.left+' 个我处理不了的会跳过':'')+(listing.folders?'，子文件夹里的没有算':'');
-      if(!job.instruction('image')){job.stage='what';return folderSay(summary+'。要对它们做什么？');}
+      if(!job.instruction(job.items[0].kind)){job.stage='what';return folderSay(summary+'。要对它们做什么？');}
       if(total>5){job.stage='confirm';return folderSay(summary+'。我会一个一个做，每个按实际用量结算，结果存进仓库，中途可以点停止。要现在开始吗？');}
       state.messages.push({role:'assistant',content:summary+'，现在开始。'});
       return folderRun(job);
+    }
+    // One project of the folder: it comes into 动画 after the open ones (nothing open is replaced) and is the
+    // picked project, with its pictures read from the folder it sits in — the same doors 导入工程 uses.
+    async function folderOpenProject(item) {
+      const tools=root.NovaFlowFoartTools,host=()=>root.NovaFlowSkeletonEditor,entry=item.entry;
+      if(!host()?.active?.())await tools.execute({action:'open',surface:'animation'},{snapshot:tools.capture()});
+      if(!host()?.active?.())return false;
+      const editor=await host().ready();
+      if(/\.(?:foart|nfproj)$/i.test(entry.name))return await editor.openProjectFile(await entry.file(),entry.handle,{operation:'append',directory:{handle:entry.dir}})>0;
+      const folders=root.FoartJsonFolder,panel=root.NovaFlowAutoMeshPanel;
+      if(!folders?.filesForJson||!panel?.importPhotoshopProject)return false;
+      await folders.remember(entry.dir);
+      const files=((await folders.filesForJson(entry.handle)).files||[]).map(row=>{try{Object.defineProperty(row.file,'webkitRelativePath',{value:row.relativePath||row.name});}catch{/* read-only in some engines */}return row.file;});
+      const opened=await panel.importPhotoshopProject(files,()=>{},{operation:'append'});
+      return !!opened&&!opened.canceled;
     }
     async function folderRun(job) {
       job.stage='run';job.stop=false;
@@ -2057,7 +2079,8 @@
         const mark=state.messages.length;let ok=false;
         try{
           const request=job.instruction(item.kind)+(job.extra?'（补充：'+job.extra+'）':'');
-          ok=await stageUploads([item.file])&&state.staged.length>0&&await send(request,{recordMessage:false,folderItem:true})===true&&!state.error&&!pendingIntent;
+          ok=(item.kind==='project'?await folderOpenProject(item):await stageUploads([item.file])&&state.staged.length>0)
+            &&await send(item.kind==='project'?'动画里刚打开并选中的工程「'+item.name.replace(/^.*\//,'')+'」：'+request:request,{recordMessage:false,folderItem:true})===true&&!state.error&&!pendingIntent;
         }catch{ok=false;}
         if(retired)return false;
         // 小桃 asks back on the very first file: the answer is for the whole folder, so keep the question.
@@ -2071,8 +2094,8 @@
       folderJob=null;
       const rest=total-done.length-skipped.length,used=spent(),names=skipped.slice(0,6).join('、')+(skipped.length>6?' 等':'');
       const reply='「'+job.name+'」'+(done.length?'做完了 '+done.length+' 个':'没有做成')+(skipped.length?'，'+skipped.length+' 个没做成：'+names:'')
-        +(rest>0?job.stop?'。已按你的要求停下，还有 '+rest+' 个没做':'。连着几个都没做成，我先停下了，还有 '+rest+' 个没做':'')+(job.left?'。另外 '+job.left+' 个不是图片、视频或音频，没有动':'')
-        +'。'+(done.length?'结果在仓库里，原文件没有改动。':'')+(used>0?'这次一共用了 '+used+' 积分。':'');
+        +(rest>0?job.stop?'。已按你的要求停下，还有 '+rest+' 个没做':'。连着几个都没做成，我先停下了，还有 '+rest+' 个没做':'')+(job.left?'。另外 '+job.left+' 个不是工程、图片、视频或音频，没有动':'')
+        +'。'+(done.length?job.items.some(item=>item.kind==='project')?'工程都留在动画里，原文件没有改动。':'结果在仓库里，原文件没有改动。':'')+(used>0?'这次一共用了 '+used+' 积分。':'');
       state.status='';return folderSay(reply);
     }
     async function send(message, {includeResult = false, recordMessage = true, folderItem = false} = {}) {

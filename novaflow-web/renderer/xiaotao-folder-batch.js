@@ -11,8 +11,8 @@
   const SHARED_DB = 'foart-folder-grants';
   const PATH = /(?:"([^"\n]+)"|“([^”\n]+)”|((?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]|~\/|\/(?:Users|home|Volumes|mnt)\/)[^\s"“”，。；！？<>|*?]*))/;
   // What follows the path and only points at its content: "文件夹里的所有图片都".
-  const TAIL = /^\s*(?:这个|那个)?(?:文件夹|目录|路径)?\s*(?:里面|里边|里头|里|中|下面|下|内)?(?:的)?(?:所有|全部|每一?[个张段])?(?:的)?(?:图片|图像|照片|图|视频|音频|文件|素材|东西|内容)?(?:全部|全都|都|逐个|挨个|一个个|一张张)?/;
-  const IDLE = /^(?:请|帮我|帮忙|麻烦|给我|把|将|对|用|看看|看一下|处理|弄|搞|一下|下|吧|了|的|这个|这张图|这个文件|[\s，。,.!！~、：:])*$/;
+  const TAIL = /^\s*(?:这个|那个)?(?:文件夹|目录|路径)?\s*(?:里面|里边|里头|里|中|下面|下|内)?(?:的)?(?:所有|全部|每一?[个张段])?(?:的)?(?:工程文件|工程|项目|图片|图像|照片|图|视频|音频|文件|素材|东西|内容)?(?:全部|全都|都|逐个|挨个|一个个|一张张)?/;
+  const IDLE = /^(?:请|帮我|帮忙|麻烦|给我|把|将|对|用|看看|看一下|处理|弄|搞|一下|下|吧|了|的|这个|这张图|这个文件|这个工程|[\s，。,.!！~、：:])*$/;
 
   /** The folder path in a sentence, and the sentence as it reads for one file of that folder. */
   function find(message) {
@@ -25,7 +25,10 @@
     const before = text.slice(0, hit.index).replace(/\s+$/, ''), after = text.slice(hit.index + hit[0].length), tail = TAIL.exec(after)[0];
     const deep = /子文件夹|子目录|所有层|每一层/.test(text) && !/不(?:要|含|包括|用).{0,4}子(?:文件夹|目录)/.test(text);
     const rest = (before + '\u0001' + after.slice(tail.length)).replace(/(?:[，,]?\s*(?:包括|包含|连同|含)\s*(?:所有)?子(?:文件夹|目录)(?:里的?)?(?:也要?|一起)?)/g, '');
-    return { path, name: parts[parts.length - 1], deep, instruction: kind => IDLE.test(rest.replace('\u0001', '')) ? '' : rest.replace('\u0001', kind === 'image' ? '这张图' : kind === 'video' ? '这个视频' : kind === 'audio' ? '这段音频' : '这个文件').trim() };
+    // What the sentence names right after the path decides which files count: 工程 = project files, 图 = pictures, and so on.
+    const kinds = [[/工程|项目|\.foart|json|spine/i, 'project'], [/图|照片|png|jpe?g|webp/i, 'image'], [/视频|mp4|mov|webm/i, 'video'], [/音频|音乐|音效|声音|mp3|wav/i, 'audio']]
+      .filter(([word]) => word.test(tail)).map(([, kind]) => kind);
+    return { path, name: parts[parts.length - 1], deep, kinds, instruction: kind => IDLE.test(rest.replace('\u0001', '')) ? '' : rest.replace('\u0001', kind === 'image' ? '这张图' : kind === 'video' ? '这个视频' : kind === 'audio' ? '这段音频' : kind === 'project' ? '这个工程' : '这个文件').trim() };
   }
   const segments = path => String(path || '').replace(/^\\\\/, '').split(/[\\/]+/).filter(part => part && !/^[A-Za-z]:$/.test(part) && part !== '~');
   const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
@@ -110,7 +113,7 @@
     return { handle, other: !same(handle.name, parts[parts.length - 1]) ? handle.name : '' };
   }
   const natural = (a, b) => String(a).localeCompare(String(b), 'zh-CN', { numeric: true, sensitivity: 'base' });
-  /** Files of the folder in name order: [{name, path, file()}]; `folders` counts the subfolders left out. */
+  /** Files of the folder in name order: [{name, path, handle, dir, file()}]; `folders` counts the subfolders left out. */
   async function list(handle, { deep = false, limit = 5000 } = {}) {
     const files = []; let folders = 0;
     const visit = async (dir, prefix) => {
@@ -121,7 +124,7 @@
         if (files.length >= limit) return;
         if (/^[.~$]/.test(entry.name) || /^(?:thumbs\.db|desktop\.ini)$/i.test(entry.name)) continue;
         if (entry.kind === 'directory') { if (deep) await visit(entry, prefix + entry.name + '/'); else folders++; continue; }
-        files.push({ name: entry.name, path: prefix + entry.name, file: () => entry.getFile() });
+        files.push({ name: entry.name, path: prefix + entry.name, handle: entry, dir, file: () => entry.getFile() });
       }
     };
     await visit(handle, '');
