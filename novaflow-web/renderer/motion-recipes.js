@@ -23,6 +23,8 @@
   const clone = (v) => JSON.parse(JSON.stringify(v))
   const r2 = (v) => Math.round(v * 100) / 100
   const t3 = (v) => Math.round(v * 10000) / 10000
+  // key times sit on whole timeline frames (the editor and Spine's dopesheet step at FPS)
+  const onFrame = (v) => t3(Math.round(v * FPS) / FPS)
   const EASE = { io: [0.25, 0, 0.75, 1], o: [0.15, 0.6, 0.35, 1], i: [0.6, 0, 0.85, 0.4], lin: null, step: 'stepped', back: [0.3, 0, 0.2, 1] }
 
   // ---------------------------------------------------------------- catalogue --
@@ -1079,7 +1081,7 @@
     for (const b of fx.bones) json.bones.push(Object.assign({}, b, { name: bn(b.name), parent: b.parent === 'root' ? holder : bn(b.parent) }))
     // an effect that holds (a darkened backdrop) stays to the end; settled, it is simply there from the first frame
     const stays = !!fx.hold, settled = stays && !!o.settled
-    const t0 = settled ? 0 : Math.max(0, o.time || 0), D = fx.duration || animationLength(fx.animation) || 1
+    const t0 = settled ? 0 : Math.round(Math.max(0, o.time || 0) * FPS) / FPS, D = fx.duration || animationLength(fx.animation) || 1
     const len = animationLength(A)
     // a looping effect fills the animation exactly: a whole number of loops, stretched or squeezed a little to fit
     // natural (an effect of an entrance set) never lengthens the animation: it is cut where the animation ends
@@ -1091,7 +1093,7 @@
     const skin = json.skins.find((k) => k.name === 'default') || json.skins[0]
     // alpha: the whole effect turned down (a set lays several lights over one another)
     const dimA = (c) => (o.alpha == null || o.alpha === 1 || !c ? c : c.slice(0, 6) + Math.max(0, Math.min(255, Math.round(parseInt(c.slice(6, 8) || 'ff', 16) * o.alpha))).toString(16).padStart(2, '0'))
-    const shift = (keys, extra) => { if (settled) return [Object.assign({}, keys[keys.length - 1], { time: 0 })]; const out = []; for (let k = 0; k < reps; k++) for (const key of keys) { const t = t0 + ((key.time || 0) + k * D) * ks; if (t > end + 1e-6) continue; if (k > 0 && !(key.time > 0)) continue; out.push(Object.assign({}, key, extra, { time: t3(t) })) } return out }
+    const shift = (keys, extra) => { if (settled) return [Object.assign({}, keys[keys.length - 1], { time: 0 })]; const out = []; for (let k = 0; k < reps; k++) for (const key of keys) { const t = t0 + ((key.time || 0) + k * D) * ks; if (t > end + 1e-6) continue; if (k > 0 && !(key.time > 0)) continue; out.push(Object.assign({}, key, extra, { time: onFrame(t) })) } return out }
     const added = []
     for (const sl of fx.slots) {
       const name = tag + sl.name, copy = Object.assign({}, sl, { name, bone: bn(sl.bone) })
@@ -1105,8 +1107,10 @@
       if (t0 > 0) keys.push({ time: 0, name: null })
       if (setupAtt && !(att.length && att[0].time <= t0 + 1e-6)) keys.push({ time: t3(t0), name: setupAtt })
       keys.push(...att)
-      if (!stays && !(o.natural && end >= total - 1e-6) && (!fx.loop || end < total - 1e-6)) keys.push({ time: t3(end + 0.0334), name: null })
-      mine.attachment = keys.filter((k, i, arr) => i === 0 || k.time > arr[i - 1].time + 1e-6)
+      if (!stays && !(o.natural && end >= total - 1e-6) && (!fx.loop || end < total - 1e-6)) keys.push({ time: onFrame(end + 1 / FPS), name: null })
+      // a squeezed loop can put two pictures on one frame: the later one moves a frame on, never between frames
+      let prev = -1
+      mine.attachment = keys.map((k) => { const f = Math.max(Math.round((k.time || 0) * FPS), prev + 1); prev = f; return Object.assign({}, k, { time: t3(f / FPS) }) })
       if (tr.color) mine.color = (t0 > 0 && !settled ? [Object.assign({}, tr.color[0], { time: 0, curve: 'stepped' })] : []).concat(shift(tr.color)).map((k) => (k.color ? Object.assign({}, k, { color: dimA(k.color) }) : k))
     }
     for (const [b, tr] of Object.entries(fx.animation.bones || {})) {

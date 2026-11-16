@@ -48,6 +48,15 @@
   }
   // A key is dropped when it shows the same region as the key before it; the last key always stays so the duration is unchanged.
   const collapseKeys = (keys, same) => keys.filter((key, i) => i === 0 || i === keys.length - 1 || !same(key, keys[i - 1]));
+  // Spine's dopesheet and the Foart editor step at 30 frames a second: every key lands on one of those frames.
+  // Two keys on the same frame cannot both show, so the later one stays.
+  const GRID = 30;
+  const onGrid = time => Math.round(Math.round((Number(time) || 0) * GRID) / GRID * 1e4) / 1e4;
+  const snapKeys = keys => keys.reduce((out, key) => {
+    const item = { ...key, time: onGrid(key.time) };
+    if (out.length && out[out.length - 1].time === item.time) out[out.length - 1] = item; else out.push(item);
+    return out;
+  }, []);
   // Rewrite a native Sequence timeline over the logical frames into hold keys on the unique regions.
   function holdSequence(keys, members) {
     const start = members[0].index, out = [];
@@ -59,7 +68,7 @@
         out.push({ time, mode: 'hold', index: members[(from + j) % members.length].index - start, delay });
       }
     });
-    return collapseKeys(out, (a, b) => a.index === b.index);
+    return collapseKeys(snapKeys(out), (a, b) => a.index === b.index);
   }
   // Atlas scale (Spine packer 缩放): box-filter downscale in premultiplied space so edges keep their colour.
   // Only the atlas pixels shrink; the skeleton attachments keep the source size and stretch the smaller region.
@@ -282,11 +291,13 @@
     const first = frames[0], last = frames[frames.length - 1], unique = frames.filter(frame => frame.unique !== false), native = key === '4.1' || key === '4.2', attachment = native ? `${baseName}_seq` : first.region;
     const attachments = native ? { [attachment]: { width: first.originalWidth, height: first.originalHeight, path: `${baseName}_`, sequence: { count: unique.length, start: 0, digits: 4, setup: 0 } } }
       : Object.fromEntries(unique.map(frame => [frame.region, { width: frame.originalWidth, height: frame.originalHeight }]));
-    const seconds = Math.max(0.001, Number(duration) || frames.length / fps);
-    const timeline = collapseKeys(frames.map((frame, index) => ({ time: index / fps, name: frame.region })), (a, b) => a.name === b.name);
-    if (loop) timeline.push({ time: seconds, name: first.region });
+    // The clip is laid on the 30 fps grid: each grid frame shows the source frame playing at that moment,
+    // so a 24 or 60 fps source holds or skips pictures instead of putting keys between frames.
+    const ticks = Math.max(1, Math.round(Math.max(0.001, Number(duration) || frames.length / fps) * GRID)), seconds = onGrid(ticks / GRID);
+    const timeline = collapseKeys(Array.from({ length: ticks }, (_, tick) => ({ time: onGrid(tick / GRID), name: frames[Math.min(frames.length - 1, Math.floor(tick * fps / GRID + 1e-6))].region }))
+      .concat(loop ? [{ time: seconds, name: first.region }] : []), (a, b) => a.name === b.name);
     const sequence = [{ time: 0, mode: loop ? 'loop' : 'once', index: 0, delay: 1 / fps }, { time: seconds, mode: 'hold', index: loop ? 0 : frames.length - 1, delay: 1 / fps }];
-    return { skeleton: { spine: versions[key], fps, x: 0, y: 0, width: first.originalWidth, height: first.originalHeight, images: packed ? './' : 'images/', audio: '' },
+    return { skeleton: { spine: versions[key], fps: GRID, x: 0, y: 0, width: first.originalWidth, height: first.originalHeight, images: packed ? './' : 'images/', audio: '' },
       bones: [{ name: 'root' }, { name: 'bone', parent: 'root' }], slots: [{ name: 'slot', bone: 'bone', attachment, color: 'ffffffff' }],
       skins: key === '3.7' ? { default: { slot: attachments } } : [{ name: 'default', attachments: { slot: attachments } }], animations: { animation: native
         ? { attachments: { default: { slot: { [attachment]: { sequence: unique.length === frames.length ? sequence : holdSequence(sequence, frames) } } } } }

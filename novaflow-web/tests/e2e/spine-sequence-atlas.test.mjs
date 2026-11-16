@@ -45,7 +45,8 @@ test('default exports only named JSON and original rectangular images, including
   assert.deepEqual(png(files.get('images/三角烟雾_0000.png')).rgba, rgba);
   assert.equal(json.skins[0].attachments.slot['三角烟雾_0000'].height, 9);
   assert.equal(json.skeleton.images, 'images/');
-  assert.equal(json.animations.animation.slots.slot.attachment[1].time, 1 / 12);
+  // 12 fps on the 30 fps timeline: the second picture starts at 1/12 s and first shows on frame 3
+  assert.equal(json.animations.animation.slots.slot.attachment[1].time, 0.1);
 });
 
 test('trim offsets reconstruct every pixel and the official 3.8 runtime keeps world positions', async () => {

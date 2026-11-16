@@ -9631,6 +9631,21 @@
   }
 
   /**
+   * Time-sorted keys moved onto whole timeline frames. 时长 ÷ 张数 is rarely a whole number of frames; rounding
+   * each key on its own keeps the drift away, and a key that would land on (or behind) the frame before it moves
+   * one frame on, so two pictures never share a frame.
+   */
+  function gridKeys(keys) {
+    let prev = -1
+    return keys.map((k) => {
+      const f = Math.max(Math.round((k.time || 0) * FPS + 1e-6), prev + 1), out = { ...k }
+      prev = f
+      delete out.time
+      return f ? { time: Math.round((f / FPS) * 10000) / 10000, ...out } : out
+    })
+  }
+
+  /**
    * 特效扫光写入动画。多插槽淡入淡出（轮廓流光 / 扫光默认）：第 i 张 0 → 100 → 0 跨两步，步 = 时长 / (N + 1)；
    * 一个插槽逐帧换图（效果库默认，2026-10-16 用户：很多效果放一个插槽更合适）：每张占一步，步 = 时长 / N。
    */
@@ -9678,7 +9693,7 @@
         for (const [t, alpha] of rel) keys.push(at(start + t, alpha))
         // a wrap set that ends before the animation does: off after 止 (ending with the animation keeps the loop seamless)
         if (rel[rel.length - 1][1] !== 0 && animEnd > endFrame) keys.push(at(end + 1 / FPS, 0))
-        row.color = keys
+        row.color = gridKeys(keys)
         a.slots[f.slot] = row
       })
       }
@@ -10007,7 +10022,7 @@
     if (start > 0) keys.push({ name: null })
     names.forEach((name, i) => { const t = t4(start + i * step); keys.push({ ...(t ? { time: t } : {}), name }) })
     if (!wrap || animEnd > endFrame) keys.push({ time: t4(end), name: null })
-    row.attachment = keys
+    row.attachment = gridKeys(keys)
     a.slots[slot] = row
     return json
   }
