@@ -2,20 +2,17 @@
 // 和扫光一样的规矩：界面上能拖的参数都要真改画面（不起作用的标 inert 置灰）。
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createContext, runInContext } from 'node:vm'
+import { runInThisContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import test from 'node:test'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const sandbox = { console }
-sandbox.globalThis = sandbox
-const vmctx = createContext(sandbox)
 const renderer = path.resolve(here, '../../renderer')
-runInContext(readFileSync(path.join(renderer, 'sweep-light.core.js'), 'utf8'), vmctx)
-runInContext(readFileSync(path.join(renderer, 'aifx-template-maker.core.js'), 'utf8'), vmctx)
-runInContext(readFileSync(path.join(renderer, 'aifx-template-maker.fx.js'), 'utf8'), vmctx)
-const FX = sandbox.NovaFlowFxMaker
+// 在本进程的全局里跑这三个经典脚本，不放进 vm.createContext 的沙箱：沙箱里每次查 Math / 全局都要过一层拦截，
+// 逐像素的渲染慢几十倍（整份测试从一分多钟变成七八分钟，2.0.368 的整轮测试因此撞到运行器的时间上限）。
+for (const name of ['sweep-light.core.js', 'aifx-template-maker.core.js', 'aifx-template-maker.fx.js']) runInThisContext(readFileSync(path.join(renderer, name), 'utf8'), { filename: name })
+const FX = globalThis.NovaFlowFxMaker
 const copy = (v) => JSON.parse(JSON.stringify(v))
 
 function project(effect, extra = {}) {
