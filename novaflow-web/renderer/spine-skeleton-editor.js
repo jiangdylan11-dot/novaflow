@@ -8000,7 +8000,8 @@
       }
 
       // 动画
-      const names = Object.keys(j.animations)
+      // listed by name like Spine (animation_2 before animation_10), whatever order the file keeps (user 2026-11-17)
+      const names = Object.keys(j.animations).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0))
       // Spine: double-click 「动画」 creates an animation; the dot = the animation being played
       if (node('anims', '动画', 'anim', names.length, 1, newAnimation)) {
         for (const n of names) {

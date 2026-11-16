@@ -117,3 +117,10 @@ test('animation mode hides both resource groups, while setup restores them',()=>
  f.state.mode='animate';assert(!f.keys().includes('images'));assert(!f.keys().includes('audio'));assert(f.keys().includes('event:end'));
  f.state.mode='setup';assert(f.keys().includes('images'));assert(f.keys().includes('audio'));
 });
+
+test('animations list by name, numbers by value, whatever order the file keeps', () => {
+  const f = fixture()
+  f.state.json.animations = { idle: {}, win: {}, fall: {}, change: {}, idle_2: {}, animation_10: {}, animation_2: {} }
+  assert.deepEqual(f.keys().filter(k => k.startsWith('anim:')), ['anim:animation_2', 'anim:animation_10', 'anim:change', 'anim:fall', 'anim:idle', 'anim:idle_2', 'anim:win'])
+  assert.deepEqual(Object.keys(f.state.json.animations), ['idle', 'win', 'fall', 'change', 'idle_2', 'animation_10', 'animation_2'], 'the data keeps its own order')
+})
