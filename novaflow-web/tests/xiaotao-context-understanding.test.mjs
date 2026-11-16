@@ -122,3 +122,8 @@ test('"怎么还没出来" after a finished result points at it instead of makin
   const q=await probe({page:'video',prompt:P,plans:[generateVideo(P)]});
   assert.deepEqual((await q.say('怎么还没生成')).ops,['generate_video']);
 });
+test('a finished generation keeps what the brain said in front of the receipt',async()=>{
+  const p=await probe({page:'video',prompt:P,task:videoTask,plans:[generateVideo('更可爱Q弹的待机')]});
+  const r=await p.say('动画太生硬了，要求可爱Q弹');
+  assert.match(r.reply,/^开始\n\n已调用[\s\S]*out\.mp4/);
+});

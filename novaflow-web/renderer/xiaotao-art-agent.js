@@ -1708,7 +1708,7 @@
           for(const [index,picture] of videoPictures.entries()){const seen=(await lookAt([picture],'用不超过六十字客观描述图片：人物朝向、姿势、服饰、场景和画风。只输出描述。')).trim();if(!seen)break;facts.push('图'+(index+1)+'：'+seen);}
           pictureFacts=facts.join('\n').slice(0,500);
         }
-        let pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=(op,ctx)=>op.action==='assign_upload'?'assign_upload|'+(ctx?.controls?.find(c=>c.id===op.controlId)?.label||op.controlId)+'|'+(op.uploadIds||[op.uploadId]).join(','):op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
+        let spoken='',pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=(op,ctx)=>op.action==='assign_upload'?'assign_upload|'+(ctx?.controls?.find(c=>c.id===op.controlId)?.label||op.controlId)+'|'+(op.uploadIds||[op.uploadId]).join(','):op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
         const enhancementNames={split:'一键拆图',generativeSplit:'对象分离',imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
         const namedEnhancements=Object.keys(enhancementNames).filter(name=>positiveRequest.includes(enhancementNames[name]));
         for(let round=0;round<planningLimit;round++){
@@ -1781,6 +1781,9 @@
           if(!response?.ok){handlePricingFailure(response);fail(response?.errorCode==='operation-planner-incomplete'?'小桃这一步没有给出可执行的方案，已完成的操作已保留，请换个说法再试。':response?.error||'Foart 工具规划未完成');}
           const data=response.data;if(!data?.toolPlan)fail('工具规划服务尚未更新，未提交操作');
           let plan=contract.validateFoartPlan(data.toolPlan,snapshot);
+          // What the brain said when it set to work is kept: a finished generation closes the turn without asking it again,
+          // and the bare receipt alone reads like a canned fallback.
+          if(!finishNow&&plan.status==='act'&&String(plan.reply||'').trim())spoken=String(plan.reply).trim();
           // A brain that answers a video prompt request in prose skips the H3 framework: send it through.
           if(plan.status!=='act'&&!receipts.length&&forbidsGeneration(message)&&/视频/.test(positiveRequest)&&/提示词/.test(message))plan={...plan,status:'act',reply:'已按视频框架写好提示词。',operations:[{action:'media',operation:{action:'optimize_video_prompt',target:'video',prompt:positiveRequest.slice(0,1500)}}]};
           // "帮我生成…视频" writes the prompt AND submits; a brain that stops at the prompt step would leave the user waiting.
@@ -1865,14 +1868,15 @@
             const meaningfulRows=receipts.filter(r=>r.action==='set_control'||r.action==='draw'||r.action==='pose_select'||r.action==='use_result'||r.message&&!/已操作原生控件；/.test(r.message)&&!['open','activate_control','assign_upload'].includes(r.action));
             const auditRows=artifactRows.length?artifactRows:meaningfulRows.length?[...new Map(meaningfulRows.map(row=>[row.action+'|'+row.control+'|'+String(row.value),row])).values()]:receipts;
             const receiptText=summarize(auditRows).split('\n').filter(text=>text&&!/已操作原生控件；/.test(text)).filter((text,index,all)=>all.indexOf(text)===index).slice(-8).join('\n');
+            const said=finishNow?spoken:plan.reply;
             const knownNames=new Set(receipts.flatMap(r=>[r.name,r.fileName,...(r.outputs||[]).map(v=>v.name),...(r.resources||[]).map(v=>v.name),...(r.results||[]).flatMap(v=>[v.name,v.fileName,...(v.resources||[]).map(w=>w.name)])]).filter(Boolean));
-            const mentioned=plan.reply.match(/[^\s，。；：:（）()“”"<>]+\.(?:png|jpe?g|webp|mp4|webm|wav|mp3|psd)/gi)||[];
+            const mentioned=said.match(/[^\s，。；：:（）()“”"<>]+\.(?:png|jpe?g|webp|mp4|webm|wav|mp3|psd)/gi)||[];
             const mediaModes=receipts.flatMap(r=>(r.results||[]).map(v=>v.mode).filter(Boolean));
             const hasOutput=receipts.some(r=>r.phase==='completed'&&(['image_generate','art_action','tool','effect_generate','effect_export'].includes(r.action)||r.resources?.length||(r.results||[]).some(v=>v.action?.startsWith('generate_')||v.fileName||v.resources?.length)));
-            const claimsOutput=/生成(?:好了|完成|成功)|(?:已经|已)(?:生成|制作完成|完成制作|导出)|制作(?:好了|完成|成功)|导出(?:好了|完成|成功)/.test(plan.reply);
+            const claimsOutput=/生成(?:好了|完成|成功)|(?:已经|已)(?:生成|制作完成|完成制作|导出)|制作(?:好了|完成|成功)|导出(?:好了|完成|成功)/.test(said);
             const contextNames=new Set([...knownNames,...(snapshot.uploads||[]).map(v=>v.name),...(snapshot.media?.videoResources||[]).map(v=>v.name),...(snapshot.media?.audioResources||[]).map(v=>v.name),...(snapshot.media?.generation?.h3References||[]).map(v=>v.name||v.fileName),...(snapshot.media?.generation?.referenceSlots||[]).map(v=>v.name)]);
-            const replyMatches=!mentioned.some(name=>!(claimsOutput?knownNames:contextNames).has(name))&&(!claimsOutput||hasOutput)&&(!/首尾帧/.test(plan.reply)||!mediaModes.length||mediaModes.every(mode=>mode==='first_last'))&&!(receipts.some(r=>r.outputs?.some(o=>o.downloadInitiated))&&/已保存|导出完成|已导出/.test(plan.reply));
-            const content=(receipts.length?(!finishNow&&replyMatches&&plan.reply!==receiptText?plan.reply+'\n\n':'')+receiptText:plan.reply).trim()||actual;
+            const replyMatches=!mentioned.some(name=>!(claimsOutput?knownNames:contextNames).has(name))&&(!claimsOutput||hasOutput)&&(!/首尾帧/.test(said)||!mediaModes.length||mediaModes.every(mode=>mode==='first_last'))&&!(receipts.some(r=>r.outputs?.some(o=>o.downloadInitiated))&&/已保存|导出完成|已导出/.test(said));
+            const content=(receipts.length?(replyMatches&&said&&said!==receiptText?said+'\n\n':'')+receiptText:plan.reply).trim()||actual;
             const quota=billingReceipt(billing);
             const downloads=receipts.flatMap(r=>(r.outputs||[]).map(output=>output.downloadId).filter(Boolean));
             state.messages.push({role:'assistant',content,...(downloads.length?{downloads}:{}),...(quota?{receipt:creditReceipt(quota)}:{})});
