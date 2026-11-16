@@ -1092,6 +1092,43 @@
     return { json: tidy(json), attachment: to }
   }
 
+  /**
+   * Drop animation keys that point at attachments no longer in the project: attachment keys
+   * naming something no skin (or empty placeholder) of that slot holds, and deform keys of an
+   * attachment the skin no longer has. The previous image then holds until the next key.
+   * Works in place; `slots` limits it to those slot names.
+   */
+  function pruneDeadKeys(json, slots) {
+    const only = slots ? new Set(slots) : null
+    const live = (slot, name) => emptyPlaceholders(json, slot).includes(name)
+      || json.skins.some((sk) => sk && sk.attachments && sk.attachments[slot] && sk.attachments[slot][name])
+    let removed = 0
+    for (const anim of Object.values(json.animations || {})) {
+      for (const [slot, tl] of Object.entries(anim.slots || {})) {
+        if (only && !only.has(slot)) continue
+        if (!tl || !Array.isArray(tl.attachment)) continue
+        const keep = tl.attachment.filter((k) => !k || k.name == null || live(slot, k.name))
+        if (keep.length === tl.attachment.length) continue
+        removed += tl.attachment.length - keep.length
+        if (keep.length) tl.attachment = keep
+        else delete tl.attachment
+        if (!Object.keys(tl).length) delete anim.slots[slot]
+      }
+      for (const [skinName, bySlot] of Object.entries(anim.deform || {})) {
+        const sk = json.skins.find((x) => x && x.name === skinName)
+        for (const [slot, byName] of Object.entries(bySlot || {})) {
+          if (only && !only.has(slot)) continue
+          const dead = Object.keys(byName || {}).filter((name) => !(sk && sk.attachments && sk.attachments[slot] && sk.attachments[slot][name]))
+          if (!dead.length) continue
+          for (const name of dead) delete byName[name]
+          removed += dead.length
+          if (!Object.keys(byName).length) delete bySlot[slot]
+        }
+      }
+    }
+    return removed
+  }
+
   function deleteAttachment(input, skin, slot, name, opts) {
     const json = prepare(input)
     const keep = !!(opts && opts.keepPlaceholder)
@@ -1119,6 +1156,7 @@
         if (!Object.keys(anim.deform[skin][slot]).length) delete anim.deform[skin][slot]
       }
     }
+    pruneDeadKeys(json, [slot])
     return { json: tidy(json) }
   }
 
@@ -1317,12 +1355,15 @@
     for (const anim of Object.values(json.animations)) {
       if (anim.deform) for (const skinKeys of Object.values(anim.deform)) if (skinKeys[slot]) delete skinKeys[slot][name]
     }
+    pruneDeadKeys(json, [slot])
     return { json: tidy(json) }
   }
 
   /** The JSON a Spine runtime gets: the lab-only empty placeholders removed. */
   function exportable(input) {
     const json = clone(input)
+    // keys left over from attachments deleted before the delete cleaned them up (empty placeholders still count)
+    if (Array.isArray(json.skins)) pruneDeadKeys(json)
     delete json[EMPTY_PLACEHOLDERS]
     // Spine's 导出 unticked: the image (and linked meshes drawing from it) stays out of the export
     const drop = Array.isArray(json[NO_EXPORT]) ? json[NO_EXPORT] : []
@@ -2930,7 +2971,7 @@
     createSkin, renameSkin, deleteSkin, deleteSkins, copyAttachmentToSkin, duplicateAttachment, hasDeformKeys,
     createEvent, setEventProps, renameEvent, deleteEvent, keyEvent, setSkinMembership,
     // skin placeholders
-    isPlaceholder, placeholderList, addPlaceholder, fillPlaceholder, clearPlaceholder, convertToPlaceholder, convertToPlaceholders, deletePlaceholder, exportable,
+    isPlaceholder, placeholderList, addPlaceholder, fillPlaceholder, clearPlaceholder, convertToPlaceholder, convertToPlaceholders, deletePlaceholder, exportable, pruneDeadKeys,
     // constraints
     createIk, createTransform, createPathConstraint, transformOffsets, autoOrderConstraints, setConstraintProps, renameConstraint, deleteConstraint,
     // helpers

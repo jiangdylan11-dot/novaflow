@@ -397,7 +397,8 @@
     rt.atlasKey = null
     rt.missingPages = new Set()
     rt.missingRegions = new Set()
-    try { applyJson(Ops.tidy(Ops.prepare(json))) } catch (error) {
+    // keys left by attachments deleted in older versions point at nothing (blank frames): dropped on open
+    try { const opened = Ops.tidy(Ops.prepare(json)); Ops.pruneDeadKeys(opened); applyJson(opened) } catch (error) {
       if (previousState) {
         for (const key of Object.keys(state)) delete state[key]
         Object.assign(state, previousState)
