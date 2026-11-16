@@ -175,7 +175,7 @@ async function exportBoards(boards, version, packed) {
   const start = bundle.indexOf('ni=async n=>') + 3;
   const source = bundle.slice(start, bundle.indexOf('},ri=', start) + 1);
   await vm.runInContext(`(${source})`, context)({ baseName: '动画集', atlasPack: packed, silent: true, throwOnError: true });
-  return { json: JSON.parse(new TextDecoder().decode(saved.get('AI/NovaFlow/动画集.json'))), saved, reads };
+  return { json: JSON.parse(new TextDecoder().decode(saved.get('AI/Foart/动画集.json'))), saved, reads };
 }
 
 test('actual Spine/atlas action uses each board fps and keeps names, frame count, timing and source sampling consistent', async () => {
@@ -197,7 +197,7 @@ test('actual Spine/atlas action uses each board fps and keeps names, frame count
         close(sequence[0].delay, 1 / expected.fps); close(sequence[1].time, expected.duration);
         assert.equal(json.skins[0].attachments[slot][`${name}_seq`].sequence.count, expected.count);
       }
-      if (packed) assert(new TextDecoder().decode(saved.get('AI/NovaFlow/动画集.atlas')).includes(`${name}_0000`));
+      if (packed) assert(new TextDecoder().decode(saved.get('AI/Foart/动画集.atlas')).includes(`${name}_0000`));
       else assert.equal([...saved.keys()].filter(path => path.includes(`/images/${name}_`)).length, expected.count);
     }
   }

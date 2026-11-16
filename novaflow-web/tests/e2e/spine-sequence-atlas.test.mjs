@@ -159,11 +159,11 @@ test('loaded AI cutout action exports the edited alpha frames and preserves the 
     assert.equal(result.height, 25);
     if (mode === 'video') { assert.equal(saved.size, 0); assert.equal(rawFrames.length, 2); assert.deepEqual(rawFrames[0].bytes, rgba); }
     else {
-      assert.equal(saved.has('AI/NovaFlow/AI烟雾.atlas'), mode === 'packed');
-      const json = JSON.parse(new TextDecoder().decode(saved.get('AI/NovaFlow/AI烟雾.json')));
+      assert.equal(saved.has('AI/Foart/AI烟雾.atlas'), mode === 'packed');
+      const json = JSON.parse(new TextDecoder().decode(saved.get('AI/Foart/AI烟雾.json')));
       assert.equal(json.skins[0].attachments.slot_1['AI烟雾_0000'].height, 25);
-      if (mode === 'loose') assert.deepEqual(png(saved.get('AI/NovaFlow/images/AI烟雾_0000.png')).rgba, rgba);
-      else { const { atlas } = await runtime('3.8', new TextDecoder().decode(saved.get('AI/NovaFlow/AI烟雾.atlas')), new Map([...saved].map(([name, bytes]) => [name.split('/').pop(), bytes]))); assert.equal(atlas.regions[0].offsetX, 3); assert.equal(atlas.regions[0].offsetY, 19); }
+      if (mode === 'loose') assert.deepEqual(png(saved.get('AI/Foart/images/AI烟雾_0000.png')).rgba, rgba);
+      else { const { atlas } = await runtime('3.8', new TextDecoder().decode(saved.get('AI/Foart/AI烟雾.atlas')), new Map([...saved].map(([name, bytes]) => [name.split('/').pop(), bytes]))); assert.equal(atlas.regions[0].offsetX, 3); assert.equal(atlas.regions[0].offsetY, 19); }
     }
   }
 });

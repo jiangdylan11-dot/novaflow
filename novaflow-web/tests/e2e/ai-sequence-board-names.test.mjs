@@ -156,7 +156,7 @@ async function exportAction(boards, version, packed, rawVideo = false) {
   });
   const action = vm.runInContext(`(${actionSource})`, context);
   await action({ baseName: '动画合集', atlasPack: packed, silent: true, throwOnError: true, ...(rawVideo ? { noSpine: true, rawDir: true, rawFrameWriter: async payload => rawFrames.push(payload) } : {}) });
-  return { saved, rawFrames, json: rawVideo ? null : JSON.parse(new TextDecoder().decode(saved.get('AI/NovaFlow/动画合集.json'))) };
+  return { saved, rawFrames, json: rawVideo ? null : JSON.parse(new TextDecoder().decode(saved.get('AI/Foart/动画合集.json'))) };
 }
 
 test('the loaded AI export action carries renamed multi-board animations into loose and packed Spine 3.8/4.0/4.1/4.2', async () => {
@@ -177,10 +177,10 @@ test('the loaded AI export action carries renamed multi-board animations into lo
         assert.equal(attachments[slot][`${name}_seq`].path, `${name}_`);
         assert(json.animations[name].attachments.default[slot][`${name}_seq`].sequence.length > 0);
       }
-      if (packed) assert(new TextDecoder().decode(saved.get('AI/NovaFlow/动画合集.atlas')).includes(`${name}_0000`));
-      else assert(saved.has(`AI/NovaFlow/images/${name}_0000.png`));
+      if (packed) assert(new TextDecoder().decode(saved.get('AI/Foart/动画合集.atlas')).includes(`${name}_0000`));
+      else assert(saved.has(`AI/Foart/images/${name}_0000.png`));
     }
-    assert.equal(saved.has('AI/NovaFlow/动画合集.atlas'), packed);
+    assert.equal(saved.has('AI/Foart/动画合集.atlas'), packed);
     assert([...saved.keys()].every(path => !path.includes('攻击/动作') && !path.includes('..')));
   }
 });
@@ -188,10 +188,10 @@ test('the loaded AI export action carries renamed multi-board animations into lo
 test('single-board rename changes the actual Spine key and PNG prefix; old boards and raw edited-video export remain compatible', async () => {
   const { saved, json } = await exportAction([board('b1', '待机.v2')], '3.8', false);
   assert.deepEqual(Object.keys(json.animations), ['待机.v2']);
-  assert(saved.has('AI/NovaFlow/images/待机.v2_0000.png'));
+  assert(saved.has('AI/Foart/images/待机.v2_0000.png'));
   const old = await exportAction([board('b1')], '3.8', false);
   assert.deepEqual(Object.keys(old.json.animations), ['animation_1']);
-  assert(old.saved.has('AI/NovaFlow/images/动画合集_0000.png'));
+  assert(old.saved.has('AI/Foart/images/动画合集_0000.png'));
   const video = await exportAction([board('b1', '新名字')], '4.1', false, true);
   assert.equal(video.saved.size, 0);
   assert.equal(video.rawFrames.length, 2);
