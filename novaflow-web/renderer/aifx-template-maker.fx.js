@@ -2717,6 +2717,99 @@
     },
   )
 
+  LIST.push(
+    {
+      id: 'raysup', label: '光芒迸射', group: '升级', hint: '一片柔和的光芒从底下成扇形往上迸出来：有粗有细、长短不齐，根部最亮，亮点顺着光芒往外飞，很快散掉', palette: 'white', lifecycle: 'once', ownEnvelope: true,
+      params: [P('reach', '范围', 0.3, 1, 0.05, 0.95), P('spread', '扇面', 0.3, 1.5, 0.05, 1), P('count', '光芒', 0.4, 3, 0.05, 1), P('size', '亮点', 0, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, H, u, cx, cy } = geo
+        const S = geo.Rfit, q = ctx.loop ? frac(t) : t, a = clamp01(q * Math.min(2.5, p.speed)), b = p.bright
+        const gy = Math.min(H - 2, cy + 0.82 * S), R = 1.5 * S * p.reach, half = 0.62 * p.spread, fq = 9 * p.count, D0 = 0.9 * S   // 光从底下一整条线上迸出来（虚拟的发光点在画面下方），不是从一个点炸开
+        // 一下子迸出去、随后变长变淡
+        const grow = 0.35 + 0.65 * (1 - Math.pow(1 - clamp01(a / 0.3), 2.4)), life = smooth(0, 0.05, a) * Math.pow(1 - smooth(0.2, 0.9, a), 1.3)
+        if (life > 0.003) {
+          const x0 = Math.max(0, Math.floor(cx - R)), x1 = Math.min(W - 1, Math.ceil(cx + R)), y0 = Math.max(0, Math.floor(gy - R))
+          for (let y = y0; y <= Math.min(H - 1, Math.floor(gy)); y++) for (let x = x0; x <= x1; x++) {
+            const dx = x - cx, dy = gy - y, r = dy
+            if (r > R || r < 0) continue
+            const th = Math.atan2(dx, dy + D0), at = Math.abs(th) / half
+            if (at > 1.05) continue
+            // 光芒：只随角度变的噪波（两层：粗的光束 + 细的光丝），随时间慢慢换
+            const b1 = fbm(th * fq + 7, 0.6 + a * 0.8, 311, 2), b2 = fbm(th * fq * 3.1 + 2, 1.9 + a * 1.4, 312, 2)
+            const beam = Math.pow(smooth(0.42, 0.78, b1), 1.2) * 0.9 + Math.pow(smooth(0.5, 0.85, b2), 1.5) * 0.6
+            const len = R * grow * (0.45 + 0.75 * fbm(th * fq * 0.7 + 13, 2.2, 313, 2)), rho = r / len
+            if (rho > 1) continue
+            const fall = Math.pow(1 - rho, 1.6) * (0.35 + 0.65 * Math.exp(-rho * 2.4)), fan = 1 - smooth(0.7, 1.05, at)
+            const e = (beam * fall + 0.3 * Math.exp(-rho * 6) * (0.5 + beam)) * fan * life * edgeFade(geo, x, y)
+            if (e > 0.004) addPixel(D, y * W + x, e * 1.5 * b, ramp(pal, clamp01(0.35 + 0.6 * beam * fall), C))
+          }
+        }
+        const m = Math.round(26 * p.size)
+        for (let i = 0; i < m; i++) {
+          const rnd = rng(i * 617 + 9), th = (rnd() * 2 - 1) * half * 0.9, v = (0.35 + rnd() * 0.6) * R * 0.95, born = rnd() * 0.15, age = clamp01((a - born) / (0.5 + rnd() * 0.35)), sz = (0.9 + rnd() * 1.6) * u
+          if (age <= 0 || age >= 1) continue
+          const d = v * (1 - Math.pow(1 - age, 2.2)), x = cx + Math.tan(th) * (d + D0), y = gy - d
+          dot(D, x, y, sz, 1.5 * Math.pow(1 - age, 0.9) * edgeFade(geo, x, y) * b, ramp(pal, 1, C))
+        }
+      },
+      ai: () => ['rays', 'burst of rays from below, soft beams of light of uneven width and length fanning upward from a point at the bottom, bright at their roots, with bright specks flying out along them'],
+    },
+    {
+      id: 'glowring', label: '柔光环', group: '选中', hint: '一圈柔和的光环：环线不是正圆、有点手绘的不规则，外面裹着一层厚厚的柔光，一呼一吸', palette: 'white', lifecycle: 'loop',
+      params: [P('reach', '大小', 0.3, 1, 0.05, 0.6), P('width', '环线', 0.3, 4, 0.05, 1), P('spread', '柔光', 0.3, 3, 0.05, 1), P('count', '不规则', 0, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, u, cx, cy } = geo
+        const S = geo.Rfit, R = 0.8 * S * p.reach, K = Math.max(1, Math.round(p.speed)), T = 1.6 * K, b = p.bright
+        const lw = 0.045 * R * p.width + 1.2 * u, hw = 0.26 * R * p.spread, breath = 0.78 + 0.22 * Math.sin(TAU * K * t)
+        const [x0, x1, y0, y1] = boxOf(geo, cx, cy, R + hw * 2.6)
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy)
+          if (Math.abs(r - R) > hw * 2.8 && r > R) continue
+          const cs = dx / (r || 1), sn = dy / (r || 1)
+          // 形状：固定的低频起伏（不是正圆）+ 一点点随时间的晃动
+          const wob = (fbm(cs * 1.6 + 4, sn * 1.6, 321, 2) - 0.5) * 0.22 * p.count + (loopFbm(cs * 2.6 + 1, sn * 2.6, 322, t, T, 2) - 0.5) * 0.05 * p.count
+          const d = r - R * (1 + wob), line = Math.exp(-((d / lw) ** 2)), thick = 0.7 + 0.6 * fbm(cs * 5 + 9, sn * 5, 323, 2)
+          const halo = Math.exp(-((d / hw) ** 2)) * (0.75 + 0.5 * loopFbm(cs * 3 + 6, sn * 3, 324, t, T, 2))
+          const inner = d < 0 ? 0.12 * Math.exp(d / (R * 0.5)) : 0
+          const e = (line * 1.25 * thick + halo * 0.5 + inner) * breath * edgeFade(geo, x, y)
+          if (e > 0.004) addPixel(D, y * W + x, e * b, ramp(pal, clamp01(0.3 + 0.6 * line), C))
+        }
+      },
+      ai: () => ['ring', 'soft glowing ring, a slightly irregular hand-drawn ring of light wrapped in a thick soft halo, gently breathing'],
+    },
+    {
+      id: 'flare', label: '金光闪耀', group: '升级', hint: '中心一颗十字星芒猛地亮起，外面一大团柔光、几道长短不一的光芒和两三圈淡淡的光环，闪一阵后收掉，留下一圈光点', palette: 'gold', lifecycle: 'once', ownEnvelope: true,
+      params: [P('reach', '范围', 0.3, 1, 0.05, 0.9), P('count', '光芒', 0, 3, 0.05, 1), P('width', '粗细', 0.3, 3, 0.05, 1), P('spread', '光环', 0, 2, 0.05, 1), P('size', '光点', 0, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { u, cx, cy } = geo
+        const S = geo.Rfit, q = ctx.loop ? frac(t) : t, a = clamp01(q * Math.min(2.5, p.speed)), b = p.bright
+        const R = 0.92 * S * p.reach
+        // 0.08 冲到最亮，亮着闪一阵，0.5 以后收
+        const k = (a < 0.08 ? smooth(0, 0.08, a) : 1 - smooth(0.42, 0.72, a)), shim = 0.85 + 0.15 * Math.sin(a * 55), kk = k * shim * b, pop = 0.6 + 0.4 * smooth(0, 0.12, a)
+        if (kk > 0.003) {
+          dot(D, cx, cy, 0.42 * R * pop, 0.42 * kk, ramp(pal, 0.35, C))
+          dot(D, cx, cy, 0.22 * R * pop, 0.75 * kk, ramp(pal, 0.6, C))
+          dot(D, cx, cy, 0.07 * R, 2.2 * kk, ramp(pal, 1, C))
+          star(D, cx, cy, 3.6 * u * p.width * pop, 0, 1.7 * kk, ramp(pal, 1, C))
+          const n = Math.round(9 * p.count)
+          for (let i = 0; i < n; i++) {
+            const rnd = rng(i * 421 + 17), an = rnd() * TAU + 0.12 * Math.sin(a * 6 + i), long = rnd() < 0.25, len = (long ? 0.75 + rnd() * 0.25 : 0.3 + rnd() * 0.3) * R * pop, w = (long ? 2.4 : 1.4 + rnd() * 2.6) * u * p.width
+            const fl = 0.7 + 0.3 * Math.sin(a * 40 + i * 2.7)
+            streak(D, cx, cy, cx + Math.cos(an) * len, cy + Math.sin(an) * len, w, 0.4 * u, (long ? 0.95 : 0.75) * kk * fl, 0, ramp(pal, 0.85, C), ramp(pal, 0.45, C2))
+          }
+          if (p.spread > 0) for (let j = 0; j < 3; j++) ringPx(D, cx, cy, R * (0.2 + 0.13 * j) * pop * (1 + 0.25 * a), (1 + 0.5 * j) * u, 0.4 * kk * p.spread * (1 - 0.25 * j), ramp(pal, 0.7, C))
+        }
+        const m = Math.round(30 * p.size)
+        for (let i = 0; i < m; i++) {
+          const rnd = rng(i * 733 + 23), an = rnd() * TAU, rr = (0.22 + rnd() * 0.35) * R * (1 + 0.5 * a), ph = clamp01((a - 0.1 - rnd() * 0.25) / 0.6), sz = (0.8 + rnd() * 1.3) * u
+          if (ph <= 0 || ph >= 1) continue
+          dot(D, cx + Math.cos(an) * rr, cy + Math.sin(an) * rr - 0.04 * R * ph, sz, 1.3 * Math.sin(Math.PI * ph) * (0.6 + 0.4 * Math.sin(ph * 30 + i)) * b, ramp(pal, 0.95, C))
+        }
+      },
+      ai: () => ['burst', 'golden flare, a cross-shaped star flashing up at the centre inside a large soft glow, with rays of uneven length and a few faint rings around it, shimmering, then fading to a ring of sparks'],
+    },
+  )
+
   for (const e of LIST) {
     if (HOLY_RAYS.includes(e) || ['godrays', 'aura'].includes(e.id)) e.group = '光晕放射'
     if (e.id === 'holy-twin') e.group = '轮廓流光'
@@ -2728,7 +2821,7 @@
   const OVERLAY = ['fireworks', 'charge', 'sparkspread']
   const DIRS = ['vortex', 'orb', 'swirl', 'slash', 'charge', 'runeA', 'runeB']
   // 不跟轮廓走、只看形状中心和大小的（2026-10-15 用户：「很多效果不需要轮廓，没必要显示轮廓」）——编辑器里只给一个位置框
-  const CENTERED = ['orb', 'swirl', 'slash', 'charge', 'fireball', 'runeA', 'runeB', 'runeC', 'vortex', 'fireworks', 'wave', 'sparkspread', 'rburst', 'firebomb', 'strike', 'plasma', 'thunderburst', 'thundercharge', 'smokerise', 'ripple', 'splash', 'iceburst', 'ragburst', 'firering', 'fibreburst', 'softpillar', 'groundfire']
+  const CENTERED = ['orb', 'swirl', 'slash', 'charge', 'fireball', 'runeA', 'runeB', 'runeC', 'vortex', 'fireworks', 'wave', 'sparkspread', 'rburst', 'firebomb', 'strike', 'plasma', 'thunderburst', 'thundercharge', 'smokerise', 'ripple', 'splash', 'iceburst', 'ragburst', 'firering', 'fibreburst', 'softpillar', 'groundfire', 'raysup', 'glowring', 'flare']
   for (const e of ALL) {
     e.kind = 'lib'
     // 事件类（自己管出场 / 收场的一次性效果）：切成循环 = 重复播放，从空画面直接开始
