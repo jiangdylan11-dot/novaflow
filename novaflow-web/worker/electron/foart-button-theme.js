@@ -38,7 +38,7 @@
   function compactUsageNotes(root = document) {
     // Explicit instructional copy only: shared "hint/note" classes also carry
     // filenames, prices, task progress and errors, which must remain visible.
-    const instructions = /^(?:选择\s*PS\s*导出的图层工程文件夹|骨骼直接在画面里编辑|快捷键[：:]|滚轮缩放\s*[·•]|固定所选锚点)/;
+    const instructions = /^(?:选择\s*PS\s*导出的(?:图层工程文件夹|\s*JSON)|骨骼直接在画面里编辑|快捷键[：:]|滚轮缩放\s*[·•]|固定所选锚点)/;
     root.querySelectorAll('[data-novaflow-left-content-root] :is(div,p,small)').forEach(node => {
       if (node.childElementCount || node.hasAttribute('data-foart-usage-note')) return;
       const text = node.textContent.trim();

@@ -12,7 +12,7 @@
 //   Electron                     Web
 //   ---------------------------  --------------------------------------------
 //   save dialog                  File System Access API, <a download> fallback
-//   open folder (PS project)     showDirectoryPicker, <input webkitdirectory>
+//   open PS project (JSON)       showOpenFilePicker + allowed folders, <input webkitdirectory>
 //   webUtils.getPathForFile      a handle token (a browser has no OS paths)
 //   ffmpeg video compositor      canvas + MediaRecorder (WebM)
 //   open output folder           mapped local-folder browser and save queue
@@ -371,48 +371,209 @@
     return ok({ saved: true, name: suggestedName, via: 'download' });
   };
 
+  // ---------------------------------------------------------- 导入 PS 工程: one JSON is enough
+  //
+  // The user picks (or drops) only the JSON Photoshop exported; its pictures are read from the
+  // folder the JSON sits in (user 2026-11-16: 不要选文件夹，导入或拖入 JSON 就行). A web page that is
+  // handed one file cannot see the files beside it, so a folder the user once allowed is kept
+  // (IndexedDB) and found again with resolve(): a JSON anywhere under it opens with no extra step.
+  // A JSON no allowed folder holds comes in without pictures (user: 找不到就空白，用户自己指定); the
+  // folder then given to its 图片 node (指定文件夹…) is kept, so the next JSON there opens whole.
+  const jsonFolders = (() => {
+    const DB = 'foart-folder-grants';
+    const STORE = 'folders';
+    const KEEP = 16;
+    const open = () => new Promise((resolve) => {
+      try {
+        if (!root.indexedDB) { resolve(null); return; }
+        const req = root.indexedDB.open(DB, 1);
+        req.onupgradeneeded = () => { try { req.result.createObjectStore(STORE); } catch (_) { /* exists */ } };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      } catch (_) { resolve(null); }
+    });
+    const list = async () => {
+      const db = await open();
+      if (!db) return [];
+      return await new Promise((resolve) => {
+        try {
+          const req = db.transaction(STORE, 'readonly').objectStore(STORE).get('list');
+          req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result.filter((h) => h && h.kind === 'directory') : []);
+          req.onerror = () => resolve([]);
+        } catch (_) { resolve([]); }
+      });
+    };
+    const save = async (handles) => {
+      const db = await open();
+      if (!db) return;
+      await new Promise((resolve) => {
+        try {
+          const tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).put(handles.slice(0, KEEP), 'list');
+          tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+        } catch (_) { resolve(); }
+      });
+    };
+    /** Keep a folder the user allowed, newest first, without repeating one already kept. */
+    const remember = async (dir) => {
+      if (!dir || dir.kind !== 'directory') return;
+      const kept = await list();
+      const rest = [];
+      for (const h of kept) {
+        let same = false;
+        try { same = await h.isSameEntry(dir); } catch (_) { same = false; }
+        if (!same) rest.push(h);
+      }
+      await save([dir, ...rest]);
+    };
+    const permission = async (handle, ask) => {
+      for (const mode of ['readwrite', 'read']) {
+        try {
+          let state = typeof handle.queryPermission === 'function' ? await handle.queryPermission({ mode }) : 'granted';
+          if (state !== 'granted' && ask && typeof handle.requestPermission === 'function') state = await handle.requestPermission({ mode });
+          if (state === 'granted') return true;
+        } catch (_) { /* no gesture, or refused: try the next mode / the next way */ }
+      }
+      return false;
+    };
+    /** The folder `fileHandle` sits in, reached through `rootDir`; null when it is not under it. */
+    const parentUnder = async (rootDir, fileHandle) => {
+      let path = null;
+      try { path = await rootDir.resolve(fileHandle); } catch (_) { path = null; }
+      if (!Array.isArray(path) || !path.length) return null;
+      let dir = rootDir;
+      for (const part of path.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+      return dir;
+    };
+    /** Folders the 骨骼动画 editor kept for its projects (image folders, project folders): allowed before too. */
+    const editorKept = () => new Promise((resolve) => {
+      try {
+        const req = root.indexedDB.open('novaflow-skeleton-image-folders');
+        req.onupgradeneeded = () => { try { req.transaction.abort(); } catch (_) { /* none yet */ } };
+        req.onerror = () => resolve([]);
+        req.onsuccess = () => {
+          const db = req.result;
+          try {
+            const all = db.transaction('folders', 'readonly').objectStore('folders').getAll();
+            all.onsuccess = () => { db.close(); resolve((all.result || []).flatMap((r) => r ? [r.projectAccessRoot, r.projectDirectory, r.handle] : []).filter((h) => h && h.kind === 'directory')); };
+            all.onerror = () => { db.close(); resolve([]); };
+          } catch (_) { db.close(); resolve([]); }
+        };
+      } catch (_) { resolve([]); }
+    });
+    /**
+     * The folder `fileHandle` sits in, through a folder the user allowed before; null when none holds it.
+     * A folder allowed in an earlier visit asks the browser once more (its own small prompt), nothing else.
+     */
+    const folderOf = async (fileHandle) => {
+      if (!fileHandle || typeof fileHandle.isSameEntry !== 'function') return null;
+      const roots = [];
+      for (const h of [...await list(), ...await editorKept()]) {
+        let dup = false;
+        for (const r of roots) { try { if (await r.isSameEntry(h)) { dup = true; break; } } catch (_) { /* a gone folder */ } }
+        if (!dup) roots.push(h);
+      }
+      const later = [];
+      for (const kept of roots) {
+        let path = null;
+        try { path = await kept.resolve(fileHandle); } catch (_) { path = null; }
+        if (!Array.isArray(path) || !path.length) continue;
+        if (await permission(kept, false)) { try { return await parentUnder(kept, fileHandle); } catch (_) { continue; } }
+        later.push(kept);
+      }
+      for (const kept of later) {
+        if (await permission(kept, true)) { try { return await parentUnder(kept, fileHandle); } catch (_) { /* moved meanwhile */ } }
+      }
+      return null;
+    };
+    return { remember, folderOf };
+  })();
+
+  /** Every project file under `dir` (eight folders down), relative to it: JSON/SKEL/ATLAS and pictures. */
+  const projectFilesIn = async (dir) => {
+    const files = [];
+    let totalSize = 0;
+    const walk = async (folder, prefix, depth) => {
+      if (depth > 8) throw new Error('文件夹层级过深');
+      for await (const [name, handle] of folder.entries()) {
+        const relativePath = prefix + name;
+        if (handle.kind === 'directory') {
+          await walk(handle, relativePath + '/', depth + 1);
+          continue;
+        }
+        if (handle.kind !== 'file' || !/\.(json|skel|atlas|png|jpe?g|webp)$/i.test(name)) continue;
+        const file = await handle.getFile();
+        totalSize += file.size;
+        if (totalSize > 512 * 1024 * 1024) throw new Error('文件太大（超过 512MB）');
+        files.push({ name, relativePath, size: file.size, type: file.type, file });
+      }
+    };
+    await walk(dir, '', 0);
+    return files;
+  };
+
   /**
-   * Pick a Photoshop project folder.
-   *
-   * showDirectoryPicker reads a whole folder with the user's permission. The
-   * fallback is a multi-file input with webkitdirectory, which gets the same
-   * files without the persistent handle.
+   * The JSON's folder, read: the picked JSON first and alone (another JSON or a stray atlas beside
+   * it must not be taken for it), its pictures (and its own atlas, for an exported Spine project).
+   * Answers { files: [json] } alone when no allowed folder holds it.
+   */
+  const filesForJson = async (fileHandle, say) => {
+    const tell = typeof say === 'function' ? say : () => {};
+    const jsonFile = await fileHandle.getFile();
+    const stem = jsonFile.name.replace(/\.(json|skel(\.bytes)?)$/i, '').toLowerCase();
+    // the folder the user allowed before (this JSON's, or one above it); none = the JSON comes in
+    // without pictures and the user points its 图片 at a folder (指定文件夹…), which is kept for next time
+    const dir = await jsonFolders.folderOf(fileHandle);
+    if (!dir) return { files: [{ name: jsonFile.name, relativePath: jsonFile.name, size: jsonFile.size, type: jsonFile.type, file: jsonFile }] };
+    root.__NovaFlowLastProjectDirectory = { handle: dir, name: dir.name, at: Date.now() };
+    tell('读取 JSON 所在文件夹的贴图…');
+    const all = await projectFilesIn(dir);
+    const rest = all.filter((f) => {
+      if (/\.(json|skel)$/i.test(f.name)) return false;
+      if (/\.atlas$/i.test(f.name)) return f.name.replace(/\.atlas$/i, '').toLowerCase() === stem && !f.relativePath.includes('/');
+      return true;
+    });
+    return { directory: dir.name, files: [{ name: jsonFile.name, relativePath: jsonFile.name, size: jsonFile.size, type: jsonFile.type, file: jsonFile }, ...rest] };
+  };
+  root.FoartJsonFolder = { filesForJson, folderOf: jsonFolders.folderOf, remember: jsonFolders.remember };
+
+  /**
+   * 导入 PS 工程: pick the JSON Photoshop exported; its pictures come from the JSON's folder.
+   * Several files picked at once (JSON + pictures) are taken as they are. Without the file
+   * system access API (Firefox, Safari) the folder chooser stays, as before.
    */
   api.openPhotoshopProject = async () => {
-    if (typeof root.showDirectoryPicker === 'function') {
+    if (typeof root.showOpenFilePicker === 'function') {
+      let handles;
       try {
-        // readwrite: pictures imported in the 骨骼动画 editor are written into this folder (user 2026-10-13);
-        // refused, it stays a read-only live folder as before
-        let dir;
-        try { dir = await root.showDirectoryPicker({ mode: 'readwrite' }); } catch (error) {
-          if (error && error.name === 'AbortError') throw error;
-          dir = await root.showDirectoryPicker({ mode: 'read' });
-        }
-        // the 骨骼动画 editor lists the project's image folder live from this handle (pictures the user
-        // drops into the folder show up without a re-import)
-        root.__NovaFlowLastProjectDirectory = { handle: dir, name: dir.name, at: Date.now() };
-        const files = [];
-        let totalSize = 0;
-        const walk = async (folder, prefix, depth) => {
-          if (depth > 8) throw new Error('文件夹层级过深');
-          for await (const [name, handle] of folder.entries()) {
-            const relativePath = prefix + name;
-            if (handle.kind === 'directory') {
-              await walk(handle, relativePath + '/', depth + 1);
-              continue;
-            }
-            if (handle.kind !== 'file' || !/\.(json|png|jpe?g|webp)$/i.test(name)) continue;
-            const file = await handle.getFile();
-            totalSize += file.size;
-            if (totalSize > 512 * 1024 * 1024) throw new Error('文件太大（超过 512MB）');
-            files.push({ name, relativePath, size: file.size, type: file.type, file });
-          }
-        };
-        await walk(dir, '', 0);
-        return ok({ directory: dir.name, files, via: 'file-system-access' });
+        handles = await root.showOpenFilePicker({
+          id: 'foart-ps-json',
+          multiple: true,
+          types: [{ description: 'PS 导出的 JSON', accept: { 'application/json': ['.json'], 'image/*': ['.png', '.jpg', '.jpeg', '.webp'], 'application/octet-stream': ['.skel', '.atlas'] } }],
+          excludeAcceptAllOption: false
+        });
       } catch (error) {
         if (error && error.name === 'AbortError') return ok({ canceled: true });
-        if (error && /文件夹层级过深|文件太大/.test(String(error.message || ''))) return fail(String(error.message));
+        handles = null;
+      }
+      if (handles && handles.length) {
+        try {
+          const json = handles.filter((h) => /\.json$/i.test(h.name));
+          if (handles.length === 1 && json.length === 1) {
+            const res = await filesForJson(json[0]);
+            if (res.canceled) return ok({ canceled: true });
+            return ok({ directory: res.directory || '', files: res.files, via: 'json-folder' });
+          }
+          const files = [];
+          for (const h of handles) {
+            const file = await h.getFile();
+            files.push({ name: file.name, relativePath: file.name, size: file.size, type: file.type, file });
+          }
+          return ok({ directory: '', files, via: 'file-system-access' });
+        } catch (error) {
+          if (error && error.name === 'AbortError') return ok({ canceled: true });
+          return fail((error && error.message) || error);
+        }
       }
     }
 

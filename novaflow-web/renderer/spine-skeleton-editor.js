@@ -3436,6 +3436,8 @@
       if (rel) state.imagePath = rel.join('/') || '.'
     }
     rememberFolder(handle)
+    // the app keeps it too: a JSON or .foart picked later from inside this folder finds its pictures here
+    try { const keep = (window.parent && window.parent.FoartJsonFolder) || window.FoartJsonFolder; if (keep && keep.remember) keep.remember(handle) } catch { /* another origin around us */ }
     state.imageFolderGen = (state.imageFolderGen || 0) + 1
     imgTree = { key: '', nodes: new Map(), pending: new Set() }
     state.sections.delete('images')
@@ -14877,6 +14879,8 @@
     openProjectFile: (data, handle, options) => openProjectFile(data, handle, options),
     /** 导入工程: the picked folder's .foart (one asks which) with its pictures */
     openProjectFolder: (dir, options) => openProjectFolder(dir, options),
+    /** A skeleton JSON with no pictures found: it opens blank, 图片 → 指定文件夹… brings them (user 2026-11-16). */
+    openJsonWithoutImages: (text, fileName, options) => loadSource({ skeleton: { fileName, text }, atlas: { fileName: '', text: '' }, images: [] }, { ...(options || {}), noFolderAsk: true }),
     newProject: (name, options) => newProject(name, options),
     chooseProjectOperation,
     projectExportInfo,

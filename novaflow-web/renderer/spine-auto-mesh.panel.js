@@ -471,8 +471,7 @@
     }
     const jsonFiles = list.filter((f) => /\.json$/i.test(f.name))
     const imageFiles = list.filter((f) => /\.(png|jpe?g|webp)$/i.test(f.name))
-    if (!jsonFiles.length) throw new Error('这个文件夹里没有 JSON')
-    if (!imageFiles.length) throw new Error('这个文件夹里没有 PNG/JPG/WEBP 贴图')
+    if (!jsonFiles.length) throw new Error('没有找到 JSON')
     // the skeleton sits at the top of the export; prefer the shallowest json
     jsonFiles.sort((a, b) => (a.webkitRelativePath || a.name).split('/').length
                            - (b.webkitRelativePath || b.name).split('/').length)
@@ -499,7 +498,23 @@
     }
     const upgraded = Attach.normalizeToSpine38(skeleton)
     if (upgraded) text = JSON.stringify(skeleton)
-    if (!images.length) throw new Error('贴图名和附件名对不上')
+    // no pictures found beside the JSON: it still comes in, blank, and the user points 图片 at
+    // the folder (指定文件夹…) (user 2026-11-16: 找不到就空白就行了，用户自己指定). The app's own import
+    // needs pictures, so the JSON goes straight to the editor.
+    if (!images.length) {
+      if (!editor || typeof editor.openJsonWithoutImages !== 'function') throw new Error('没有找到贴图')
+      const last = window.__NovaFlowLastProjectDirectory
+      const directory = last && last.handle && Date.now() - (last.at || 0) < 120000 ? { handle: last.handle } : null
+      const opened = await editor.openJsonWithoutImages(text, jsonFile.name, { operation, ...(directory ? { directory } : {}) })
+      if (!opened) return { canceled: true }
+      state.baseSkeleton = null
+      state.autoRig = null
+      state.source = null
+      state.listedFrom = null
+      state.layers.clear()
+      state.lastReport = null
+      return 0
+    }
 
     setStatus('合成图集…')
     await nextFrame()
@@ -3254,7 +3269,7 @@
     button.type = 'button'
     styleButton(button, false)
     button.setAttribute('data-nf-ps-import', '1') // hover like its neighbour 清空 (theme 3.1b)
-    button.title = 'PS 导出的图层工程文件夹（JSON + 贴图）可以直接导入，也可以把文件夹拖到这个按钮上'
+    button.title = '选择 PS 导出的 JSON，贴图从 JSON 所在的文件夹读取；也可以把 JSON 拖到这个按钮或画布上'
     // the panel this button lives in is the app's 导入工程; the status line it used to write to
     // sits inside 自动蒙皮, which is collapsed on entry — so a click looked like nothing happened
     const psStatus = el('div', {
@@ -3293,7 +3308,8 @@
       const api = window.electronAPI
       if (api && typeof api.openPhotoshopProject === 'function') {
         guardWith(say)(async () => {
-          say('选择 PS 导出的图层工程文件夹…')
+          // not "选择 PS 导出的…": the button theme hides lines starting so as usage notes, for good
+          say('正在选择 PS 导出的 JSON…')
           let res = null
           diag('ipcstart', {})
           try {
@@ -3323,10 +3339,10 @@
             try { Object.defineProperty(file, 'webkitRelativePath', { value: f.relativePath || f.name }) } catch { /* read-only in some engines */ }
             return file
           }).filter(Boolean)
-          if (!files.length) throw new Error('这个文件夹里没有 JSON 和贴图')
+          if (!files.length) throw new Error('没有选到 JSON')
           rememberProjectFolder(files, true)
         const n = await importPhotoshopProject(files, (t) => say(t))
-          say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+          say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : (n ? `已载入 ${n} 张贴图,勾选图层后生成` : '已导入 JSON：没找到贴图，在「图片」里点「指定文件夹…」选贴图所在的文件夹')), 'ok')
         })
         return
       }
@@ -3387,7 +3403,10 @@
       }
       if (handle.kind === 'file' && /\.(?:foart|nfproj)$/i.test(handle.name) && typeof handle.getFile === 'function') {
         sayHere('打开 Foart 工程…')
-        return (await ed.ready()).openProjectFile(await handle.getFile(), handle)
+        const helper = window.FoartJsonFolder
+        let dir = null
+        try { dir = helper && typeof helper.folderOf === 'function' ? await helper.folderOf(handle) : null } catch { dir = null }
+        return (await ed.ready()).openProjectFile(await handle.getFile(), handle, dir ? { directory: { handle: dir } } : {})
       }
       return null
     }
@@ -3415,15 +3434,27 @@
       if (!roots.length && !plain.length) return false
       guardWith(sayHere)(async () => {
         sayHere('读取拖进来的文件…')
+        let files = null
         if (handles.length === 1 && roots.length <= 1) {
-          const opened = await openDroppedFoart(await handles[0])
+          const handle = await handles[0]
+          const opened = await openDroppedFoart(handle)
           if (opened != null) { sayHere(opened ? `已打开 Foart 工程（${opened} 个工程）` : '已取消', 'ok'); return }
+          // one JSON dropped: its pictures come from its own folder, as with 导入PS工程 (user 2026-11-16)
+          const helper = window.FoartJsonFolder
+          if (handle && handle.kind === 'file' && /\.json$/i.test(handle.name) && helper && typeof helper.filesForJson === 'function') {
+            const res = await helper.filesForJson(handle, (t) => sayHere(t))
+            files = (res.files || []).map((x) => {
+              const file = x.file
+              try { Object.defineProperty(file, 'webkitRelativePath', { value: x.relativePath || x.name }) } catch { /* read-only in some engines */ }
+              return file
+            })
+          }
         }
-        const files = roots.length ? await entryFiles(roots) : plain
+        if (!files) files = roots.length ? await entryFiles(roots) : plain
         if (!files.length) throw new Error('这里面没有 JSON 和贴图')
         rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => sayHere(t))
-        sayHere((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+        sayHere((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : (n ? `已载入 ${n} 张贴图,勾选图层后生成` : '已导入 JSON：没找到贴图，在「图片」里点「指定文件夹…」选贴图所在的文件夹')), 'ok')
       })
       return true
     }
@@ -3445,14 +3476,14 @@
       guardWith(say)(async () => {
         rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => say(t))
-        say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+        say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : (n ? `已载入 ${n} 张贴图,勾选图层后生成` : '已导入 JSON：没找到贴图，在「图片」里点「指定文件夹…」选贴图所在的文件夹')), 'ok')
       })
     })
     document.body.appendChild(picker)
     // What to pick, under the button (the name alone is short now).
     // no top margin: the brand runtime's rhythm pass sets the panel's spacing and zeroed it a frame later
     const psNote = el('div', { marginTop: '0', fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.45)' },
-      '选择 PS 导出的图层工程文件夹（JSON + 贴图），也可以直接拖到按钮上')
+      '选择 PS 导出的 JSON（贴图从同一文件夹读取），也可以把 JSON 拖到按钮或画布上')
     psNote.setAttribute('data-novaflow-ps-import-note', '1')
     // a line between the file-by-file import above and the project buttons (user 2026-10-13)
     const divider = el('div', { height: '1px', margin: '4px 0', background: '#272727', width: '100%' })
@@ -3527,22 +3558,29 @@
     open.type = 'button'
     styleButton(open, false)
     open.setAttribute('data-nf-project-open', '1')
-    open.title = '选择工程所在的文件夹（放 .foart 工程文件的那个），工程和图片一起打开；工程文件夹搬到哪里都能打开。打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
-    // the folder, not the file: a browser grants a picked file only, never the img folder beside
-    // it, so a moved project lost its pictures (user 2026-11-06, D: → E:). The folder grant covers both.
+    open.title = '选择 Foart 工程文件（.foart），图片从工程记录的文件夹读取；找不到时先空白打开，在「图片」里点「指定文件夹…」。打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
+    // the file, not its folder (user 2026-11-16: 选的是文件夹不是工程，默认工程指定的文件夹就好了，
+    // 找不到就空白，用户自己指定). The pictures come from the folder the project records, through a
+    // folder the user allowed before; none allowed = the project opens with its pictures missing.
     open.addEventListener('click', async () => {
       if (state.busy) return
-      if (typeof window.showDirectoryPicker !== 'function') { nfPicker.click(); return }
-      let dir
-      try { dir = await window.showDirectoryPicker({ id: 'foart-project', mode: 'readwrite' }) } catch (e) {
+      if (typeof window.showOpenFilePicker !== 'function') { nfPicker.click(); return }
+      let handle
+      try {
+        [handle] = await window.showOpenFilePicker({ id: 'foart-project', types: [{ description: 'Foart 工程', accept: { 'application/octet-stream': ['.foart', '.nfproj'] } }] })
+      } catch (e) {
         if (e && e.name === 'AbortError') return
         nfPicker.click(); return
       }
+      if (!handle) return
       guardWith(sayHere)(async () => {
         sayHere('打开 Foart 工程…')
         const ed = window.NovaFlowSkeletonEditor
         if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
-        const n = await (await ed.ready()).openProjectFolder(dir)
+        const helper = window.FoartJsonFolder
+        let dir = null
+        try { dir = helper && typeof helper.folderOf === 'function' ? await helper.folderOf(handle) : null } catch { dir = null }
+        const n = await (await ed.ready()).openProjectFile(await handle.getFile(), handle, dir ? { directory: { handle: dir } } : {})
         sayHere(n ? `已打开 Foart 工程（${n} 个工程）` : '已取消', 'ok')
       })
     })
