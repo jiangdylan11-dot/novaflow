@@ -13706,7 +13706,7 @@
         { action: 'inpaintRepair', label: '去除物体', title: '删除遮罩区域内内容并自动补全背景' },
         { action: 'inpaintCompletion', label: '智能补图', title: '补全缺失结构，保留提示词输入' },
         { action: 'penFill', label: '快速补缺', title: '使用可调曲线的钢笔闭合路径标记缺失区域，并根据当前图层已有内容快速补缺；仅支持当前图层' },
-        { action: 'mask', label: '蒙版编辑', title: '快捷键：[ ] 画笔大小 · ; \' 羽化 · E 擦除 · R 恢复 · Esc 退出' },
+        { action: 'mask', label: '蒙版编辑', title: '快捷键：[ ] 画笔大小 · ; \' 羽化 · E 擦除 · R 恢复 · Shift 直线 · Esc 退出' },
         { action: 'canvasResize', label: '画布扩展', title: '扩展画布：设置新宽高和定位锚点' }
       ]
     },
@@ -16590,7 +16590,7 @@
     selectionToolRedoStack = []
     state.viewMode = 'selectionTool'
     resetSplitCanvasViewport()
-    setMessage(`${mode === 'inpaint' ? selectionInpaintModeStartLabel(nextInpaintMode) : selectionToolName(mode)}\uff1a\u5728\u753b\u677f\u4e0a\u7ed8\u5236\u906e\u7f69\u540e\u518d\u6b21\u70b9\u51fb\u6309\u94ae\u6267\u884c · 快捷键：[ ] 画笔大小 · ; \' 羽化 · Esc 退出`)
+    setMessage(`${mode === 'inpaint' ? selectionInpaintModeStartLabel(nextInpaintMode) : selectionToolName(mode)}\uff1a\u5728\u753b\u677f\u4e0a\u7ed8\u5236\u906e\u7f69\u540e\u518d\u6b21\u70b9\u51fb\u6309\u94ae\u6267\u884c · 快捷键：[ ] 画笔大小 · ; \' 羽化 · Shift 直线 · Esc 退出`)
     syncSplitEditToolWorkspace()
   }
 
@@ -23665,7 +23665,7 @@
     const currentMode = normalizeSelectionInpaintMode(state.selectionTool.inpaintMode)
     if (targetMode && currentMode !== requestedMode) {
       setSelectionInpaintMode(requestedMode)
-      setMessage(`${selectionInpaintModeStartLabel(requestedMode)}\uff1a\u5728\u753b\u677f\u4e0a\u7ed8\u5236\u906e\u7f69\u540e\u518d\u6b21\u70b9\u51fb\u6309\u94ae\u6267\u884c · 快捷键：[ ] 画笔大小 · ; \' 羽化 · Esc 退出`)
+      setMessage(`${selectionInpaintModeStartLabel(requestedMode)}\uff1a\u5728\u753b\u677f\u4e0a\u7ed8\u5236\u906e\u7f69\u540e\u518d\u6b21\u70b9\u51fb\u6309\u94ae\u6267\u884c · 快捷键：[ ] 画笔大小 · ; \' 羽化 · Shift 直线 · Esc 退出`)
       return
     }
     if (selectionEffectRemovalActive()) return executeEffectRemoveTool() // 特效 on: key the effect out instead of repainting the hole
@@ -27731,7 +27731,7 @@
     maskEditorUndoStack = []
     maskEditorEntrySnapshot = entrySnapshot
     resetSplitCanvasViewport()
-    setMessage('蒙版编辑中：当前只修改图层蒙版 · 快捷键：[ ] 画笔大小 · ; \' 羽化 · E 擦除 · R 恢复 · Esc 退出')
+    setMessage('蒙版编辑中：当前只修改图层蒙版 · 快捷键：[ ] 画笔大小 · ; \' 羽化 · E 擦除 · R 恢复 · Shift 直线 · Esc 退出')
     syncSplitEditToolWorkspace()
   }
 

@@ -5025,7 +5025,7 @@
       h('label', { class: 'wsl' + (binding ? ' off' : ''), title: '直接 = 不用笔刷：点 / 框选顶点（Ctrl / Shift 加选），按住顶点上下拖改选中骨骼的权重' }, h('span', {}, '模式'),
         selectInput([['add', '增加'], ['sub', '减少'], ['set', '替换'], ['direct', '直接']], we.mode, setMode)),
       slider('strength', 0, 100, '力度', '增加 / 减少：每一笔加减多少；替换：把权重设成这个百分比'),
-      slider('size', 4, 200, '大小', '笔刷半径（屏幕像素）'),
+      slider('size', 4, 200, '大小', '笔刷半径（屏幕像素） · Shift+点击 连直线 · Shift+拖动 锁直线'),
       slider('feather', 0, 100, '羽化', '笔刷边缘渐弱的比例：0 = 硬边'),
       h('div', { class: 'mrow' },
         act('smooth', '平滑', '和相邻顶点平均一下（直接模式下只平滑选中的顶点）'),
@@ -6760,6 +6760,8 @@
       if (drag) capturePointer(e)
     })
     c.addEventListener('pointerleave', () => { state.hoverImg = null; if (state.meshEdit) state.meshPointer = null })
+    // 权重笔刷：Shift 点击连直线、Shift 拖动锁直线（brush-straight-line.js）
+    if (window.FoartBrushLine) window.FoartBrushLine.watch(c, () => { const we = state.weightEdit; return !!(rt.skeleton && we && !we.binding && !we.direct && !pfx && !state.meshEdit && !state.clipEdit && !state.pathEdit) })
     c.addEventListener('pointermove', (e) => {
       const [sx, sy] = at(e)
       if (state.creating) {

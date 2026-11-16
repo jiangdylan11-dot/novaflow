@@ -288,6 +288,7 @@
       canvas.style.cursor = maskEditing ? 'none' : 'default';
     };
     canvas.addEventListener('pointerleave', () => { if (!drag) positionBrush(null); });
+    if (globalThis.FoartBrushLine) globalThis.FoartBrushLine.watch(canvas, () => !!maskEditing);
     function setMaskEditing(value) {
       if (!value || !value.enabled) { maskEditing = null; positionBrush(null); canvas.style.cursor = 'default'; draw(); return; }
       maskEditing = { clipId: value.clipId, surface: value.surface, mode: value.mode === 'restore' ? 'restore' : 'erase', brushSize: clamp(Number(value.brushSize) || 22, 1, 300), feather: clamp(Number(value.feather) || 0, 0, 300) };

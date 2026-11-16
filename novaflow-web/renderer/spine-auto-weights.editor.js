@@ -29,8 +29,8 @@
   const CLAIMED_INPUT = ['wheel', 'contextmenu', 'pointerdown', 'mousedown']
   const MODES = [
     { id: 'set', label: '直接', hint: '点选一个顶点,上下拖动调它在选中骨骼上的权重(权重滑条也作用于它)' },
-    { id: 'add', label: '增加', hint: '笔刷:按住涂抹,逐渐增加选中骨骼的权重' },
-    { id: 'sub', label: '减少', hint: '笔刷:按住涂抹,逐渐减少选中骨骼的权重' }
+    { id: 'add', label: '增加', hint: '笔刷:按住涂抹,逐渐增加选中骨骼的权重 · Shift+点击 连直线 · Shift+拖动 锁直线' },
+    { id: 'sub', label: '减少', hint: '笔刷:按住涂抹,逐渐减少选中骨骼的权重 · Shift+点击 连直线 · Shift+拖动 锁直线' }
   ]
   const PALETTE = [
     '#4cc9f0', '#f72585', '#7b5cff', '#ff7f11', '#7ae582', '#ffd166', '#ef476f', '#06d6a0',
@@ -701,7 +701,7 @@
       }
       canvas.addEventListener('contextmenu', (ev) => ev.preventDefault())
       canvas.addEventListener('pointerdown', (ev) => {
-        if (ev.button === 1 || ev.button === 2 || ev.shiftKey) { beginPan(ev); return }
+        if (ev.button === 1 || ev.button === 2 || (ev.shiftKey && mode === 'set')) { beginPan(ev); return }
         if (ev.button !== 0) return
         const rect = canvas.getBoundingClientRect()
         const mx = ev.clientX - rect.left, my = ev.clientY - rect.top
@@ -743,6 +743,8 @@
         requestDraw()
       })
       canvas.addEventListener('pointerleave', () => { lastPointer = null; draw() })
+      // 增加 / 减少 笔刷：Shift 点击连直线、Shift 拖动锁直线（brush-straight-line.js）；直接 模式下 Shift 拖动仍是平移
+      const unwatchBrushLine = window.FoartBrushLine ? window.FoartBrushLine.watch(canvas, () => !done && mode !== 'set') : null
       canvas.addEventListener('pointerup', (ev) => {
         try { canvas.releasePointerCapture(ev.pointerId) } catch { /* not captured */ }
         if (panning) { panning = false; panStart = null; return }
@@ -778,6 +780,7 @@
       function finish(ok) {
         if (done) return
         done = true
+        if (unwatchBrushLine) unwatchBrushLine()
         window.removeEventListener('keydown', onKey, true)
         window.removeEventListener('resize', onResize)
         for (const type of CLAIMED_INPUT) window.removeEventListener(type, onClaimedInput, true)
