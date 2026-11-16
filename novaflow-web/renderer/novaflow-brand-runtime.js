@@ -72210,7 +72210,7 @@
       throw new Error("\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u9009\u62e9\u5bfc\u51fa\u76ee\u5f55");
     }
     const rootDirectory = await window.showDirectoryPicker({ mode: "readwrite" });
-    const directory = await rootDirectory.getDirectoryHandle("NovaFlow", { create: true });
+    const directory = await rootDirectory.getDirectoryHandle("Foart", { create: true });
     // .skel chosen in the 骨骼动画 export row: the binary skeleton replaces the JSON file
     if (payload.skel) await writeSkeletonSpineExportBytes(directory, `${payload.baseName}.skel`, payload.skel);
     else await writeSkeletonSpineExportText(directory, `${payload.baseName}.json`, payload.json);
@@ -72223,7 +72223,7 @@
         image.dataUrl
       );
     }
-    return { canceled: false, dir: "NovaFlow" };
+    return { canceled: false, dir: "Foart" };
   }
 
   function isSkeletonSpinePackageExportButton(button) {

@@ -9613,7 +9613,7 @@ ipcMain.handle("save-spine-package", async (_evt, payload) => {
     });
     if (pick.canceled || !pick.filePaths?.[0]) return { canceled: true };
     const dir0 = pick.filePaths[0];
-    const dir = path.join(dir0, "NovaFlow");
+    const dir = path.join(dir0, "Foart");
     fs.mkdirSync(dir, { recursive: true });
 
     const imagePackage = shouldNormalizeNovaflowExportPackageImages(payload?.baseName, images)
@@ -9953,7 +9953,7 @@ ipcMain.handle("export-pick-save-file", async (evt, payload) => {
   try {
     await assertOnlineEntitled("export", "export-pick-save-file");
     const format = String(payload?.format || "mp4").toLowerCase();
-    const baseName = normalizeNovaflowExportBaseName(payload?.baseName, "novaflow_export");
+    const baseName = normalizeNovaflowExportBaseName(payload?.baseName, "foart_export");
     const ext = (format === "webm") ? ".webm" : (format === "gif" ? ".gif" : ".mp4");
     const pick = await dialog.showSaveDialog({
       defaultPath: `${baseName}${ext}`,

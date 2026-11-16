@@ -162,7 +162,7 @@
     const bone=project.bones.find(b=>b.name===name);
     if(!bone||bone.skin||(bone.transform&&bone.transform!=='normal'))return null;
     const candidate=clone(project),oldBones=clone(candidate.bones),index=candidate.bones.findIndex(b=>b.name===name),child=candidate.bones[index];
-    let helper='__nf_'+(type==='scale'?'scaleX_':'moveX_')+name;
+    let helper='__foart_'+(type==='scale'?'scaleX_':'moveX_')+name;
     while(candidate.bones.some(b=>b.name===helper))helper+='_';
     const parent=type==='scale'?{...child,name:helper,length:0}:{name:helper,...(child.parent?{parent:child.parent}:{})};
     child.parent=helper;
@@ -200,7 +200,7 @@
     // Divide the local error budget across a chain; long chains cannot accumulate the full budget per bone.
     const depth=name=>{let d=1,b=byName.get(name),seen=new Set();while(b?.parent&&!seen.has(b.name)){seen.add(b.name);d++;b=byName.get(b.parent);}return d;};
     const chain=Math.max(1,...bones.map(b=>depth(b.name)));
-    if(legacy&&options.helpers!==false&&!bones.some(b=>b.name.startsWith('__nf_'))){
+    if(legacy&&options.helpers!==false&&!bones.some(b=>/^__(?:nf|foart)_/.test(b.name))){
       for(const bone of bones)for(const type of ['translate','scale']){
         if(!Object.values(output.animations||{}).some(a=>a.bones?.[bone.name]?.[type]?.length>=4))continue;
         const tolerance=(options.limits?.[type]??limits[type])/Math.sqrt(chain);

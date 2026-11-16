@@ -844,7 +844,7 @@
       }
       const ref = (s.projectImageRefs || []).find((r) => lower(r.fileName) === lower(fileName))
       const single = regionsOnPage.length === 1 && !regionsOnPage[0].rotate && !regionsOnPage[0].x && !regionsOnPage[0].y
-      const expectedPath = !folder.recordedPaths && single && /^__nf_(?:swap|folder|transfer)[/_]/.test(fileName)
+      const expectedPath = !folder.recordedPaths && single && /^__(?:nf|foart)_(?:swap|folder|transfer)[/_]/.test(fileName)
         ? regionsOnPage[0].name + ((ref && ref.path && ref.path.match(/\.[^.\/]+$/)) || ['.png'])[0] : ref && ref.path || fileName
       let path = source ? source.rel : projectPath(generated ? (single ? regionsOnPage[0].name + '.png' : fileName) : expectedPath).join('/')
       const existsAt = async (rel) => {
@@ -2554,7 +2554,7 @@
       const rgba = regionPixelsCanvas(region, r.origW, r.origH)
       if (typeof im.pma === 'boolean' ? im.pma : packet.pma) unpremultiply(rgba)
       let fileName = path.to + '.png', k = 2
-      while (taken.has(lower(fileName))) fileName = `__nf_transfer_${k++}/${path.to}.png`
+      while (taken.has(lower(fileName))) fileName = `__foart_transfer_${k++}/${path.to}.png`
       taken.add(lower(fileName))
       const blob = new Blob([await window.NovaFlowSequenceAtlas.encodePng(rgba, r.origW, r.origH, state.pma)], { type: 'image/png' })
       images.push({ fileName, name: path.to, width: r.origW, height: r.origH, blob, img: await imageFromBlob(blob), pma: !!state.pma })
@@ -3113,7 +3113,7 @@
         if (versions.get(f.rel) === stamp) continue
         const reuse = loaded && loaded.sourceFolder === folder && loaded.blob.size === file.size && loaded.blob.lastModified === file.lastModified
         let blob = file, img = reuse ? loaded.img : await imageFromBlob(blob)
-        let fileName = old && [...regions.values()].filter((r) => r.page === old.page).length === 1 ? old.page : `__nf_folder/${name}.png`
+        let fileName = old && [...regions.values()].filter((r) => r.page === old.page).length === 1 ? old.page : `__foart_folder/${name}.png`
         while ((!old || fileName !== old.page) && target.images.has(lower(fileName))) fileName = '_' + fileName
         const prev = loaded && loaded.sourceFolder === folder && loaded.sourcePath === f.rel && loaded.img
           ? { width: loaded.img.naturalWidth, height: loaded.img.naturalHeight } : null

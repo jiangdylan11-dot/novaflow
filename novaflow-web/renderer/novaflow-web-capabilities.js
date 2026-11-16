@@ -305,7 +305,7 @@
    */
   api.exportPickSaveFile = async (payload) => {
     const options = payload || {};
-    const suggestedName = String(options.defaultPath || options.fileName || 'novaflow-export')
+    const suggestedName = String(options.defaultPath || options.fileName || 'foart-export')
       .split(/[\\/]/).pop();
     const data = options.data || options.buffer || options.bytes;
     const mime = String(options.mimeType || 'application/octet-stream');
