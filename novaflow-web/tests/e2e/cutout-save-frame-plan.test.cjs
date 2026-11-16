@@ -19,3 +19,10 @@ test('AI save preserves irregular processing timestamps and selected frame range
   const result = vm.runInNewContext(`const nfUseBoardPlan=false;const h=${fps};let ${plan};({h,y,A})`, context);
   assert.deepEqual(Array.from(result.A),[.06,.13]);
 });
+test('saving one cutout video never walks the other boards (no doubled clip with Spine export on)', () => {
+  const boards = save.match(/let c=(k&&!n\?\.noSpine&&Array\.isArray\(e\.boards\)&&e\.boards\.length>1\?e\.boards\|\|\[\]:null)/);
+  assert.ok(boards, 'board list is gated by noSpine');
+  const pick = (noSpine) => vm.runInNewContext(boards[1], {k:true, n:{noSpine}, e:{boards:[{}, {}]}});
+  assert.equal(pick(true), null);
+  assert.equal(pick(false).length, 2);
+});
