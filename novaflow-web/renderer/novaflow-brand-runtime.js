@@ -72273,6 +72273,9 @@
       if (!isSkeletonSpinePackageExportButton(button)) return;
       setAttributeIfChanged(button, "data-novaflow-skeleton-spine-export", "1");
       const wanted = "导出动画工程";
+      // The 骨骼动画 editor is exporting and shows 导出中…: relabelling it here made the
+      // editor write it back, each write queued three more passes and the page froze.
+      if (button.hasAttribute("data-nf-skeleton-exporting")) return;
       if (button.hasAttribute("data-nf-skeleton-wait")) {
         setAttributeIfChanged(button, "data-nf-skeleton-label", wanted);
         return;

@@ -710,7 +710,7 @@
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation()
       if (nativeProjectExporting) return
       nativeProjectExporting = true
-      const label = exportRunLabel(b); b.setAttribute('data-nf-skeleton-label', label); b.textContent = '导出中…'; b.disabled = true
+      const label = exportRunLabel(b); b.setAttribute('data-nf-skeleton-label', label); b.setAttribute('data-nf-skeleton-exporting', '1'); b.textContent = '导出中…'; b.disabled = true
       const controller = new AbortController()
       const cancel = document.createElement('button')
       cancel.type = 'button'; cancel.className = 'nf-atlas-button'; cancel.textContent = '取消导出'
@@ -725,7 +725,7 @@
           if (error?.name === 'AbortError') window.alert('导出已取消，已经写出的文件会保留。')
           else window.alert('导出失败：' + error.message)
         })
-        .finally(() => { nativeProjectExporting = false; cancel.remove(); b.textContent = label; b.disabled = false })
+        .finally(() => { nativeProjectExporting = false; cancel.remove(); b.removeAttribute('data-nf-skeleton-exporting'); b.textContent = label; b.disabled = false })
       return
     }
     wantVersion = isSpineExportRun(b) ? 'spine' : '3.8'
