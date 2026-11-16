@@ -97,3 +97,29 @@ test('one selected time has no scale handles', () => {
   f.state.dope.keySel = [f.state.dope.keySel[0]]
   assert.equal(vm.runInContext('dopeHit(dopeX(0), 130).kind', f.ctx), 'empty')
 })
+
+test('copied keys paste onto the picked track of the same kind, or onto the picked bone', () => {
+  const rot = ['bones', 'root', 'rotate'], armRot = ['bones', 'arm', 'rotate'], armMove = ['bones', 'arm', 'translate']
+  const state = { anim: 'idle', frame: 30, owners: null, dope: { pxf: 10, f0: 0, scrollY: 0, keySel: [{ path: rot, time: 0 }, { path: rot, time: 1 / 3 }], clip: null, owners: [],
+    rows: [{ label: '旋转', paths: [armRot], indent: 1 }, { label: '平移', paths: [armMove], indent: 1 }] },
+    json: { bones: [{ name: 'root' }, { name: 'arm', parent: 'root' }], animations: { idle: { bones: { root: { rotate: [{ angle: 5 }, { time: 1 / 3, angle: 40 }] } } } } } }
+  const notes = []
+  const ctx = vm.createContext({ state, Ops, FPS: 30, animOn: () => true, pathId: JSON.stringify, timeSec: () => state.frame / 30,
+    status: (m) => notes.push(m), edit: (label, op, after) => { const r = op(state.json); state.json = r.json; after(r); notes.push(label) } })
+  vm.runInContext(section('  function copySelectedKeys(', '  function cutSelectedKeys('), ctx)
+  vm.runInContext('copySelectedKeys()', ctx)
+  // a rotate track picked: the keys land there from the playhead
+  state.dope.pasteTo = JSON.stringify(armRot)
+  vm.runInContext('pasteKeysHere()', ctx)
+  assert.deepEqual(state.json.animations.idle.bones.arm.rotate.map(k => [Math.round((k.time || 0) * 30), k.angle]), [[30, 5], [40, 40]])
+  // a translate track is another kind: nothing pastes
+  delete state.json.animations.idle.bones.arm
+  state.dope.pasteTo = JSON.stringify(armMove)
+  vm.runInContext('pasteKeysHere()', ctx)
+  assert.equal(state.json.animations.idle.bones.arm, undefined)
+  // no track picked, the arm bone picked: same result
+  state.dope.pasteTo = null; state.dope.owners = [['bones', 'arm']]
+  vm.runInContext('pasteKeysHere()', ctx)
+  assert.equal(state.json.animations.idle.bones.arm.rotate.length, 2)
+  assert.equal(state.json.animations.idle.bones.root.rotate.length, 2)
+})

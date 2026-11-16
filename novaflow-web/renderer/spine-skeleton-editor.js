@@ -12540,6 +12540,8 @@
     const consAll = [...(cons ? [cons] : []), ...(state.multiCons || []), ...(extra ? extra.cons : [])]
     const consSeen = new Set(), consList = consAll.filter((c) => { const k = c.kind + ':' + c.name; if (consSeen.has(k)) return false; consSeen.add(k); return true })
     const evList = [...new Set([...(ev ? [ev] : []), ...(extra ? extra.events : [])])]
+    // what Ctrl+V pastes onto: the picked bones / slots / constraints / events (keys copied from others follow by kind)
+    d.owners = [...bones.map((b) => ['bones', b]), ...slotList.map((s) => ['slots', s]), ...consList.map((c) => [c.kind, c.name]), ...evList.map((e) => ['events', e])]
     if (bones.length || slotList.length || consList.length || evList.length) {
       for (const b of bones) {
         const props = [['rotate', '旋转'], ['translate', '平移'], ['scale', '缩放'], ['shear', '斜切']].map(([k, l]) => ({ label: l, path: ['bones', b, k], color: KEY_COLOR[k] }))
@@ -12718,7 +12720,7 @@
     rowsShown.forEach((r, i) => {
       const y = DOPE.rulerH + i * DOPE.rowH - d.scrollY
       if (y + DOPE.rowH < DOPE.rulerH || y > Hh) return
-      const picked = r.sel && sel && sel.kind === r.sel.kind && sel.name === r.sel.name
+      const picked = (r.sel && sel && sel.kind === r.sel.kind && sel.name === r.sel.name) || (r.indent && d.pasteTo && d.pasteTo === pathId(r.paths[0]))
       ctx.fillStyle = picked ? 'rgba(30,166,114,.14)' : r.anim ? '#1f2a26' : r.head ? '#1c1c1c' : '#181818'
       ctx.fillRect(0, y, W, DOPE.rowH)
       if (picked) { ctx.fillStyle = 'rgba(30,166,114,.92)'; ctx.fillRect(0, y, 3, DOPE.rowH) }
@@ -12889,7 +12891,21 @@
     const d = state.dope
     if (!animOn() || !d.keySel.length) return false
     d.clip = Ops.copyKeys(state.json, state.anim, d.keySel)
-    status(`已复制 ${d.clip.length} 个关键帧（Ctrl+V 粘贴到当前帧）`)
+    d.pasteTo = null
+    status(`已复制 ${d.clip.length} 个关键帧（Ctrl+V 粘贴到当前帧；先点另一条同类轨道或选另一个骨骼/插槽，就粘贴到那里）`)
+    return true
+  }
+
+  /** Ctrl+V: the copied keys at the playhead, on the picked track (or the picked bones / slots) when they are other ones of the same kind. */
+  function pasteKeysHere() {
+    const d = state.dope
+    if (!animOn() || !d.clip || !d.clip.length) return false
+    const row = d.pasteTo && d.rows.find((r) => r.indent && pathId(r.paths[0]) === d.pasteTo)
+    const { clip, skipped } = Ops.retargetClip(state.json, d.clip, row ? { path: row.paths[0] } : { owners: d.owners })
+    if (!clip.length) { status(row ? `复制的关键帧和「${row.label}」不是同一类轨道，没有粘贴` : '复制的关键帧和选中的对象不是同一类，没有粘贴', 'error'); return true }
+    const moved = clip.some((c, i) => !d.clip[i] || pathId(c.path) !== pathId(d.clip[i].path)) || clip.length !== d.clip.length
+    const where = moved ? `到${row ? `「${row.label}」` : '选中对象'}` : ''
+    edit(`已在第 ${state.frame} 帧粘贴 ${clip.length} 个关键帧${where}${skipped ? `（${skipped} 个类型不对应，未粘贴）` : ''}`, (j) => Ops.pasteKeys(j, state.anim, clip, timeSec()), (r) => { d.keySel = r.keys })
     return true
   }
 
@@ -12897,6 +12913,7 @@
     const d = state.dope
     if (!animOn() || !d.keySel.length) return false
     d.clip = Ops.copyKeys(state.json, state.anim, d.keySel)
+    d.pasteTo = null
     const keys = d.keySel
     edit((r) => `已剪切 ${r.deleted} 个关键帧（Ctrl+V 粘贴到当前帧）`, (j) => Ops.deleteKeys(j, state.anim, keys), () => { d.keySel = [] })
     return true
@@ -12946,7 +12963,13 @@
       if (e.button === 2 || e.button === 1) { d.drag = { kind: 'pan', x0: x, f0: d.f0, moved: false, button: e.button }; return }
       const hit = dopeHit(x, y)
       if (hit.kind === 'ruler') { d.drag = { kind: 'scrub' }; setFrame(dopeF(x)); return }
-      if (hit.kind === 'name') { if (hit.row && hit.row.sel) select(hit.row.sel, false, { noReveal: false }); return }
+      if (hit.kind === 'name') {
+        // a track's name picks it as where Ctrl+V pastes; an owner's name picks the owner
+        d.pasteTo = hit.row && hit.row.indent ? pathId(hit.row.paths[0]) : null
+        if (hit.row && hit.row.sel) select(hit.row.sel, false, { noReveal: false })
+        else scheduleKeyPaint()
+        return
+      }
       if (hit.kind === 'scale') {
         const { f1, f2 } = hit.span
         d.drag = { kind: 'scale', edge: hit.edge, pivot: hit.edge === 'end' ? f1 : f2, from: hit.edge === 'end' ? f2 : f1, factor: 1, moved: false }
@@ -13447,13 +13470,11 @@
       else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo() }
       else if (mod && k === 'c' && state.dope.focus && state.dope.keySel.length) { e.preventDefault(); copySelectedKeys() }
       else if (mod && k === 'x' && state.dope.focus && state.dope.keySel.length) { e.preventDefault(); cutSelectedKeys() }
-      else if (mod && k === 'v' && state.dope.focus && state.dope.clip && animOn()) {
-        e.preventDefault()
-        const clip = state.dope.clip
-        edit(`已在第 ${state.frame} 帧粘贴 ${clip.length} 个关键帧`, (j) => Ops.pasteKeys(j, state.anim, clip, timeSec()), (r) => { state.dope.keySel = r.keys })
-      }
+      else if (mod && k === 'v' && state.dope.focus && state.dope.clip && animOn()) { e.preventDefault(); pasteKeysHere() }
       else if (mod && k === 'c' && state.sel && state.sel.kind === 'bone') { e.preventDefault(); copyBonesToClipboard() }
       else if (mod && k === 'v' && boneClipboard) { e.preventDefault(); pasteBones() }
+      // keys copied, then another bone / slot picked in the tree or on the stage: Ctrl+V still pastes the keys there
+      else if (mod && k === 'v' && state.dope.clip && animOn()) { e.preventDefault(); pasteKeysHere() }
       else if (mod && k === 'd') { e.preventDefault(); duplicateSelection() }
       else if (mod && k === 'h') { e.preventDefault(); state.hiddenBones.clear(); state.hiddenSlots.clear(); refresh(); status('已显示全部骨骼和插槽') }
       else if (mod && /^[0-9]$/.test(e.key)) { e.preventDefault(); state.groups[e.key] = JSON.stringify({ sel: state.sel, multi: state.multi }); status(`选择已存到 ${e.key}`) }

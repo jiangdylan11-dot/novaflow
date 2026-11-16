@@ -650,6 +650,27 @@ test('dopesheet: move / delete / copy-paste keys, curves; the runtime agrees', (
   assert(after.some((t) => Math.abs(t - 1.0) < 1e-3) && after.some((t) => Math.abs(t - (1.0 + tr.times[1] - tr.times[0])) < 1e-3))
   const pasted = load(r.json)
   assert(near(angleAt(pasted, 1.0), angleAt(base, tr.times[0]), 0.05))
+  // paste onto another bone's track of the same kind (picked track, or picked bone)
+  const other = wild.bones.find((b) => b.name !== tr.path[1] && b.parent).name
+  const toPath = ['bones', other, tr.path[2]]
+  for (const target of [{ path: toPath }, { owners: [['bones', other]] }]) {
+    const rt = Ops.retargetClip(wild, clip, target)
+    assert.strictEqual(rt.clip.length, 2)
+    assert(rt.clip.every((c) => JSON.stringify(c.path) === JSON.stringify(toPath)))
+    r = Ops.pasteKeys(wild, an, rt.clip, 1.0)
+    const onOther = Ops.keyTracks(r.json, an).find((x) => JSON.stringify(x.path) === JSON.stringify(toPath)).times
+    assert(onOther.some((t) => Math.abs(t - 1.0) < 1e-3))
+  }
+  // the picked owner holding the copied keys: they stay; another kind of track: nothing pastes
+  assert.strictEqual(JSON.stringify(Ops.retargetClip(wild, clip, { owners: [['bones', tr.path[1]], ['bones', other]] }).clip), JSON.stringify(clip))
+  assert.strictEqual(Ops.retargetClip(wild, clip, { path: ['bones', other, tr.path[2] === 'rotate' ? 'scale' : 'rotate'] }).clip.length, 0)
+  // slot_1 附件 -> slot_2 附件
+  const attClip = [{ path: ['slots', 's1', 'attachment'], offset: 0, key: { name: 'a' } }, { path: ['slots', 's1', 'color'], offset: 0, key: { color: 'ffffffff' } }]
+  const att = Ops.retargetClip(null, attClip, { path: ['slots', 's2', 'attachment'] })
+  assert.deepStrictEqual(att.clip.map((c) => c.path), [['slots', 's2', 'attachment']])
+  assert.strictEqual(att.skipped, 1)
+  assert.deepStrictEqual(Ops.retargetClip(null, attClip, { owners: [['slots', 's2'], ['slots', 's3']] }).clip.map((c) => c.path.join('/')),
+    ['slots/s2/attachment', 'slots/s3/attachment', 'slots/s2/color', 'slots/s3/color'])
   // stepped: halfway to the next key the value still is the key's own
   r = Ops.setKeyCurve(wild, an, [{ path: tr.path, time: tr.times[0] }], 'stepped')
   assert.strictEqual(Ops.keyCurve(r.json, an, { path: tr.path, time: tr.times[0] }), 'stepped')

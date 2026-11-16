@@ -2245,6 +2245,61 @@
     return { json: tidy(json), keys: out }
   }
 
+  // what a key track belongs to and what it keys: bone A 平移 -> owner bones/A, kind translate
+  const clipOwner = (p) => p[0] === 'deform' ? ['slots', p[2]] : p[0] === 'drawOrder' ? null : [p[0], p[1]]
+  const clipKind = (p) => p[0] === 'deform' ? 'deform' : p[0] === 'bones' || p[0] === 'slots' ? p[2] : p[0] === 'path' ? 'path:' + p[2] : p[0]
+  const samePath = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+  /**
+   * A copied clip moved onto other tracks of the same kind (slot_1 附件 -> slot_2 附件, bone A 平移 -> bone B 平移).
+   * `target.path`: one track picked in the dopesheet - every copied key of that kind lands on it.
+   * `target.owners`: the picked bones / slots / constraints ([['bones', 'B'], ['slots', 's2']]) - each copied
+   * owner goes to a picked owner of its sort (one source -> every pick, several -> in order); owners
+   * already picked stay where they are. Returns { clip, skipped }.
+   */
+  function retargetClip(input, clip, target) {
+    const src = clip || []
+    if (!target) return { clip: src, skipped: 0 }
+    if (target.path) {
+      const tp = target.path, kind = clipKind(tp)
+      if (tp[0] === 'drawOrder') { const out = src.filter((c) => c.path[0] === 'drawOrder'); return { clip: out, skipped: src.length - out.length } }
+      // a mesh's keys only fit the same mesh (its vertex list)
+      const fits = src.filter((c) => clipKind(c.path) === kind && c.path[0] === tp[0] && (kind !== 'deform' || c.path[3] === tp[3]))
+      // keys from several owners would land on one frame of one track: the first owner's keys go
+      const first = fits.length ? JSON.stringify(clipOwner(fits[0].path)) : null
+      const out = fits.filter((c) => JSON.stringify(clipOwner(c.path)) === first).map((c) => ({ ...c, path: tp.slice() }))
+      return { clip: out, skipped: src.length - out.length }
+    }
+    const owners = (target.owners || []).filter(Boolean)
+    if (!owners.length) return { clip: src, skipped: 0 }
+    const json = input && input.skins && src.some((c) => c.path[0] === 'deform') ? prepare(input) : null
+    const hasAtt = (skin, slot, att) => !json || json.skins.some((s) => s.name === skin && s.attachments[slot] && s.attachments[slot][att])
+    const sources = []
+    for (const c of src) { const o = clipOwner(c.path); if (o && !sources.some((s) => samePath(s, o))) sources.push(o) }
+    const map = new Map() // source owner id -> target owners
+    for (const sort of [...new Set(sources.map((o) => o[0]))]) {
+      const from = sources.filter((o) => o[0] === sort), to = owners.filter((o) => o[0] === sort)
+      if (!to.length || from.every((o) => to.some((t) => samePath(t, o)))) continue // nothing of this sort picked, or already there
+      if (from.length === 1) map.set(JSON.stringify(from[0]), to)
+      else from.forEach((o, i) => map.set(JSON.stringify(o), to[i] ? [to[i]] : []))
+    }
+    const out = []
+    let skipped = 0
+    for (const c of src) {
+      const o = clipOwner(c.path), to = o && map.get(JSON.stringify(o))
+      if (!to) { out.push(c); continue }
+      if (!to.length) { skipped++; continue }
+      for (const t of to) {
+        if (c.path[0] === 'deform') {
+          // a mesh's keys only fit the same mesh in the other slot
+          if (!hasAtt(c.path[1], t[1], c.path[3])) { skipped++; continue }
+          out.push({ ...c, path: ['deform', c.path[1], t[1], c.path[3]] })
+        } else out.push({ ...c, path: [...t, ...c.path.slice(2)] })
+      }
+    }
+    return { clip: out, skipped }
+  }
+
   /** Interpolation from a key to the next: 'linear', 'stepped' or 'ease' (Spine's bezier presets). */
   function setKeyCurve(input, anim, keys, kind) {
     const json = prepare(input)
@@ -2966,7 +3021,7 @@
     reorderSlots, keyDrawOrder, decodeDrawOrder, encodeDrawOrder, createClipping, setClipping, createBoundingBox, setBoundingBox,
     createPath, setPath, updatePathLengths, pathLengths,
     // dopesheet
-    keyTracks, moveKeys, scaleKeys, adjustKeys, deleteKeys, copyKeys, pasteKeys, setKeyCurve, keyCurve, setKeyBezier, keyBezier, nextKeyTime,
+    keyTracks, moveKeys, scaleKeys, adjustKeys, deleteKeys, copyKeys, pasteKeys, retargetClip, setKeyCurve, keyCurve, setKeyBezier, keyBezier, nextKeyTime,
     // skins
     createSkin, renameSkin, deleteSkin, deleteSkins, copyAttachmentToSkin, duplicateAttachment, hasDeformKeys,
     createEvent, setEventProps, renameEvent, deleteEvent, keyEvent, setSkinMembership,
