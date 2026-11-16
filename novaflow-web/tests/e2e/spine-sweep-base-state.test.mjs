@@ -414,7 +414,7 @@ test('Spine pickBase and sample settings remain preview-only until explicit gene
   Object.assign(context,{
     state,FxMaker:()=>FX,FxMakerUI:()=>({open:opts=>{options=opts;return {project:opts.project};}}),
     FPS:30,lastFrame:()=>60,sweepEndFrame:()=>state.sweepEnd,
-    sweepEffectOk:effect=>effect.kind==='edge'||effect.kind==='basesweep'||(effect.kind==='lib'&&!effect.centered),
+    sweepEffectOk:effect=>effect.kind==='edge'||effect.kind==='basesweep'||effect.kind==='lib',
     basePixels:()=>({w:pixels.w,h:pixels.h,rgba:pixels.data}),sweepDataUrl:()=> 'fixture-pixels',
     openImagePicker:(_title,choose)=>choose('project/base'),
     renderLayerDock:()=>{},status:message=>{throw Error(message);},
@@ -435,4 +435,17 @@ test('Spine pickBase and sample settings remain preview-only until explicit gene
   assert.equal(JSON.stringify(state.json),before,'no skeleton, attachment or animation write during preview');
   assert.equal(state.history.length,0,'preview does not create a project undo entry');
   assert.equal(state.sweepGen,undefined,'slices require explicit 确定生成');
+});
+
+test('特效扫光 lists every effect 模板制作 has: no separate filter hides the ones without an outline',()=>{
+  // 2026-11-16 用户：特效扫光和模板制作对齐，之前把没有轮廓功能的都隐藏了；以后只改一处两边都有。
+  const context=vm.createContext({console});
+  for(const name of ['sweep-light.core.js','aifx-template-maker.core.js','aifx-template-maker.fx.js'])vm.runInContext(source(name),context);
+  const FX=context.NovaFlowFxMaker;
+  const line=editorSource.match(/^  const sweepEffectOk = .*$/m);
+  assert.ok(line,'the sweep panel still names its effect filter');
+  vm.runInContext(line[0].trim().replace('const sweepEffectOk','globalThis.sweepEffectOk'),context);
+  const all=FX.effects(),hidden=all.filter(effect=>!context.sweepEffectOk(effect)).map(effect=>effect.label);
+  assert.equal(hidden.join(' / '),'','effects 特效扫光 would hide');
+  assert.ok(all.some(effect=>effect.centered&&context.sweepEffectOk(effect)),'centred effects (能量球, 法阵, 爆炸…) are offered');
 });

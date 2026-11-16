@@ -9702,15 +9702,16 @@
   //
   // 2026-10-16 用户：「面板为什么不和模板制作一样，可以一样，显示的也大一点」——特效扫光直接用 AI 特效「模板制作」的
   // 编辑窗口（aifx-template-maker.*.js 的特效扫光模式）：底图从工程图片文件夹挑，也可以没有底图（画矩形 / 圆 / 自由形状）；
-  // 只列能和图片轮廓一致的效果。确定生成：切片进图片文件夹 sweep/<底图名>/<效果>/，卡片换成它们并勾好；卡片栏写入动画时插槽
+  // 效果和模板制作是同一份、全列。确定生成：切片进图片文件夹 sweep/<底图名>/<效果>/，卡片换成它们并勾好；卡片栏写入动画时插槽
   // 挂到选的骨骼、插到底图插槽的上一层、叠加，循环的首尾相接。存入 AI 特效模板库：同一份工程按模板的画板 / 时长出视频。
 
   const SweepLight = () => window.NovaFlowSweepLight
   const FxMaker = () => window.NovaFlowFxMaker
   const FxMakerUI = () => window.NovaFlowFxMakerUI
-  // 能和图片轮廓一致的才留（2026-10-16 用户：没办法和图片轮廓一致的效果都去掉）：轮廓流光、效果库里贴着轮廓走的、
-  // 按底图本身扫的、把底图打碎 / 化开的（用户：也算编辑底图）；以中心为准的（能量球、法阵、爆炸…）不要
-  const sweepEffectOk = (e) => e.kind === 'edge' || e.kind === 'basesweep' || (e.kind === 'lib' && !e.centered)
+  // 和「模板制作」同一份效果、全部都列（2026-11-16 用户：特效扫光和模板制作对齐，之前把没有轮廓功能的都隐藏了，
+  // 以后只改一处两边都有）。以中心为准的（能量球、法阵、爆炸…）在这里也能用：编辑窗口给的是位置框。
+  // 效果的定义、参数、分组都在 aifx-template-maker.fx.js，这里不再另筛。
+  const sweepEffectOk = (e) => e.kind === 'edge' || e.kind === 'basesweep' || e.kind === 'lib'
   // 这一份工程出的切片带底图画面（打碎 / 化开底图）：直通透明度、正常混合、一张一张切，播放时藏起原底图
   const sweepImageFx = (project, hasBase) => !!(hasBase && FxMaker().effectOf(project.effect).usesImage && project.useImage !== false)
 
