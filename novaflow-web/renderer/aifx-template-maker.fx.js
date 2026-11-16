@@ -2497,6 +2497,8 @@
   // ------------------------------------------------------------------ 2026-11-16 照参考特效的观感做的光效
   // 用户否了我凭想象画的升级 / 爆炸 / 选中（干净的细圈细线）。参考工程里真正在用的是：厚的、撕碎的、像火舌一样的流体光
   // （放射状的火舌 + 参差的边 + 一边胀一边被噪波蚀成碎絮），和轮廓上一道烧白的亮边 + 柔光 + 往上飘的细丝。
+  // 「选中」组的灵焰描边 / 火环 / 柔光环：2026-11-16 用户说无用、去掉。标 retired（和极光冠冕一样）：模板制作和特效扫光的
+  // 列表里都不再出现，之前存下的模板 / 切片工程还能照常打开。
   LIST.push(
     {
       id: 'ragburst', label: '能量环爆', group: '爆炸', hint: '中心一颗烧白的星芒炸开，外面一圈放射状的火舌：边是撕碎的，中间很快掏空成一个环，环一边胀一边碎成一絮一絮的，最后只剩火星', palette: 'green', lifecycle: 'once', ownEnvelope: true,
@@ -2556,7 +2558,7 @@
       ai: () => ['burst', 'energy ring burst, a white-hot star at the centre surrounded by radial tongues of energy with torn edges, hollowing into a ring that swells and tears into shreds, leaving drifting sparks'],
     },
     {
-      id: 'wispedge', label: '灵焰描边', group: '选中', hint: '图形的边一道烧白的亮线，外面裹一层柔光，顶上飘着一丝丝往上窜的细焰，轻轻晃动', palette: 'violet', lifecycle: 'loop',
+      id: 'wispedge', retired: true, label: '灵焰描边', group: '选中', hint: '图形的边一道烧白的亮线，外面裹一层柔光，顶上飘着一丝丝往上窜的细焰，轻轻晃动', palette: 'violet', lifecycle: 'loop',
       params: [P('spread', '柔光', 0.3, 3, 0.05, 1), P('width', '亮边', 0.3, 4, 0.05, 1), P('reach', '细焰', 0, 2, 0.05, 1), P('size', '丝粗细', 0.4, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
       prepare(ctx) {
         const { W, H, cov, N } = ctx.geo, below = new Float32Array(N)
@@ -2610,7 +2612,7 @@
 
   LIST.push(
     {
-      id: 'firering', label: '火环', group: '选中', hint: '一圈烧着的光环：中间一道烧亮的细线，两边裹着一根根卷动的火丝，边缘一直在抖，环上偶尔闪一下', palette: 'fire', lifecycle: 'loop',
+      id: 'firering', retired: true, label: '火环', group: '选中', hint: '一圈烧着的光环：中间一道烧亮的细线，两边裹着一根根卷动的火丝，边缘一直在抖，环上偶尔闪一下', palette: 'fire', lifecycle: 'loop',
       params: [P('reach', '大小', 0.3, 1, 0.05, 0.66), P('width', '火焰', 0.3, 2.2, 0.05, 1), P('size', '火丝', 0.4, 3, 0.05, 1), P('count', '抖动', 0, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
       render(ctx, t, D) {
         const { geo, params: p, pal } = ctx, { W, u, cx, cy } = geo
@@ -2696,14 +2698,14 @@
         const x0 = Math.max(0, Math.floor(cx - rad - bw * 3)), x1 = Math.min(W - 1, Math.ceil(cx + rad + bw * 3)), y0 = Math.max(0, Math.floor(gy - (rad + bw * 3) * sq)), y1 = Math.min(H - 1, Math.ceil(gy + (rad + bw * 3) * sq))
         for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
           const dx = x - cx, dy = (y - gy) / sq, r = Math.hypot(dx, dy)
-          const cs = dx / (r || 1), sn = dy / (r || 1)
-          // 外沿一鼓一鼓的（像一朵朵火团连成的圈），不是正圆
-          const lump = Math.abs(2 * fbm(cs * fq + 2 + a, sn * fq, 301, 3) - 1), rr = rad * (0.9 + 0.3 * lump)   // 一朵朵鼓出来的火团
+          // 外沿一鼓一鼓的（像一朵朵火团连成的圈），不是正圆。起伏按「摊平以后的地面位置」取噪波，不按角度取：
+          // 按角度取的话，压扁成椭圆以后左右两头的角度挤在一起，噪波被挤成一排尖齿（2026-11-16 用户：锯齿那么厉害）
+          const gx = dx / Rg, gz = dy / Rg, lump = fbm(gx * fq * 0.7 + 2, gz * fq * 0.7 + a * 0.6, 301, 2), rr = rad * (0.86 + 0.28 * lump)
           let e = 0, hue = 0.06
           for (let j = 0; j < 2; j++) {
-            const d = (r - rr * (j ? 0.55 : 1)) / (bw * (j ? 0.55 : 1)), body = Math.exp(-d * d * d * d)
+            const d = (r - rr * (j ? 0.55 : 1)) / (bw * (j ? 0.55 : 1)), body = Math.exp(-Math.pow(Math.abs(d), 2.6))
             if (body < 0.01) continue
-            const keep = smooth(th * 0.85 - 0.03, th * 0.85 + 0.16, (0.25 + 0.95 * fbm(cs * fq * 1.7 + 7 + j * 3, sn * fq * 1.7 - a * 1.3, 302, 3)) * (0.75 + 0.4 * body))
+            const keep = smooth(th * 0.85 - 0.06, th * 0.85 + 0.3, (0.25 + 0.95 * fbm(gx * fq * 1.1 + 7 + j * 3, gz * fq * 1.1 - a * 1.3, 302, 3)) * (0.75 + 0.4 * body))
             const hot = smooth(0.55, 0.95, body) * (1 - smooth(0.3, 0.75, a))
             e += keep * (0.85 * body + 0.5 * hot) * (j ? 0.7 : 1)
             hue = Math.max(hue, 0.04 + 0.52 * hot * keep)
@@ -2755,7 +2757,7 @@
       ai: () => ['rays', 'burst of rays from below, soft beams of light of uneven width and length fanning upward from a point at the bottom, bright at their roots, with bright specks flying out along them'],
     },
     {
-      id: 'glowring', label: '柔光环', group: '选中', hint: '一圈柔和的光环：环线不是正圆、有点手绘的不规则，外面裹着一层厚厚的柔光，一呼一吸', palette: 'white', lifecycle: 'loop',
+      id: 'glowring', retired: true, label: '柔光环', group: '选中', hint: '一圈柔和的光环：环线不是正圆、有点手绘的不规则，外面裹着一层厚厚的柔光，一呼一吸', palette: 'white', lifecycle: 'loop',
       params: [P('reach', '大小', 0.3, 1, 0.05, 0.6), P('width', '环线', 0.3, 4, 0.05, 1), P('spread', '柔光', 0.3, 3, 0.05, 1), P('count', '不规则', 0, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
       render(ctx, t, D) {
         const { geo, params: p, pal } = ctx, { W, u, cx, cy } = geo
