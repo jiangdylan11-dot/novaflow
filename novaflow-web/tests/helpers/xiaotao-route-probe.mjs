@@ -14,7 +14,8 @@ const ROUTES={foartOperationStart:'planner',artAgentChat:'chat',promptAssistantV
 
 // page: 'drawing' | 'video' | 'audio' | 'other'; prompt: what the page's prompt box holds;
 // task: what 小桃 finished earlier in this conversation; plan: what the planner answers.
-export async function probe({page='drawing',prompt='',task=null,genType='text_video',plans=[],pending=null}={}) {
+// frame: the first picture in the video page's slot ({width,height}); controls: native fields the planner may set.
+export async function probe({page='drawing',prompt='',task=null,genType='text_video',plans=[],pending=null,frame=null,controls=[]}={}) {
   const root={console:{...console,warn(){},debug(){}},crypto:webcrypto,AbortController,setTimeout,clearTimeout,btoa:value=>Buffer.from(value,'binary').toString('base64')};
   root.window=root;createContext(root);
   for(const file of ['xiaotao-prompt-source.js','xiaotao-upload.js','xiaotao-art-agent.js'])runInContext(read(file),root);
@@ -24,15 +25,16 @@ export async function probe({page='drawing',prompt='',task=null,genType='text_vi
   const media=page==='video'||page==='audio';
   root.NovaFlowAudioStudio={isOpen:()=>media,sub:()=>page,agentSettings:()=>({mode:'music',music:{text:page==='audio'?prompt:'',seconds:30},sfx:{text:'',seconds:2}}),
     captureTextReview:()=>({isCurrent:()=>true})};
-  const video={mode:'minimax_h3_local',genType,prompt:page==='video'?prompt:'',referenceSlots:[],h3References:[]};
-  root.NovaFlowAiSequenceGeneration={capture:()=>video,resources:()=>[]};
+  const video={mode:'minimax_h3_local',genType,prompt:page==='video'?prompt:'',h3References:[],h3:{custom:false,width:'480',height:'864'},
+    referenceSlots:frame?[{key:'first_frame',label:'首帧',kind:'image',occupied:true,sourceId:'f1',name:'frame.png',...frame}]:[]};
+  root.NovaFlowAiSequenceGeneration={capture:()=>video,resources:()=>[],setRequest(op){if(op.size)video.h3={custom:true,width:String(op.size.width),height:String(op.size.height)};}};
   root.NovaFlowAiSequenceMiniMaxH3PromptWorkflow={hasDraft:()=>true,rememberDraft(){}};
   // The prompt-only path: the draft is written back into the page's box.
   root.NovaFlowMediaAgent={captureH3PromptSourceGuard:()=>({isCurrent:()=>true}),captureH3TextDraft:async()=>({request:{h3Mode:genType,durationSeconds:5},isCurrent:()=>true,
     applyDraft:async text=>{video.prompt=text;return {phase:'applied'};}})};
   root.NovaFlowFoartToolContract={FOART_TOOL_SCHEMA,validateFoartPlan,foartAnimationExportAllowed:()=>true,foartUnsupportedMediaAnalysis:()=>false};
   const executed=[];
-  root.NovaFlowFoartTools={setUploads(){},capture:()=>({schema:FOART_TOOL_SCHEMA,controls:[],media:media?{active:true,sub:page,generation:{...video}}:undefined}),settlePending:async()=>null,images:async()=>[],
+  root.NovaFlowFoartTools={setUploads(){},capture:()=>({schema:FOART_TOOL_SCHEMA,controls,media:media?{active:true,sub:page,generation:{...video}}:undefined}),settlePending:async()=>null,images:async()=>[],
     execute:async op=>{executed.push(op);const action=op.operation?.action;
       return op.action==='media'?{action:'media',phase:'completed',results:[{action,target:op.operation.target,mode:genType,resources:action?.startsWith('generate_')?[{id:'r1',name:'out.mp4',seconds:1}]:[]}]}
         :{action:op.action,phase:'applied',message:'ok'};}};
@@ -45,7 +47,9 @@ export async function probe({page='drawing',prompt='',task=null,genType='text_vi
     artAgentStop:async()=>({ok:true}),artAgentStatus:async()=>({ok:true}),companionPricing:async()=>({ok:true,policy}),foartOperationCancel:async()=>({ok:true}),
     artAgentChat:async payload=>({ok:true,data:{reply:'好的。',history:[...payload.history,{role:'user',content:payload.message},{role:'assistant',content:'好的。'}]}}),
     foartOperationStart:async payload=>{starts.push(payload);const next=plans.shift();
-      return {ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:next?'act':'done',reply:next?'开始':'好的。',operations:next?[next]:[]}}};},
+      return {ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:next?'act':'done',reply:next?'开始':'好的。',operations:next?[next]:[]},...(next?{foartOperationSession:{opaque:starts.length}}:{})}};},
+    foartOperationResume:async()=>{const next=plans.shift();
+      return {ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:next?'act':'done',reply:next?'继续':'好的。',operations:next?[next]:[]},...(next?{foartOperationSession:{opaque:1}}:{})}};},
     promptAssistantVideoDraft:async()=>({ok:true,quota:{settled_credits:1},draft:{status:'preview-only',applyAvailable:false,textOnly:true,displayPrompt:'【写好的视频稿】',modelPrompt:'draft',h3Mode:genType,durationSeconds:5}}),promptAssistantRewriteAudioPrompt:async()=>({ok:false,error:'stub'}),
     onlineTextArtAvailableSync:()=>false,onlineVisionArtAvailableSync:()=>false};
   const api=()=>new Proxy(base,{get(target,key){if(ROUTES[key])touched.push(key);return target[key];}});

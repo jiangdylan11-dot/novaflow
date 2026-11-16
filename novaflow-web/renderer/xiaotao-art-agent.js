@@ -1031,6 +1031,22 @@
         seenOutputs=now;
       }catch{}
     }
+    // A video is as large as the person says; with nothing said, as large as its first picture (Dylan 2026-11-16).
+    // The page aligns to 32 and holds at most 2208×960 pixels, so a larger picture keeps its shape at that ceiling.
+    const SIZE_SAID=/\d{3,4}\s*[*x×X＊]\s*\d{3,4}|分辨率|尺寸|比例|\d+\s*[:：比]\s*\d+|竖屏|横屏|方形|正方形|\d{3,4}\s*[pP]\b|[24]\s*[kK]\b/;
+    function videoSizeFor(width,height){
+      const w=Number(width),h=Number(height);if(!(w>=32&&h>=32))return null;
+      const scale=Math.min(1,Math.sqrt(2208*960/(w*h))),align=value=>Math.max(32,Math.floor(value*scale/32)*32);
+      return {width:align(w),height:align(h)};
+    }
+    async function setVideoSize(size){
+      const gen=root.NovaFlowAiSequenceGeneration,page=gen?.capture?.();
+      if(!size||page?.mode!=='minimax_h3_local'||typeof gen.setRequest!=='function')return false;
+      if(page.h3?.custom&&Number(page.h3.width)===size.width&&Number(page.h3.height)===size.height)return true;
+      try{gen.setRequest({size});}catch{return false;}
+      for(let i=0;i<20;i++){await new Promise(done=>root.setTimeout(done,50));const now=gen.capture().h3;if(now?.custom&&Number(now.width)===size.width&&Number(now.height)===size.height)return true;}
+      return false;
+    }
     // A prompt in the box that has not been generated yet: "开始吧" means this one.
     function promptWaiting(){
       const info=activePromptSource(),text=info?.pagePrompt?.trim();
@@ -1697,6 +1713,13 @@
           :intent.fromPage||intent.revision?'用户正停在'+({image:'绘图',video:'视频生成',audio:'音频生成'}[resultSurface])+'页面，这句话'+(intent.revision?'是对刚完成的结果提的修改':'没有点名别的功能，说的就是这个页面要出的内容')+'：直接用生成操作出结果，不要只优化提示词，也不要让用户自己点生成。'+(resultSurface==='image'?'该先问绘图线路时照常先问一次。':''):'';
         // A picture brought after a finished task starts over: the earlier turns would only lend it their scene (live: a new toy picture kept the last picture's dusk).
         const ownPictureTask=turnBroughtFiles&&!!priorTask&&!intent?.revision&&resultSurface==='image';
+        // "960*960，重新做": the size is set here, by the app, so no brain has to find the two fields.
+        const saidSize=/(\d{3,4})\s*[*x×X＊]\s*(\d{3,4})/.exec(positiveRequest);
+        const sizeNamed=SIZE_SAID.test([...(intent?.revision?[priorTask?.baseRequest,...(priorTask?.revisions||[])]:[]),message].filter(Boolean).join('\n'));
+        let sizeNote='';
+        if(intent?.surface==='video'&&!intent.discussion&&saidSize&&await setVideoSize(videoSizeFor(saidSize[1],saidSize[2]))){
+          const now=root.NovaFlowAiSequenceGeneration.capture().h3;sizeNote='视频分辨率已按用户说的设为 '+now.width+'×'+now.height+'，不用再设置宽和高，直接做剩下的事。';
+        }
         let pictureFacts='';
         // 图生 and 首尾帧 hand their frames to the framework itself, so they need no separate look.
         const framesInDraft=['image_video','first_last'].includes(intent?.mode)&&api()?.onlineVideoVisionAvailableSync?.()===true;
@@ -1708,7 +1731,7 @@
           for(const [index,picture] of videoPictures.entries()){const seen=(await lookAt([picture],'用不超过六十字客观描述图片：人物朝向、姿势、服饰、场景和画风。只输出描述。')).trim();if(!seen)break;facts.push('图'+(index+1)+'：'+seen);}
           pictureFacts=facts.join('\n').slice(0,500);
         }
-        let spoken='',pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=(op,ctx)=>op.action==='assign_upload'?'assign_upload|'+(ctx?.controls?.find(c=>c.id===op.controlId)?.label||op.controlId)+'|'+(op.uploadIds||[op.uploadId]).join(','):op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
+        let spoken='',stuck=false,pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=(op,ctx)=>op.action==='assign_upload'?'assign_upload|'+(ctx?.controls?.find(c=>c.id===op.controlId)?.label||op.controlId)+'|'+(op.uploadIds||[op.uploadId]).join(','):op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
         const enhancementNames={split:'一键拆图',generativeSplit:'对象分离',imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
         const namedEnhancements=Object.keys(enhancementNames).filter(name=>positiveRequest.includes(enhancementNames[name]));
         for(let round=0;round<planningLimit;round++){
@@ -1744,6 +1767,7 @@
             +(/视频|首尾帧|多参|图生|文生/.test(positiveRequest)||intent?.surface==='video'?'\n视频 prompt 只写画面和动作，用户没提声音就不要写声音或音乐。':'')
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(wantsResult?'\n'+wantsResult:'')
+            +(sizeNote?'\n'+sizeNote:'')
             +(ownPictureTask?'\n这次带来了新图片，是一个新任务：只处理这次的图片，画面内容只来自这句话和这张图。'+(priorTask.surface==='image'?'绘图线路本对话已经定过，沿用当前选中的，不要再问。':''):'')
             +(stalePrompt?'\n页面输入框里留着的是上一个已完成任务的旧提示词，和这次无关：不要沿用它的任何内容，只按这次的要求'+(turnBroughtFiles?'和这次的图片':'')+'重新写。'+(turnStaleRefs?'参考位置里还留着上一个任务的'+(staleSurface==='video'?'素材：这句话说的是它就接着用，是全新的内容就先切到文生视频。':'图：这句话说的是那张图就接着用（图生图），是全新的画面就用文生图。'):''):'')
             +(invalidPlanRetries?'\n上一步方案不符合工具规则，未执行'+(invalidPlanIssue?'（'+invalidPlanIssue+'）':'')+'。只用 currentFoart 里真实存在的 ID；提示词不要用 set_control 写入，视频用 media 的 optimize_video_prompt 或 generate_video，绘图用 image_optimize 或 image_generate。这次只输出一个合法操作。':'')
@@ -1758,7 +1782,8 @@
           const exportFormats=[...new Set((exportBrief.match(/\b(?:PNG|PSD|JSON)\b/gi)||[]).map(value=>value.toLowerCase()))];
           const actualArtFiles=receipts.filter(r=>r.action==='art_action'&&r.name==='export'&&r.phase==='completed'&&r.fileName);
           // A prompt written through the online optimizer ends the run here; the pending operation settles in finally.
-          const finishNow=receipts.some(r=>r?.plannerPrompt===true);
+          // stuck: the planner kept repeating a step that changes nothing. The turn closes on what was done, in plain words, never as an error.
+          const finishNow=stuck||receipts.some(r=>r?.plannerPrompt===true);
           const terminalFacts=receipts.filter(r=>r.phase==='completed'||r.action==='image_optimize'&&r.phase==='applied');
           // Uploads and reading the pictures can outlast a 60 s price: take a fresh one before the turn starts.
           const price=currentPricingPolicy();if(!finishNow&&!foartOperationSession&&state.provider==='api'&&(!price||price.expiresAt-Date.now()<8000))await refreshPricingPolicy();
@@ -1876,7 +1901,7 @@
             const claimsOutput=/生成(?:好了|完成|成功)|(?:已经|已)(?:生成|制作完成|完成制作|导出)|制作(?:好了|完成|成功)|导出(?:好了|完成|成功)/.test(said);
             const contextNames=new Set([...knownNames,...(snapshot.uploads||[]).map(v=>v.name),...(snapshot.media?.videoResources||[]).map(v=>v.name),...(snapshot.media?.audioResources||[]).map(v=>v.name),...(snapshot.media?.generation?.h3References||[]).map(v=>v.name||v.fileName),...(snapshot.media?.generation?.referenceSlots||[]).map(v=>v.name)]);
             const replyMatches=!mentioned.some(name=>!(claimsOutput?knownNames:contextNames).has(name))&&(!claimsOutput||hasOutput)&&(!/首尾帧/.test(said)||!mediaModes.length||mediaModes.every(mode=>mode==='first_last'))&&!(receipts.some(r=>r.outputs?.some(o=>o.downloadInitiated))&&/已保存|导出完成|已导出/.test(said));
-            const content=(receipts.length?(replyMatches&&said&&said!==receiptText?said+'\n\n':'')+receiptText:plan.reply).trim()||actual;
+            const content=((receipts.length?(replyMatches&&said&&said!==receiptText?said+'\n\n':'')+receiptText:plan.reply).trim()||actual)+(stuck?'\n\n后面的步骤这次没做完，已做的都保留着。把要改的再说一遍，我接着做。':'');
             const quota=billingReceipt(billing);
             const downloads=receipts.flatMap(r=>(r.outputs||[]).map(output=>output.downloadId).filter(Boolean));
             state.messages.push({role:'assistant',content,...(downloads.length?{downloads}:{}),...(quota?{receipt:creditReceipt(quota)}:{})});
@@ -1894,11 +1919,16 @@
           if(discussionOnly(requestMessage))fail('本次仅讨论，未授权工具修改');
           const stableControls=new Set(snapshot.controls.filter(c=>!c.volatile).map(c=>c.id));
           const attemptKey=JSON.stringify(plan.operations)+'|'+toolBinding(snapshot,stableControls),attempts=(attemptedPlans.get(attemptKey)||0)+1;attemptedPlans.set(attemptKey,attempts);
-          if(attempts>2)fail('当前操作没有改变工具状态，已停止重复执行；请求尚未完成');
+          if(attempts>2){stuck=true;continue;}
           if((forbidsGeneration(message)||/只优化|只修改提示词/.test(message))&&plan.operations.some(op=>['image_generate','effect_generate'].includes(op.action)||op.action==='media'&&op.operation?.action?.startsWith('generate_')))fail('本次未授权生成，未提交任务');
           const receiptsBefore=receipts.length;
           for(const op of plan.operations){
             if(signal.aborted)fail('Foart 操作已停止');
+            // No size named anywhere in this task: the video takes its first picture's size, shape kept.
+            if(op.action==='media'&&op.operation?.action==='generate_video'&&!sizeNamed&&!receipts.some(row=>row.action==='set_control'&&/宽|高|分辨率|比例/.test(row.control||''))){
+              const video=root.NovaFlowAiSequenceGeneration?.capture?.(),frame=['image_video','first_last'].includes(video?.genType)?(video.referenceSlots||[]).find(slot=>slot.occupied&&slot.width>0&&slot.height>0):null;
+              if(frame&&await setVideoSize(videoSizeFor(frame.width,frame.height)))expectedSnapshot=tools.capture();
+            }
             // Playback clocks move during planning. Keep every editable value
             // guarded, excluding only native clocks unless this plan edits one.
             const current=tools.capture(),currentIds=new Set(current.controls.filter(c=>!c.disabled).map(c=>c.id)),plannedIds=new Set(plan.operations.map(item=>item.controlId).filter(Boolean)),stableIds=new Set(expectedSnapshot.controls.filter(c=>!c.disabled&&currentIds.has(c.id)&&(!c.volatile||plannedIds.has(c.id))).map(c=>c.id));
@@ -1914,6 +1944,13 @@
             const modeLabel=current.controls.find(c=>c.id===op.controlId)?.label;
             if(/^(?:文生视频|图生视频|首尾帧视频|多参视频)$/.test(modeLabel||'')&&lastPreparedTask.startsWith('video:')&&!positiveRequest.includes(modeLabel.replace('视频','')))continue;
             contract.validateFoartPlan({...plan,operations:[op]},current);
+            // A value that already stands needs no second write: say so and let the plan move on
+            // (live 2.0.370: "960*960，重新做" set 宽 960 → 960 three times and stopped on an error).
+            const standing=op.action==='set_control'?current.controls.find(control=>control.id===op.controlId):null;
+            if(standing&&String(standing.value)===String(op.value)){
+              receipts.push({action:'set_control',phase:'applied',control:standing.label,value:op.value,message:standing.label+' 已经是 '+op.value+'，不用再设。接着做这句话里剩下的事（其余参数、重新生成等），不要重复这一步。'});
+              continue;
+            }
             if(signal.aborted||operation!==serial)fail('Foart 操作已停止');
             // "先画…再做成视频": the picture made earlier in this turn becomes the 图生视频 frame, the way an attached picture would.
             if(op.action==='media'&&op.operation?.action==='generate_video'&&!/文生视频/.test(positiveRequest)){

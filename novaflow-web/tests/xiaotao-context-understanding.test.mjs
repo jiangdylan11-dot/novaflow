@@ -127,3 +127,26 @@ test('a finished generation keeps what the brain said in front of the receipt',a
   const r=await p.say('动画太生硬了，要求可爱Q弹');
   assert.match(r.reply,/^开始\n\n已调用[\s\S]*out\.mp4/);
 });
+test('a size said in words is set by the app; with none said, the video takes its first picture\'s size',async()=>{
+  const said=await probe({page:'video',prompt:P,task:videoTask,genType:'first_last',frame:{width:960,height:1280},plans:[generateVideo(P)]});
+  const r=await said.say('960*960分辨率，重新做');
+  assert.deepEqual(said.video.h3,{custom:true,width:'960',height:'960'});
+  assert.match(r.sent,/视频分辨率已按用户说的设为 960×960/);assert.deepEqual(r.ops,['generate_video']);
+  // A later change in the same task keeps the size the person chose.
+  await said.say('再可爱一点');
+  const unsaid=await probe({page:'video',genType:'image_video',frame:{width:960,height:1280},plans:[generateVideo('小猴子待机')]});
+  await unsaid.say('做一个2秒循环待机动画，要求动画生动');
+  assert.deepEqual(unsaid.video.h3,{custom:true,width:'960',height:'1280'});
+  // A picture past the page's ceiling keeps its shape under it.
+  const large=await probe({page:'video',genType:'image_video',frame:{width:3000,height:3000},plans:[generateVideo('小猴子待机')]});
+  await large.say('让它动起来');
+  assert.deepEqual(large.video.h3,{custom:true,width:'1440',height:'1440'});
+});
+test('a step that changes nothing is skipped with a word to the planner, and a stuck turn ends in plain words',async()=>{
+  const width={id:'w1',label:'自定义宽',section:'视频',kind:'input',value:'960',scope:'video_generation'};
+  const setWidth={action:'set_control',controlId:'w1',value:960};
+  const p=await probe({page:'video',prompt:P,task:videoTask,controls:[width],plans:[setWidth,setWidth,setWidth,setWidth]});
+  const r=await p.say('宽度设成九百六');
+  assert.equal(r.error,'');assert.deepEqual(r.ops,[]);
+  assert.match(r.reply,/后面的步骤这次没做完/);
+});
