@@ -3261,9 +3261,13 @@
           try { root.localStorage.removeItem(CLIENT_AUTH_KEY); } catch (_) {}
           // Pushed out by a newer login on the account, or the account ran out:
           // the login screen that follows says which.
-          if (error.code === 'session_replaced' || error.code === 'account_expired') {
-            try { root.sessionStorage.setItem(SIGNOUT_REASON_KEY, String(error.message || '')); } catch (_) {}
-          }
+          // Every server sign-out says why, so the next report can tell a
+          // pushed-out seat from a run-out token or anything else.
+          const reason = error.code === 'session_replaced' || error.code === 'account_expired'
+            ? String(error.message || '')
+            : error.code === 'token_expired' ? '登录已超过 24 小时，请重新登录'
+              : '登录状态已失效（' + (error.code || error.status) + '），请重新登录';
+          try { root.sessionStorage.setItem(SIGNOUT_REASON_KEY, reason); } catch (_) {}
           return { ok: true, result: { authenticated: false } };
         }
         // A temporary control-plane/network failure is not a logout. The
