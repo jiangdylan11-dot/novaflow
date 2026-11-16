@@ -1,2 +1,2 @@
 // Application release identifier; protocol and model versions remain independent.
-export const RELEASE_VERSION = "2.0.365";
+export const RELEASE_VERSION = "2.0.367";
