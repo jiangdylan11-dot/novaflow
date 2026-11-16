@@ -489,7 +489,7 @@
     } catch {/* Keep the failure message even if selection is unavailable. */}
     button.textContent='请选中文字按 Ctrl+C';return false;
   }
-  function renderConversationRow(doc, message, {copyText = () => {}, chooseUploadDestination = () => {}, undoMemory = null} = {}) {
+  function renderConversationRow(doc, message, {copyText = () => {}, chooseUploadDestination = () => {}, undoMemory = null, openFolder = null} = {}) {
     const el = (tag, className = '', text) => {const node = doc.createElement(tag); node.className = className; if (text !== undefined) node.textContent = text; return node;};
     if (message.role === 'status') {
       const failed = !message.receiptOnly && (message.level === 'error' || /失败|未成功|无法|不能|不支持|未放入|不可用|已失效|未完成/.test(message.content));
@@ -527,6 +527,11 @@
     if (message.imageUrl && /^data:image\//.test(message.imageUrl)) {
       const link = el('a'); link.href = message.imageUrl; link.target = '_blank'; link.rel = 'noopener';
       const image = el('img'); image.src = message.imageUrl; image.alt = '本次实际成图，待评价'; link.append(image); bubble.append(link);
+    }
+    if (message.folderAsk && typeof openFolder === 'function') {
+      const open = el('button', 'nf-xiaotao-folder-open', '打开文件夹'); open.type = 'button';
+      open.onclick = () => void openFolder();
+      bubble.append(open);
     }
     for (const id of message.downloads || []) {
       const file=root.NovaFlowFoartTools?.downloadFile?.(id);if(!file)continue;
@@ -1965,13 +1970,119 @@
       }finally{await closeFoartOperation();
         if(billing?.inFlight){billing.inFlight=false;billing.unknown=true;publishBilling(billing);}if(activeFoartBilling===billing)activeFoartBilling=null;if(operation===serial){root.NovaFlowAgentExportSession=null;stopStatusPolling();foartAbort=null;activeRequest='';state.pending=false;state.generating=false;state.operation=null;notify();}}
     }
-    async function send(message, {includeResult = false, recordMessage = true} = {}) {
+    // ---- A folder named in a sentence ("把 D:\素材\角色 里的图都转成水彩风").
+    // The files go one by one through the turn a single attached file takes, so whatever 小桃 can do
+    // with one file it does with each; results land in the 仓库 like any other result. The page may read
+    // the folder only after the user's own click (browser rule), hence the one button in the reply.
+    let folderJob=null;
+    const folderApi=()=>root.FoartXiaotaoFolder;
+    const folderSay=(content,extra)=>{state.messages.push({role:'assistant',content,...extra});state.error='';notify();return true;};
+    const folderAskDone=()=>{for(const row of state.messages)if(row.folderAsk)row.folderAsk=false;};
+    const folderNoun=kind=>kind==='image'?'这张图':kind==='video'?'这个视频':kind==='audio'?'这段音频':'这个文件';
+    async function folderTurn(message) {
+      const files=folderApi();if(!files||!message)return null;
+      const hit=(state.staged||[]).length?null:files.find(message);
+      if(hit){
+        pushUser(message);folderAskDone();folderJob=null;
+        if(state.provider!=='api')return folderSay('处理整个文件夹要用在线模型。请在上方切换到在线模型，再发一次。');
+        const found=await files.resolve(hit.path);
+        if(retired)return false;
+        if(found.unsupported)return folderSay('这个浏览器读不了本地文件夹，请用 Chrome 或 Edge 打开 Foart。');
+        folderJob={name:hit.name,path:hit.path,deep:hit.deep,instruction:hit.instruction,stage:'ask'};
+        if(found.handle)return folderPrepare(folderJob,found.handle);
+        return folderSay(found.ask==='permission'?'「'+hit.name+'」之前允许过。点下面的按钮，在浏览器的确认框里选允许就行。':'第一次用「'+hit.name+'」这个文件夹。点下面的按钮选一下它，以后直接说就行。',{folderAsk:true});
+      }
+      const job=folderJob;if(!job)return null;
+      if(job.stage==='what'||job.stage==='refine'){
+        pushUser(message);
+        if(job.stage==='what')job.instruction=kind=>'对'+folderNoun(kind)+'：'+message;else job.extra=message;
+        return folderRun(job);
+      }
+      if(job.stage==='confirm'){
+        const text=message.replace(/[\s，,。.!！~～]+/g,'');
+        if(uploadApi()?.goAhead?.(message)||/^(?:要|好|行|可以|是|对|嗯|确认|开始|继续|ok|yes)/i.test(text)&&text.length<=8){pushUser(message);return folderRun(job);}
+        folderJob=null;
+        if(/^(?:不|算了|取消|先不|等等|别)/.test(text)){pushUser(message);return folderSay('好的，没有开始。');}
+        return null;
+      }
+      if(job.stage==='ask'){folderJob=null;folderAskDone();}
+      return null;
+    }
+    // The 「打开文件夹」 button: runs inside the click, which is what lets the browser show its prompt.
+    async function openFolder() {
+      const job=folderJob;if(retired||!job||job.stage!=='ask'||job.opening)return false;
+      job.opening=true;let got;try{got=await folderApi().grant(job.path);}catch{got={blocked:true};}job.opening=false;
+      if(retired||folderJob!==job)return false;
+      if(!got.handle)return false;
+      folderAskDone();
+      return folderPrepare(job,got.handle);
+    }
+    async function folderPrepare(job,handle) {
+      job.stage='list';state.status='正在查看文件夹…';notify();
+      const uploads=uploadApi();let listing=null;job.items=[];job.left=0;
+      try{
+        listing=await folderApi().list(handle,{deep:job.deep});
+        for(const entry of listing.files){
+          let file=null,verdict=null;try{file=await entry.file();verdict=uploads?.inspectUpload?.(file);}catch{verdict=null;}
+          if(verdict?.ok)job.items.push({name:entry.path,kind:verdict.kind,file});else job.left++;
+        }
+      }catch{listing=null;}
+      if(retired||folderJob!==job)return false;
+      state.status='';
+      if(!listing){folderJob=null;return folderSay('「'+job.name+'」现在读不了，可能被移动或改了名字。');}
+      const total=job.items.length,count=kind=>job.items.filter(item=>item.kind===kind).length;
+      if(!total){folderJob=null;return folderSay('「'+job.name+'」里没有我能处理的文件（图片、视频、音频）'+(listing.folders?'，子文件夹里的没有算。要算上的话，说一句“包括子文件夹”。':'。'));}
+      const kinds=[['image','图片'],['video','视频'],['audio','音频']].filter(([kind])=>count(kind)).map(([kind,label])=>label+' '+count(kind)).join('、');
+      const summary='「'+job.name+'」里有 '+total+' 个可以处理的文件（'+kinds+'）'+(job.left?'，另有 '+job.left+' 个我处理不了的会跳过':'')+(listing.folders?'，子文件夹里的没有算':'');
+      if(!job.instruction('image')){job.stage='what';return folderSay(summary+'。要对它们做什么？');}
+      if(total>5){job.stage='confirm';return folderSay(summary+'。我会一个一个做，每个按实际用量结算，结果存进仓库，中途可以点停止。要现在开始吗？');}
+      state.messages.push({role:'assistant',content:summary+'，现在开始。'});
+      return folderRun(job);
+    }
+    async function folderRun(job) {
+      job.stage='run';job.stop=false;
+      const total=job.items.length,done=[],skipped=[],known=new Set(state.billingNotices.map(row=>row.id)),cost=new Map();
+      const spent=()=>{for(const row of state.billingNotices)if(!known.has(row.id)&&Number.isFinite(row.confirmed))cost.set(row.id,row.confirmed);let sum=0;for(const value of cost.values())sum+=value;return Math.round(sum*100)/100;};
+      const progress={role:'status',content:''};state.messages.push(progress);
+      const dropProgress=()=>{const at=state.messages.indexOf(progress);if(at>=0)state.messages.splice(at,1);};
+      let misses=0,asked=false;
+      for(let i=0;i<total;i++){
+        if(job.stop||retired||folderJob!==job)break;
+        const item=job.items[i],used=spent();
+        progress.content='正在处理 '+(i+1)+'/'+total+'：'+item.name+(used>0&&i>0?'（已用 '+used+' 积分，全部大约 '+Math.round(used/i*total*10)/10+'）':'');
+        pendingIntent=null;pendingPromptSource=null;releasePreviews(state.staged);state.staged=[];state.error='';notify();
+        // A result still being made (generation outlives the turn that started it) is waited for, never cut off.
+        while(!retired&&!job.stop&&(state.pending||state.generating||state.applying||state.staging||loopRunning()))await new Promise(done=>timers.setTimeout(done,400));
+        if(job.stop||retired)break;
+        const mark=state.messages.length;let ok=false;
+        try{
+          const request=job.instruction(item.kind)+(job.extra?'（补充：'+job.extra+'）':'');
+          ok=await stageUploads([item.file])&&state.staged.length>0&&await send(request,{recordMessage:false,folderItem:true})===true&&!state.error&&!pendingIntent;
+        }catch{ok=false;}
+        if(retired)return false;
+        // 小桃 asks back on the very first file: the answer is for the whole folder, so keep the question.
+        if(!ok&&i===0&&pendingIntent&&!job.stop&&!job.extra){asked=true;break;}
+        state.messages.splice(mark);state.error='';pendingIntent=null;
+        if(ok){done.push(item.name);misses=0;}else if(!job.stop){skipped.push(item.name);if(++misses>=3)break;}
+      }
+      releasePreviews(state.staged);state.staged=[];dropProgress();
+      if(folderJob!==job)return true;
+      if(asked){pendingIntent=null;job.stage='refine';notify();return true;}
+      folderJob=null;
+      const rest=total-done.length-skipped.length,used=spent(),names=skipped.slice(0,6).join('、')+(skipped.length>6?' 等':'');
+      const reply='「'+job.name+'」'+(done.length?'做完了 '+done.length+' 个':'没有做成')+(skipped.length?'，'+skipped.length+' 个没做成：'+names:'')
+        +(rest>0?job.stop?'。已按你的要求停下，还有 '+rest+' 个没做':'。连着几个都没做成，我先停下了，还有 '+rest+' 个没做':'')+(job.left?'。另外 '+job.left+' 个不是图片、视频或音频，没有动':'')
+        +'。'+(done.length?'结果在仓库里，原文件没有改动。':'')+(used>0?'这次一共用了 '+used+' 积分。':'');
+      state.status='';return folderSay(reply);
+    }
+    async function send(message, {includeResult = false, recordMessage = true, folderItem = false} = {}) {
       if (retired) return false;
       if (CHAT_MODELS[state.modelId]?.retired) {state.error=CHAT_MODELS[state.modelId]?.detail||'该线路已移除';state.status='未提交，不扣积分';notify();return false;}
       if(state.uploading || state.staging)return false;
       // While the tool loop runs, a new message must not bump `serial` under it; 停止 is the way out.
       if (state.pending || state.generating || state.applying || loopRunning()) return false;
       message = String(message || '').trim();
+      if(!folderItem){if(folderJob?.stage==='run'||folderJob?.stage==='list')return false;const routed=await folderTurn(message);if(routed!==null)return routed;}
       if(message && state.promptSourceCancelledNotice){state.status=state.status.replace(state.promptSourceCancelledNotice,'').trim();state.promptSourceCancelledNotice='';}
       if (!message) {if ((state.staged || []).length) {state.messages.push({role:'assistant',content:'请先说明这些文件的用途，再发送'}); state.error = ''; notify();} return false;}
       // 附件只属于发送它的那一条消息：新一条消息不再暗中带上之前发过的附件。
@@ -2823,6 +2934,7 @@
     function businessModelSnapshot(){return Object.freeze({provider:state.provider,modelId:state.modelId,epoch:businessModelEpoch});}
     function subscribeBusinessModel(listener){if(typeof listener!=='function')throw Error('invalid listener');businessModelListeners.add(listener);return ()=>businessModelListeners.delete(listener);}
     async function stop() {
+      if(folderJob?.stage==='run')folderJob.stop=true;
       if(foartAbort){if(activeFoartBilling?.inFlight)publishBilling(activeFoartBilling);foartAbort.abort();state.status='正在停止本次工具等待…';const requestId=activeRequest;if(requestId)await api()?.artAgentStop?.({requestId,provider:state.provider});notify();return;}
       if(promptAbort) {state.status='正在停止本次提示词优化…';promptAbort.abort();notify();return;}
       if(mediaAbort) {state.status='正在停止本次音视任务…';mediaAbort.abort();notify();return;}
@@ -2895,7 +3007,7 @@
       stopStatusPolling(); releaseStagedMedia();
       return true;
     }
-    function reset() {if (CHAT_MODELS[state.modelId]?.retired || state.pending || state.generating || state.applying || state.uploading || state.staging || state.staged.some(item=>item.status==='reading')) return false;  if(pendingFoartImageReview)root.NovaFlowFoartTools?.cancelImageReview?.(pendingFoartImageReview.id);pendingFoartImageReview=null;foartImageReviewUndo=null;state.foartImageReviewCanUndo=false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; lastUploads=[];lastPreparedTask='';pendingIntent=null;pendingPromptSource=null;state.promptSourceCancelledNotice='';clearMediaPromptReview();bridge.clearPrepared(); releaseCurrentStagedMedia(); sessions[state.provider]={messages:[],history:[],conversationId:''}; delete modelSessions[state.modelId];delete transientSessions[state.modelId]; Object.assign(state, {activeTask:null,messages:[], history:[],historyOriginUnknown:false, conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', status:state.mode === 'drawing' ? '当前模型的新对话，将使用当前绘图内容' : '当前模型的新对话，可以直接聊天'}); notify(); return true;}
+    function reset() {if(folderJob){folderJob.stop=true;folderJob=null;}if (CHAT_MODELS[state.modelId]?.retired || state.pending || state.generating || state.applying || state.uploading || state.staging || state.staged.some(item=>item.status==='reading')) return false;  if(pendingFoartImageReview)root.NovaFlowFoartTools?.cancelImageReview?.(pendingFoartImageReview.id);pendingFoartImageReview=null;foartImageReviewUndo=null;state.foartImageReviewCanUndo=false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; lastUploads=[];lastPreparedTask='';pendingIntent=null;pendingPromptSource=null;state.promptSourceCancelledNotice='';clearMediaPromptReview();bridge.clearPrepared(); releaseCurrentStagedMedia(); sessions[state.provider]={messages:[],history:[],conversationId:''}; delete modelSessions[state.modelId];delete transientSessions[state.modelId]; Object.assign(state, {activeTask:null,messages:[], history:[],historyOriginUnknown:false, conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', status:state.mode === 'drawing' ? '当前模型的新对话，将使用当前绘图内容' : '当前模型的新对话，可以直接聊天'}); notify(); return true;}
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying || state.uploading) return false;
       return setModel(provider === 'local' ? 'qwen3.5-9b-heretic' : DEFAULT_XIAOTAO_MODEL_ID);
@@ -2923,7 +3035,7 @@
       if(state.promptSourceCancelledNotice)state.status=[state.status,state.promptSourceCancelledNotice].filter(Boolean).join(' ');
       notify(); if(model.provider==='api')void refreshPricingPolicy(); return true;
     }
-    return Object.freeze({state, undoMemory, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, operationEstimate, styleReadAvailable, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
+    return Object.freeze({state, undoMemory, retire, businessModelSnapshot, translateH3Online, subscribeBusinessModel, analyzeStagedImage, applyMediaPromptReview, cancelMediaPromptReview, undoMediaPromptReview, send, openFolder, apply, stop, reset, setProvider, setModel, refreshContext, onlineEstimateInput, onlineQuote, operationEstimate, styleReadAvailable, modelAvailable, hideLegacyOnlineOption, modelRateSummary, onlinePriceDetails, visiblePricingDetails, onlineOperationMinimumConfirmed, onlineOperationDecimalConfirmed, pricingPolicyKey, refreshPricingPolicy, prefetchPricingPolicy, calibrateLocalStatus, invalidateLocalCapability, clearQwenExecutionDevice, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia,cancelFoartImageReview,undoFoartImageReview,recordBusinessBillingNotice,visibleBillingNotices,dismissBillingNotice,onlineBusinessUi});
   }
   // The one model picker. The 小桃 panel and the 特效 material reader both build
   // it here, so the list, its notes, its look and its keys cannot drift apart.
@@ -3260,7 +3372,7 @@
         const lastOfTurn = new Map(); rows.forEach((row, index) => {if (row.chargeTurn && (row.role !== 'user' || !lastOfTurn.has(row.chargeTurn))) lastOfTurn.set(row.chargeTurn, index);});
         if (!rows.length) messages.append(intro);
         rows.forEach((row, index) => {
-          const node = renderConversationRow(doc, {...row,receipts:[]}, {copyText, chooseUploadDestination:controller.chooseUploadDestination, undoMemory:controller.undoMemory}); messages.append(node);
+          const node = renderConversationRow(doc, {...row,receipts:[]}, {copyText, chooseUploadDestination:controller.chooseUploadDestination, undoMemory:controller.undoMemory, openFolder:controller.openFolder}); messages.append(node);
           const amount = lastOfTurn.get(row.chargeTurn) === index ? charges.get(row.chargeTurn) : undefined;
           if (amount !== undefined && Number(amount) > 0) {const charge = el('div', 'nf-xiaotao-charge nf-xiaotao-charge-' + (row.role === 'user' ? 'user' : 'reply'), billingNoticeText({confirmed:amount})); charge.setAttribute('role','note'); messages.append(charge);}
         });

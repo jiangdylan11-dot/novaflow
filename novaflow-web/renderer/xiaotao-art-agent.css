@@ -179,3 +179,6 @@
 #nf-xiaotao-art-root .nf-xiaotao-memory[data-off="1"] .nf-xiaotao-memory-list { opacity:.5; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-note { color:#9be4cd; }
 #nf-xiaotao-art-root .nf-xiaotao-memory-undo { margin-left:6px; }
+/* 小桃 asks for a folder: the one click the browser needs before the page may read it. */
+#nf-xiaotao-art-root .nf-xiaotao-folder-open { display:block; margin-top:8px; height:28px; padding:0 14px; border:0; border-radius:6px; font-size:12px; font-weight:500; color:#ffffff; background:#1EA672; cursor:pointer; outline:none; }
+#nf-xiaotao-art-root .nf-xiaotao-folder-open:hover { background:#23b97f; }
