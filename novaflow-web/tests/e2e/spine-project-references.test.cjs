@@ -113,7 +113,7 @@ function fixture() {
       Object.assign(c, { projectSerial: 0, newFolderKey: () => 'new-key', fit() {}, depthOf: () => 0, rememberFolder() {},
         TREE_FILTERS: [['bones'], ['slots'], ['images']], document: { querySelectorAll: () => [] },
         pv: { items: new Map() }, pfx: null, imgSeen: { folder: null, names: new Map() }, hostListeners: new Set(), watchImageFolder() {},
-        $: () => ({}), Ops: { tidy: j => j, prepare: j => j }, leaveProjectEdits() {}, dropProjectRuntime() {}, renderTree() {},
+        $: () => ({}), Ops: { tidy: j => j, prepare: j => j, pruneDeadKeys: () => 0 }, leaveProjectEdits() {}, dropProjectRuntime() {}, renderTree() {},
         snapProject: () => ({ ...state, temp: new Map(state.temp), collapsed: new Set(state.collapsed) }),
         restoreProject: snap => Object.assign(state, snap),
         projectName: i => i === c.activeProject ? state.name : projects[i].snap.name,
