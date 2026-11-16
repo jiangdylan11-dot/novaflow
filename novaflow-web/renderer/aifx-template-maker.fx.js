@@ -473,14 +473,31 @@
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         const lx = x - f.cx - f.tx, ly = y - f.cy - f.ty, rx = lx * co + ly * si, ry = -lx * si + ly * co
         const al = rx * ax + ry * ay, pe = (-rx * ay + ry * ax) / sq
-        const sx = Math.round(f.cx + al * ax - pe * ay), sy = Math.round(f.cy + al * ay + pe * ax)
-        if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue
-        const src = sy * W + sx
-        if (idOf[src] !== c) continue
-        const dst = y * W + x, edge = cells.edgeW ? cells.edgeW[src] : edgePix[src]
-        if (edge > 0 && edge < 1) { addPixel(D, dst, f.k * (1 - edge), fill); addPixel(D, dst, f.edgeK * edge, edgeCol) }
-        else addPixel(D, dst, edge ? f.edgeK : f.k, edge ? edgeCol : fill)
-        if (f.imgK) putImg(D, geo, dst, src, f.imgK)
+        // 回到原图的位置是小数：看它周围四个像素里有几成属于这一块（双线性），按这个比例画——
+        // 原来取最近的一个像素、「是这块 / 不是这块」一刀切，碎块一转起来边就是一级级台阶（2026-11-16 用户：锯齿那么厉害）
+        const fxs = f.cx + al * ax - pe * ay, fys = f.cy + al * ay + pe * ax, sx = Math.floor(fxs), sy = Math.floor(fys)
+        if (sx < -1 || sy < -1 || sx >= W || sy >= H) continue
+        const wx = fxs - sx, wy = fys - sy
+        let cov = 0, edge = 0, src = -1, bw = 0
+        for (let j = 0; j < 2; j++) {
+          const yy = sy + j
+          if (yy < 0 || yy >= H) continue
+          for (let i = 0; i < 2; i++) {
+            const xx = sx + i
+            if (xx < 0 || xx >= W) continue
+            const q = yy * W + xx
+            if (idOf[q] !== c) continue
+            const w = (i ? wx : 1 - wx) * (j ? wy : 1 - wy)
+            cov += w; edge += w * (cells.edgeW ? cells.edgeW[q] : edgePix[q])
+            if (w > bw) { bw = w; src = q }
+          }
+        }
+        if (cov < 0.004 || src < 0) continue
+        edge /= cov
+        const dst = y * W + x
+        if (edge < 1) addPixel(D, dst, f.k * (1 - edge) * cov, fill)
+        if (edge > 0 && f.edgeK) addPixel(D, dst, f.edgeK * edge * cov, edgeCol)
+        if (f.imgK) putImg(D, geo, dst, src, f.imgK * cov)
       }
     }
   }
