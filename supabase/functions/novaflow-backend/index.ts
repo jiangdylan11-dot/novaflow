@@ -1905,6 +1905,7 @@ Deno.serve(async (req: Request) => {
 
     const sessionRoutes = new Set([
       "/api/auth/me",
+      "/api/auth/renew",
       "/api/client/credits",
       "/api/client/bootstrap",
       "/api/client/credits/check",
@@ -1940,6 +1941,13 @@ Deno.serve(async (req: Request) => {
             status: "connected"
           }
         });
+      }
+      // A signed-in page renews its token before the 24 h exp, keeping the same
+      // login seat (sid), so working on the site never ends in a sign-out.
+      if (req.method === "POST" && path === "/api/auth/renew") {
+        const sid = String(session.payload.sid || "");
+        if (!sid) return jsonResponse(req, 401, { ok: false, error: "session expired" });
+        return jsonResponse(req, 200, { ok: true, session: await issueSessionToken(session.user, sid) });
       }
       if (req.method === "GET" && path === "/api/client/bootstrap") return await handleBootstrap(req, session);
       if (req.method === "POST" && path === "/api/client/credits/check") return await handleCreditCheck(req, session);

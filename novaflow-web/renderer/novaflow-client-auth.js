@@ -1093,6 +1093,12 @@
     bindGlobalActionCapture();
     bindFocusRefresh();
     bindProviderSettlementRefresh();
+    // The web runtime renewed the login token in storage: take it over so this
+    // panel never saves its older copy back.
+    window.addEventListener("foart-session-renewed", () => {
+      loadStoredSession();
+      scheduleSessionRefresh();
+    });
     render();
     startObserver();
     if (state.session && state.session.token) {

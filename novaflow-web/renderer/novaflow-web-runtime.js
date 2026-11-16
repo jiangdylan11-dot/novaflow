@@ -280,6 +280,63 @@
     syncAuthCookie(next && next.token);
   }
 
+  // A login token lasts 24 h and used to be issued only at sign-in, so a page in
+  // use was signed out when it ran out. Past half its life, swap it for a fresh
+  // one on the same login seat. Called from the account checks (header poll and
+  // panel refresh); a failure leaves the current token alone.
+  function tokenTimes(token) {
+    try {
+      const part = String(token || '').slice(4).split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+      const p = JSON.parse(root.atob(part.padEnd(Math.ceil(part.length / 4) * 4, '=')));
+      const iat = Number(p.iat), exp = Number(p.exp);
+      return Number.isFinite(iat) && Number.isFinite(exp) && exp > iat ? { iat: iat * 1000, exp: exp * 1000, sid: !!p.sid } : null;
+    } catch (_) { return null; }
+  }
+  function storedLoginSession() {
+    const active = currentSession();
+    if (!active?.token) return null;
+    try {
+      const saved = JSON.parse(root.localStorage.getItem(CLIENT_AUTH_KEY) || 'null');
+      if (saved?.session?.token === active.token) return saved.session;
+    } catch (_) {}
+    const times = tokenTimes(active.token);
+    return { token: active.token, expiresAt: times ? new Date(times.exp).toISOString() : '' };
+  }
+  let renewing = null, renewFailedAt = 0;
+  function renewSessionIfDue() {
+    const active = currentSession();
+    const token = active?.token || '';
+    if (!token.startsWith('nfs_')) return Promise.resolve();
+    const times = tokenTimes(token);
+    const now = Date.now();
+    if (!times || !times.sid || now >= times.exp || now < times.iat + (times.exp - times.iat) / 2) return Promise.resolve();
+    if (renewing) return renewing;
+    if (now - renewFailedAt < 60000) return Promise.resolve();
+    renewing = (async () => {
+      try {
+        const res = await auth('POST', '/api/auth/renew', {}, 15000);
+        const next = res && res.session;
+        if (!next || typeof next.token !== 'string' || !next.token.startsWith('nfs_')) throw new Error('renew failed');
+        // Someone signed out or in meanwhile: their session wins.
+        if (currentSession()?.token !== token) return;
+        try {
+          const saved = JSON.parse(root.localStorage.getItem(CLIENT_AUTH_KEY) || 'null');
+          if (saved?.session?.token === token) {
+            saved.session = Object.assign({}, saved.session, next);
+            root.localStorage.setItem(CLIENT_AUTH_KEY, JSON.stringify(saved));
+          }
+        } catch (_) {}
+        saveSession(Object.assign({}, active, { token: next.token }));
+        try { root.dispatchEvent(new root.Event('foart-session-renewed')); } catch (_) {}
+      } catch (_) {
+        renewFailedAt = Date.now();
+      } finally {
+        renewing = null;
+      }
+    })();
+    return renewing;
+  }
+
   // A returning visitor already carries the cookie (its lifetime matches the
   // token's), but if it was cleared while the stored session is still valid,
   // reinstate it now so the next navigation can load the gated code.
@@ -3173,6 +3230,7 @@
 
     // ---- account ----------------------------------------------------------
     async clientAuthStatus() {
+      await renewSessionIfDue();
       const checkedSession = currentSession();
       if (!checkedSession) return { ok: true, result: { authenticated: false } };
       try {
@@ -3313,10 +3371,16 @@
 
     async clientAuthBootstrap() {
       try {
+        await renewSessionIfDue();
         const me = await control('GET', '/api/web/me');
         const caps = await control('GET', '/api/web/capabilities');
+        const stored = storedLoginSession();
         return {
           ok: true,
+          // The account panel keeps its own copy of the token and reads this
+          // top-level field: hand it the current (possibly renewed) one so it
+          // never writes an old one back.
+          ...(stored ? { session: stored } : {}),
           result: {
             user: me.user,
             credits: me.credits,
