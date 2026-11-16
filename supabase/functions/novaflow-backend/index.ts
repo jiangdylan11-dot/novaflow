@@ -1947,6 +1947,11 @@ Deno.serve(async (req: Request) => {
       if (req.method === "POST" && path === "/api/auth/renew") {
         const sid = String(session.payload.sid || "");
         if (!sid) return jsonResponse(req, 401, { ok: false, error: "session expired" });
+        // A seat in use moves to the front: a new login pushes out the oldest
+        // seats, and dead ones (tokens that ran out) must go before this one.
+        const { error: touchError } = await adminClient().from("user_sessions")
+          .update({ created_at: new Date().toISOString() }).eq("id", sid).is("revoked_at", null);
+        if (touchError) throw touchError;
         return jsonResponse(req, 200, { ok: true, session: await issueSessionToken(session.user, sid) });
       }
       if (req.method === "GET" && path === "/api/client/bootstrap") return await handleBootstrap(req, session);
