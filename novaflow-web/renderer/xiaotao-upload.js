@@ -132,7 +132,9 @@
     return /[?？]|吗[。！!]?\s*$/.test(text);
   }
   // "放进参考图" names the drawing reference slot unless a video was named.
-  function drawingReferenceRequest(text){return /(?:放|加|添加|传|设|当|作为|用作|做).{0,8}参考/.test(text)&&!/视频|首帧|尾帧|多参/.test(text);}
+  // "@参考图1" is a picture's label, not a place: "做一个1秒动画，@参考图1变成@参考图2" asks for a video
+  // (live 2.0.375: read as "做…参考", both frames were held back for the drawing page and never placed).
+  function drawingReferenceRequest(text){return /(?:放|加|添加|传|设|当|作为|用作|做)[^@]{0,8}参考(?!图\s*[1-9])/.test(text)&&!/视频|动画|动效|首帧|尾帧|多参/.test(text);}
   function namedDestinations(text) {
     const first = /首帧|第一帧|开始帧/.test(text);
     const last = /(?<!首)尾帧|最后一帧|结束帧|末帧/.test(text);

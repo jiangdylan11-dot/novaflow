@@ -155,3 +155,11 @@ test('a video draft that fails once is tried again instead of sending the planne
   const r=await p.say('做一个2秒循环待机动画，要求猴子表情丰富');
   assert.deepEqual(r.prompts,['【写好的视频稿】']);
 });
+test('"@参考图1变成@参考图2" with two pictures is a 首尾帧 video, not pictures for the drawing page',async()=>{
+  const p=await probe({page:'video'});
+  const upload=p.root.NovaFlowXiaotaoUpload,two=[{kind:'image',name:'a.png'},{kind:'image',name:'b.png'}];
+  const words='做一个1秒动画，@参考图1变成@参考图2，要求猴子动画生动，下面的石台快速出现';
+  assert.equal(upload.planRoutes(words,two,null,null).place.map(item=>item.destination.id).join(),'first_frame,last_frame');
+  // Asking for a place in words still names the drawing references.
+  assert.equal(upload.planRoutes('把这张图放进参考图',[two[0]],null,null).place.map(item=>item.destination.id).join(),'img2img');
+});

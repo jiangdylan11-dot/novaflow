@@ -1039,12 +1039,17 @@
       const scale=Math.min(1,Math.sqrt(2208*960/(w*h))),align=value=>Math.max(32,Math.floor(value*scale/32)*32);
       return {width:align(w),height:align(h)};
     }
+    // The page publishes a new NovaFlowAiSequenceGeneration object on every render: one kept in a variable goes on
+    // answering with the values of the render it came from, so the page is read through the global each time
+    // (live 2.0.375: the size was set, the kept object never showed it, and the generation was stopped as "参数已变化").
+    const videoPage=()=>root.NovaFlowAiSequenceGeneration?.capture?.();
     async function setVideoSize(size){
-      const gen=root.NovaFlowAiSequenceGeneration,page=gen?.capture?.();
-      if(!size||page?.mode!=='minimax_h3_local'||typeof gen.setRequest!=='function')return false;
-      if(page.h3?.custom&&Number(page.h3.width)===size.width&&Number(page.h3.height)===size.height)return true;
-      try{gen.setRequest({size});}catch{return false;}
-      for(let i=0;i<20;i++){await new Promise(done=>root.setTimeout(done,50));const now=gen.capture().h3;if(now?.custom&&Number(now.width)===size.width&&Number(now.height)===size.height)return true;}
+      const page=videoPage();
+      if(!size||page?.mode!=='minimax_h3_local'||typeof root.NovaFlowAiSequenceGeneration.setRequest!=='function')return false;
+      const holds=()=>{const now=videoPage()?.h3;return !!now?.custom&&Number(now.width)===size.width&&Number(now.height)===size.height;};
+      if(holds())return true;
+      try{root.NovaFlowAiSequenceGeneration.setRequest({size});}catch{return false;}
+      for(let i=0;i<40;i++){await new Promise(done=>root.setTimeout(done,50));if(holds())return true;}
       return false;
     }
     // A prompt in the box that has not been generated yet: "开始吧" means this one.
@@ -1738,6 +1743,12 @@
         if(intent?.surface==='video'&&!intent.discussion&&saidSize&&await setVideoSize(videoSizeFor(saidSize[1],saidSize[2]))){
           const now=root.NovaFlowAiSequenceGeneration.capture().h3;sizeNote='视频分辨率已按用户说的设为 '+now.width+'×'+now.height+'，不用再设置宽和高，直接做剩下的事。';
         }
+        if(intent?.surface==='video'&&!intent.discussion&&Number.isFinite(intent.seconds)&&/\d\s*(?:秒|s\b)/i.test(positiveRequest)){
+          try{if(videoPage()?.mode==='minimax_h3_local'&&Number(videoPage().h3?.seconds)!==intent.seconds){root.NovaFlowAiSequenceGeneration.setRequest({seconds:intent.seconds});
+            for(let i=0;i<40&&Number(videoPage()?.h3?.seconds)!==intent.seconds;i++)await new Promise(done=>root.setTimeout(done,50));}
+            if(Number(videoPage()?.h3?.seconds)===intent.seconds)sizeNote+=(sizeNote?'\n':'')+'视频时长已按用户说的设为 '+intent.seconds+' 秒，不用再设置时长。';
+          }catch{}
+        }
         let pictureFacts='';
         // Every picture brought for a video is looked at before planning, 图生 and 首尾帧 included: the framework sees the frames
         // later, but the planner writes the brief it works from, and a brief written blind contradicts the picture.
@@ -1945,7 +1956,9 @@
             // No size named anywhere in this task: the video takes its first picture's size, shape kept.
             if(op.action==='media'&&op.operation?.action==='generate_video'&&!sizeNamed&&!receipts.some(row=>row.action==='set_control'&&/宽|高|分辨率|比例/.test(row.control||''))){
               const video=root.NovaFlowAiSequenceGeneration?.capture?.(),frame=['image_video','first_last'].includes(video?.genType)?(video.referenceSlots||[]).find(slot=>slot.occupied&&slot.width>0&&slot.height>0):null;
-              if(frame&&await setVideoSize(videoSizeFor(frame.width,frame.height)))expectedSnapshot=tools.capture();
+              // The size fields follow a render later: reading the page at once made the next check see "参数已变化"
+              // and stop the generation (live 2.0.375).
+              if(frame&&await setVideoSize(videoSizeFor(frame.width,frame.height)))expectedSnapshot=await settledCapture();
             }
             // Playback clocks move during planning. Keep every editable value
             // guarded, excluding only native clocks unless this plan edits one.
