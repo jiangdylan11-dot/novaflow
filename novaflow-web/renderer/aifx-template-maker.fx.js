@@ -2494,18 +2494,241 @@
     },
   )
 
+  // ------------------------------------------------------------------ 2026-11-16 照参考特效的观感做的光效
+  // 用户否了我凭想象画的升级 / 爆炸 / 选中（干净的细圈细线）。参考工程里真正在用的是：厚的、撕碎的、像火舌一样的流体光
+  // （放射状的火舌 + 参差的边 + 一边胀一边被噪波蚀成碎絮），和轮廓上一道烧白的亮边 + 柔光 + 往上飘的细丝。
+  LIST.push(
+    {
+      id: 'ragburst', label: '能量环爆', group: '爆炸', hint: '中心一颗烧白的星芒炸开，外面一圈放射状的火舌：边是撕碎的，中间很快掏空成一个环，环一边胀一边碎成一絮一絮的，最后只剩火星', palette: 'green', lifecycle: 'once', ownEnvelope: true,
+      params: [P('reach', '范围', 0.3, 1, 0.05, 0.95), P('count', '火舌', 0.4, 3, 0.05, 1), P('size', '碎絮', 0.4, 3, 0.05, 1), P('width', '环厚', 0.3, 2.5, 0.05, 1), P('spread', '火星', 0, 4, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, u, cx, cy } = geo
+        const S = geo.Rfit, q = ctx.loop ? frac(t) : t, a1 = clamp01(q * Math.min(2.5, p.speed)), b = p.bright
+        const R = 0.9 * S * p.reach
+        // 火环只占前一半时间（参考：两三帧成环、七八帧碎完），后一半只剩火星和余光
+        const a = clamp01(a1 * 2.1)
+        // 外沿先猛地胀出去再慢下来；中间的洞跟着掏开；蚀掉的门槛一路涨
+        const ro = R * (0.5 + 0.48 * (1 - Math.pow(1 - clamp01(a / 0.34), 3))), ri = ro * (1 - 0.34 * p.width / (0.6 + 0.4 * p.width)) * (1 - Math.pow(1 - clamp01((a - 0.03) / 0.2), 2.2)) * (0.72 + 0.2 * clamp01(a / 0.5))
+        const th = smooth(0.05, 0.78, a), life = 1 - 0.5 * smooth(0.35, 0.7, a), sc = 1 / (34 * u * p.size), fq = 11 * p.count
+        const [x0, x1, y0, y1] = boxOf(geo, cx, cy, R * 1.08)
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy)
+          if (r > R * 1.08) continue
+          // 整个场先被低频噪波扭一下：火舌是弯的、卷的，不是一根根直条；越往后扭得越厉害
+          const w1 = fbm(x * sc * 0.8 + 3, y * sc * 0.8, 256, 3), w2 = fbm(x * sc * 0.8 - 7, y * sc * 0.8 + 5, 257, 3), amt = 0.3 + 0.7 * smooth(0, 0.4, a)
+          const an = Math.atan2(dy, dx) + (w1 - 0.5) * 1.0 * amt, rw = r * (1 + (w2 - 0.5) * 0.5 * amt), cs = Math.cos(an), sn = Math.sin(an), rho = rw / R
+          // 参差的外沿和内沿（按角度起伏，两层粗细）
+          const eo = 0.72 + 0.34 * fbm(cs * 2.4 + 11, sn * 2.4, 251, 2) + 0.2 * fbm(cs * fq + 3, sn * fq, 252, 2)
+          const ei = 0.7 + 0.6 * fbm(cs * 3.1 + 2, sn * 3.1 + 7, 253, 3)
+          const rout = ro * Math.min(1.12, eo), rin = ri * ei
+          if (rw > rout) continue
+          const band = smooth(rin - 0.08 * R, rin + 0.07 * R, rw) * (1 - smooth(rout - 0.22 * R, rout, rw))
+          if (band < 0.004) continue
+          // 火舌：角度方向很密、半径方向拉长的噪波，往外流（只管明暗，不管形状）
+          const tongue = fbm(cs * fq * 1.6 + 5, sn * fq * 1.6 + rho * 1.3 - a * 2.6, 254, 3)
+          // 蚀掉的形状：大块的卷曲噪波，剩下的是一絮一絮的
+          const curl = wfbm(x * sc * 0.75, y * sc * 0.75 - a * 1.2, 255, 4, 2.0)
+          const alpha = band * smooth(th * 0.8 - 0.06, th * 0.8 + 0.3, curl * (0.62 + 0.55 * tongue))
+          if (alpha < 0.004) continue
+          const hi = smooth(0.6, 0.92, tongue * (0.55 + 0.9 * curl)) * (1 - 0.5 * smooth(0.3, 0.7, a))
+          addPixel(D, y * W + x, Math.pow(alpha, 1.25) * (0.55 + 0.8 * tongue + 0.8 * hi) * life * b, ramp(pal, clamp01(0.32 + 0.25 * tongue + 0.5 * hi), C))
+        }
+        // 淡淡的一层余光（参考里炸完有一片很暗的同色雾）
+        dot(D, cx, cy, 0.55 * R, 0.07 * (1 - smooth(0.5, 0.95, a1)) * b, ramp(pal, 0.3, C))
+        // 中心：烧白的星芒 + 一圈细长的放射线，一两帧就没
+        const f = Math.exp(-a1 / 0.03)
+        if (f > 0.01) {
+          dot(D, cx, cy, 0.17 * R, 2.8 * f * b, ramp(pal, 1, C))
+          dot(D, cx, cy, 0.34 * R, 0.9 * f * b, ramp(pal, 0.75, C))
+          for (let i = 0; i < 14; i++) {
+            const rnd = rng(i * 173 + 9), an = rnd() * TAU, len = (0.3 + rnd() * 0.42) * R
+            streak(D, cx, cy, cx + Math.cos(an) * len, cy + Math.sin(an) * len, (2 + rnd() * 3) * u, 0.4 * u, 1.4 * f * b, 0, ramp(pal, 1, C), ramp(pal, 0.6, C2))
+          }
+        }
+        const m = Math.round(46 * p.spread)
+        for (let i = 0; i < m; i++) {
+          const rnd = rng(i * 947 + 15), an = rnd() * TAU, v = (0.25 + rnd() * 0.72) * R * 0.98, born = rnd() * 0.12, age = clamp01((a1 - born * 0.5) / (0.5 + rnd() * 0.45)), sz = (0.7 + rnd() * 1.3) * u
+          if (age <= 0 || age >= 1) continue
+          const d = v * (1 - Math.pow(1 - age, 2.6))
+          dot(D, cx + Math.cos(an) * d, cy + Math.sin(an) * d, sz, 1.4 * Math.pow(1 - age, 0.8) * (0.55 + 0.45 * Math.sin(age * 31 + i)) * b, ramp(pal, 0.9, C))
+        }
+      },
+      ai: () => ['burst', 'energy ring burst, a white-hot star at the centre surrounded by radial tongues of energy with torn edges, hollowing into a ring that swells and tears into shreds, leaving drifting sparks'],
+    },
+    {
+      id: 'wispedge', label: '灵焰描边', group: '选中', hint: '图形的边一道烧白的亮线，外面裹一层柔光，顶上飘着一丝丝往上窜的细焰，轻轻晃动', palette: 'violet', lifecycle: 'loop',
+      params: [P('spread', '柔光', 0.3, 3, 0.05, 1), P('width', '亮边', 0.3, 4, 0.05, 1), P('reach', '细焰', 0, 2, 0.05, 1), P('size', '丝粗细', 0.4, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      prepare(ctx) {
+        const { W, H, cov, N } = ctx.geo, below = new Float32Array(N)
+        for (let x = 0; x < W; x++) { let d = 1e6; for (let y = H - 1; y >= 0; y--) { d = cov[y * W + x] > 0.5 ? 0 : d + 1; below[y * W + x] = d } }
+        return { below }
+      },
+      render(ctx, t, D) {
+        const { geo, params: p, pal, state } = ctx, { W, u, sd, N } = geo, below = state.below
+        const S = geo.Rfit, T = 2.2 * Math.max(1, Math.round(p.speed)), b = p.bright
+        const wr = 1.9 * u * p.width, gl = 20 * u * p.spread, Hf = 0.3 * S * p.reach, sx = 1 / (5 * u * p.size), sy = 1 / (46 * u * p.size), reach = Math.max(gl * 4, Hf * 1.5)
+        for (let i = 0; i < N; i++) {
+          const s0 = sd[i]
+          if (s0 < -4 * u * p.width || s0 > reach) continue
+          const x = i % W, y = (i - x) / W
+          const rim = Math.exp(-((s0 / wr) ** 2))
+          let e = rim * 1.9, hue = 0.45 + 0.55 * rim
+          if (s0 > 0) {
+            // 柔光随低频噪波轻轻起伏
+            const breathe = 0.82 + 0.3 * loopFbm(x / (60 * u), y / (60 * u), 261, t, T * 0.5, 2)
+            e += Math.exp(-s0 / gl) * 0.95 * breathe
+            if (Hf > 1) {
+              const d = below[i]
+              if (d < Hf * 1.5) {
+                // 细丝：横向很细、纵向很长的噪波往上流；每根丝的高度不一样
+                const hair = loopFbm(x * sx, y * sy, 262, t, T, 3), hloc = Hf * (0.25 + 1.2 * fbm(x * sx * 0.3 + 5, 0.7, 263, 2))
+                const f = Math.pow(clamp01(1 - d / hloc), 1.8) * smooth(0.3, 0.85, hair)
+                e += f * 0.7
+              }
+            }
+          } else e += Math.exp(s0 / (2.2 * u)) * 0.35
+          e *= edgeFade(geo, x, y)
+          if (e > 0.004) addPixel(D, i, e * b, ramp(pal, clamp01(hue), C))
+        }
+      },
+      ai: (w) => ['frame', `glowing selection edge on a ${w.noun}, a white-hot line along its outline wrapped in soft glow, with fine wisps of flame rising from its top edge. ${w.NOT}`],
+    },
+  )
+
+  // 细火丝：扭曲噪波的「脊线」——参考序列里的火不是一团团色块，是一根根卷着的亮丝叠在柔光上
+  const ridge = (n, k = 2.3) => clamp01(1 - Math.abs(2 * n - 1) * k)
+  function fil(x, y, seed, amt = 1.7) {
+    const a = ridge(wfbm(x, y, seed, 4, amt)), b = ridge(wfbm(x * 2.2 + 5, y * 2.2 - 3, seed + 1, 3, amt))
+    return Math.max(Math.pow(a, 1.5), 0.6 * Math.pow(b, 1.5))
+  }
+  // 首尾相接的火丝（循环用）：两份错开一个周期的噪波先交叉，再取脊线
+  function filLoop(x, y, seed, t, T, amt = 1.7) {
+    const a = ridge(vblend(wfbm(x, y + T * t, seed, 4, amt), wfbm(x, y + T * (t - 1), seed, 4, amt), t))
+    const b = ridge(vblend(wfbm(x * 2.2 + 5, (y + T * t) * 2.2, seed + 1, 3, amt), wfbm(x * 2.2 + 5, (y + T * (t - 1)) * 2.2, seed + 1, 3, amt), t))
+    return Math.max(Math.pow(a, 1.5), 0.6 * Math.pow(b, 1.5))
+  }
+
+  LIST.push(
+    {
+      id: 'firering', label: '火环', group: '选中', hint: '一圈烧着的光环：中间一道烧亮的细线，两边裹着一根根卷动的火丝，边缘一直在抖，环上偶尔闪一下', palette: 'fire', lifecycle: 'loop',
+      params: [P('reach', '大小', 0.3, 1, 0.05, 0.66), P('width', '火焰', 0.3, 2.2, 0.05, 1), P('size', '火丝', 0.4, 3, 0.05, 1), P('count', '抖动', 0, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, u, cx, cy } = geo
+        const S = geo.Rfit, R = 0.82 * S * p.reach, T = 2.2 * Math.max(1, Math.round(p.speed)), b = p.bright
+        const bw = 0.17 * R * p.width + 2 * u, sc = 1 / (30 * u * p.size), [x0, x1, y0, y1] = boxOf(geo, cx, cy, R + bw * 2.6)
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy)
+          if (Math.abs(r - R) > bw * 2.6) continue
+          const cs = dx / (r || 1), sn = dy / (r || 1)
+          const wob = (loopFbm(cs * 2.3 + 3, sn * 2.3, 271, t, T * 0.6, 3) - 0.5) * 0.16 * p.count
+          const d = (r - R * (1 + wob)) / bw, core = Math.exp(-((d * 2.1) ** 2))
+          // 外侧拖得长一点（火往外舔），内侧收得快
+          const body = d > 0 ? Math.exp(-d * d * 0.8) : Math.exp(-d * d * 1.5)
+          const f = filLoop(x * sc, y * sc, 272, t, T)
+          const e = core * (0.75 + 0.6 * f) + body * (0.34 + 1.1 * f) * (0.6 + 0.8 * loopFbm(cs * 4 + 9, sn * 4, 273, t, T * 0.6, 2))
+          if (e > 0.004) addPixel(D, y * W + x, e * b, ramp(pal, clamp01(0.12 + 0.3 * body * f + 0.34 * core + 0.2 * core * f), C))
+        }
+        for (let i = 0; i < 6; i++) {
+          const rnd = rng(i * 311 + 7), ph = frac(t * Math.max(1, Math.round(p.speed)) + rnd()), an = rnd() * TAU
+          if (ph > 0.4) continue
+          star(D, cx + Math.cos(an) * R, cy + Math.sin(an) * R, (1.1 + rnd()) * u, 0, 1.2 * Math.sin(Math.PI * ph / 0.4) * b, ramp(pal, 1, C))
+        }
+      },
+      ai: () => ['ring', 'ring of fire, a burning ring of light with a bright thin line at its heart wrapped in curling filaments of flame, its edge flickering'],
+    },
+    {
+      id: 'fibreburst', label: '火球爆散', group: '爆炸', hint: '一团火球猛地胀开：开始是实心的、带放射纹，接着散成一根根卷着的火丝，越来越稀、越来越暗', palette: 'fire', lifecycle: 'once', ownEnvelope: true,
+      params: [P('reach', '范围', 0.3, 1, 0.05, 0.9), P('size', '火丝', 0.4, 3, 0.05, 1), P('count', '放射纹', 0.4, 3, 0.05, 1), P('width', '实心', 0, 2, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, u, cx, cy } = geo
+        const S = geo.Rfit, q = ctx.loop ? frac(t) : t, a = clamp01(q * Math.min(2.5, p.speed)), b = p.bright
+        const R = 0.9 * S * p.reach, rad = R * (0.2 + 0.8 * (1 - Math.pow(1 - clamp01(a / 0.3), 3))), sc = 1 / (30 * u * p.size), fq = 9 * p.count
+        const solid = (1 - smooth(0.04, 0.3, a)) * Math.min(1.5, p.width), curly = smooth(0.08, 0.45, a), th = smooth(0.25, 1, a) * 0.85
+        const fade = Math.pow(1 - smooth(0.3, 1, a), 1.1), [x0, x1, y0, y1] = boxOf(geo, cx, cy, rad * 1.2)
+        if (fade > 0.003) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy), rho = r / rad
+          if (rho > 1.2) continue
+          const cs = dx / (r || 1), sn = dy / (r || 1)
+          const edge = 0.82 + 0.36 * fbm(cs * 4.6 + 11, sn * 4.6, 281, 3), mask = 1 - smooth(edge - 0.3, edge, rho)
+          if (mask < 0.004) continue
+          // 开始是沿半径的放射纹，越往后越卷
+          const pf = Math.pow(ridge(fbm(cs * fq + 5, sn * fq + rho * 1.4 - a * 2, 282, 3), 2), 1.3)
+          const cf = fil(x * sc, y * sc - a * 1.4, 283)
+          const clump = fbm(x * sc * 0.55 + 3, y * sc * 0.55, 284, 3), f = lerp(pf, cf, curly) * smooth(th - 0.05, th + 0.3, 0.35 + 0.9 * clump) * (1 - 0.75 * curly * smooth(0.62, 0.38, clump))
+          const e = mask * (solid * (0.5 + 0.9 * pf) * (0.6 + 0.8 * fbm(x * sc * 1.3, y * sc * 1.3, 285, 3)) + (1 - 0.5 * solid) * Math.pow(f, 2.4) * 2.6) * fade
+          if (e > 0.004) addPixel(D, y * W + x, e * b, ramp(pal, clamp01(0.14 + 0.36 * f + 0.34 * solid * (1 - 0.5 * rho)), C))
+        }
+        dot(D, cx, cy, 0.14 * R, 1.6 * Math.exp(-a / 0.03) * b, ramp(pal, 0.85, C))
+      },
+      ai: () => ['burst', 'fireball bursting, a solid ball of fire with radial streaks swelling fast, then breaking into curling filaments of flame that thin out and fade'],
+    },
+    {
+      id: 'softpillar', label: '柔光柱', group: '升级', hint: '一根柔和的光柱：底下最亮、往上淡掉，里面的光纹一直往上流，没有硬边', palette: 'fire', lifecycle: 'loop',
+      params: [P('reach', '高度', 0.3, 1, 0.05, 0.8), P('width', '粗细', 0.3, 2.6, 0.05, 1), P('size', '光纹', 0.4, 3, 0.05, 1), P('count', '起伏', 0, 1, 0.05, 0.7), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, H, u, cx, cy } = geo
+        const S = geo.Rfit, T = 2.6 * Math.max(1, Math.round(p.speed)), b = p.bright
+        const gy = Math.min(H - 2, cy + 0.72 * S), Hh = 1.6 * S * p.reach, w = Math.min(0.4 * S, 0.15 * S * p.width), sx = 1 / (0.42 * w * p.size), sy = 1 / (2.6 * w * p.size)
+        const x0 = Math.max(0, Math.floor(cx - w * 1.3)), x1 = Math.min(W - 1, Math.ceil(cx + w * 1.3)), y0 = Math.max(0, Math.floor(gy - Hh)), y1 = Math.min(H - 1, Math.ceil(gy + w * 0.5))
+        for (let y = y0; y <= y1; y++) {
+          const v = (gy - y) / Hh, vert = (1 - smooth(0.35, 1, v)) * smooth(-0.02, 0.03, v)
+          if (vert < 0.003) continue
+          for (let x = x0; x <= x1; x++) {
+            const dx = (x - cx) / w, horiz = 1 - smooth(0.62, 1.2, Math.abs(dx)), core = Math.exp(-((dx * 1.6) ** 2)) * (1 - smooth(0, 0.55, v))
+            if (horiz < 0.004) continue
+            const n = loopFbm(x * sx, y * sy, 291, t, T, 3), st = 1 - p.count + p.count * (0.3 + 1.4 * n)
+            const e = (horiz * 0.75 * st + core * 0.35) * vert
+            if (e > 0.004) addPixel(D, y * W + x, e * b, ramp(pal, clamp01(0.08 + 0.16 * n + 0.2 * core + 0.3 * Math.pow(1 - v, 2) * horiz), C))
+          }
+        }
+        dot(D, cx, gy - w * 0.2, w * 0.7, 0.5 * b, ramp(pal, 0.85, C))
+      },
+      ai: () => ['pillar', 'soft column of light, brightest at its base and fading upward, streaks of light flowing up inside it, no hard edge'],
+    },
+    {
+      id: 'groundfire', label: '地面火环', group: '爆炸', hint: '贴着地面炸开的一圈火：先是一道压扁的亮光，然后一圈厚厚的火环荡开，里黄外红，越荡越碎，最后断成一段一段', palette: 'fire', lifecycle: 'once', ownEnvelope: true,
+      params: [P('reach', '范围', 0.3, 1, 0.05, 0.92), P('width', '环厚', 0.3, 3, 0.05, 1), P('count', '碎裂', 0.3, 3, 0.05, 1), P('spread', '压扁', 0.15, 1, 0.05, 0.32), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, H, u, cx, cy } = geo
+        const S = geo.Rfit, q = ctx.loop ? frac(t) : t, a = clamp01(q * Math.min(2.5, p.speed)), b = p.bright
+        const sq = p.spread, gy = cy + 0.25 * S, Rg = 0.92 * S * p.reach, rad = Rg * (0.12 + 0.88 * (1 - Math.pow(1 - a, 2.6)))
+        const bw = Rg * 0.2 * p.width * (1 - 0.5 * a) + 1.5 * u, th = smooth(0.18, 1, a) * 0.92, fq = 5 * p.count
+        const x0 = Math.max(0, Math.floor(cx - rad - bw * 3)), x1 = Math.min(W - 1, Math.ceil(cx + rad + bw * 3)), y0 = Math.max(0, Math.floor(gy - (rad + bw * 3) * sq)), y1 = Math.min(H - 1, Math.ceil(gy + (rad + bw * 3) * sq))
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const dx = x - cx, dy = (y - gy) / sq, r = Math.hypot(dx, dy)
+          const cs = dx / (r || 1), sn = dy / (r || 1)
+          // 外沿一鼓一鼓的（像一朵朵火团连成的圈），不是正圆
+          const lump = Math.abs(2 * fbm(cs * fq + 2 + a, sn * fq, 301, 3) - 1), rr = rad * (0.9 + 0.3 * lump)   // 一朵朵鼓出来的火团
+          let e = 0, hue = 0.06
+          for (let j = 0; j < 2; j++) {
+            const d = (r - rr * (j ? 0.55 : 1)) / (bw * (j ? 0.55 : 1)), body = Math.exp(-d * d * d * d)
+            if (body < 0.01) continue
+            const keep = smooth(th * 0.85 - 0.03, th * 0.85 + 0.16, (0.25 + 0.95 * fbm(cs * fq * 1.7 + 7 + j * 3, sn * fq * 1.7 - a * 1.3, 302, 3)) * (0.75 + 0.4 * body))
+            const hot = smooth(0.55, 0.95, body) * (1 - smooth(0.3, 0.75, a))
+            e += keep * (0.85 * body + 0.5 * hot) * (j ? 0.7 : 1)
+            hue = Math.max(hue, 0.04 + 0.52 * hot * keep)
+          }
+          if (e > 0.004) addPixel(D, y * W + x, e * (1 - smooth(0.82, 1, a)) * b, ramp(pal, clamp01(hue), C))
+        }
+        const f = Math.exp(-a / 0.05)
+        if (f > 0.01) { dot(D, cx, gy, 0.1 * Rg, 2.6 * f * b, ramp(pal, 1, C)); streak(D, cx - Rg * 0.5, gy, cx + Rg * 0.5, gy, 2.5 * u, 2.5 * u, 1.8 * f * b, 1.8 * f * b, ramp(pal, 0.9, C), ramp(pal, 0.9, C2)) }
+      },
+      ai: () => ['impact', 'ring of fire on the ground, a flat flash, then a thick flattened ring of fire rolling outward, yellow inside and red outside, breaking into separate arcs as it spreads'],
+    },
+  )
+
   for (const e of LIST) {
     if (HOLY_RAYS.includes(e) || ['godrays', 'aura'].includes(e.id)) e.group = '光晕放射'
     if (e.id === 'holy-twin') e.group = '轮廓流光'
     if (e.id === 'holy-tide') e.group = '扩散'
   }
-  const GROUP_ORDER = ['轮廓流光', 'UI', '技能', '光晕放射', '法阵', '闪电', '烟雾', '水', '冰', '扩散', '爆炸', '消失', '破碎']
+  const GROUP_ORDER = ['轮廓流光', '选中', '升级', 'UI', '技能', '光晕放射', '法阵', '闪电', '烟雾', '水', '冰', '扩散', '爆炸', '消失', '破碎']
   const ALL = LIST.slice().sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group))
   // 粒子类（自己管出场 / 收场，一次性结尾清空）
   const OVERLAY = ['fireworks', 'charge', 'sparkspread']
   const DIRS = ['vortex', 'orb', 'swirl', 'slash', 'charge', 'runeA', 'runeB']
   // 不跟轮廓走、只看形状中心和大小的（2026-10-15 用户：「很多效果不需要轮廓，没必要显示轮廓」）——编辑器里只给一个位置框
-  const CENTERED = ['orb', 'swirl', 'slash', 'charge', 'fireball', 'runeA', 'runeB', 'runeC', 'vortex', 'fireworks', 'wave', 'sparkspread', 'rburst', 'firebomb', 'strike', 'plasma', 'thunderburst', 'thundercharge', 'smokerise', 'ripple', 'splash', 'iceburst']
+  const CENTERED = ['orb', 'swirl', 'slash', 'charge', 'fireball', 'runeA', 'runeB', 'runeC', 'vortex', 'fireworks', 'wave', 'sparkspread', 'rburst', 'firebomb', 'strike', 'plasma', 'thunderburst', 'thundercharge', 'smokerise', 'ripple', 'splash', 'iceburst', 'ragburst', 'firering', 'fibreburst', 'softpillar', 'groundfire']
   for (const e of ALL) {
     e.kind = 'lib'
     // 事件类（自己管出场 / 收场的一次性效果）：切成循环 = 重复播放，从空画面直接开始
