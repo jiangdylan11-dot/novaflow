@@ -66,13 +66,15 @@ test('imports are isolated by board, active epoch, and source serial; an empty n
   assert.equal(fps.effective(copy), 18, 'board copying keeps its settings without sharing a mutable fps');
 });
 
-test('fractional rates and source rationals are retained; unavailable and VFR metadata have explicit provenance', () => {
+test('the board 帧率 is a whole number while the source rational is retained; unavailable and VFR metadata have explicit provenance', () => {
   for (const value of [29.97, 23.976, 30000 / 1001, 24000 / 1001]) {
     const state = session(); state.place(video(value));
-    assert.equal(state.boards[0].timelineFps, value);
+    assert.equal(state.boards[0].timelineFps, Math.round(value));
+    assert.equal(state.boards[0].loadedVideo.sourceFps, value);
     state.controller.setFps(value / 2); state.switch('b2'); state.switch('b1');
-    assert.equal(state.boards[0].timelineFps, value / 2);
+    assert.equal(state.boards[0].timelineFps, Math.round(value / 2));
   }
+  assert.equal(fps.effective(board('b1', 15.98)), 16);
   assert.equal(fps.metadata({ fpsExpr: '30000/1001' }).sourceFps, 30000 / 1001);
   assert.equal(fps.metadata({ fps: 0 }).sourceFpsOrigin, 'unavailable');
   assert.equal(fps.metadata({ fps: 25.2, rateMode: 'variable', fpsOrigin: 'ffprobe-average' }).sourceRateMode, 'variable');
@@ -94,7 +96,7 @@ test('both modes sample the source at the board fps; unlocked plays at the sourc
   assert.equal(locked.count, 24); assert.equal(locked.times[23], 23 / 12);
   assert.equal(locked.durationSec, 2); assert.equal(locked.playbackRate, 1); assert.equal(locked.fps, 12);
   const fractional = fps.framePlan(board('b1', 24000 / 1001, video(24000 / 1001, 48)), 2.002);
-  close(fractional.durationSec, 2.002); close(fractional.times[47], 47 * 1001 / 24000);
+  close(fractional.durationSec, 2.002); close(fractional.times[47], 47 / 24); assert.equal(fractional.boardFps, 24);
   const reopened = JSON.parse(JSON.stringify(original));
   assert.equal(fps.framePlan(reopened, 2).boardFps, 12);
 });

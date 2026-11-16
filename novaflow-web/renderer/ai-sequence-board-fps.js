@@ -1,8 +1,10 @@
 (function (root) {
   'use strict';
+  // The board 帧率 is always a whole number (29.97 sources start at 30); the source's own
+  // rate stays exact in loadedVideo.sourceFps for playback speed.
   const clamp = (value, fallback = 30) => {
     const number = Number(value);
-    return Math.max(1, Math.min(120, Number.isFinite(number) && number > 0 ? number : fallback));
+    return Math.max(1, Math.min(120, Math.round(Number.isFinite(number) && number > 0 ? number : fallback)));
   };
   const rate = value => {
     if (typeof value === 'string' && value.includes('/')) {
