@@ -47,7 +47,7 @@ async function projectChecks(){
 }
 async function hostChecks(){
  const source=fs.readFileSync(root+'spine-skeleton-editor.host.js','utf8'),a=source.indexOf('  function onExportClick('),b=source.indexOf('  /** The dialog opened:',a);assert(a>=0&&b>a);
- class Element {constructor(){this.disabled=false;this.textContent='导出动画工程';this.listeners={};this.attributes={};this.removed=false}closest(){return this}setAttribute(k,v){this.attributes[k]=v}addEventListener(k,f){this.listeners[k]=f}insertAdjacentElement(_where,e){this.next=e}remove(){this.removed=true}}
+ class Element {constructor(){this.disabled=false;this.textContent='导出动画工程';this.listeners={};this.attributes={};this.removed=false}closest(){return this}setAttribute(k,v){this.attributes[k]=v}removeAttribute(k){delete this.attributes[k]}addEventListener(k,f){this.listeners[k]=f}insertAdjacentElement(_where,e){this.next=e}remove(){this.removed=true}}
  let calls=0,signal;const alerts=[];const button=new Element();
  const ctx={Element,AbortController,DOMException,document:{createElement:()=>new Element()},window:{NovaFlowSkeletonEditor:{active:()=>true},alert:s=>alerts.push(s)},isExportRun:()=>true,isSpineExportRun:()=>true,exportRunLabel:b=>b.textContent,packMode:()=> 'atts',chosenVersion:'3.8',exportSkel:()=>false,api:{exportSelectedProjects(opts){calls++;signal=opts.signal;return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('Export cancelled','AbortError'))))}}};
  vm.createContext(ctx);vm.runInContext('let bypass=false,nativeProjectExporting=false;\n'+source.slice(a,b),ctx);
