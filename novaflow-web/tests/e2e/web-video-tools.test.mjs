@@ -377,23 +377,26 @@ ok(/^web-file:\/\//.test(clipToken), 'a dropped file gets a web-file token: ' + 
   ok(!gone.url, 'clearing the tool drops its results');
 }
 
-// A PhotoshopToSpine export keeps its JSON at the root and PNGs in images/e/.
-// The Web folder picker must return both levels, with browser File objects intact.
+// 导入PS工程 picks one JSON (user 2026-11-16): its pictures come from a folder the user allowed
+// before; with none, the JSON alone comes back (it opens blank). Several files picked together
+// (JSON + pictures) come back as they are, with browser File objects intact.
 {
   const png = { name: 'arm_l.png', size: 4, type: 'image/png', arrayBuffer: async () => new Uint8Array(4).buffer };
   const json = { name: 'character.json', size: 2, type: 'application/json', arrayBuffer: async () => new Uint8Array(2).buffer };
-  const folder = (name, entries) => ({ name, kind: 'directory', async *entries() { yield* entries; } });
-  const rootFolder = folder('project', [
-    ['character.json', { kind: 'file', getFile: async () => json }],
-    ['images', folder('images', [['e', folder('e', [['arm_l.png', { kind: 'file', getFile: async () => png }]])]])]
-  ]);
-  sandbox.showDirectoryPicker = async () => rootFolder;
+  const fileHandle = (file) => ({ kind: 'file', name: file.name, getFile: async () => file, isSameEntry: async (other) => other && other.name === file.name });
+  sandbox.showDirectoryPicker = async () => { throw new Error('导入PS工程 must not ask for a folder'); };
+  sandbox.showOpenFilePicker = async () => [fileHandle(json)];
+  const lone = await api.openPhotoshopProject();
+  equal(lone.ok, true, 'picking one JSON succeeds');
+  equal(lone.result.files.map((f) => f.relativePath), ['character.json'], 'with no allowed folder the JSON comes alone (it opens blank)');
+  sandbox.showOpenFilePicker = async () => [fileHandle(json), fileHandle(png)];
   const picked = await api.openPhotoshopProject();
-  equal(picked.ok, true, 'the Web PS folder picker succeeds');
-  equal(picked.result.files.map((f) => f.relativePath), ['character.json', 'images/e/arm_l.png'], 'it recurses to nested layer PNGs');
+  equal(picked.result.files.map((f) => f.relativePath), ['character.json', 'arm_l.png'], 'JSON + pictures picked together come back as they are');
   ok(picked.result.files[1].file === png, 'it passes the browser File without base64 conversion');
+  sandbox.showOpenFilePicker = async () => { const e = new Error('cancel'); e.name = 'AbortError'; throw e; };
+  equal((await api.openPhotoshopProject()).result.canceled, true, 'a cancelled pick is reported as such');
   const panel = await readFile(new URL('../../renderer/spine-auto-mesh.panel.js', import.meta.url), 'utf8');
   ok(panel.includes('const selected = res?.result || res') && panel.includes('f.file && typeof f.file.arrayBuffer'), 'the import panel accepts the Web response and keeps Electron base64 support');
 }
 
-console.log(checks + ' passed, 0 failed: Web video tools, nested sequence export, alpha-aware decode and PS folder import');
+console.log(checks + ' passed, 0 failed: Web video tools, nested sequence export, alpha-aware decode and PS JSON import');
