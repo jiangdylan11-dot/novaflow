@@ -235,7 +235,8 @@
   .toast[data-show="1"]{opacity:1}
   .toast[data-kind="ok"]{color:#8ff0c7}
   .toast[data-kind="error"]{color:#fca5a5;border-color:#5a2a2a}
-  .drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7d7d7d;font-size:13px;pointer-events:none}
+  .drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7d7d7d;font-size:13px;pointer-events:none;padding:0 24px;text-align:center}
+  .stage.dropping{outline:1px dashed #1EA672;outline-offset:-6px}
   /* Spine: transform panel + options at the bottom left, mode label at the top left */
   /* Spine: the mode is a plain mark in the viewport's top left (figure + 设置 / 动画), click to switch */
   .modebar{left:10px;top:8px;padding:0;border:0;background:transparent}
@@ -632,7 +633,7 @@
     <div class="stage card" id="stage">
       <canvas id="gl"></canvas>
       <canvas id="overlay"></canvas>
-      <div class="drop" id="dropHint">在左侧「工程管理」里新建工程，或导入动画工程（JSON + ATLAS + PNG）、PS 工程、Foart 工程</div>
+      <div class="drop" id="dropHint">把工程直接拖到这里：动画工程（JSON + ATLAS + PNG 一起拖）、PS 工程文件夹、Foart 工程；也可以在左侧「工程管理」里新建或导入</div>
       <div class="float modebar" id="modebar"></div>
       <div class="float tr">
         <span class="zoom" id="zoomText">100%</span>

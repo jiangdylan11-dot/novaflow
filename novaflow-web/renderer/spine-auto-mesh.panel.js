@@ -3368,29 +3368,71 @@
       button.style.outline = on ? '1px dashed #7ee787' : ''
       button.style.outlineOffset = on ? '2px' : ''
     }
-    button.addEventListener('dragover', (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; dropHint(true) })
-    button.addEventListener('dragleave', () => dropHint(false))
-    button.addEventListener('drop', (ev) => {
-      ev.preventDefault()
-      dropHint(false)
-      if (state.busy) return
+    /**
+     * A Foart project dropped as one thing — the .foart itself or the folder that holds it — opens
+     * through its file-system handle where the browser hands one out, the way 导入工程 opens it:
+     * the folder grant reaches the pictures beside the file, and Ctrl+S saves back to it.
+     * Answers null when the drop is not that (the file list route takes it).
+     */
+    const openDroppedFoart = async (handle) => {
+      if (!handle) return null
+      const ed = window.NovaFlowSkeletonEditor
+      if (!ed || !ed.ready) return null
+      if (handle.kind === 'directory' && typeof handle.entries === 'function') {
+        let has = false
+        try { for await (const [name, child] of handle.entries()) if (child && child.kind === 'file' && /\.(?:foart|nfproj)$/i.test(name)) { has = true; break } } catch { return null }
+        if (!has) return null
+        sayHere('打开 Foart 工程…')
+        return (await ed.ready()).openProjectFolder(handle)
+      }
+      if (handle.kind === 'file' && /\.(?:foart|nfproj)$/i.test(handle.name) && typeof handle.getFile === 'function') {
+        sayHere('打开 Foart 工程…')
+        return (await ed.ready()).openProjectFile(await handle.getFile(), handle)
+      }
+      return null
+    }
+    /**
+     * Project files dropped on the button or on the 骨骼动画 canvas (the editor's stage hands its
+     * drop here — user 2026-11-16): JSON/SKEL + ATLAS + pictures together, a PS export folder,
+     * or a Foart project. Answers whether the drop carried files and was taken.
+     */
+    const importDrop = (ev) => {
+      if (state.busy) return false
       // the item list is emptied as soon as the handler returns, so take the entries NOW
       const roots = []
-      const items = (ev.dataTransfer && ev.dataTransfer.items) || []
+      const handles = []
+      const items = (ev && ev.dataTransfer && ev.dataTransfer.items) || []
       for (const item of items) {
+        if (item.kind && item.kind !== 'file') continue
         const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null
         if (entry) roots.push(entry)
+        let handle = null
+        try { handle = typeof item.getAsFileSystemHandle === 'function' ? item.getAsFileSystemHandle() : null } catch { handle = null }
+        handles.push(handle && handle.catch ? handle.catch(() => null) : null)
       }
-      const plain = Array.from((ev.dataTransfer && ev.dataTransfer.files) || [])
+      const plain = Array.from((ev && ev.dataTransfer && ev.dataTransfer.files) || [])
       diag('drop', { roots: roots.length, plain: plain.length })
+      if (!roots.length && !plain.length) return false
       guardWith(sayHere)(async () => {
-        sayHere('读取拖进来的文件夹…')
+        sayHere('读取拖进来的文件…')
+        if (handles.length === 1 && roots.length <= 1) {
+          const opened = await openDroppedFoart(await handles[0])
+          if (opened != null) { sayHere(opened ? `已打开 Foart 工程（${opened} 个工程）` : '已取消', 'ok'); return }
+        }
         const files = roots.length ? await entryFiles(roots) : plain
         if (!files.length) throw new Error('这里面没有 JSON 和贴图')
         rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => sayHere(t))
         sayHere((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 Foart 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
+      return true
+    }
+    button.addEventListener('dragover', (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; dropHint(true) })
+    button.addEventListener('dragleave', () => dropHint(false))
+    button.addEventListener('drop', (ev) => {
+      ev.preventDefault()
+      dropHint(false)
+      importDrop(ev)
     })
     picker.addEventListener('change', () => {
       // `picker.files` is LIVE: resetting picker.value empties the very list we
@@ -3519,7 +3561,7 @@
     }
     // Ctrl+S / Ctrl+Shift+S are the editor's own keys (the host forwards page keys into it)
     save.addEventListener('click', () => saveProject(false))
-    state.psImport = { button, picker, status: psStatus, note: psNote, divider, create, open, save, nfPicker, dirPicker }
+    state.psImport = { button, picker, status: psStatus, note: psNote, divider, create, open, save, nfPicker, dirPicker, importDrop }
     busyButtons.push(button)
     return state.psImport
   }
@@ -4342,6 +4384,8 @@
     setSelected,
     syncLayersFromSource,
     importPhotoshopProject,
+    /** a drop of project files (the editor's canvas hands its drop here); true when it was taken */
+    importDrop: (ev) => { const kit = ensurePsImport(); return !!(kit && kit.importDrop && kit.importDrop(ev)) },
     /** decode a layer's pixels on demand, so a hover can show its real shape */
     ensurePixels,
     generate,

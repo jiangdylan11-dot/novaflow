@@ -6930,7 +6930,14 @@
     }, { passive: false })
 
     const stage = $('#stage')
-    stage.addEventListener('dragover', (e) => { if (!state.drag || state.drag.type === 'image') e.preventDefault() })
+    const fileDrag = (e) => !state.drag && Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files')
+    stage.addEventListener('dragover', (e) => {
+      if (!state.drag || state.drag.type === 'image') e.preventDefault()
+      if (fileDrag(e)) { e.dataTransfer.dropEffect = 'copy'; stage.classList.add('dropping') }
+    })
+    stage.addEventListener('dragleave', (e) => { if (!e.relatedTarget || !stage.contains(e.relatedTarget)) stage.classList.remove('dropping') })
+    // a file let go beside the canvas (a panel, the timeline) must not replace the editor with that file
+    for (const type of ['dragover', 'drop']) window.addEventListener(type, (e) => { if (fileDrag(e)) e.preventDefault() })
     stage.addEventListener('drop', async (e) => {
       if (state.drag && state.drag.type === 'image') {
         // a picture from the 图片 node: a new slot on root, the picture centred where it was dropped
@@ -6941,10 +6948,19 @@
         placeImage(payload, { bone: state.json && state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name, world: toWorld(e.clientX - r.left, e.clientY - r.top) })
         return
       }
+      stage.classList.remove('dropping')
       if (state.drag) return
       e.preventDefault()
-      // in the section a project comes in through the app's 工程管理 (the left panel)
-      if (EMBED) { status('在左侧「工程管理」里新建或导入工程'); return }
+      // in the section a project comes in through the app's 工程管理 (the left panel): a drop on the
+      // canvas goes the same way as a drop on its 导入PS工程 button - JSON + ATLAS + pictures together,
+      // a PS export folder, or a Foart project (the .foart or its folder) (user 2026-11-16)
+      if (EMBED) {
+        let panel = null
+        try { panel = window.parent !== window ? window.parent.NovaFlowAutoMeshPanel : null } catch { panel = null }
+        if (panel && typeof panel.importDrop === 'function' && panel.importDrop(e)) status('正在导入拖进来的工程…')
+        else status('把工程拖到画布上，或在左侧「工程管理」里新建或导入工程')
+        return
+      }
       const files = await filesFromDrop(e.dataTransfer)
       run(() => loadFiles(files))
     })
