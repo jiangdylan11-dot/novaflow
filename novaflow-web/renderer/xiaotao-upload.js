@@ -222,8 +222,11 @@
     const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(positive);
     // Writing a video prompt without generating still uses the attached pictures.
     if(video&&/提示词/.test(text)&&!question(text)&&!/(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)/.test(text))discussion=false;
+    // A picture brought with "换成这张再做一个" names no kind of work: in the middle of a video task, or on the video page,
+    // it is material for the video; only elsewhere is it a picture to edit (live 2.0.376: it went to the drawing page).
+    const pictureWork=previousSurface==='video'||!previous&&page?.surface==='video'?'video':'image';
     let surface = imageEdit && !/视频|片段/.test(positive) ? 'image' : audio&&!/视频|动画|动效|动态|首尾帧|多参/.test(positive)?'audio':video ? 'video' : audio ? 'audio'
-      : /生图|出图|做图|画图|绘图|静态图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(positive) || kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(positive) ? 'image' : 'chat';
+      : /生图|出图|做图|画图|绘图|静态图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(positive) ? 'image' : kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(positive) ? pictureWork : 'chat';
     if(imageEdit&&!video&&!audio&&/调用|请|帮我|换|改|抠图|去背|拆图|放大|扩图|裁切|导出/.test(positive)&&!question(text)&&!/怎么|如何|为什么|能否|是否|(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不|不)执行/.test(text))discussion=false;
     if(animationAuthoring)surface='animation';
     if (discussion) surface = 'chat';
@@ -241,14 +244,19 @@
     // A picture brought with a request to change it is its own task: the picture made before has nothing to do with it,
     // unless the words point back ("接着刚才那张…").
     const ownPictures=kinds.includes('image')&&!swapsMaterial&&(surface==='image'||previousSurface==='image')&&!/刚才|刚刚|上一[个张次版]|上次|之前|继续|接着|同一个|原来/.test(text);
-    const revision=!!previous && !discussion && !newTask && !ownPictures && (feedback&&!elsewhere||fromPage&&!kinds.length) && (swapsMaterial || (!explicitImage || previousSurface==='image') && (!explicitVideo || previousSurface==='video') && (!(audio&&!explicitVideo)||previousSurface==='audio'));
+    // After a video made from pictures, another video asked for in the same conversation with no new picture is made from
+    // those pictures again ("再做一个1秒的循环动画…"): the mode and the frames stay unless the words say otherwise
+    // (live 2.0.376: it was read as a new 文生视频 and the page lost its frames).
+    const sameMaterial=previousSurface==='video'&&['first_last','image_video','multi_reference'].includes(previous?.mode)&&surface==='video'&&!kinds.length&&!elsewhere&&!animationAuthoring&&!/文生|不要图|不用图|不带图|纯文字/.test(positive);
+    const revision=!!previous && !discussion && !newTask && !ownPictures && (feedback&&!elsewhere||fromPage&&!kinds.length||sameMaterial) && (swapsMaterial || (!explicitImage || previousSurface==='image') && (!explicitVideo || previousSurface==='video') && (!(audio&&!explicitVideo)||previousSurface==='audio'));
     if(revision)surface=previousSurface;
-    const loop = surface === 'video' && (/循环|无缝|loop/i.test(positive) || revision && previous.loop===true);
+    // A loop is also what the page shows: the same picture at both ends of a 首尾帧 task being continued.
+    const loop = surface === 'video' && (/循环|无缝|loop/i.test(positive) || revision && (previous.loop===true || page?.sameFrames===true));
     const named = discussion ? [] : namedDestinations(positive);
     let mode = surface === 'image' ? (kinds.includes('image') ? 'img2img' : 'txt2img')
       : surface === 'video' ? kinds.some(kind => kind !== 'image') || /多参/.test(positive) ? 'multi_reference'
         : /首尾帧|首帧|尾帧/.test(positive) || loop && kinds.includes('image') ? 'first_last'
-          : imageCount === 2 && /变成|变为|变回|变到|过渡|最后|最终|结尾|结束/.test(positive) ? 'first_last'
+          : imageCount === 2 && (/变成|变为|变回|变到|过渡|最后|最终|结尾|结束/.test(positive) || previousSurface==='video' && previous?.mode==='first_last') ? 'first_last'
             : imageCount > 1 ? 'multi_reference' : kinds.includes('image') ? 'image_video' : 'text_video' : '';
     if (surface==='image' && imageEdit && kinds.includes('image')) mode = 'img2img';
     if (fromPage && !kinds.length && page.mode) mode = page.mode;
@@ -274,7 +282,10 @@
     // "首尾帧" with no word on which picture goes where: one picture opens the clip, two fill both ends.
     const framesNamed=['first_last_pair','first_last_unspecified'].includes(requestedDecision);
     const decision=framesNamed&&images.length===1?'first_frame':framesNamed&&images.length===2?'first_last_pair':requestedDecision;
-    const imageDecision = decision === 'first_last_pair' && images.length === 2 ? 'pair' : decision && decision !== 'first_last_unspecified' ? 'place' : 'conversation';
+    // One new picture for a 首尾帧 task that has two different frames, with no word on which one it replaces: the brain
+    // decides with the pictures described to it, the app does not guess a slot.
+    const whichFrame=task.revision&&task.mode==='first_last'&&!task.loop&&images.length===1&&!imageHits.length;
+    const imageDecision = whichFrame ? 'conversation' : decision === 'first_last_pair' && images.length === 2 ? 'pair' : decision && decision !== 'first_last_unspecified' ? 'place' : 'conversation';
     let pairIndex = 0;
     for (const file of list) {
       if(!task.discussion&&task.surface==='audio'&&['audio','video'].includes(file.kind)){place.push(carried(file,AUDIO_RESOURCE));continue;}
@@ -293,7 +304,8 @@
       else if (imageDecision === 'pair') place.push(imagePlace(file, pairIndex++ === 0 ? 'first_frame' : 'last_frame'));
       else {
         place.push(imagePlace(file, decision));
-        if ((task.loop||requestedDecision==='first_last_pair') && decision === 'first_frame' && images.length === 1) place.push(imagePlace(file, 'last_frame'));
+        // "把首帧换成这张" changes that one frame; only a picture given with no slot named fills both ends of a loop.
+        if ((task.loop||requestedDecision==='first_last_pair') && decision === 'first_frame' && images.length === 1 && (!imageHits.includes('first_frame') || /循环|loop/i.test(text))) place.push(imagePlace(file, 'last_frame'));
       }
     }
     // A message's pictures replace the 图生图 references, whether or not it says "作为参考": they belong

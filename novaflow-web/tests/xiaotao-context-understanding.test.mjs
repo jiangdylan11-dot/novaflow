@@ -145,7 +145,8 @@ test('a size said in words is set by the app; with none said, the video takes it
 test('a step that changes nothing is skipped with a word to the planner, and a stuck turn ends in plain words',async()=>{
   const width={id:'w1',label:'自定义宽',section:'视频',kind:'input',value:'960',scope:'video_generation'};
   const setWidth={action:'set_control',controlId:'w1',value:960};
-  const p=await probe({page:'video',prompt:P,task:videoTask,controls:[width],plans:[setWidth,setWidth,setWidth,setWidth]});
+  // On a page where nothing is waiting to be generated; a video turn that goes round in circles ends in the video instead.
+  const p=await probe({page:'other',controls:[width],plans:[setWidth,setWidth,setWidth,setWidth]});
   const r=await p.say('宽度设成九百六');
   assert.equal(r.error,'');assert.deepEqual(r.ops,[]);
   assert.match(r.reply,/后面的步骤这次没做完/);
@@ -162,4 +163,36 @@ test('"@参考图1变成@参考图2" with two pictures is a 首尾帧 video, not
   assert.equal(upload.planRoutes(words,two,null,null).place.map(item=>item.destination.id).join(),'first_frame,last_frame');
   // Asking for a place in words still names the drawing references.
   assert.equal(upload.planRoutes('把这张图放进参考图',[two[0]],null,null).place.map(item=>item.destination.id).join(),'img2img');
+});
+test('another video asked for after one made from pictures keeps the mode and the frames',async()=>{
+  const p=await probe({page:'video'});
+  const upload=p.root.NovaFlowXiaotaoUpload,made={surface:'video',mode:'first_last',loop:true,seconds:2},page={surface:'video',mode:'first_last'};
+  for(const words of ['再做一个1秒的循环动画。猴子向下坠落一下马上恢复原位，框子不动','做一个3秒的版本','960*960分辨率，重新做','这次让它转个圈']){
+    const task=upload.inferTask(words,[],made,page);
+    assert.equal(task.revision,true,words);assert.equal(task.mode,'first_last',words);
+  }
+  assert.equal(upload.inferTask('再做一个1秒的循环动画',[],made,page).seconds,1);
+  // Naming another way of making it, or another part of the app, is not a follow-up on those frames.
+  assert.equal(upload.inferTask('做一个文生视频，一只小狗在跑',[],made,page).mode,'text_video');
+  assert.equal(upload.inferTask('打开音频',[],made,page).revision,false);
+});
+test('a new picture in the middle of a video task goes where the task and the words put it',async()=>{
+  const p=await probe({page:'video'});
+  const upload=p.root.NovaFlowXiaotaoUpload,one=[{kind:'image',name:'n.png'}],two=[{kind:'image',name:'a.png'},{kind:'image',name:'b.png'}];
+  const loop={surface:'video',mode:'first_last',loop:true},pair={surface:'video',mode:'first_last',loop:false},page={surface:'video',mode:'first_last'};
+  const placed=(words,files,made,view=page)=>upload.planRoutes(words,files,made,view).place.map(item=>item.destination.id).join();
+  // A loop keeps one picture at both ends; a named frame changes only that frame.
+  assert.equal(placed('换成这张图再做一个',one,loop),'first_frame,last_frame');
+  assert.equal(placed('换成这张图再做一个',one,{surface:'video',mode:'first_last'},{...page,sameFrames:true}),'first_frame,last_frame');
+  assert.equal(placed('把尾帧换成这张',one,pair),'last_frame');
+  assert.equal(placed('把首帧换成这张',one,loop),'first_frame');
+  // Two different frames and no word on which one: the app does not guess, the brain decides.
+  assert.equal(placed('换成这张图再做一个',one,pair),'');
+  assert.equal(upload.inferTask('换成这张图再做一个',one,pair,page).surface,'video');
+  // Two new pictures replace both ends.
+  assert.equal(placed('做一个1秒动画，@参考图1变成@参考图2',two,loop),'first_frame,last_frame');
+  assert.equal(placed('用这两张再做一个',two,pair),'first_frame,last_frame');
+  // A picture to edit, with no video task in sight, still goes to the drawing page.
+  assert.equal(placed('把背景换成海边',one,null,null),'img2img');
+  assert.equal(upload.inferTask('帮我画一张海报',[],null,page).surface,'image');
 });

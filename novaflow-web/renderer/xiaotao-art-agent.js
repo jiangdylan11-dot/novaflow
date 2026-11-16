@@ -973,6 +973,7 @@
     // The one picture kept across messages: the subject of the last style transfer, until a new subject or 新对话.
     let currentSubject = null;
     const imageRunPlans = new WeakMap();
+    let turnPlacements = [];
     let stagedSeq = 0, deferredDrawing = [], carryAttachments = null, carryAsk = null, carryMemory = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
     const communityUploads = () => communityAttachmentMetadata(state.modelId,state.staged,lastUploads);
@@ -1000,7 +1001,10 @@
     function pageTask(){
       // Only a brain that can act reads a sentence this way; the local model keeps to chat and prompt writing.
       const info=state.provider==='api'?activePromptSource():null;if(!info)return null;
-      if(info.surface==='video')return {surface:'video',mode:root.NovaFlowAiSequenceGeneration?.capture?.()?.genType||''};
+      if(info.surface==='video'){
+        const video=root.NovaFlowAiSequenceGeneration?.capture?.(),slots=(video?.referenceSlots||[]).filter(slot=>slot.occupied);
+        return {surface:'video',mode:video?.genType||'',sameFrames:video?.genType==='first_last'&&slots.length===2&&!!slots[0].name&&slots[0].name===slots[1].name};
+      }
       if(info.surface==='audio')return {surface:'audio',mode:info.kind||''};
       return {surface:'image',mode:root.__NovaFlowArtGenerate?.state?.mode||''};
     }
@@ -1223,7 +1227,7 @@
     // deferDrawing: the online brain reads the request first. 图生图 pictures wait here until its plan uses them,
     // so a style run places only the subject and one style per run instead of every picture at once.
     async function consumeStaged(message,{place=true,deferDrawing=false}={}) {
-      deferredDrawing=[];
+      deferredDrawing=[];turnPlacements=[];
       if (retired) return false;
       if (state.staged.some(item => item.status === 'reading')) {state.error = '文件还在读取，请稍后再发送'; notify(); return false;}
       const ready = state.staged.filter(item => item.status === 'ready');
@@ -1241,7 +1245,7 @@
       for (const item of plan.place) {
         if(deferredDrawing.includes(item))continue;
         if(retired)return false;
-        try {const receipt = await host().place(item); notes.push(`已放入${item.destination.label}：${item.name}`); item.receipt = receipt;}
+        try {const receipt = await host().place(item); notes.push(`已放入${item.destination.label}：${item.name}`); item.receipt = receipt; turnPlacements.push({label:item.destination.label,name:item.name,module:item.destination.module});}
         catch (error) {failed = true; notes.push(String(error?.message || error));}
         if(retired)return false;
       }
@@ -1749,6 +1753,12 @@
             if(Number(videoPage()?.h3?.seconds)===intent.seconds)sizeNote+=(sizeNote?'\n':'')+'视频时长已按用户说的设为 '+intent.seconds+' 秒，不用再设置时长。';
           }catch{}
         }
+        // Pictures the app has already put in place this turn are settled: the planner is told where each one went,
+        // and an assign_upload for one of them is answered instead of run (live 2.0.376: it attached the same file
+        // again, set the duration again, and never got to the generation).
+        const placedNow=turnPlacements.filter(item=>item.module==='动画');turnPlacements=[];
+        if(placedNow.length)sizeNote+=(sizeNote?'\n':'')+'这次带来的图片程序已经放好：'+placedNow.map(item=>item.label+' = '+item.name).join('，')+'。不要再用 assign_upload 放这些图，也不要再切视频模式。';
+        let forcedVideo=false;
         let pictureFacts='';
         // Every picture brought for a video is looked at before planning, 图生 and 首尾帧 included: the framework sees the frames
         // later, but the planner writes the brief it works from, and a brief written blind contradicts the picture.
@@ -1796,7 +1806,7 @@
             +(/视频|首尾帧|多参|图生|文生/.test(positiveRequest)||intent?.surface==='video'?'\n视频 prompt 只写画面和动作，用户没提声音就不要写声音或音乐。':'')
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(wantsResult?'\n'+wantsResult:'')
-            +(sizeNote?'\n'+sizeNote:'')
+            +(sizeNote?'\n'+sizeNote+(resultSurface==='video'&&!receipts.length?'这些参数不要再用 set_control 去设，这一轮直接给出 generate_video 这一个操作。':''):'')
             +(ownPictureTask?'\n这次带来了新图片，是一个新任务：只处理这次的图片，画面内容只来自这句话和这张图。'+(priorTask.surface==='image'?'绘图线路本对话已经定过，沿用当前选中的，不要再问。':''):'')
             +(stalePrompt?'\n页面输入框里留着的是上一个已完成任务的旧提示词，和这次无关：不要沿用它的任何内容，只按这次的要求'+(turnBroughtFiles?'和这次的图片':'')+'重新写。'+(turnStaleRefs?'参考位置里还留着上一个任务的'+(staleSurface==='video'?'素材：这句话说的是它就接着用，是全新的内容就先切到文生视频。':'图：这句话说的是那张图就接着用（图生图），是全新的画面就用文生图。'):''):'')
             +(invalidPlanRetries?'\n上一步方案不符合工具规则，未执行'+(invalidPlanIssue?'（'+invalidPlanIssue+'）':'')+'。只用 currentFoart 里真实存在的 ID；提示词不要用 set_control 写入，视频用 media 的 optimize_video_prompt 或 generate_video，绘图用 image_optimize 或 image_generate。这次只输出一个合法操作。':'')
@@ -1910,6 +1920,16 @@
             const fresh=plan.operations.filter(op=>!finishedOps.has(opKey(op,snapshot)));
             plan=fresh.length?{...plan,operations:fresh}:{...plan,status:'done',reply:summarize(receipts),operations:[]};
           }
+          // The steps were done and the planner closed the turn (or went round in circles) without the video that was asked
+          // for: with the page ready, the app submits it. Once per turn; a question to the person is left alone.
+          const madeNow=receipts.some(r=>(r.results||[]).some(v=>v.action==='generate_video'&&v.resources?.length));
+          if(plan.status==='done'&&receipts.length&&resultSurface==='video'&&videoWanted&&!madeNow&&!forcedVideo&&!endsWithQuestion(plan.reply)){
+            const page=root.NovaFlowAiSequenceGeneration?.capture?.(),ready=page?.mode==='minimax_h3_local'&&['text_video','image_video','first_last','multi_reference'].includes(page.genType)
+              &&!page.referenceSlots?.some(slot=>!slot.occupied)&&(page.genType!=='multi_reference'||page.h3References?.length>0);
+            if(ready){forcedVideo=true;stuck=false;
+              const brief=intent?.revision&&priorTask?.baseRequest?priorTask.baseRequest+'；'+positiveRequest:positiveRequest;
+              plan={...plan,status:'act',reply:spoken||'',operations:[{action:'media',operation:{action:'generate_video',target:'video',prompt:brief.slice(0,1500),...(Number.isFinite(intent?.seconds)?{seconds:intent.seconds}:{})}}]};}
+          }
           state.model=data.model||state.model;
           if(plan.status!=='act'){
             const actual=summarize(receipts),done=receipts.some(r=>r.phase==='completed');
@@ -1941,7 +1961,7 @@
             const openedSurface=receipts.findLast(r=>r.action==='open')?.surface;
             const actualSurface=(receipts.some(r=>r.action==='animation')?'animation':receipts.some(r=>r.action==='particle'||r.particle)?'particle':receipts.some(r=>r.action==='tool')?'tools':receipts.some(r=>r.action==='effect_generate'||r.action==='effect_export')?'effects':lastMedia?(lastMedia.target||(/^generate_(music|sfx)$/.test(lastMedia.action)?'audio':lastMedia.action==='generate_video'?'video':null)):nativeVideoResult?'video':receipts.some(r=>['image_generate','image_optimize','art_action','ui_layout','use_result'].includes(r.action)||r.layers?.length)?'image':null)||({drawing:'image',ui:'image',video:'video',audio:'audio',tools:'tools',effects:'effects',particle:'particle',animation:'animation'}[openedSurface]||null);
             const actualMode=actualSurface==='animation'?(receipts.findLast(r=>r.context?.animation)?.context.animation||'spine'):generatedMedia?.mode||(generatedMedia?.action==='generate_music'?'music':generatedMedia?.action==='generate_sfx'?'sfx':'')||(actualSurface==='image'?receipts.findLast(r=>r.action==='image_generate')?.mode:priorTask?.surface===actualSurface?priorTask?.mode:actualSurface==='audio'?'audio_edit':(actualSurface||intent?.surface)==='video'?(['text_video','image_video','first_last','multi_reference'].includes(root.NovaFlowAiSequenceGeneration?.capture?.()?.genType)?root.NovaFlowAiSequenceGeneration.capture().genType:'video_edit'):'')||'';
-            if(receipts.length)state.activeTask={...(intent?.revision?priorTask:{}),executor:'foart',surface:actualSurface||intent?.surface||priorTask?.surface||'image',mode:actualMode,baseRequest:intent?.revision?priorTask?.baseRequest||message:message,revisions:intent?.revision?[...(priorTask?.revisions||[]),message].slice(-8):[],status:done?'completed':'applied',outputs:receipts.flatMap(r=>r.outputs?.length?r.outputs:r.resources?.length?r.resources:r.result?.resources?.length?r.result.resources:r.id?[{id:r.id,name:r.name}]:r.results?.flatMap(v=>v.resources||[])||[])};
+            if(receipts.length)state.activeTask={...(intent?.revision?priorTask:{}),...(typeof intent?.loop==='boolean'?{loop:intent.loop}:{}),...(Number.isFinite(intent?.seconds)?{seconds:intent.seconds}:{}),executor:'foart',surface:actualSurface||intent?.surface||priorTask?.surface||'image',mode:actualMode,baseRequest:intent?.revision?priorTask?.baseRequest||message:message,revisions:intent?.revision?[...(priorTask?.revisions||[]),message].slice(-8):[],status:done?'completed':'applied',outputs:receipts.flatMap(r=>r.outputs?.length?r.outputs:r.resources?.length?r.resources:r.result?.resources?.length?r.result.resources:r.id?[{id:r.id,name:r.name}]:r.results?.flatMap(v=>v.resources||[])||[])};
             pendingIntent=!done&&(plan.status==='clarify'||endsWithQuestion(plan.reply))?{...(intent&&intent.surface!=='chat'?intent:{surface:'foart',mode:''}),foart:true,message:requestMessage}:null;
             state.status=plan.status==='clarify'?'等待补充需求':done?'工具执行已完成':receipts.length?'已按实际回执更新':'已回复';state.operation=null;return true;
           }
@@ -1950,7 +1970,7 @@
           const attemptKey=JSON.stringify(plan.operations)+'|'+toolBinding(snapshot,stableControls),attempts=(attemptedPlans.get(attemptKey)||0)+1;attemptedPlans.set(attemptKey,attempts);
           if(attempts>2){stuck=true;continue;}
           if((forbidsGeneration(message)||/只优化|只修改提示词/.test(message))&&plan.operations.some(op=>['image_generate','effect_generate'].includes(op.action)||op.action==='media'&&op.operation?.action?.startsWith('generate_')))fail('本次未授权生成，未提交任务');
-          const receiptsBefore=receipts.length;
+          const receiptsBefore=receipts.length;let standingOnly=0;
           for(const op of plan.operations){
             if(signal.aborted)fail('Foart 操作已停止');
             // No size named anywhere in this task: the video takes its first picture's size, shape kept.
@@ -1973,14 +1993,21 @@
             // The upload step already chose the video mode for these frames; a plan
             // may only change it when the user named another mode.
             const modeLabel=current.controls.find(c=>c.id===op.controlId)?.label;
-            if(/^(?:文生视频|图生视频|首尾帧视频|多参视频)$/.test(modeLabel||'')&&lastPreparedTask.startsWith('video:')&&!positiveRequest.includes(modeLabel.replace('视频','')))continue;
+            if(/^(?:文生视频|图生视频|首尾帧视频|多参视频)$/.test(modeLabel||'')&&(lastPreparedTask.startsWith('video:')||intent?.revision===true&&priorTask?.surface==='video')&&!positiveRequest.includes(modeLabel.replace('视频','')))continue;
             contract.validateFoartPlan({...plan,operations:[op]},current);
             // A value that already stands needs no second write: say so and let the plan move on
             // (live 2.0.370: "960*960，重新做" set 宽 960 → 960 three times and stopped on an error).
+            if(op.action==='assign_upload'&&placedNow.length){
+              const names=(op.uploadIds||[op.uploadId]).map(id=>lastUploads[Number(String(id).replace(/^upload-/,''))]?.name).filter(Boolean);
+              if(names.length&&names.every(name=>placedNow.some(item=>item.name===name))){
+                receipts.push({action:'assign_upload',phase:'applied',message:names.join('、')+' 已经在'+placedNow.map(item=>item.label).join('、')+'里了，不用再放。直接做剩下的事。'});
+                standingOnly++;continue;
+              }
+            }
             const standing=op.action==='set_control'?current.controls.find(control=>control.id===op.controlId):null;
             if(standing&&String(standing.value)===String(op.value)){
               receipts.push({action:'set_control',phase:'applied',control:standing.label,value:op.value,message:standing.label+' 已经是 '+op.value+'，不用再设。接着做这句话里剩下的事（其余参数、重新生成等），不要重复这一步。'});
-              continue;
+              standingOnly++;continue;
             }
             if(signal.aborted||operation!==serial)fail('Foart 操作已停止');
             // "先画…再做成视频": the picture made earlier in this turn becomes the 图生视频 frame, the way an attached picture would.
@@ -2022,6 +2049,8 @@
             state.toolTrace.push({name:'foart_'+op.action,result:copy(receipt)});state.status=summarize([receipt]);notify();
             if(op.action==='art_action'||op.action==='ui_layout'||op.action==='assign_upload'||op.action==='frame_open'||op.action==='media'&&['import_resource','save_mix'].includes(op.operation.action))break;
           }
+          // Nothing in that plan changed anything: on a video turn the next thing to do is the video, without paying for another round to hear it.
+          if(standingOnly&&standingOnly===plan.operations.length&&resultSurface==='video'&&!forcedVideo)stuck=true;
           // Every skipped step still answers the planner, or its next round has nothing to read.
           if(receipts.length===receiptsBefore)receipts.push({action:'skipped',phase:'applied',message:'这一步无需执行：视频模式已按上传素材选好。请继续下一步。'});
         }
