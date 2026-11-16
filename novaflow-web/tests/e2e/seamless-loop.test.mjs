@@ -112,3 +112,30 @@ test('index.html loads the overlay', () => {
   const html = readFileSync(join(ROOT, 'renderer/index.html'), 'utf8');
   assert.match(html, /novaflow-seamless-loop\.js\?v=/);
 });
+
+// 画板 snapshot poster: the copy/restore swaps cover the frame with a poster. Chromium keeps
+// showing a poster on a paused clip until playback starts, so a poster left on the element
+// is what the 画板 showed after a resource switch (old clip on screen, new clip's frame count).
+function fakeVideo(src) {
+  const attrs = new Map([['src', src]]), listeners = new Map();
+  return {
+    isConnected: true, paused: true, ended: false, seeking: false, loop: true, currentTime: 0, videoWidth: 0, videoHeight: 0,
+    get src() { return attrs.get('src') || ''; }, currentSrc: src,
+    getAttribute: (k) => (attrs.has(k) ? attrs.get(k) : null), setAttribute: (k, v) => attrs.set(k, String(v)),
+    hasAttribute: (k) => attrs.has(k), removeAttribute: (k) => attrs.delete(k),
+    addEventListener: (type, fn) => { if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(fn); },
+    removeEventListener: (type, fn) => listeners.set(type, (listeners.get(type) || []).filter((f) => f !== fn)),
+    dispatch: (type) => (listeners.get(type) || []).slice().forEach((fn) => fn()),
+    requestVideoFrameCallback() {}, closest: () => null
+  };
+}
+
+test('a page source switch drops the snapshot poster, so the paused 画板 shows the new clip', () => {
+  const api = load();
+  const video = fakeVideo('blob:x/old');
+  api.attach(video);
+  video.setAttribute('poster', 'data:image/jpeg;base64,old-frame');
+  video.setAttribute('src', 'blob:x/new');
+  video.dispatch('emptied');
+  assert.equal(video.hasAttribute('poster'), false);
+});

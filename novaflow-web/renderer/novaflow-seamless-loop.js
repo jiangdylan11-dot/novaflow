@@ -128,6 +128,13 @@
     } catch (_) { /* a tainted canvas: no cover, the frame just blinks once */ }
   }
 
+  // The snapshot only covers our own source switch. Left on the element it is
+  // what a paused clip shows after the page loads another resource (the poster
+  // stands until playback starts), so it goes as soon as a real frame can show.
+  function clearPoster(video) {
+    if (video.hasAttribute('poster')) video.removeAttribute('poster');
+  }
+
   function syncAudio(video, media) {
     const audio = media.audio;
     if (!audio) return;
@@ -215,6 +222,11 @@
       if (sourceNow(video) !== src) { cleanupMedia(video, media); return; }
       media.swapped = src === media.copy && Boolean(media.copy);
       if (media.swapped) audioFollow(video, media); else audioStop(media);
+      // Paused restore: the frame is there once the seek to the paused time lands.
+      if (video.paused) {
+        if (video.seeking) video.addEventListener('seeked', () => { if (!media.swapping) clearPoster(video); }, { once: true });
+        else clearPoster(video);
+      }
     };
     const onLoaded = () => {
       if (sourceNow(video) !== src) { finish(); return; }
@@ -244,6 +256,7 @@
     if (media.probeTimer) { root.clearTimeout(media.probeTimer); media.probeTimer = 0; }
     if (media.restoreTimer) { root.clearTimeout(media.restoreTimer); media.restoreTimer = 0; }
     audioStop(media);
+    clearPoster(video);
     if (media.audio) { try { media.audio.remove(); } catch (_) {} media.audio = null; }
     if (media.copy) {
       COPY_SOURCES.delete(media.copy);
@@ -316,8 +329,10 @@
     const onEmptied = () => {
       stop();
       const media = MEDIA.get(video);
-      if (!media) return;
       const src = sourceNow(video);
+      // The page loaded a source (another resource): no snapshot of the old one may stay.
+      if (!media || !(media.swapping && src === media.pendingSrc)) clearPoster(video);
+      if (!media) return;
       if (media.swapping && src === media.pendingSrc) return;
       if (src !== media.original && src !== media.copy) cleanupMedia(video, media);
     };
