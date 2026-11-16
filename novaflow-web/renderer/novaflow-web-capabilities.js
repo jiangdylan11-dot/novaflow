@@ -2739,9 +2739,10 @@
         }
       }
       const rawMessage = String((error && error.message) || error);
+      const offline = !error?.status && /failed to fetch|fetch failed|networkerror|load failed/i.test(rawMessage);
       const message = error?.status === 401 || /missing session token|invalid session|session expired/i.test(rawMessage)
         ? '登录已失效，请点顶栏右上角的账号按钮重新登录后重试抠图'
-        : stage + '失败：' + rawMessage + (!cancelConfirmed ? '；任务取消尚未确认，请检查算力连接' : '');
+        : stage + '失败：' + (offline ? '连不上在线服务（网络中断或服务暂时不可用），请检查网络后再点一次 AI 抠图' : rawMessage) + (!cancelConfirmed ? '；任务取消尚未确认，请检查算力连接' : '');
       reportMatting(jobId, 'error', message, undefined);
       return { ok: false, jobId, error: message };
     }
