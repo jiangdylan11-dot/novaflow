@@ -3273,86 +3273,6 @@
   }
 
   /**
-   * 黑底特效视频 → 序列帧 (2026-11-16 特效升级): an effect clip (AI 特效 / 模板制作 output, or any
-   * effect video on black) becomes PNG frames for 序列K帧, the way the reference Spine effects are
-   * built - hand-drawn frames at 15 fps on an additive slot. On a black plate alpha = brightness
-   * (colour un-premultiplied), near-empty frames at the ends are dropped and every frame is cropped
-   * to the box the effect uses, longest side at most 512. A video that is not on black keeps its
-   * pixels opaque. Names are ASCII (`<clip>_01` …).
-   */
-  const VIDEO_RX = /\.(mp4|webm|mov|m4v)$/i
-  async function videoToFrames(file, options = {}) {
-    const fps = options.fps || 15, maxSide = options.maxSide || 512, cap = options.maxFrames || 90
-    const R = window.NovaFlowMotionRecipes || (window.parent && window.parent !== window ? window.parent.NovaFlowMotionRecipes : null)
-    const raw = stem(file.name)
-    const base = R && R.asciiName ? R.asciiName(raw, 'fx') : (/^[A-Za-z0-9_-]+$/.test(raw) ? raw : 'fx')
-    const url = URL.createObjectURL(file)
-    const video = document.createElement('video')
-    video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url
-    try {
-      await new Promise((resolve, reject) => { video.onloadeddata = resolve; video.onerror = () => reject(new Error('视频无法解码')) })
-      const dur = Number.isFinite(video.duration) ? video.duration : 0
-      const n = Math.max(1, Math.min(cap, Math.floor(dur * fps)))
-      const scale = Math.min(1, 1024 / Math.max(video.videoWidth, video.videoHeight))
-      const W = Math.max(1, Math.round(video.videoWidth * scale)), H = Math.max(1, Math.round(video.videoHeight * scale))
-      const cv = document.createElement('canvas'); cv.width = W; cv.height = H
-      const g = cv.getContext('2d', { willReadFrequently: true })
-      const frames = []
-      for (let i = 0; i < n; i++) {
-        const t = Math.min(Math.max(0, dur - 0.001), (i + 0.5) / fps)
-        await new Promise((resolve) => { video.onseeked = resolve; video.currentTime = t })
-        g.drawImage(video, 0, 0, W, H)
-        frames.push(g.getImageData(0, 0, W, H))
-      }
-      // black plate: the border of the frames is dark
-      let sum = 0, cnt = 0
-      for (const f of frames) for (let x = 0; x < W; x += 4) for (const y of [0, H - 1]) { const p = (y * W + x) * 4; sum += Math.max(f.data[p], f.data[p + 1], f.data[p + 2]); cnt++ }
-      const black = cnt ? sum / cnt < 24 : false
-      let x0 = W, y0 = H, x1 = -1, y1 = -1
-      const peak = [], fadePx = Math.max(1, Math.round(Math.min(W, H) * 0.06))
-      for (const f of frames) {
-        const d = f.data
-        let m = 0
-        for (let p = 0, k = 0; p < d.length; p += 4, k++) {
-          let a = 255
-          if (black) {
-            a = Math.max(d[p], d[p + 1], d[p + 2])
-            // light reaching the frame's border fades out over the last 6 % (a glow cut by the frame showed a hard edge)
-            const ex = k % W, ey = (k / W) | 0, edge = Math.min(ex, W - 1 - ex, ey, H - 1 - ey)
-            if (edge < fadePx) a = a * edge / fadePx
-            a = a < 6 ? 0 : Math.round(a)
-            if (a) { const s = 255 / a; d[p] = Math.min(255, d[p] * s); d[p + 1] = Math.min(255, d[p + 1] * s); d[p + 2] = Math.min(255, d[p + 2] * s) }
-            d[p + 3] = a
-          }
-          if (a > 8) { const x = k % W, y = (k / W) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y }
-          if (a > m) m = a
-        }
-        peak.push(m)
-      }
-      let first = 0, last = frames.length - 1
-      if (black) { while (first < last && peak[first] < 16) first++; while (last > first && peak[last] < 16) last-- }
-      if (x1 < 0) throw new Error('视频里没有可用的画面')
-      x0 = Math.max(0, x0 - 4); y0 = Math.max(0, y0 - 4); x1 = Math.min(W - 1, x1 + 4); y1 = Math.min(H - 1, y1 + 4)
-      const cw = x1 - x0 + 1, ch = y1 - y0 + 1, k = Math.min(1, maxSide / Math.max(cw, ch))
-      const ow = Math.max(1, Math.round(cw * k)), oh = Math.max(1, Math.round(ch * k))
-      const src = document.createElement('canvas'); src.width = cw; src.height = ch
-      const sg = src.getContext('2d')
-      const out = document.createElement('canvas'); out.width = ow; out.height = oh
-      const og = out.getContext('2d')
-      const files = []
-      for (let i = first, j = 1; i <= last; i++, j++) {
-        sg.clearRect(0, 0, cw, ch)
-        sg.putImageData(frames[i], -x0, -y0, x0, y0, cw, ch)
-        og.clearRect(0, 0, ow, oh)
-        og.drawImage(src, 0, 0, ow, oh)
-        const blob = await new Promise((resolve) => out.toBlob(resolve, 'image/png'))
-        files.push(new File([blob], `${base}_${String(j).padStart(2, '0')}.png`, { type: 'image/png' }))
-      }
-      return { base, files, fps, black }
-    } finally { URL.revokeObjectURL(url); video.removeAttribute('src') }
-  }
-
-  /**
    * 新建工程 (user 2026-10-13: the tool makes projects, not only imports them): an empty skeleton -
    * root only, the default skin, no slots - as a new project in the tree. Its pictures come from
    * a folder the user picks next (useImageFolder), like Spine's images folder.
@@ -3788,43 +3708,12 @@
       if (!list.dirs.length && !list.files.length) body.append(h('div', { class: 'hint' }, '这个文件夹里没有图片'))
     }
     const importFrom = (dir) => {
-      const input = h('input', { type: 'file', accept: dir ? 'image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime', multiple: true })
+      const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', multiple: true })
       if (dir) input.webkitdirectory = true
       input.onchange = async () => {
         const here = stack.length ? stack[stack.length - 1].path : ''
         const before = snapshot()
         try {
-          // a black-plate effect video comes in as its own folder of frames (序列K帧 material), opened right away
-          const videos = dir ? [] : [...input.files].filter((f) => VIDEO_RX.test(f.name))
-          if (videos.length) {
-            let opened = null, total = 0
-            for (const v of videos) {
-              status(`正在把「${v.name}」拆成序列帧…`)
-              const { base, files } = await videoToFrames(v)
-              let sub = base, k = 2
-              const l0 = await stack[stack.length - 1].list()
-              while (l0.dirs.some((x) => x.name === sub)) sub = base + '_' + k++
-              const names = await importIntoFolder(files, here ? here + '/' + sub : sub)
-              total += names.length
-              opened = opened || sub
-            }
-            ensureAtlas()
-            applyJson(state.json)
-            state.history.push(before)
-            state.future = []
-            status(`已拆成 ${total} 帧（每秒 15 帧，黑底已转透明）：「本文件夹全部」加进序列K帧，混合选「相加」，间隔 2 帧`, 'ok')
-            // open the frames folder; a project without a folder on disk lists its atlas, so walk down a fresh listing
-            const path = [...(here ? here.split('/') : []), opened]
-            let walk = [state.imageFolder ? stack[0] : imageFolder()]
-            for (const seg of path) {
-              const d = (await walk[walk.length - 1].list()).dirs.find((x) => x.name === seg)
-              if (!d) break
-              walk = [...walk, d]
-            }
-            stack = walk
-            fill()
-            return
-          }
           const names = await importIntoFolder(input.files, here)
           if (!names.length) { status('没有可导入的图片（PNG / JPG / WebP）'); return }
           ensureAtlas()
@@ -3853,7 +3742,7 @@
           multi ? allBtn : null,
           opts && opts.toggle ? h('label', { class: 'pk-toggle', title: opts.toggle.title || '' },
             h('input', { type: 'checkbox', checked: !!opts.toggle.get(), onchange: (e) => opts.toggle.set(e.target.checked) }), opts.toggle.label) : null,
-          h('button', { class: 'btn small', title: '加新素材：图片导进当前文件夹；黑底特效视频（MP4 / WebM）会拆成一个序列帧文件夹', onclick: () => importFrom(false) }, '导入图片…'),
+          h('button', { class: 'btn small', title: '加新素材：图片导进当前文件夹', onclick: () => importFrom(false) }, '导入图片…'),
           h('button', { class: 'btn small', title: '加新素材：整个文件夹（带子文件夹）导进当前文件夹', onclick: () => importFrom(true) }, '导入文件夹…'),
           h('button', { class: 'xx', onclick: close }, '×')),
         multi ? h('div', { class: 'hint', style: 'padding:8px 14px 0' }, '点图片勾选（再点取消），或「本文件夹全部」；加进来的图片各成一个插槽，挂在卡片栏选的骨骼上') : null,
