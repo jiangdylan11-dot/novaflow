@@ -1332,7 +1332,10 @@ function validateBaseResult(value, options = {}) {
     const tokens = text => [...new Set(text.match(/<Picture [1-9]\d*>/g) || [])].sort().join('|');
     if (shots(model) !== shots(display)) throw new Error(baseIssue.pairShots);
     if (tokens(model) !== tokens(display)) throw new Error('H3 中英文提示词的素材关系不一致');
-    if (literals(model) !== literals(display)) throw new Error(baseIssue.pairLiterals);
+    // Only speech has to match word for word. Quotes put around a word for emphasis differ by translation ("bouncy" / “Q弹”)
+    // and rejected good drafts (live 2.0.370); they count only when the request itself carries lines to keep.
+    const spoken = /<d>/.test(model + display) || (options.quotedLines !== false && requiredLines(options).lines.length > 0);
+    if (spoken && literals(model) !== literals(display)) throw new Error(baseIssue.pairLiterals);
     // A faithful English shot has about 3-4 letters per Chinese character (every real pair measured ≥ 2.6); far fewer means a dropped block.
     const shotTexts = r => narrativeOf(r).split(/(?=\[Shot [1-9]\d*\])/).map(shot => proseOf(shot).replace(/<(?:Picture|Video|Audio) \d+>|\[Shot \d+\](?: At [\d:.]+,?)?/g, ''));
     const [english, chinese] = results.map(shotTexts);

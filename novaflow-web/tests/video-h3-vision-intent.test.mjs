@@ -52,3 +52,18 @@ test('vision reply still must pass the original H3 structured bilingual validato
   assert.match(result.modelPrompt,/Picture 1/);assert.match(result.modelPrompt,/Picture 2/);
   assert.throws(()=>inspectXiaotaoV3VideoReply({intent:{...r,images:[{...r.images[0],dataUrl:two},r.images[1]]},intentHash:prepared.intentHash,reply:answer}));
 });
+test('a draft is not sent back for halves written in each other\'s place, or for emphasis quotes that differ by translation',()=>{
+  const r=input();r.prompt='<Picture 1> 中的女孩睁开眼睛，最后停在 <Picture 2>';
+  const prepared=canonicalizeXiaotaoV3VideoIntent(r,{visionEnabled:true});
+  // The language of each half is the last thing the model reads.
+  assert.match(prepared.compiled.userText,/modelPrompt is written entirely in ENGLISH prose[\s\S]*never for emphasis\.$/);
+  const fields=(n,s)=>`integrated_multimodal_description: ${n}\n\noverall_soundscape: ${s}\n\nnon_diegetic_music: N/A`;
+  const english=fields('[Shot 1] 3D CG, the girl shown in <Picture 1> sits with her eyes closed. The camera holds a static shot as she opens her eyes with a "bouncy" little nod, then closes them again and settles into the pose of <Picture 2>.','A soft breeze moves through the room.');
+  const chinese=fields('[Shot 1] 三维 CG，<Picture 1> 中的女孩闭眼坐着。镜头固定，她睁开眼睛，带着“Q弹”的小幅点头，随后又闭上，落定在 <Picture 2> 的姿态。','微风轻轻吹过房间。');
+  for(const answer of [{modelPrompt:english,displayPrompt:chinese},{modelPrompt:chinese,displayPrompt:english}]){
+    const result=inspectXiaotaoV3VideoReply({intent:r,intentHash:prepared.intentHash,reply:JSON.stringify(answer)});
+    assert.match(result.modelPrompt,/The camera holds a static shot/);assert.match(result.displayPrompt,/镜头固定/);
+  }
+  // Chinese in both halves is still not a usable model prompt.
+  assert.throws(()=>inspectXiaotaoV3VideoReply({intent:r,intentHash:prepared.intentHash,reply:JSON.stringify({modelPrompt:chinese,displayPrompt:chinese})}),/英文正文/);
+});

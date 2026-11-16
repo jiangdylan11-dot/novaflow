@@ -63,7 +63,10 @@ export function createServerOwnedH3Intent({workflow}={}) {
       '\nReference labels identify slots only; no reference media has been analysed. Never invent unseen visual or audio facts.');
     let additional;
     try {additional=workflow.toModelReferences(requirements,prepared.protocol.references);} catch {invalid();}
-    const userText='Source prompt:\n'+prepared.prompt+(additional?'\n\nUser requirements:\n'+additional:'');
+    // Live 2.0.370, DeepSeek: 3 of 7 drafts came back with Chinese prose in modelPrompt and were rejected, twice in a row
+    // on one request. The schema's field notes alone did not hold it; the contract is now the last thing the model reads.
+    const LANGUAGE_CONTRACT='Output contract: modelPrompt is written entirely in ENGLISH prose, even though the source prompt and requirements are Chinese; only literal dialogue, quoted on-screen text and proper names keep their original wording. displayPrompt is the faithful Simplified Chinese translation of modelPrompt. Use quotation marks only for spoken lines and on-screen text, never for emphasis.';
+    const userText='Source prompt:\n'+prepared.prompt+(additional?'\n\nUser requirements:\n'+additional:'')+'\n\n'+LANGUAGE_CONTRACT;
     const imageParts=images?validatedImages.input.at(-1).content.filter(part=>part.type==='input_image'):[];
     const userContent=[{type:'input_text',text:userText},...(images?[
       {type:'input_text',text:'First frame image:'},imageParts[0],...(imageParts[1]?[{type:'input_text',text:'Last frame image:'},imageParts[1]]:[])
@@ -90,7 +93,12 @@ export function createServerOwnedH3Intent({workflow}={}) {
     let pair;try{pair=JSON.parse(content);}catch{invalidBecause('模型输出不是完整的 JSON');}
     if(!plain(pair)||!Object.hasOwn(pair,'modelPrompt')||!Object.hasOwn(pair,'displayPrompt')||
       Object.keys(pair).some(key=>!['modelPrompt','displayPrompt','editPolicy'].includes(key)))invalid();
-    try {return workflow.validateAndRestore({text:content,context:trusted.validation.context,current:trusted.validation.current});} catch(error) {invalidBecause(error?.message);}
+    // Field names, media labels and shot marks are English in both halves; the language is read from the prose between them.
+    const prose=value=>JSON.stringify(value).replace(/[a-z]+(?:_[a-z]+)+|<[^<>\n]{1,24}>|\[Shot \d+\]|\bAt [\d:.]+|N\/A|\\n/g,' ');
+    const han=value=>(prose(value).match(/[\u3400-\u9fff]/g)||[]).length,latin=value=>(prose(value).match(/[A-Za-z]/g)||[]).length;
+    const swapped=han(pair.modelPrompt)>latin(pair.modelPrompt)&&latin(pair.displayPrompt)>han(pair.displayPrompt)*4;
+    const answer=swapped?JSON.stringify({...pair,modelPrompt:pair.displayPrompt,displayPrompt:pair.modelPrompt}):content;
+    try {return workflow.validateAndRestore({text:answer,context:trusted.validation.context,current:trusted.validation.current});} catch(error) {invalidBecause(error?.message);}
   }
   return Object.freeze({canonicalize,validateResult});
 }

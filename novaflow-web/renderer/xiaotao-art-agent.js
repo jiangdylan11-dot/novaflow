@@ -1676,7 +1676,10 @@
               // Two tries with the frames in view; when both fail and the pictures were looked at, one more from that description,
               // so a failed upload never leaves the video with a prompt written blind (live 2.0.370: a pillar of seven monkeys
               // went out as "一只猴子站在画面中央").
+              // Measured live (2.0.370, DeepSeek, 首尾帧): 4 of 7 drafts were sent back by the checks, so two tries left one
+              // request in five on the blind brief. Four tries, each told why the last was sent back, then the text-only one.
               const tries=[{source:bindMaterials(brief),images:includeReferenceImages},{source:bindMaterials(message),images:includeReferenceImages},
+                {source:bindMaterials(brief),images:includeReferenceImages},{source:bindMaterials(message),images:includeReferenceImages},
                 ...(includeReferenceImages&&pictureFacts?[{source:bindMaterials(brief),images:false}]:[])];
               for(const attempt of tries){
                 if(signal.aborted)break;
@@ -1686,7 +1689,12 @@
                   // 多参 checks its result against the requirement text word by word; the brief already carries everything.
                   const multi=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='multi_reference';
                   const snapshot=await capture({requestId:root.crypto.randomUUID(),requirements:multi?'':(message+(pictureFacts?'\n'+pictureFacts:'')).slice(0,1000),sourcePrompt,includeReferenceImages:attempt.images});
-                  const current=()=>same()&&snapshot.isCurrent()===true;
+                  // The draft belongs to this mode, this length and these materials. Anything else on the page may move while
+                  // the model writes (a frame still settling after its upload, the size, the board's own counters); the whole-page
+                  // comparison would throw a finished draft away for those.
+                  const bound=()=>{const page=root.NovaFlowAiSequenceGeneration?.capture?.();
+                    return JSON.stringify([page?.mode,page?.genType,page?.h3?.seconds,(page?.referenceSlots||[]).map(slot=>slot.sourceId),(page?.h3References||[]).map(ref=>ref?.key+':'+(ref?.sourceId||ref?.name||''))]);};
+                  const boundAt=bound(),current=()=>same()&&bound()===boundAt;
                   const {onPricingQuote,confirmPricingQuote,confirmImageUpload}=onlineBusinessUi(selected.modelId,attempt.images?()=>true:null,current);
                   result=await method({request:snapshot.request,...scope,isInputCurrent:current,onPricingQuote,confirmPricingQuote,confirmImageUpload,onBillingNotice:()=>true});
                   if(result?.quota)collectBilling(billing,{ok:true,data:{quota:result.quota}});
