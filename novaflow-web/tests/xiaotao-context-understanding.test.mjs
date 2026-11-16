@@ -150,3 +150,8 @@ test('a step that changes nothing is skipped with a word to the planner, and a s
   assert.equal(r.error,'');assert.deepEqual(r.ops,[]);
   assert.match(r.reply,/后面的步骤这次没做完/);
 });
+test('a video draft that fails once is tried again instead of sending the planner\'s raw brief',async()=>{
+  const p=await probe({page:'video',plans:[generateVideo('一只猴子站在画面中央')],draftFailures:1});
+  const r=await p.say('做一个2秒循环待机动画，要求猴子表情丰富');
+  assert.deepEqual(r.prompts,['【写好的视频稿】']);
+});

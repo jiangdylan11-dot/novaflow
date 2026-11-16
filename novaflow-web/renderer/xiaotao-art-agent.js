@@ -1673,21 +1673,31 @@
               };
               let result=null,text='';
               let draftIssue='';
-              for(const firstSource of [bindMaterials(brief),bindMaterials(message)]){
-                // The retry is told what the last draft got wrong, the way the planner retry is.
-                const sourcePrompt=draftIssue?(firstSource+'\n上一稿被退回的原因：'+draftIssue+'。这次必须改正。').slice(0,1500):firstSource;
-                // 多参 checks its result against the requirement text word by word; the brief already carries everything.
-                const multi=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='multi_reference';
-                const snapshot=await capture({requestId:root.crypto.randomUUID(),requirements:multi?'':(message+(pictureFacts?'\n'+pictureFacts:'')).slice(0,1000),sourcePrompt,includeReferenceImages});
-                const current=()=>same()&&snapshot.isCurrent()===true;
-                const {onPricingQuote,confirmPricingQuote,confirmImageUpload}=onlineBusinessUi(selected.modelId,includeReferenceImages?()=>true:null,current);
-                result=await method({request:snapshot.request,...scope,isInputCurrent:current,onPricingQuote,confirmPricingQuote,confirmImageUpload,onBillingNotice:()=>true});
-                if(result?.quota)collectBilling(billing,{ok:true,data:{quota:result.quota}});
-                text=result?.ok===true?String(result.draft?.displayPrompt||'').trim():'';
-                if(text)break;
-                draftIssue=String(result?.draftIssue||'');
+              // Two tries with the frames in view; when both fail and the pictures were looked at, one more from that description,
+              // so a failed upload never leaves the video with a prompt written blind (live 2.0.370: a pillar of seven monkeys
+              // went out as "一只猴子站在画面中央").
+              const tries=[{source:bindMaterials(brief),images:includeReferenceImages},{source:bindMaterials(message),images:includeReferenceImages},
+                ...(includeReferenceImages&&pictureFacts?[{source:bindMaterials(brief),images:false}]:[])];
+              for(const attempt of tries){
+                if(signal.aborted)break;
+                try{
+                  // The retry is told what the last draft got wrong, the way the planner retry is.
+                  const sourcePrompt=draftIssue?(attempt.source+'\n上一稿被退回的原因：'+draftIssue+'。这次必须改正。').slice(0,1500):attempt.source;
+                  // 多参 checks its result against the requirement text word by word; the brief already carries everything.
+                  const multi=root.NovaFlowAiSequenceGeneration?.capture?.()?.genType==='multi_reference';
+                  const snapshot=await capture({requestId:root.crypto.randomUUID(),requirements:multi?'':(message+(pictureFacts?'\n'+pictureFacts:'')).slice(0,1000),sourcePrompt,includeReferenceImages:attempt.images});
+                  const current=()=>same()&&snapshot.isCurrent()===true;
+                  const {onPricingQuote,confirmPricingQuote,confirmImageUpload}=onlineBusinessUi(selected.modelId,attempt.images?()=>true:null,current);
+                  result=await method({request:snapshot.request,...scope,isInputCurrent:current,onPricingQuote,confirmPricingQuote,confirmImageUpload,onBillingNotice:()=>true});
+                  if(result?.quota)collectBilling(billing,{ok:true,data:{quota:result.quota}});
+                  text=result?.ok===true?String(result.draft?.displayPrompt||'').trim():'';
+                  if(text)break;
+                  draftIssue=String(result?.draftIssue||'');
+                  root.console?.warn?.('[Foart tools] video draft not accepted:',String(result?.error||draftIssue||'no text'));
+                }catch(error){root.console?.warn?.('[Foart tools] video draft failed:',String(error?.message||error));}
               }
-              if(!text)return op;
+              // Even with no framework draft, what goes out says what is actually in the pictures.
+              if(!text)return pictureFacts&&!brief.includes(pictureFacts.slice(0,20))?{...op,operation:{...op.operation,prompt:(brief+'\n画面实际内容：'+pictureFacts).slice(0,1500)}}:op;
               h3?.rememberDraft?.({mode:result.draft.h3Mode,prompt:text,modelText:result.draft.modelPrompt});
               videoDraft=text;return {...op,operation:{...op.operation,prompt:text}};
             }
@@ -1721,9 +1731,9 @@
           const now=root.NovaFlowAiSequenceGeneration.capture().h3;sizeNote='视频分辨率已按用户说的设为 '+now.width+'×'+now.height+'，不用再设置宽和高，直接做剩下的事。';
         }
         let pictureFacts='';
-        // 图生 and 首尾帧 hand their frames to the framework itself, so they need no separate look.
-        const framesInDraft=['image_video','first_last'].includes(intent?.mode)&&api()?.onlineVideoVisionAvailableSync?.()===true;
-        const videoPictures=state.provider==='api'&&intent?.surface==='video'&&!framesInDraft?freshPictures:[];
+        // Every picture brought for a video is looked at before planning, 图生 and 首尾帧 included: the framework sees the frames
+        // later, but the planner writes the brief it works from, and a brief written blind contradicts the picture.
+        const videoPictures=state.provider==='api'&&intent?.surface==='video'?freshPictures:[];
         if(videoPictures.length&&selectedPricingPayload().operationVisionBillingV3===true){
           onStatus('正在看图…');
           // One picture per look: several in one request run past the edge function's limit.

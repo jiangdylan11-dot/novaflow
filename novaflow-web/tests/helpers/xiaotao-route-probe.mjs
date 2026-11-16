@@ -15,7 +15,7 @@ const ROUTES={foartOperationStart:'planner',artAgentChat:'chat',promptAssistantV
 // page: 'drawing' | 'video' | 'audio' | 'other'; prompt: what the page's prompt box holds;
 // task: what 小桃 finished earlier in this conversation; plan: what the planner answers.
 // frame: the first picture in the video page's slot ({width,height}); controls: native fields the planner may set.
-export async function probe({page='drawing',prompt='',task=null,genType='text_video',plans=[],pending=null,frame=null,controls=[]}={}) {
+export async function probe({page='drawing',prompt='',task=null,genType='text_video',plans=[],pending=null,frame=null,controls=[],draftFailures=0}={}) {
   const root={console:{...console,warn(){},debug(){}},crypto:webcrypto,AbortController,setTimeout,clearTimeout,btoa:value=>Buffer.from(value,'binary').toString('base64')};
   root.window=root;createContext(root);
   for(const file of ['xiaotao-prompt-source.js','xiaotao-upload.js','xiaotao-art-agent.js'])runInContext(read(file),root);
@@ -50,7 +50,7 @@ export async function probe({page='drawing',prompt='',task=null,genType='text_vi
       return {ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:next?'act':'done',reply:next?'开始':'好的。',operations:next?[next]:[]},...(next?{foartOperationSession:{opaque:starts.length}}:{})}};},
     foartOperationResume:async()=>{const next=plans.shift();
       return {ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:next?'act':'done',reply:next?'继续':'好的。',operations:next?[next]:[]},...(next?{foartOperationSession:{opaque:1}}:{})}};},
-    promptAssistantVideoDraft:async()=>({ok:true,quota:{settled_credits:1},draft:{status:'preview-only',applyAvailable:false,textOnly:true,displayPrompt:'【写好的视频稿】',modelPrompt:'draft',h3Mode:genType,durationSeconds:5}}),promptAssistantRewriteAudioPrompt:async()=>({ok:false,error:'stub'}),
+    promptAssistantVideoDraft:async()=>{if(draftFailures-->0)throw Error('upload failed');return {ok:true,quota:{settled_credits:1},draft:{status:'preview-only',applyAvailable:false,textOnly:true,displayPrompt:'【写好的视频稿】',modelPrompt:'draft',h3Mode:genType,durationSeconds:5}};},promptAssistantRewriteAudioPrompt:async()=>({ok:false,error:'stub'}),
     onlineTextArtAvailableSync:()=>false,onlineVisionArtAvailableSync:()=>false};
   const api=()=>new Proxy(base,{get(target,key){if(ROUTES[key])touched.push(key);return target[key];}});
   const bridge={clearPrepared(){},hasResult:()=>!!task,async captureChat(){return {artContext:{surface:page},images:[]};}};
@@ -64,7 +64,7 @@ export async function probe({page='drawing',prompt='',task=null,genType='text_vi
       const ok=await c.send(message);
       const first=touched[0],reply=c.state.messages.slice(before).filter(m=>m.role==='assistant').map(m=>m.content).join(' | ');
       return {ok,route:first?ROUTES[first]:c.state.error?'error':reply?'reply':'none',error:c.state.error,reply,status:c.state.status,
-        ops:executed.splice(0).map(op=>op.operation?.action||op.action),sent:starts.at(-1)?.message||''};
+        prompts:executed.map(op=>op.operation?.prompt||op.prompt||''),ops:executed.splice(0).map(op=>op.operation?.action||op.action),sent:starts.at(-1)?.message||''};
     }};
 }
 export async function route(message,context){return (await probe(context)).say(message);}
