@@ -205,12 +205,17 @@ test('火球 burning modes: loops close, stays inside the canvas', () => {
 })
 
 test('一次性 clears by the last frame', () => {
+  const appear = project('disperse', { lifecycle: 'once' })
+  appear.params.mode = 'in'
+  { const ctx = FX.prepare(copy(appear), SCALE), n = FX.frameCount(appear); assert.ok(mean(FX.renderFrame(ctx, n - 1)) > 0.3, '粒子化消散 · 出现: the picture stays at the end') }
   for (const fx of FX.effects().filter((e) => !e.needsBase)) {
     const p = project(fx.id, { lifecycle: 'once' })
     const ctx = FX.prepare(copy(p), SCALE), n = FX.frameCount(p)
     const mid = Math.max(...[0.2, 0.35, 0.5].map((f) => mean(FX.renderFrame(ctx, Math.round(f * (n - 1))))))
     const last = mean(FX.renderFrame(ctx, n - 1))
     assert.ok(mid > 0.3, `${fx.label}: something shows (${mid.toFixed(2)})`)
+    // 「出现 / 变成」类（冰封，或选了「出现」的消散 / 灼烧）结尾停在成品上，不清空
+    if (fx.keepsEnd && fx.keepsEnd(p.params)) { assert.ok(last > 0.3, `${fx.label}: stays on at the end (${last.toFixed(2)})`); continue }
     assert.ok(last < mid * 0.15 + 0.3, `${fx.label}: last frame ${last.toFixed(2)} vs ${mid.toFixed(2)}`)
   }
 })

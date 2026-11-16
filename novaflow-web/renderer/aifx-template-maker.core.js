@@ -865,7 +865,10 @@
 
   // 一次性：淡入 / 淡出；粒子类自己有生灭，只在最后保证清空
   function envelope(ctx, t) {
-    if (ctx.loop) return ctx.fx.loopFadeIn ? smooth(0, ctx.fx.loopFadeIn, t) : 1
+    const keeps = !!(ctx.fx.keepsEnd && ctx.fx.keepsEnd(ctx.params))
+    // 「出现」类切成循环 = 重复播放：结尾淡掉，下一遍才能从空画面开始
+    if (ctx.loop) return keeps ? 1 - smooth(0.8, 0.96, t - Math.floor(t)) : ctx.fx.loopFadeIn ? smooth(0, ctx.fx.loopFadeIn, t) : 1
+    if (keeps) return 1   // 「出现」类：结尾停在完整的图形上，不清空
     if (ctx.fx.particle || ctx.fx.ownEnvelope || (ctx.fx.usesImage && ctx.geo.img)) return 1 - smooth(0.9, 1, t)   // 自己管出场 / 收场的（爆炸、消失…）只保证最后清空
     return smooth(0, 0.1, t) * (1 - smooth(0.7, 1, t))
   }

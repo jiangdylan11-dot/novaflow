@@ -2208,12 +2208,298 @@
       },
       ai: (w) => ['rays', `several waves of light expanding outward from a ${w.noun}, a bright area travelling around the waves, soft glowing contours fading out`],
     })
+  // ------------------------------------------------------------------ 2026-11-16 跟着图形走、替代 AE 的
+  // 用户：「我要的是能减少 AE 调教」。能用粒子面板、或一张图转一转就做出来的不要（星光 / 金币 / 彩带 / 闪光 / 旋转背光都被否了）。
+  // 这一批的画面每帧都在变（噪波溶解、流体、置换、径向模糊），粒子面板和
+  // 骨骼动画做不出来；都吃上传的图标 / 文字本身（没有底图时按形状画）。
+  const MODE_OUT_IN = { key: 'mode', label: '方式', def: 'out', options: [{ id: 'out', label: '消失' }, { id: 'in', label: '出现' }] }
+  const ANGLE = (def) => P('angle', '方向', 0, 355, 5, def)
+  // 底图像素（没有底图：按形状给一层同色的光）
+  function putSrc(D, geo, dst, src, k, pal) {
+    if (D.IR) { putImg(D, geo, dst, src, k); return }
+    const c = geo.cov[src] * k
+    if (c > 0.003) addPixel(D, dst, c * 0.55, ramp(pal, 0.55, C))
+  }
+  // 底图那一点的颜色（当光的颜色用）；没有底图用配色
+  function srcColor(geo, i, pal, out) {
+    const im = geo.img
+    if (im && im.A[i] > 0.02) { const a = im.A[i], m = Math.max(im.R[i], im.G[i], im.B[i], 1e-3) / a, g = 0.35 + 0.65 / Math.max(0.35, m); out[0] = (im.R[i] / a) * g; out[1] = (im.G[i] / a) * g; out[2] = (im.B[i] / a) * g; return out }
+    return ramp(pal, 0.62, out)
+  }
+  // 时间上首尾相接的噪波：t 和 t − 1 两份交叉淡化（保方差）
+  const loopFbm = (x, y, s, t, T, oct = 3) => vblend(fbm(x, y + T * t, s, oct), fbm(x, y + T * (t - 1), s, oct), t)
+  const edgeFade = (geo, x, y) => smooth(0, 0.07 * Math.min(geo.W, geo.H), Math.min(x, geo.W - 1 - x, y, geo.H - 1 - y))
+
+  LIST.push(
+    {
+      id: 'disperse', usesImage: true, keepsEnd: (p) => p.mode === 'in', label: '粒子化消散', group: '消失', hint: '图形从一侧开始化成自己颜色的细粒，被风吹着飘走、越飘越淡；选「出现」就是细粒吹回来聚成图形', palette: 'gold', lifecycle: 'once', ownEnvelope: true,
+      params: [MODE_OUT_IN, ANGLE(20), P('reach', '飘散', 0.3, 2, 0.05, 1), P('count', '颗粒', 0.4, 2.5, 0.05, 1), P('size', '粒径', 0.4, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, H, u, cov, bbox } = geo
+        const S = geo.Rfit, q = ctx.loop ? frac(t) : t, a0 = clamp01(q * Math.min(2.5, p.speed)), a = p.mode === 'in' ? 1 - a0 : a0
+        const an = (p.angle * Math.PI) / 180, wx = Math.cos(an), wy = -Math.sin(an)
+        const bw = Math.max(1, bbox.x1 - bbox.x0), bh = Math.max(1, bbox.y1 - bbox.y0), ext = Math.abs(wx) * bw + Math.abs(wy) * bh, mx = (bbox.x0 + bbox.x1) / 2, my = (bbox.y0 + bbox.y1) / 2
+        // 先后：顺风那一侧先走，带噪波，不是一条直线推过去
+        const order = (x, y) => clamp01((0.5 - ((x - mx) * wx + (y - my) * wy) / ext) * 0.72 + fbm(x / (22 * u), y / (22 * u), 111, 3) * 0.28)
+        const T0 = 0.05, TS = 0.5, LIFE = 0.42, front = (a - T0) / TS, b = p.bright
+        for (const i of geo.inside) {
+          const x = i % W, y = (i - x) / W, keep = smooth(front - 0.015, front + 0.045, order(x, y))
+          if (keep > 0.003) putSrc(D, geo, i, i, keep, pal)
+        }
+        if (front <= 0) return
+        const g = Math.max(1, 1.9 * u), far = 0.95 * S * p.reach, dens = p.count / 2.5   // 颗粒 = 留下多少（格子按分辨率定，不随滑块变：小预览里也看得出差别）
+        for (let y = Math.floor(bbox.y0); y <= bbox.y1; y += g) for (let x = Math.floor(bbox.x0); x <= bbox.x1; x += g) {
+          const xi = Math.round(x), yi = Math.round(y)
+          if (xi < 0 || yi < 0 || xi >= W || yi >= H) continue
+          const i = yi * W + xi
+          if (cov[i] < 0.5 || hash(xi, yi, 115) > dens) continue
+          const age = (a - (T0 + order(xi, yi) * TS)) / LIFE
+          if (age <= 0 || age >= 1) continue
+          const h1 = hash(xi, yi, 113), h2 = hash(xi, yi, 114), ea = 1 - Math.pow(1 - age, 1.6), d = far * ea * (0.35 + 0.65 * h1)
+          const sway = Math.sin(age * 7 + h2 * TAU) * 0.07 * far * age
+          const px = x + wx * d - wy * sway, py = y + wy * d + wx * sway - 0.06 * far * age
+          const k = Math.pow(1 - age, 1.25) * smooth(0, 0.06, age) * edgeFade(geo, px, py) * b
+          if (k < 0.01) continue
+          dot(D, px, py, Math.max(0.5, g * 0.62 * p.size * (1 - 0.55 * age)), 1.1 * k, srcColor(geo, i, pal, C))
+        }
+      },
+      ai: (w) => ['shatter', `${w.shapeNoun} disintegrating into fine glowing particles of its own colours that are blown away to one side and fade`],
+    },
+    {
+      id: 'burn', usesImage: true, keepsEnd: (p) => p.mode === 'in', label: '灼烧溶解', group: '消失', hint: '图形被不规则地烧穿：烧到的边一圈发亮的火线，后面留一点暗红余烬，火星往上飘；选「出现」就是烧出来', palette: 'fire', lifecycle: 'once', ownEnvelope: true,
+      params: [MODE_OUT_IN, P('width', '火边', 0.3, 4, 0.05, 1), P('size', '纹理', 0.4, 3, 0.05, 1), P('count', '火星', 0, 4, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, H, u, cov, bbox } = geo
+        const S = geo.Rfit, q = ctx.loop ? frac(t) : t, a0 = clamp01(q * Math.min(2.5, p.speed)), a = p.mode === 'in' ? 1 - a0 : a0, b = p.bright
+        const bh = Math.max(1, bbox.y1 - bbox.y0), sc = 1 / (30 * u * p.size), wE = 0.05 * p.width
+        // 先后：噪波为主，下面略早（火往上烧）
+        const order = (x, y) => clamp01(((fbm(x * sc, y * sc, 121, 4) - 0.2) / 0.6) * 0.75 + (1 - (y - bbox.y0) / bh) * 0.25)
+        const frontAt = (h) => ((h - 0.04) / 0.72) * 1.12 - 0.06, front = frontAt(a)
+        for (const i of geo.inside) {
+          const x = i % W, y = (i - x) / W, d = order(x, y) - front
+          if (d > 0) putSrc(D, geo, i, i, smooth(0, 0.012, d), pal)
+          if (d > 0 && d < wE) { const h = 1 - d / wE; addPixel(D, i, cov[i] * 2.1 * h * h * b, ramp(pal, 0.35 + 0.65 * h, C)) }
+          else if (d <= 0 && d > -wE * 0.8) addPixel(D, i, cov[i] * 0.55 * (1 + d / (wE * 0.8)) * b, ramp(pal, 0.12, C))
+        }
+        const g = Math.max(2, 7 * u), m = p.count
+        if (m > 0) for (let y = Math.floor(bbox.y0); y <= bbox.y1; y += g) for (let x = Math.floor(bbox.x0); x <= bbox.x1; x += g) {
+          const xi = Math.round(x), yi = Math.round(y)
+          if (xi < 0 || yi < 0 || xi >= W || yi >= H || cov[yi * W + xi] < 0.5) continue
+          const h1 = hash(xi, yi, 123)
+          if (h1 > 0.22 * m) continue
+          const v = order(xi, yi), tb = ((v + 0.06) / 1.12) * 0.72 + 0.04, age = (a - tb) / 0.3
+          if (age <= 0 || age >= 1) continue
+          const h2 = hash(xi, yi, 124), px = x + Math.sin(age * 6 + h2 * TAU) * 0.04 * S, py = y - age * (0.2 + 0.3 * h2) * S
+          dot(D, px, py, (0.9 + 1.5 * h2) * u, 1.3 * (1 - age) * edgeFade(geo, px, py) * b, ramp(pal, 0.9 - 0.6 * age, C))
+        }
+      },
+      ai: (w) => ['shatter', `${w.shapeNoun} burning away, an irregular glowing line of fire eating through the ${w.shapeNoun} with dark red embers behind it and sparks drifting up`],
+    },
+    {
+      id: 'shapefire', usesImage: true, label: '贴形火焰', group: '技能', hint: '火从图形自己的轮廓里往上烧：火舌贴着形状窜，高低不齐，不是在图上盖一张火的贴图', palette: 'fire', lifecycle: 'loop',
+      params: [P('reach', '火高', 0.2, 1.4, 0.05, 0.8), P('size', '火舌', 0.4, 3, 0.05, 1), P('spread', '内焰', 0, 1, 0.05, 0.3), PP.speed, PP.glow, PP.bright],
+      prepare(ctx) {
+        // 每个像素正下方最近的图形有多远（0 = 在图形里）
+        const { W, H, cov, N } = ctx.geo, below = new Float32Array(N)
+        for (let x = 0; x < W; x++) { let d = 1e6; for (let y = H - 1; y >= 0; y--) { d = cov[y * W + x] > 0.5 ? 0 : d + 1; below[y * W + x] = d } }
+        return { below }
+      },
+      render(ctx, t, D) {
+        const { geo, params: p, pal, state } = ctx, { W, H, u, bbox } = geo, below = state.below
+        const S = geo.Rfit, Hf = 0.6 * S * p.reach, T = 3 * Math.max(1, Math.round(p.speed)), b = p.bright
+        const s1 = 1 / (20 * u * p.size), s2 = 1 / (34 * u * p.size), amp = 16 * u * p.size
+        for (const i of geo.inside) putSrc(D, geo, i, i, 1, pal)
+        const x0 = Math.max(0, Math.floor(bbox.x0 - amp)), x1 = Math.min(W - 1, Math.ceil(bbox.x1 + amp)), y0 = Math.max(0, Math.floor(bbox.y0 - Hf * 1.5)), y1 = Math.min(H - 1, Math.ceil(bbox.y1))
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const i = y * W + x, d0 = below[i]
+          if (d0 > Hf * 1.5) continue
+          const n1 = loopFbm(x * s1, y * s1, 131, t, T), n2 = loopFbm(x * s2 + 9, y * s2 * 0.6, 132, t, T * 0.8)
+          const xs = clamp(Math.round(x + (n1 - 0.5) * 2 * amp * clamp01(d0 / Hf)), 0, W - 1), d = below[y * W + xs]
+          const hloc = Hf * (0.3 + 1.15 * n2)
+          let f = d > 0 ? clamp01(1 - d / hloc) : p.spread * (0.3 + 0.9 * n2)
+          if (f < 0.004) continue
+          const e = Math.pow(f, 1.35) * (0.55 + 0.9 * n1) * edgeFade(geo, x, y)
+          addPixel(D, i, e * 1.35 * b, ramp(pal, clamp01(f * 0.9 + 0.25 * (n1 - 0.5)), C))
+        }
+      },
+      ai: (w) => ['flames', `${w.shapeNoun} on fire, tongues of flame rising from the ${w.shapeNoun}'s own outline at uneven heights, flickering`],
+    },
+    {
+      id: 'innerflow', label: '内部流光', group: 'UI', hint: '只在图形里面流动的光纹：像水面焦散、流动的金属光，一条条亮纹边流边变形，不出轮廓', palette: 'white', lifecycle: 'loop',
+      params: [ANGLE(30), P('size', '纹理', 0.4, 3, 0.05, 1), P('width', '光纹', 0.3, 3, 0.05, 1), P('count', '亮度起伏', 0, 1, 0.05, 0.5), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, u, cov } = geo
+        const an = (p.angle * Math.PI) / 180, ca = Math.cos(an), sa = -Math.sin(an), s = 1 / (46 * u * p.size), T = 2.2 * Math.max(1, Math.round(p.speed)), b = p.bright
+        const pw = 9 / p.width
+        for (const i of geo.inside) {
+          const x = i % W, y = (i - x) / W, uu = (x * ca + y * sa) * s, vv = (-x * sa + y * ca) * s
+          // 沿方向流：把「流的方向」放在噪波的第二个坐标上滚
+          const n = vblend(wfbm(vv, uu - T * t, 141, 3, 1.3), wfbm(vv, uu - T * (t - 1), 141, 3, 1.3), t)
+          const ridge = Math.pow(clamp01(1 - Math.abs(2 * n - 1) * 2.2), pw)
+          const wide = 1 - p.count + p.count * smooth(0.3, 0.7, fbm(uu * 0.35 + 3, vv * 0.35 - T * 0.2 * Math.sin(TAU * t) * 0.3, 142, 2))
+          const e = (ridge * 1.5 + 0.06) * wide * cov[i]
+          if (e > 0.004) addPixel(D, i, e * b, ramp(pal, 0.45 + 0.55 * ridge, C))
+        }
+      },
+      ai: (w) => ['shimmer', `flowing light inside a ${w.shapeNoun}, veins of bright caustic light drifting and deforming across its surface, staying inside its outline`],
+    },
+    {
+      id: 'shine', label: '体积光', group: '光晕放射', hint: '光从图形后面穿出来：一束束体积光从形状的边缘往外射，明暗一直在变，像逆光', palette: 'gold', lifecycle: 'loop',
+      params: [P('reach', '光长', 0.2, 1, 0.05, 0.7), P('count', '光束', 0.3, 3, 0.05, 1), P('width', '对比', 0.3, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, H, cx, cy, cov } = geo
+        const S = geo.Rfit, len = clamp01(p.reach) * 0.9, M = 18, T = 1.6 * Math.max(1, Math.round(p.speed)), b = p.bright
+        const [x0, x1, y0, y1] = boxOf(geo, cx, cy, S)
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const i = y * W + x, dx = cx - x, dy = cy - y, r = Math.hypot(dx, dy) / S
+          if (r > 1 || cov[i] > 0.97) continue
+          // 朝中心回看一段：路上有多少图形，这里就有多亮（径向模糊）
+          let acc = 0, ws = 0
+          for (let k = 1; k <= M; k++) {
+            const h = (k / M) * len, sx = Math.round(x + dx * h), sy = Math.round(y + dy * h), wk = 1 - (k - 1) / M
+            ws += wk
+            if (sx >= 0 && sy >= 0 && sx < W && sy < H) acc += cov[sy * W + sx] * wk
+          }
+          const e0 = acc / ws
+          if (e0 < 0.01) continue
+          const th = Math.atan2(-dy, -dx), cn = Math.cos(th) * 2.4 * p.count, sn = Math.sin(th) * 2.4 * p.count
+          const nz = vblend(fbm(cn + 7, sn + T * t, 151, 3), fbm(cn + 7, sn + T * (t - 1), 151, 3), t)
+          const beam = Math.pow(smooth(0.5 - 0.3 / p.width, 0.5 + 0.3 / p.width, nz), 1.2)
+          const e = e0 * (0.25 + 1.9 * beam) * (1 - 0.8 * cov[i]) * (1 - smooth(0.72, 1, r))
+          if (e > 0.004) addPixel(D, i, e * 1.25 * b, ramp(pal, 0.3 + 0.6 * e0 * beam, C))
+        }
+      },
+      ai: (w) => ['rays', `volumetric light streaming out from behind a ${w.shapeNoun}, beams of light shooting outward past its edges and shifting in brightness, like backlighting`],
+    },
+    {
+      id: 'warp', usesImage: true, label: '能量扭曲', group: 'UI', hint: '图形本身被扭动：波纹从中心一圈圈推过去 / 整个拧一下再回来 / 像旗子一样飘，波峰上带一道高光', palette: 'white', lifecycle: 'loop',
+      params: [{ key: 'mode', label: '方式', def: 'ripple', options: [{ id: 'ripple', label: '波纹' }, { id: 'twirl', label: '拧转' }, { id: 'flag', label: '飘动' }] },
+        P('size', '幅度', 0.2, 3, 0.05, 1), P('count', '波数', 0.5, 4, 0.05, 1), P('spread', '高光', 0, 2, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, H, u, cx, cy, cov, bbox } = geo
+        const K = Math.max(1, Math.round(p.speed)), A = 7 * u * p.size, b = p.bright
+        const bw = Math.max(1, bbox.x1 - bbox.x0), bh = Math.max(1, bbox.y1 - bbox.y0), Rm = Math.hypot(bw, bh) / 2, lam = Math.max(bw, bh) / (2.2 * p.count)
+        const pad = Math.ceil(A * 2 + 2), x0 = Math.max(0, Math.floor(bbox.x0 - pad)), x1 = Math.min(W - 1, Math.ceil(bbox.x1 + pad)), y0 = Math.max(0, Math.floor(bbox.y0 - pad)), y1 = Math.min(H - 1, Math.ceil(bbox.y1 + pad))
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy) || 1
+          let sx = x, sy = y, crest = 0
+          if (p.mode === 'twirl') {
+            const ang = 0.55 * p.size * Math.sin(TAU * K * t) * Math.pow(clamp01(1 - r / (Rm * 1.1)), 1.5) * (1 + 0.5 * Math.sin(TAU * (r / (lam * 2) - K * t)) * 0.4), c = Math.cos(ang), s = Math.sin(ang)
+            sx = cx + dx * c - dy * s; sy = cy + dx * s + dy * c
+            crest = Math.abs(Math.sin(TAU * K * t)) * Math.pow(Math.max(0, Math.sin(TAU * (r / (lam * 1.5) - K * t))), 6) * 0.6
+          } else if (p.mode === 'flag') {
+            const ph = TAU * (x / lam / 2 - K * t), grow = clamp01((x - bbox.x0) / bw)
+            sy = y - A * 1.4 * Math.sin(ph) * (0.25 + 0.75 * grow); sx = x - A * 0.4 * Math.cos(ph) * grow
+            crest = Math.pow(Math.max(0, Math.cos(ph + 0.6)), 5) * (0.3 + 0.7 * grow)
+          } else {
+            const ph = TAU * (r / lam - K * t), o = A * Math.sin(ph)
+            sx = x - (dx / r) * o; sy = y - (dy / r) * o
+            crest = Math.pow(Math.max(0, Math.cos(ph)), 6)
+          }
+          const xi = Math.round(sx), yi = Math.round(sy)
+          if (xi < 0 || yi < 0 || xi >= W || yi >= H) continue
+          const src = yi * W + xi, c = cov[src]
+          if (c < 0.004) continue
+          const i = y * W + x
+          putSrc(D, geo, i, src, 1, pal)
+          if (p.spread > 0 && crest > 0.01) addPixel(D, i, c * crest * 0.55 * p.spread * b, ramp(pal, 0.9, C))
+        }
+      },
+      ai: (w) => ['shimmer', `${w.shapeNoun} distorted by energy, the ${w.shapeNoun} itself rippling and bending as waves pass through it, a highlight riding each crest`],
+    },
+    {
+      id: 'glitch', usesImage: true, label: '故障干扰', group: 'UI', hint: '图形被电子干扰：横条一段段错位、红青色散、一道扫描亮线往下走，跳一下停一下', palette: 'cyan', lifecycle: 'loop',
+      params: [P('size', '错位', 0.2, 3, 0.05, 1), P('count', '横条', 0.3, 3, 0.05, 1), P('spread', '色散', 0, 3, 0.05, 1), P('width', '扫描线', 0, 3, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo, params: p, pal } = ctx, { W, H, u, cov, bbox } = geo
+        const K = Math.max(1, Math.round(p.speed)), steps = 13 * K, step = Math.floor(frac(t + 0.5 / steps) * steps) % steps, b = p.bright   // 拍子的分界不落在首尾相接处：最后一帧和第一帧同一拍
+        const A = 26 * u * p.size, bh = Math.max(1, bbox.y1 - bbox.y0), nb = Math.max(1, Math.round(7 * p.count))
+        // 这一拍每一行错开多少（大半的拍子不动：跳一下停一下）
+        const rnd = rng(step * 131 + 7), active = rnd() < 0.6, rowDx = new Float32Array(H)
+        if (active) for (let j = 0; j < nb; j++) {
+          const yy = bbox.y0 + rnd() * bh, hh = (0.02 + rnd() * 0.12) * bh, dx = (rnd() * 2 - 1) * A
+          for (let y = Math.max(0, Math.floor(yy)); y <= Math.min(H - 1, Math.ceil(yy + hh)); y++) rowDx[y] = dx
+        }
+        const ca = (2 + (active ? 4 : 0) * rnd()) * u * p.spread, scanY = bbox.y0 - 0.1 * bh + frac(t * K) * bh * 1.2
+        const RED = [1, 0.12, 0.25], CYAN = [0.1, 0.9, 1]
+        const pad = Math.ceil(A + ca + 2), x0 = Math.max(0, Math.floor(bbox.x0 - pad)), x1 = Math.min(W - 1, Math.ceil(bbox.x1 + pad)), y0 = Math.max(0, Math.floor(bbox.y0)), y1 = Math.min(H - 1, Math.ceil(bbox.y1))
+        const at = (x, y) => (x < 0 || x >= W ? 0 : cov[y * W + x])
+        for (let y = y0; y <= y1; y++) {
+          const dx = Math.round(rowDx[y]), scan = p.width > 0 ? Math.exp(-(((y - scanY) / (5 * u * p.width)) ** 2)) : 0, lines = 0.86 + 0.14 * Math.sin(y * 1.9)
+          for (let x = x0; x <= x1; x++) {
+            const sx = x - dx, i = y * W + x, c = at(sx, y)
+            if (c > 0.004) { putSrc(D, geo, i, y * W + sx, lines, pal); if (scan > 0.01) addPixel(D, i, c * scan * 0.7 * b, ramp(pal, 0.9, C)) }
+            if (ca > 0.2) {
+              // 色散：左右各偏一点的两份相减，只在边上露出红 / 青
+              const fr = at(Math.round(sx - ca), y) - at(Math.round(sx + ca), y)
+              if (fr > 0.02) addPixel(D, i, fr * 0.85 * b, RED); else if (fr < -0.02) addPixel(D, i, -fr * 0.85 * b, CYAN)
+            }
+          }
+        }
+      },
+      ai: (w) => ['shimmer', `${w.shapeNoun} glitching, horizontal slices of the ${w.shapeNoun} jumping sideways with red and cyan fringes and a bright scan line moving down`],
+    },
+  )
+
+  // ------------------------------------------------------------------ 2026-11-16 冰封（同一类；这一轮的变金 / 融化 / 充能灌注 / 扫描显形 / 像素化 / 电流缠身用户没留）
+  // 底图那一点换成别的颜色画（变金、冰封…）：r g b 是不预乘的 0..1，a = 这一点的不透明度
+  function putTint(D, geo, dst, src, r, g, b, k, pal) {
+    const im = geo.img
+    if (!im || !D.IR) { const c = geo.cov[src] * k; if (c > 0.003) addPixel(D, dst, c * 0.55, [r, g, b]); return }
+    const a = Math.min(1, im.A[src] * k), keep = 1 - a
+    D.IR[dst] = r * a + D.IR[dst] * keep; D.IG[dst] = g * a + D.IG[dst] * keep; D.IB[dst] = b * a + D.IB[dst] * keep; D.IA[dst] = a + D.IA[dst] * keep
+  }
+  // 底图那一点的明度 0..1 和不预乘的颜色（没有底图：按形状给一个随位置起伏的明度，变金 / 冰封才看得出质感）
+  function srcLum(geo, i, out) {
+    const im = geo.img
+    if (im && im.A[i] > 0.02) { const a = im.A[i]; out[0] = im.R[i] / a; out[1] = im.G[i] / a; out[2] = im.B[i] / a; return 0.3 * out[0] + 0.59 * out[1] + 0.11 * out[2] }
+    const x = i % geo.W, y = (i - x) / geo.W, l = 0.25 + 0.6 * fbm(x / (30 * geo.u), y / (30 * geo.u), 161, 3)
+    out[0] = out[1] = out[2] = l
+    return l
+  }
+  const C3 = [0, 0, 0]
+
+  LIST.push(
+    {
+      id: 'freeze', usesImage: true, keepsEnd: () => true, label: '冰封', group: '冰', hint: '冰霜从图形边上往里长，长过的地方图形变成冰蓝色、带一层冰纹和亮边，冻住时闪几下', palette: 'ice', lifecycle: 'once', ownEnvelope: true,
+      params: [P('spread', '冰色', 0.1, 1, 0.05, 0.65), P('size', '冰纹', 0.4, 3, 0.05, 1), P('width', '霜线', 0.3, 4, 0.05, 1), P('count', '闪点', 0, 4, 0.05, 1), PP.speed, PP.glow, PP.bright],
+      prepare(ctx) {
+        // 离边多深（0 = 边上，1 = 最里面）
+        const { sd, inside } = ctx.geo
+        let deep = 1
+        for (const i of inside) if (-sd[i] > deep) deep = -sd[i]
+        return { deep }
+      },
+      render(ctx, t, D) {
+        const { geo, params: p, pal, state } = ctx, { W, u, cov, sd } = geo
+        const q = ctx.loop ? frac(t) : t, a = clamp01(q * Math.min(2.5, p.speed)), b = p.bright
+        const sc = 1 / (26 * u * p.size), band = 0.06 * p.width, front = -band + (a / 0.8) * (1 + 2 * band)
+        for (const i of geo.inside) {
+          const x = i % W, y = (i - x) / W
+          const v = clamp01((-sd[i] / state.deep) * 0.7 + fbm(x * sc * 0.8, y * sc * 0.8, 181, 3) * 0.3), d = front - v
+          const done = smooth(-band * 0.2, band * 0.8, d), lum = srcLum(geo, i, C3)
+          putSrc(D, geo, i, i, 1, pal)
+          if (done < 0.003) continue
+          // 冰：颜色往冰蓝靠、去一点饱和；冰纹是噪波的脊线（细亮的裂纹）
+          const ice = ramp(pal, 0.35 + 0.6 * lum, C), mix = done * p.spread
+          putTint(D, geo, i, i, lerp(C3[0], ice[0], 0.85), lerp(C3[1], ice[1], 0.85), lerp(C3[2], ice[2], 0.85), mix, pal)
+          const n = wfbm(x * sc, y * sc, 182, 3, 1.4), crack = Math.pow(clamp01(1 - Math.abs(2 * n - 1) * 2.6), 5)
+          const line = Math.exp(-((d / band) ** 2))
+          const e = (crack * 0.6 * done + line * 1.2 + 0.07 * done) * cov[i]
+          if (e > 0.004) addPixel(D, i, e * b, ramp(pal, 0.6 + 0.4 * Math.max(crack, line), C2))
+          if (p.count > 0 && d > 0 && d < 0.35 && hash(x, y, 183) < 0.006 * p.count) star(D, x, y, (0.9 + 1.5 * hash(x, y, 184)) * u, 0.4, 1.3 * Math.sin(Math.PI * d / 0.35) * b, ramp(pal, 1, C2))
+        }
+      },
+      ai: (w) => ['shimmer', `${w.shapeNoun} freezing over, frost growing inward from the edges of the ${w.shapeNoun}, turning it icy blue with fine cracks of ice and a bright frost line`],
+    },
+  )
+
   for (const e of LIST) {
     if (HOLY_RAYS.includes(e) || ['godrays', 'aura'].includes(e.id)) e.group = '光晕放射'
     if (e.id === 'holy-twin') e.group = '轮廓流光'
     if (e.id === 'holy-tide') e.group = '扩散'
   }
-  const GROUP_ORDER = ['轮廓流光', '技能', '光晕放射', '法阵', '闪电', '烟雾', '水', '冰', '扩散', '爆炸', '消失', '破碎']
+  const GROUP_ORDER = ['轮廓流光', 'UI', '技能', '光晕放射', '法阵', '闪电', '烟雾', '水', '冰', '扩散', '爆炸', '消失', '破碎']
   const ALL = LIST.slice().sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group))
   // 粒子类（自己管出场 / 收场，一次性结尾清空）
   const OVERLAY = ['fireworks', 'charge', 'sparkspread']
