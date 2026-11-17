@@ -278,6 +278,40 @@ test('Ctrl+S retains its file and reads modified external pixels without another
   assert.equal([...d.root.nodes.keys()].some((n) => String(n).endsWith('.tmp')), false)
 })
 
+test('Ctrl+S saved outside any granted folder asks for the file location once and never for a folder', async () => {
+  const d = disk('project'), images = disk('img'), f = fixture()
+  await images.put('pic.png', 'pixels')
+  f.state.imageFolder = f.c.folderFromHandle(images.root, images.root.name)
+  let saves = 0
+  f.window.showSaveFilePicker = async () => { saves++; return d.root.getFileHandle('scene.foart', { create: true }) }
+  f.window.directory = images.root
+  const first = await vm.runInContext('saveProjectFileNow()', f.c)
+  const second = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(saves, 1)
+  assert.equal(f.picker.length, 0)
+  assert.equal(first.overwritten, false)
+  assert.equal(second.overwritten, true)
+  const out = await unpack(new Uint8Array(await (await (await d.root.getFileHandle('scene.foart')).getFile()).arrayBuffer()))
+  assert.equal(out.projects[0].imagePath, 'img')
+  assert.equal(out.projects[0].externalFolder, true)
+  assert.equal(out.projects[0].images[0].path, 'pic.png')
+})
+
+test('an opened project with no granted folder saves back into its file without asking for a folder', async () => {
+  const d = disk('project'), f = fixture()
+  const p = { name: 'scene', fileName: 'scene.json', json: json(), atlasText: atlas(), imagePath: 'art', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
+  const handle = await d.put('scene.foart', await gzip({ format: 'foart-spine-projects', version: 2, projects: [p] }))
+  await f.open(await handle.getFile(), handle)
+  f.picker.length = 0
+  f.window.showSaveFilePicker = async () => { throw Error('no save dialog expected') }
+  const r = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(r.overwritten, true)
+  assert.equal(f.picker.length, 0)
+  const out = await unpack(new Uint8Array(await (await handle.getFile()).arrayBuffer()))
+  assert.equal(out.projects[0].imagePath, 'art')
+  assert.deepEqual(out.projects[0].images.map((im) => im.path), ['pic.png'])
+})
+
 test('deleting an external picture does not resurrect a runtime copy when saving', async () => {
   const d = disk(), f = fixture()
   await d.put('pic.png', 'present')

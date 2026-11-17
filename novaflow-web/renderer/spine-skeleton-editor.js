@@ -379,6 +379,9 @@
       imageFolder, projectDirectory: p.projectDirectory || (p.operation === 'refresh' && state.projectDirectory) || null,
       projectAccessRoot: p.projectAccessRoot || (p.operation === 'refresh' && state.projectAccessRoot) || null,
       projectImageRefs: p.imageRefs || (p.operation === 'refresh' && state.projectImageRefs) || [], imagePath: p.imagePath || (p.operation === 'refresh' && state.imagePath) || '.',
+      // the folder that imagePath (read from a .foart) points at: a save back into that file keeps it
+      imagePathFolder: p.imagePath ? (imageFolder && imageFolder.handle) || null : (p.operation === 'refresh' && state.imagePathFolder) || null,
+      imagePathExternal: p.imagePath ? !!p.externalFolder : !!(p.operation === 'refresh' && state.imagePathExternal),
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
       audio: new Map(p.audio || (p.operation === 'refresh' ? state.audio : [])),
       audioFolder: null, audioVersions: new Map(), pendingAudioFolder: null,
@@ -446,7 +449,7 @@
   const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'audio', 'audioFolder', 'audioVersions', 'pendingAudioFolder', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiAtts', 'attachmentAnchor', 'multiSkins', 'skinAnchor', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
     'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'projectAccessContext', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
-    'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel', 'imageFolderGen', 'projectDirectory', 'projectAccessRoot', 'projectImageRefs', 'imagePath']
+    'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel', 'imageFolderGen', 'projectDirectory', 'projectAccessRoot', 'projectImageRefs', 'imagePath', 'imagePathFolder', 'imagePathExternal']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
   let activeProject = -1, projectSerial = 0
 
@@ -743,12 +746,18 @@
     for (const part of parts) dir = await dir.getDirectoryHandle(part)
     return dir
   }
-  async function projectDirectoryFor(handle, start) {
-    for (const dir of [projectSaveDirectory, state.projectDirectory, state.imageFolder && state.imageFolder.handle]) {
+  /** The folder holding `handle`, reached through a folder already granted; null when none holds it. */
+  async function knownProjectDirectory(handle) {
+    for (const dir of [projectSaveDirectory, state.projectDirectory, state.projectAccessRoot, state.imageFolder && state.imageFolder.handle]) {
       if (!dir || !dir.resolve || !handle) continue
       const parts = await dir.resolve(handle).catch(() => null)
       if (parts && parts.length) return projectSubdir(dir, parts.slice(0, -1))
     }
+    return null
+  }
+  async function projectDirectoryFor(handle, start) {
+    const known = await knownProjectDirectory(handle)
+    if (known) return known
     const dir = await pickDirectory({ startIn: handle || start })
     if (!dir) return null
     if (handle && dir.resolve) {
@@ -805,8 +814,17 @@
     for (const im of decoded) target.images.set(lower(im.fileName), im)
     if (target === state) { rt.atlasKey = null; applyJson(json) }
   }
-  async function projectReferences(s, directory) {
+  async function projectReferences(s, directory, sameFile) {
     let folder = s.imageFolder
+    // No folder known around the .foart (a picked file tells no parent): never ask for one.
+    // Saved back into the file it came from, the recorded image directory still holds; else the
+    // image folder is named as the file's sibling (the usual layout) and its granted handle is kept.
+    if (!directory) {
+      if (!folder || !folder.handle) {
+        const images = (s.projectImageRefs || []).map((r) => ({ fileName: r.fileName, path: r.path || r.fileName, pma: r.pma }))
+        return { images, imagePath: s.imagePath || '.', externalFolder: false, missing: [] }
+      }
+    }
     if (!folder || !folder.handle) {
       const names = attachmentPictureNames(s.json), rels = await pictureRels(directory)
       for (const name of Attach.parseAtlas(s.atlasText).keys()) names.add(name)
@@ -815,9 +833,14 @@
       await connectProjectImages(s, folder)
     }
     await refreshFolderPictures(s, folder)
-    let prefix = await directory.resolve(folder.handle)
+    let prefix = directory ? await directory.resolve(folder.handle) : null
     let imagePath, externalFolder = false
-    if (prefix) imagePath = prefix.join('/') || '.'
+    if (!directory) {
+      const kept = sameFile && s.imagePathFolder && typeof s.imagePathFolder.isSameEntry === 'function' && await s.imagePathFolder.isSameEntry(folder.handle).catch(() => false)
+      if (kept) { imagePath = s.imagePath || '.'; externalFolder = !!s.imagePathExternal }
+      else { imagePath = folder.name || '.'; externalFolder = true }
+    }
+    else if (prefix) imagePath = prefix.join('/') || '.'
     else {
       const inside = await folder.handle.resolve(directory)
       if (inside) imagePath = inside.map(() => '..').join('/') || '.'
@@ -869,21 +892,22 @@
       }
       images.push({ fileName, path, pma: pagePma(s.images, fileName, s.pma) })
     }
-    s.projectImageRefs = images; s.imagePath = imagePath; s.projectDirectory = directory
+    s.projectImageRefs = images; s.imagePath = imagePath; s.imagePathFolder = folder.handle; s.imagePathExternal = externalFolder
+    if (directory) s.projectDirectory = directory
     // A copied .foart keeps its folderKey until the image directory changes. Do not
     // overwrite the other file's slot with this directory.
     let existing = null
     try { existing = await folderDbDo('readonly', (store) => store.get(s.folderKey)) } catch { existing = null }
     if (existing && typeof existing.imagePath === 'string' && existing.imagePath !== imagePath) s.folderKey = mintFolderKey()
-    await folderDbDo('readwrite', (store) => store.put({ handle: folder.handle, projectDirectory: directory, projectAccessRoot: s.projectAccessRoot, name: folder.name, imagePath, at: Date.now() }, s.folderKey)).catch(() => {})
+    await folderDbDo('readwrite', (store) => store.put({ handle: folder.handle, projectDirectory: directory || s.projectDirectory || null, projectAccessRoot: s.projectAccessRoot, name: folder.name, imagePath, at: Date.now() }, s.folderKey)).catch(() => {})
     return { images, imagePath, externalFolder, missing }
   }
-  async function projectFileBytes(directory) {
+  async function projectFileBytes(directory, sameFile) {
     const list = [], missing = []
     for (let i = 0; i < projects.length; i++) {
       const s = i === activeProject ? state : projects[i].snap
       if (!s || !s.json) continue
-      const { images, imagePath, externalFolder, missing: unavailable } = await projectReferences(s, directory)
+      const { images, imagePath, externalFolder, missing: unavailable } = await projectReferences(s, directory, sameFile)
       missing.push(...unavailable)
       list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, audio: [...(s.audio || [])], audioPath: s.audioFolder?.path || '', images, imagePath, ...(externalFolder ? { externalFolder: true } : {}), pma: !!s.pma, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, exported: projects[i].exported !== false, folderKey: s.folderKey || '' })
     }
@@ -1076,13 +1100,16 @@
       createdEmpty = !created || created.size === 0
     }
     try {
-      directory = await projectDirectoryFor(handle)
-      if (!directory) {
+      // The save dialog already said where the file goes. A folder is asked for only when a
+      // project has no image folder to keep its pictures in (user 2026-11-17: 原工程自带指定了，为什么要重复指定).
+      directory = await knownProjectDirectory(handle)
+      if (!directory && projectsNeedSaveFolder(over)) directory = await projectDirectoryFor(handle)
+      if (!directory && projectsNeedSaveFolder(over)) {
         if (createdEmpty) await discardEmptyCreated(null, handle)
         return null
       }
       if (as) separateFolderKeys()
-      const { bytes, count, missing } = await projectFileBytes(directory)
+      const { bytes, count, missing } = await projectFileBytes(directory, over)
       assertProjectBytes(bytes)
       handle = await commitProjectFile(directory, handle, bytes)
       projectFile = handle
@@ -1093,6 +1120,16 @@
       if (createdEmpty) await discardEmptyCreated(directory, handle).catch(() => {})
       throw err
     }
+  }
+
+  /** Whether a project can only be saved with the file's folder: no image folder, and nothing recorded to keep. */
+  function projectsNeedSaveFolder(sameFile) {
+    return projects.some((p, i) => {
+      const s = i === activeProject ? state : p.snap
+      if (!s || !s.json || (s.imageFolder && s.imageFolder.handle)) return false
+      if (sameFile && (s.projectImageRefs || []).length) return false
+      return !!((s.images && s.images.size) || Attach.parseAtlas(s.atlasText || '').size || attachmentPictureNames(s.json).size)
+    })
   }
 
   /** Ctrl+S / Ctrl+Shift+S: the same save, its failure said in the status line. */
@@ -1413,7 +1450,7 @@
       await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, imageFolder: folder, projectDirectory, projectAccessRoot: directory,
         projectAccessContext: { data, handle },
         pendingFolder: !folder && !ignoreCache && recordAlive && (record.imagePath == null || record.imagePath === imagePath) ? record.handle : null,
-        audio: p.audio || [], imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
+        audio: p.audio || [], imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, externalFolder: !!p.externalFolder, pma: p.pma,
         label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey, operation: imported.length ? 'append' : operation,
         replace: operation === 'replace' && imported.length === 0 && !!state.json })
       if (typeof restoreAudioDirectory === 'function') { try { await restoreAudioDirectory(state, p.audioPath || p.json?.skeleton?.audio, p.folderKey) } catch { /* audio folder moved: the rig still opens */ } }
