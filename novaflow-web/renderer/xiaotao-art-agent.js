@@ -1061,8 +1061,9 @@
     // (not online, a kind of attachment it cannot see, no answer in time, an answer the app cannot carry out);
     // the keyword rules then stand in, as before.
     let turnReading=null;
-    // Off until its score on the understanding cases is measured on the live models; one line to turn on for that run.
-    const brainReadsTurn=()=>{try{return root.localStorage?.getItem('foart.xiaotao.brain-reads')==='1';}catch{return false;}};
+    // Measured on the live models with the 49 understanding cases (2026-11-17): rules 40, DeepSeek 48, 豆包 see the test notes.
+    // localStorage foart.xiaotao.brain-reads = 0 switches it off for a comparison run.
+    const brainReadsTurn=()=>{try{return !!root.FoartXiaotaoIntent&&root.localStorage?.getItem('foart.xiaotao.brain-reads')!=='0';}catch{return !!root.FoartXiaotaoIntent;}};
     async function readTurn(message,uploads){
       const reader=root.FoartXiaotaoIntent,chat=api()?.artAgentChat,pictures=uploads.filter(item=>item.kind==='image'&&(item.previewUrl||item.dataUrl));
       if(!reader||typeof chat!=='function'||state.provider!=='api'||uploads.length>3||pictures.length!==uploads.length)return null;
@@ -1088,8 +1089,14 @@
       collectBilling(billing,answer);
       const reading=answer.ok===true?reader.parseReading(answer.data?.reply,{pictureCount:pictures.length}):null;
       if(reading?.kind!=='make')return reading;
+      // A length or a size counts only when the sentence itself says one: the page's current values are shown to the brain
+      // as context, and it sometimes hands them back as if they were asked for (live: 480×864 for a 480×640 picture).
+      if(!/\d|[一二两三四五六七八九十半]\s*秒/.test(message))reading.seconds=null;
+      if(!(reading.width&&reading.height&&message.includes(String(reading.width))&&message.includes(String(reading.height)))){reading.width=null;reading.height=null;}
       // "keep" needs something there to keep.
       const frames=page.surface==='video'&&page.mode===reading.mode?page.frames||[]:[];
+      // "尾帧和首帧同一张" on a page that already shows one picture at both ends is simply: leave them.
+      if(reading.last==='first'&&frames[0]&&frames[0]===frames[1])reading.last='keep';
       if(reading.surface==='video'&&(reading.first==='keep'&&!frames[0]||reading.mode==='first_last'&&reading.last==='keep'&&!frames[1]))return null;
       if(reading.surface==='image'&&reading.first==='keep'&&!(page.refs||[]).length&&task?.surface!=='image')return null;
       return reading;
@@ -1802,6 +1809,15 @@
         if(reading?.kind==='make'&&reading.surface==='video'){
           if(root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')await tools.execute({action:'open',surface:'video'},{signal});
           if(videoPage()?.genType!==reading.mode){uploadApi()?.switchMode?.(root.document,reading.mode);for(let i=0;i<30&&videoPage()?.genType!==reading.mode;i++)await new Promise(done=>root.setTimeout(done,100));}
+          // "首尾都用第一张": the frame already at the start is put at the end as well.
+          if(reading.mode==='first_last'&&reading.first==='keep'&&reading.last==='first'){
+            try{
+              const frame=(await root.NovaFlowAiSequenceGeneration.optimizationContext()).resources.find(item=>item.key==='first_frame'&&item.occupied&&item.previewUrl);
+              if(frame){const blob=await (await root.fetch(frame.previewUrl)).blob(),name=frame.fileName||'first_frame.png';
+                await host().place({destination:uploadApi().destinationById('last_frame'),file:new root.File([blob],name,{type:blob.type||'image/png'}),kind:'image',name});
+                state.messages.push({role:'status',content:'已放入首尾帧尾帧：'+name});notify();}
+            }catch(error){root.console?.warn?.('[Foart tools] first frame not copied to the end:',String(error?.message||error));}
+          }
         }
         const saidSize=reading?.width&&reading?.height?[null,reading.width,reading.height]:/(\d{3,4})\s*[*x×X＊]\s*(\d{3,4})/.exec(positiveRequest);
         const sizeNamed=!!(reading?.width&&reading?.height)||SIZE_SAID.test([...(intent?.revision?[priorTask?.baseRequest,...(priorTask?.revisions||[])]:[]),message].filter(Boolean).join('\n'));

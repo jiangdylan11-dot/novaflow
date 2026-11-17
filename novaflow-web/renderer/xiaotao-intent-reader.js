@@ -51,10 +51,14 @@
       '理解时注意：',
       '- 用户描述画面、提修改、说“再做一个/重做/开始吧”，要的是成品（make），不是只改提示词；只有他明说“提示词”或“先不要生成”才是 prompt。',
       '- 话里出现的“粒子、特效、模板、压缩”等词，如果是在描述画面内容，就只是内容，不是要去用那个工具；明确要用工具或去别的版块才是 operate。',
+      '- 软件里有这些现成的工具和版块，用户要用它们就是 operate，不是生成：一键拆图（把图拆成图层）、抠图、高清放大、扩图、压缩、格式转换、图集、粒子编辑、骨骼动画编辑、音视频剪辑、导出、打开或切换版块、UI 换主题（“切换成某某主题”）。',
       '- 寒暄、道谢、提问、抱怨“怎么没出来”是 talk；但“太慢了，再快一点”这类是对上一个成品的修改，属于 make。',
       '- 没带新图而接着上一个任务说，就沿用页面上已有的图和模式（first/last 写 keep）。',
+      '- 用户要的是全新的画面、和页面上留着的图无关时，用 txt2img 或 text_video，不要沿用那张旧图。',
+      '- 尾帧要和首帧用同一张图时，last 写 first。',
       '- 带了新图，要判断每张图的用途：一张图做循环待机，就首帧尾帧都用它；“图1变成图2/从…到…”是 图1 首帧、图2 尾帧，顺序以用户的话为准；只说换某一帧，就只换那一帧，另一帧 keep。',
-      '- 视频模式：没有图用 text_video；一张图让它动起来用 image_video；循环待机或有首有尾用 first_last。绘图：有图要改用 img2img，全新画面用 txt2img。',
+      '- 视频模式：没有图用 text_video；一张图让它动起来用 image_video；只要说了“循环”或“待机”，或者有首有尾，就用 first_last（循环待机时首帧尾帧是同一张图）。',
+      '- 绘图：这一句带了图并要改图，改的就是带来的这张新图（first 写 new1），用 img2img；没带图而是改上一张成品，first 写 keep；全新画面用 txt2img。绘图没有别的模式。',
       '- 用户明说了时长、尺寸才填 seconds / width / height，没说就填 null。',
       '',
       'JSON 字段：',
@@ -67,8 +71,16 @@
   // Reads the brain's answer. Anything outside what the app can carry out makes the whole reading void (null):
   // a half-understood turn is handed to the rules, never guessed.
   function parseReading(text, {pictureCount = 0} = {}) {
-    const raw = String(text || ''), start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-    if (start < 0 || end <= start) return null;
+    // The first complete {...} in the answer: a brain may add a sentence, a fence or a second object after it.
+    const raw = String(text || ''), start = raw.indexOf('{');
+    if (start < 0) return null;
+    let depth = 0, end = -1, quoted = false;
+    for (let i = start; i < raw.length; i += 1) {
+      const ch = raw[i];
+      if (quoted) {if (ch === '\\') i += 1; else if (ch === '"') quoted = false; continue;}
+      if (ch === '"') quoted = true; else if (ch === '{') depth += 1; else if (ch === '}' && --depth === 0) {end = i; break;}
+    }
+    if (end < 0) return null;
     let data; try {data = JSON.parse(raw.slice(start, end + 1));} catch {return null;}
     if (!data || typeof data !== 'object' || !KINDS.includes(data.kind)) return null;
     const reading = {kind: data.kind};
@@ -77,7 +89,8 @@
     reading.surface = surface;
     if (data.kind === 'operate') return reading;
     if (surface === 'other') return null;
-    const mode = MODES[surface].includes(data.mode) ? data.mode : '';
+    // A picture job has two modes; a brain that names another one for it still told us whether pictures are used.
+    const mode = MODES[surface].includes(data.mode) ? data.mode : surface === 'image' ? (pictureCount || data.first === 'keep' ? 'img2img' : 'txt2img') : '';
     if (data.kind === 'prompt') return {...reading, mode};
     if (!mode) return null;
     reading.mode = mode;
@@ -85,18 +98,22 @@
       const name = String(value || 'none');
       const picked = /^new([1-9])$/.exec(name);
       if (picked) return Number(picked[1]) <= pictureCount ? name : null;
-      return ['keep', 'none', ...extra].includes(name) ? name : null;
+      // Anything else names what is already on the page (a brain sometimes writes the file's name): that is keep.
+      return ['keep', 'none', ...extra].includes(name) ? name : /^new/i.test(name) ? null : 'keep';
     };
-    const first = slot(data.first, []), last = slot(data.last, ['first']);
+    // Slots only matter where the mode has them: a 文生 job that names a slot is still a 文生 job.
+    const slotless = mode === 'text_video' || mode === 'txt2img';
+    const first = slotless ? 'none' : slot(data.first, []), last = slotless || mode === 'image_video' || surface === 'image' ? 'none' : slot(data.last, ['first']);
     if (first === null || last === null) return null;
     if (surface === 'video') {
       if (mode === 'text_video') {reading.first = 'none'; reading.last = 'none';}
       else if (mode === 'image_video') {if (first === 'none') return null; reading.first = first; reading.last = 'none';}
       else if (mode === 'first_last') {
         if (first === 'none') return null;
-        reading.first = first; reading.last = last === 'first' || last === 'none' ? first : last;
+        // "first" with a kept first frame means: copy that frame to the end. With a new picture it is simply that picture.
+        reading.first = first; reading.last = last === 'none' ? first : last === 'first' ? (first === 'keep' ? 'first' : first) : last;
       } else {reading.first = first; reading.last = last;}
-      reading.loop = data.loop === true || (mode === 'first_last' && reading.first === reading.last);
+      reading.loop = data.loop === true || (mode === 'first_last' && (reading.first === reading.last || reading.last === 'first'));
     } else if (surface === 'image') {
       reading.first = mode === 'txt2img' ? 'none' : first === 'none' ? (pictureCount ? 'new1' : 'keep') : first;
     }
