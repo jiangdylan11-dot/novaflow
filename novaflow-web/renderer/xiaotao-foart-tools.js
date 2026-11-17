@@ -850,6 +850,16 @@ async function prepareUploadReferenceTransaction({runtime:rt,uploads,isProjectCu
       const referenceOnly=op.name==='objectTransfer'&&bridge.getState?.()?.source?.dataUrl&&/参考物|迁移到当前|放入当前/.test(latestRequirements);
       const sourceUpload=referenceOnly?null:op.uploadId||(!bridge.getState?.()?.source?.dataUrl&&imageUploads.length===1&&!['export','poseReference','merge'].includes(op.name)?imageUploads[0].id:null);
       if(sourceUpload){const file=await materialFile(sourceUpload);const dataUrl=await referenceDataUrl({file,mimeType:file.type});await bridge.importSourceDataUrl(file.name,dataUrl,{silent:true});}
+      // No picture on the canvas and none brought this turn, but one sits in the drawing page's reference slot: "把这张图拆一下"
+      // means that picture (live 2.0.387: the tool stopped at "没有导入图片").
+      else if(!referenceOnly&&!bridge.getState?.()?.source?.dataUrl&&!imageUploads.length&&!['export','poseReference','merge'].includes(op.name)){
+        const refs=Array.from(root.__NovaFlowArtGenerate?.references?.()||[]).filter(ref=>ref?.dataUrl);
+        if(refs.length===1){
+          let dataUrl=String(refs[0].dataUrl);
+          if(!dataUrl.startsWith('data:')){const blob=await(await root.fetch(dataUrl)).blob();dataUrl=await new Promise((done,no)=>{const reader=new root.FileReader();reader.onload=()=>done(String(reader.result));reader.onerror=()=>no(reader.error);reader.readAsDataURL(blob);});}
+          await bridge.importSourceDataUrl(refs[0].fileName||refs[0].name||'reference.png',dataUrl,{silent:true});
+        }
+      }
       const toolLabel=op.name==='export'?exportFormat.toUpperCase()+'导出':root.document.querySelector('[data-novaflow-spine-split-control-action="'+op.name+'"]')?.textContent?.trim()||({imageUpscale:'高清放大',imageOutpaint:'无限扩图',imageAngleAdjust:'角度调整',objectTransfer:'万物迁移',poseReference:'姿势参考',canvasResize:'画布调整',split:'一键拆图',cutout:'智能抠图',penCutout:'钢笔抠图',generativeSplit:'对象分离',inpaintCompletion:'智能补图',inpaintEdit:'局部编辑',inpaintRepair:'去除物体',merge:'合并图层',mask:'蒙版'}[op.name]||'美工工具');
       const pending={id:root.crypto.randomUUID(),name:op.name,label:toolLabel,state:'running'};nativePending=pending;
       Promise.resolve().then(()=>bridge.agentAction(op.name,{format:exportFormat,...(op.name==='export'?{deliverFile:file=>downloadFiles([file],'Foart-美工导出')}:{}),...(op.name==='imageOutpaint'&&op.prompt?{outpaintPrompt:op.prompt}:{}),...(['canvasResize','imageOutpaint'].includes(op.name)&&op.width!==undefined?{canvasResize:{width:op.width,height:op.height,anchor:op.anchor||'center'}}:{})})).then(value=>{pending.state='completed';pending.value=value;},error=>{pending.state='failed';pending.error=String(error?.message||error);});

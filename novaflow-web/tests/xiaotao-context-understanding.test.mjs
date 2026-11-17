@@ -141,6 +141,13 @@ test('a size said in words is set by the app; with none said, the video takes it
   const large=await probe({page:'video',genType:'image_video',frame:{width:3000,height:3000},plans:[generateVideo('小猴子待机')]});
   await large.say('让它动起来');
   assert.deepEqual(large.video.h3,{custom:true,width:'1440',height:'1440'});
+  // 多参 holds its pictures in its own board: the first picture there gives the size.
+  const multi=await probe({page:'video',genType:'multi_reference',plans:[generateVideo('两只猴子对话')]});
+  multi.video.h3References=[{key:'multi_ref_image_1',sourceId:'m1',name:'a.png'}];
+  multi.root.NovaFlowH3Media={getResources:()=>[{kind:'audio',dataUrl:'data:audio/mp3;base64,AA'},{kind:'image',dataUrl:'data:image/png;base64,AA'}]};
+  multi.root.Image=class{set src(value){this.naturalWidth=960;this.naturalHeight=1280;setTimeout(()=>this.onload());}};
+  const made=await multi.say('让参考图1里的猴子说话，生成视频');
+  assert.deepEqual(made.ops,['generate_video']);assert.deepEqual(multi.video.h3,{custom:true,width:'960',height:'1280'});
 });
 test('a step that changes nothing is skipped with a word to the planner, and a stuck turn ends in plain words',async()=>{
   const width={id:'w1',label:'自定义宽',section:'视频',kind:'input',value:'960',scope:'video_generation'};

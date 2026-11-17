@@ -109,6 +109,11 @@ export const CASES = [
   {id: 'theme', page: {surface: 'other'}, last: null, files: [], say: '切换成暗色主题', want: {kind: 'operate'}},
   {id: 'split-picture', page: D(), last: null, files: pic(1), say: '帮我把这张图拆一下', want: {kind: 'operate'}},
   {id: 'particle-editor', page: {surface: 'other'}, last: null, files: [], say: '打开粒子编辑，把发射率调高', want: {kind: 'operate'}},
+  // Live 2.0.387: "打开绘图页面" was answered with two questions and the page never opened; the picture in the drawing
+  // page's reference slot is "这张图"; a moving effect is a video, not a still.
+  {id: 'open-drawing', page: {surface: 'other'}, last: null, files: [], say: '打开绘图页面', want: {kind: 'operate'}},
+  {id: 'split-page-picture', page: D('img2img', ['white_baboon.png']), last: null, files: [], say: '帮我把这张图拆一下', want: {kind: 'operate'}},
+  {id: 'coin-effect', page: D(), last: null, files: [], say: '做个金币掉落的特效', want: {kind: 'make', surface: 'video', mode: 'text_video'}},
   // --- talk ---
   {id: 'hello', page: V(), last: null, files: [], say: '你好', want: {kind: 'talk'}},
   {id: 'how-much', page: V(), last: loopTask, files: [], say: '这个要多少积分', want: {kind: 'talk'}},

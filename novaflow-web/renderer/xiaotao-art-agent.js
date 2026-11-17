@@ -1056,12 +1056,20 @@
       for(let i=0;i<40;i++){await new Promise(done=>root.setTimeout(done,50));if(holds())return true;}
       return false;
     }
+    // 多参 keeps its pictures in its own board, without their size: the first picture is measured when it is needed.
+    async function firstReferencePictureSize(){
+      const item=(root.NovaFlowH3Media?.getResources?.()||[]).find(entry=>entry?.kind==='image'&&entry.dataUrl);
+      if(!item||typeof root.Image!=='function')return null;
+      return new Promise(done=>{const image=new root.Image(),timer=root.setTimeout(()=>done(null),3000);
+        image.onload=()=>{root.clearTimeout(timer);done(image.naturalWidth>0&&image.naturalHeight>0?{width:image.naturalWidth,height:image.naturalHeight}:null);};
+        image.onerror=()=>{root.clearTimeout(timer);done(null);};image.src=item.dataUrl;});
+    }
     // The brain reads the turn before anything is decided (xiaotao-intent-reader.js): one request with the conversation,
     // the page, the last task and this turn's pictures, answered with what the person wants. null = no reading
     // (not online, a kind of attachment it cannot see, no answer in time, an answer the app cannot carry out);
     // the keyword rules then stand in, as before.
     let turnReading=null;
-    // Measured on the live models with the 49 understanding cases (2026-11-17): rules 40, DeepSeek 48, 豆包 see the test notes.
+    // Measured on the live models with the 49 understanding cases (2026-11-17): rules 40, DeepSeek 49, 豆包 49.
     // localStorage foart.xiaotao.brain-reads = 0 switches it off for a comparison run.
     const brainReadsTurn=()=>{try{return !!root.FoartXiaotaoIntent&&root.localStorage?.getItem('foart.xiaotao.brain-reads')!=='0';}catch{return !!root.FoartXiaotaoIntent;}};
     async function readTurn(message,uploads){
@@ -1887,6 +1895,9 @@
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(wantsResult?'\n'+wantsResult:'')
             +(reading?.brief?'\n这句话的意思（已结合对话、页面和图片读过）：'+reading.brief:'')
+            // Read as "use a tool / open a section": the planner otherwise took "打开绘图页面" for a picture to draw and
+            // asked for a model line, then for the picture's content, and never opened the page (live 2.0.387).
+            +(reading?.kind==='operate'?'\n这句话是要用软件里现成的工具或打开版块，不是要生成新内容：直接给出对应的操作并执行，不要问绘图线路，也不要问画面内容。':'')
             +(sizeNote?'\n'+sizeNote+(resultSurface==='video'&&!receipts.length?'这些参数不要再用 set_control 去设，这一轮直接给出 generate_video 这一个操作。':''):'')
             +(ownPictureTask?'\n这次带来了新图片，是一个新任务：只处理这次的图片，画面内容只来自这句话和这张图。'+(priorTask.surface==='image'?'绘图线路本对话已经定过，沿用当前选中的，不要再问。':''):'')
             +(stalePrompt?'\n页面输入框里留着的是上一个已完成任务的旧提示词，和这次无关：不要沿用它的任何内容，只按这次的要求'+(turnBroughtFiles?'和这次的图片':'')+'重新写。'+(turnStaleRefs?'参考位置里还留着上一个任务的'+(staleSurface==='video'?'素材：这句话说的是它就接着用，是全新的内容就先切到文生视频。':'图：这句话说的是那张图就接着用（图生图），是全新的画面就用文生图。'):''):'')
@@ -2063,7 +2074,8 @@
             if(signal.aborted)fail('Foart 操作已停止');
             // No size named anywhere in this task: the video takes its first picture's size, shape kept.
             if(op.action==='media'&&op.operation?.action==='generate_video'&&!sizeNamed&&!receipts.some(row=>row.action==='set_control'&&/宽|高|分辨率|比例/.test(row.control||''))){
-              const video=root.NovaFlowAiSequenceGeneration?.capture?.(),frame=['image_video','first_last'].includes(video?.genType)?(video.referenceSlots||[]).find(slot=>slot.occupied&&slot.width>0&&slot.height>0):null;
+              const video=root.NovaFlowAiSequenceGeneration?.capture?.(),frame=['image_video','first_last'].includes(video?.genType)?(video.referenceSlots||[]).find(slot=>slot.occupied&&slot.width>0&&slot.height>0)
+                :video?.genType==='multi_reference'?await firstReferencePictureSize():null;
               // The size fields follow a render later: reading the page at once made the next check see "参数已变化"
               // and stop the generation (live 2.0.375).
               if(frame&&await setVideoSize(videoSizeFor(frame.width,frame.height)))expectedSnapshot=await settledCapture();
