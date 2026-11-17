@@ -1072,7 +1072,7 @@
     // Measured on the live models with the 49 understanding cases (2026-11-17): rules 40, DeepSeek 49, 豆包 49.
     // localStorage foart.xiaotao.brain-reads = 0 switches it off for a comparison run.
     const brainReadsTurn=()=>{try{return !!root.FoartXiaotaoIntent&&root.localStorage?.getItem('foart.xiaotao.brain-reads')!=='0';}catch{return !!root.FoartXiaotaoIntent;}};
-    async function readTurn(message,uploads){
+    async function readTurn(message,uploads,asked=null){
       const reader=root.FoartXiaotaoIntent,chat=api()?.artAgentChat,pictures=uploads.filter(item=>item.kind==='image'&&(item.previewUrl||item.dataUrl));
       if(!reader||typeof chat!=='function'||state.provider!=='api'||uploads.length>3||pictures.length!==uploads.length)return null;
       const pricing=selectedPricingPayload(),guard=api()?.captureFoartSessionGuard?.();
@@ -1084,7 +1084,7 @@
       const last=task?{surface:task.surface,mode:task.mode,loop:task.loop,request:task.baseRequest,outputs:(task.outputs||[]).map(output=>output?.name).filter(Boolean)}:null;
       const id=root.crypto.randomUUID(),billing={id:root.crypto.randomUUID(),modelId:state.modelId,owner:billingOwner(),confirmed:0,confirmedCount:0,quoted:0,allQuoted:true,unknown:false,inFlight:false,decimal:onlineOperationDecimalConfirmed()};
       const call=Promise.resolve(chat({requestId:id,provider:'api',...selectedModelPayload(state.modelId),...pricing,mode:'chat',promptLanguage:'en',
-        message:reader.buildQuestion({message,history:state.history||[],page,last,pictureCount:pictures.length}),history:[],artContext:{},
+        message:reader.buildQuestion({message,history:state.history||[],page,last,pictureCount:pictures.length,asked}),history:[],artContext:{},
         images:pictures.map((item,index)=>({dataUrl:item.previewUrl||item.dataUrl,role:'attachment',source:index+1,name:item.name})),uploads:[],
         ...(pictures.length?{imageSessionGuard:guard,confirmImageUpload:async()=>guard()===true}:{})})).catch(()=>null);
       const answer=await Promise.race([call,new Promise(resolve=>root.setTimeout(()=>resolve(null),45000))]);
@@ -1096,7 +1096,10 @@
       }
       collectBilling(billing,answer);
       const reading=answer.ok===true?reader.parseReading(answer.data?.reply,{pictureCount:pictures.length}):null;
+      // One question per request: an answer is never met with another question.
+      if(reading?.kind==='ask'&&asked)return null;
       if(reading?.kind!=='make')return reading;
+      if(asked)message=asked.original+'\n'+message;
       // A length or a size counts only when the sentence itself says one: the page's current values are shown to the brain
       // as context, and it sometimes hands them back as if they were asked for (live: 480×864 for a 480×640 picture).
       if(!/\d|[一二两三四五六七八九十半]\s*秒/.test(message))reading.seconds=null;
@@ -2432,10 +2435,18 @@
       // The brain reads the turn; the rule-based task above is what stands in when it cannot. A greeting, an answer to
       // 小桃's own question and a request for the prompt text are plain enough to skip the reading.
       turnReading=null;
-      if(brainReadsTurn()&&state.provider==='api'&&!capabilityOnly&&!reverseImage&&!includeResult&&!pendingIntent&&uploadApi()?.smallTalk?.(message)!==true&&uploadApi()?.goAhead?.(message)!=='strong'){
+      if(brainReadsTurn()&&state.provider==='api'&&!capabilityOnly&&!reverseImage&&!includeResult&&(!pendingIntent||pendingIntent.asked)&&(pendingIntent?.asked||uploadApi()?.smallTalk?.(message)!==true&&(uploadApi()?.goAhead?.(message)!=='strong'||state.staged.some(item=>item.status==='ready')))){
         state.pending=true;state.error='';state.status='小桃正在理解这句话…';notify();
-        let reading=null;try{reading=await readTurn(message,state.staged.filter(item=>item.status==='ready'));}catch{}finally{state.pending=false;}
+        const asked=pendingIntent?.asked?{original:pendingIntent.message,question:pendingIntent.question}:null;
+        let reading=null;try{reading=await readTurn(message,state.staged.filter(item=>item.status==='ready'),asked);}catch{}finally{state.pending=false;}
         if(retired)return false;
+        // Not sure what is meant: 小桃 asks one short question and waits (Dylan, 2026-11-17: 不太确定的可以先问一下用户).
+        // The pictures of the turn stay attached, and the answer is read together with this request.
+        if(reading?.kind==='ask'){
+          if(recordMessage)pushUser(message);state.messages.push({role:'assistant',content:reading.ask});
+          state.history=[...(state.history||[]),{role:'user',content:message},{role:'assistant',content:reading.ask}];
+          pendingIntent={surface:'foart',mode:'',foart:true,asked:true,question:reading.ask,message};state.error='';state.status='等待补充需求';notify();return true;
+        }
         if(reading&&reading.kind!=='prompt'){turnReading=reading;task=taskFromReading(reading,task);}
       }
       // The local model only chats and rewrites prompts; every software

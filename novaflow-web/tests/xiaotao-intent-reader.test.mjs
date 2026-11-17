@@ -56,6 +56,25 @@ test('the turn follows the reading: a follow-up keeps its frames, talk is answer
   const tool=await probe({page:'video',prompt:P,task:made,reading:{kind:'operate',surface:'audio'}});
   await tool.say('打开音频');assert.equal(tool.starts.length,1);
 });
+test('not sure what is meant: one short question, then the answer is read together with the request',async()=>{
+  const read=data=>reader.parseReading(JSON.stringify(data),{pictureCount:1});
+  assert.deepEqual({...read({kind:'make',surface:'video',mode:'first_last',first:'new1',last:'keep',sure:false,ask:'这张图是换首帧还是换尾帧？'})},{kind:'ask',ask:'这张图是换首帧还是换尾帧？'});
+  assert.equal(read({kind:'make',surface:'video',mode:'image_video',first:'new1',sure:false,ask:''}).kind,'make','no question written: it goes on');
+  assert.equal(read({kind:'talk',sure:false,ask:'你想做什么？'}).kind,'talk');
+  const again=reader.buildQuestion({message:'尾帧',asked:{original:'换一下',question:'这张图是换首帧还是换尾帧？'},pictureCount:1});
+  for(const part of ['【用户原来的要求】换一下','【小桃刚才问】这张图是换首帧还是换尾帧？','【用户的回答】尾帧','sure 必须写 true'])assert.ok(again.includes(part),part);
+  assert.ok(!again.includes('【用户这一句】'));
+  // The turn: a question and nothing else; then the answer carries the request out, with no second question.
+  const answers=[{kind:'make',surface:'video',mode:'text_video',sure:false,ask:'你要做成图片还是视频？'},
+    {kind:'make',surface:'video',mode:'text_video',first:'none',last:'none',sure:false,ask:'还想再问一句？',brief:'一只猴子在跳舞'}];
+  const p=await probe({page:'video',plans:[{action:'media',operation:{action:'generate_video',target:'video',prompt:'猴子跳舞'}}],reading:()=>answers.shift()});
+  const asked=await p.say('做一个猴子');
+  assert.equal(p.starts.length,0);assert.deepEqual(asked.ops,[]);assert.equal(asked.reply,'你要做成图片还是视频？');assert.equal(asked.error,'');
+  const done=await p.say('视频，跳舞的');
+  assert.equal(p.questions.length,2);assert.match(p.questions[1],/【用户原来的要求】做一个猴子[\s\S]*【用户的回答】视频，跳舞的/);
+  // A second "not sure" is no reading: the rules stand in and the work is done.
+  assert.deepEqual(done.ops,['generate_video']);assert.match(done.sent,/做一个猴子[\s\S]*用户回答：视频，跳舞的/);
+});
 test('with no usable reading the rules stand in, and the turn still runs',async()=>{
   const p=await probe({page:'video',plans:[{action:'media',operation:{action:'generate_video',target:'video',prompt:'小狗'}}],reading:()=>'not json'});
   const r=await p.say('一只小狗在海边奔跑');

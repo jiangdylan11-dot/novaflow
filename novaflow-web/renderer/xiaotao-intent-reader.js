@@ -37,7 +37,8 @@
       + (last.mode ? '（' + (MODE_NAMES[last.mode] || last.mode) + (last.loop ? '，循环' : '') + '）' : '')
       + (last.request ? '，当时的要求：' + clip(last.request, 200) : '') + (last.outputs && last.outputs.length ? '，成品：' + last.outputs.slice(-2).join('、') : '') + '。';
   }
-  function buildQuestion({message, history = [], page = null, last = null, pictureCount = 0} = {}) {
+  // asked: 小桃 already asked one question about this request ({original, question}); `message` is the person's answer.
+  function buildQuestion({message, history = [], page = null, last = null, pictureCount = 0, asked = null} = {}) {
     const talk = history.slice(-6).map(item => (item.role === 'user' ? '用户：' : '小桃：') + clip(item.content, 220)).join('\n');
     return [
       '你是 Foart 里的助手小桃。下面是用户刚说的一句话，以及你作为同事坐在他屏幕前能看到的一切。请像人一样理解他真正要什么，然后只输出一个 JSON，不要解释。',
@@ -46,7 +47,8 @@
       '【上一个任务】' + describeLast(last),
       talk ? '【之前的对话】\n' + talk : '【之前的对话】无',
       '【这一句带的图片】' + (pictureCount ? pictureCount + ' 张，按顺序是 图1' + (pictureCount > 1 ? ' 到 图' + pictureCount : '') + '，你能直接看到它们。' : '没有带图片。'),
-      '【用户这一句】' + clip(message, 1200),
+      asked ? '【用户原来的要求】' + clip(asked.original, 1000) + '\n【小桃刚才问】' + clip(asked.question, 200) + '\n【用户的回答】' + clip(message, 600)
+        : '【用户这一句】' + clip(message, 1200),
       '',
       '理解时注意：',
       '- 用户描述画面、提修改、说“再做一个/重做/开始吧”，要的是成品（make），不是只改提示词；只有他明说“提示词”或“先不要生成”才是 prompt。',
@@ -56,15 +58,18 @@
       '- 没带新图而接着上一个任务说，就沿用页面上已有的图和模式（first/last 写 keep）。',
       '- 用户要的是全新的画面、和页面上留着的图无关时，用 txt2img 或 text_video，不要沿用那张旧图。',
       '- 尾帧要和首帧用同一张图时，last 写 first。',
+      '- “特效、掉落、飘动、爆炸、闪光”这类会动的效果要的是视频（没有图就是 text_video），即使用户正停在绘图页面，也不是一张静态图片；明说“图片/海报/一张图”才是图片。',
       '- 带了新图，要判断每张图的用途：一张图做循环待机，就首帧尾帧都用它；“图1变成图2/从…到…”是 图1 首帧、图2 尾帧，顺序以用户的话为准；只说换某一帧，就只换那一帧，另一帧 keep。',
       '- 视频模式：没有图用 text_video；一张图让它动起来用 image_video；只要说了“循环”或“待机”，或者有首有尾，就用 first_last（循环待机时首帧尾帧是同一张图）。',
       '- 绘图：这一句带了图并要改图，改的就是带来的这张新图（first 写 new1），用 img2img；没带图而是改上一张成品，first 写 keep；全新画面用 txt2img。绘图没有别的模式。',
       '- 用户明说了时长、尺寸才填 seconds / width / height，没说就填 null。',
+      asked ? '- 你已经问过一次，用户也回答了：把原来的要求和这次的回答合起来理解，sure 必须写 true，不要再问。'
+        : '- 意思清楚，或者有合理的默认做法（尺寸、时长、线路、沿用页面上的图），就直接理解并执行，sure 写 true。画面怎么动、什么风格、什么构图这类创作细节由你自己发挥，不要问；图片内容和话里的称呼对不上也不要问，按图来做。只有不问就没法动手、猜错会白做一遍的事才把 sure 写 false，并在 ask 里用一句简短的中文问清楚：带来的图不知道该放首帧还是尾帧（页面上两处都已有图，话里又没说换哪一处）、只说“处理一下/弄一下/做个东西”却没说要做成什么、分不清要图片还是视频、话里说的“这个/那张/上次那个”找不到对应的东西。已经说清楚的事不要再确认，一次只问一个问题。',
       '',
       'JSON 字段：',
       '{"kind":"make|prompt|operate|talk","surface":"video|image|audio|other","mode":"text_video|image_video|first_last|multi_reference|txt2img|img2img|music|sfx|",',
       '"first":"new1|new2|new3|keep|none","last":"new1|new2|new3|keep|first|none","loop":true|false,"seconds":数字或null,"width":数字或null,"height":数字或null,',
-      '"pictures":["图1里实际有什么（不超过五十字）", …],"brief":"用一两句话复述他要的成品画面和动作，只写画面内容"}',
+      '"pictures":["图1里实际有什么（不超过五十字）", …],"brief":"用一两句话复述他要的成品画面和动作，只写画面内容","sure":true|false,"ask":"sure 为 false 时要问用户的那一句话，否则留空"}',
     ].join('\n');
   }
 
@@ -83,6 +88,8 @@
     if (end < 0) return null;
     let data; try {data = JSON.parse(raw.slice(start, end + 1));} catch {return null;}
     if (!data || typeof data !== 'object' || !KINDS.includes(data.kind)) return null;
+    // Not sure, and it said what it needs to know: 小桃 asks that one question before doing anything.
+    if (data.sure === false && data.kind !== 'talk' && clip(data.ask, 160).length > 3) return {kind: 'ask', ask: clip(data.ask, 160)};
     const reading = {kind: data.kind};
     if (data.kind === 'talk') return reading;
     const surface = SURFACES.includes(data.surface) ? data.surface : 'other';
