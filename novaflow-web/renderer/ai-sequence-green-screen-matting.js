@@ -266,7 +266,7 @@
     const polish = r => options.cleanEdges ? cleanEdges(frame, r, options) : r;
     if ((kind === "black" || kind === "white") && options.requireSubjectMask && !options.subjectMask?.data) return null;
     if (kind === "black" || kind === "white") return finishShadow(frame, matteNeutral(frame, screen, options), options);
-    if (kind === "green") return finishShadow(frame, polish(refineChromaMaterial(frame, matteGreen(frame, { ...options, screen }), options)), options);
+    if (kind === "green") return finishShadow(frame, subjectByMask(frame, polish(refineChromaMaterial(frame, matteGreen(frame, { ...options, screen }), options)), options), options);
     // Reuse the validated chroma/glow solution with blue and green exchanged.
     const swapped = new Uint8ClampedArray(frame.data);
     for (let i = 0; i < swapped.length; i += 4) [swapped[i + 1], swapped[i + 2]] = [swapped[i + 2], swapped[i + 1]];
@@ -275,7 +275,7 @@
     const result = matteGreen({ width: frame.width, height: frame.height, data: swapped }, { ...options, screen: { ...screen, rgb: [screen.rgb[0], screen.rgb[2], screen.rgb[1]] } });
     for (let i = 0; i < result.data.length; i += 4) [result.data[i + 1], result.data[i + 2]] = [result.data[i + 2], result.data[i + 1]];
     result.screen = screen;
-    return finishShadow(frame, polish(refineChromaMaterial(frame, result, options)), options);
+    return finishShadow(frame, subjectByMask(frame, polish(refineChromaMaterial(frame, result, options)), options), options);
   }
 
   function nearestSeeds(seeds, w, h) {
@@ -1158,6 +1158,45 @@
     return result;
   }
 
+  // 光效透明保留 keeps LIGHT transparent; the subject itself is cut like 光效透明保留 off: its
+  // opacity is the AI mask and its colours are its own. The chroma/glow solution at the contour
+  // normalised every mixed edge pixel to full brightness (a pale halo on dark backgrounds),
+  // unmixed it into a cyan/white fringe and keyed green parts of the subject (a jade medallion,
+  // green leaves) grey. At the edge only the screen's own channel is pulled down, so the
+  // background spill goes and the subject's hue stays. Away from the mask (light, sparkles, cast shadows)
+  // the chroma solution is unchanged; 半透明材质 keeps the old chroma subject for sheer material.
+  function subjectByMask(frame, result, options) {
+    if (!result || options.sheerMaterial || !options.subjectMask?.data) return result;
+    const { width, height, data } = frame;
+    const mask = subjectOpacity(options.subjectMask, width, height);
+    const screen = result.screen?.rgb;
+    if (!mask || !screen) return result;
+    const key = result.screen.kind === "blue" ? 2 : 1, o1 = 0, o2 = key === 1 ? 2 : 1;
+    const bgDiff = Math.max(.1, (screen[key] - Math.max(screen[o1], screen[o2])) / 255);
+    for (let p = 0, i = 0; p < mask.length; p++, i += 4) {
+      const m = mask[p], w = smooth(.1, .5, m) * (1 - smooth(.85, .98, m));
+      if (w <= 0) continue;
+      // The mask's soft edge rarely sits exactly on the pixel's real coverage. Where the pixel is
+      // still mostly screen, its plain chroma opacity is lower than the mask and wins, so neither
+      // a green rim nor a dark outline of unmixed screen is left; subject colours take the mask.
+      const others = Math.max(data[i + o1], data[i + o2]) / 255, own = data[i + key] / 255;
+      const sa = Math.min(m, clamp(1 - Math.max(0, own - others) / bgDiff));
+      const oa = result.alpha[p] / 255;
+      const a = w * sa + (1 - w) * oa;
+      result.alpha[p] = result.data[i + 3] = Math.round(a * 255);
+      if (a < 1 / 255) { result.data[i] = result.data[i + 1] = result.data[i + 2] = 0; continue; }
+      // The screen is taken out at that opacity and its channel held to the other two: the spill
+      // goes, the subject's hue stays.
+      const f = [0, 1, 2].map((c) => clamp((data[i + c] / 255 - (1 - sa) * screen[c] / 255) / Math.max(sa, 1e-3)));
+      f[key] = Math.min(f[key], Math.max(f[o1], f[o2]));
+      for (let c = 0; c < 3; c++) {
+        const v = f[c];
+        result.data[i + c] = Math.round(clamp((w * sa * v + (1 - w) * oa * result.data[i + c] / 255) / a) * 255);
+      }
+    }
+    return result;
+  }
+
   function finishShadow(frame, result, options) {
     if (options.preserveShadow !== false) return result;
     const alpha = removeShadowAlpha(frame, result.alpha, { ...options, screen: result.screen, foregroundData: result.data });
@@ -1257,7 +1296,10 @@
       // veil (the same pixel as the shaded side of white fur) and glass showing the screen
       // through it (a staff's orb) stay translucent and lose the screen's colour. Protecting only
       // pale material there left the orb's green opaque.
-      const keep = subjectCore && !options.sheerMaterial ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .7, dominance / bgDiff)) : 0;
+      // A green part of the subject (a jade medallion, green leaves) leans to the key as much as a
+      // gap does, but a gap shows the screen itself: only colour near the measured screen keys.
+      const nearScreen = 1 - smooth(.1, .2, Math.max(Math.abs(r - br), Math.max(0, bg - g), Math.abs(b - bb)));
+      const keep = subjectCore && !options.sheerMaterial ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .7, dominance / bgDiff) * nearScreen) : 0;
       if (kept && keep > .5) kept[p] = 1;
       if (keep > a) {
         a = keep;
