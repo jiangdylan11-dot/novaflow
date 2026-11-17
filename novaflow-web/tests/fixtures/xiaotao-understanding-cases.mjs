@@ -114,6 +114,18 @@ export const CASES = [
   {id: 'open-drawing', page: {surface: 'other'}, last: null, files: [], say: '打开绘图页面', want: {kind: 'operate'}},
   {id: 'split-page-picture', page: D('img2img', ['white_baboon.png']), last: null, files: [], say: '帮我把这张图拆一下', want: {kind: 'operate'}},
   {id: 'coin-effect', page: D(), last: null, files: [], say: '做个金币掉落的特效', want: {kind: 'make', surface: 'video', mode: 'text_video'}},
+  // An effect that is the thing to make is a video; an effect described inside a picture is that picture's content.
+  // (Live: a rule that named effect words turned "画一个魔法师，周围有发光粒子环绕" into a video with DeepSeek.)
+  {id: 'coin-effect-elsewhere', page: {surface: 'other'}, last: null, files: [], say: '做个金币掉落的特效', want: {kind: 'make', surface: 'video', mode: 'text_video'}},
+  {id: 'explosion-effect', page: D(), last: null, files: [], say: '来个爆炸特效', want: {kind: 'make', surface: 'video', mode: 'text_video'}},
+  {id: 'poster-with-coin-effect', page: D(), last: null, files: [], say: '画一张老虎机海报，上面有金币掉落的特效', want: {kind: 'make', surface: 'image', mode: 'txt2img'}},
+  {id: 'dragon-flames-drawing', page: D(), last: null, files: [], say: '一条喷火的龙，火焰飘动，赛博朋克风格', want: {kind: 'make', surface: 'image', mode: 'txt2img'}},
+  {id: 'dragon-flames-video', page: V(), last: null, files: [], say: '一条喷火的龙，火焰飘动，赛博朋克风格', want: {kind: 'make', surface: 'video', mode: 'text_video'}},
+  {id: 'wizard-particles-video', page: V(), last: null, files: [], say: '一个魔法师，周围有发光粒子环绕', want: {kind: 'make', surface: 'video', mode: 'text_video'}},
+  // --- not sure: one short question first (Dylan, 2026-11-17) ---
+  {id: 'ask-two-pictures', page: V(), last: null, files: pic(2), say: '用这两张图做个东西', want: {kind: 'ask'}},
+  {id: 'ask-which-frame', page: V('first_last', ['a.png', 'b.png']), last: pairTask, files: pic(1), say: '换一下', want: {kind: 'ask'}},
+  {id: 'ask-handle-it', page: {surface: 'other'}, last: null, files: pic(1), say: '处理一下', want: {kind: 'ask'}},
   // --- talk ---
   {id: 'hello', page: V(), last: null, files: [], say: '你好', want: {kind: 'talk'}},
   {id: 'how-much', page: V(), last: loopTask, files: [], say: '这个要多少积分', want: {kind: 'talk'}},
