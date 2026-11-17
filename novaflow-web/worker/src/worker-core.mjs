@@ -21,6 +21,7 @@ import { readComfyMemorySnapshot } from './runtime-memory-observer.mjs';
 import { createGateway, sweepTaskFiles } from './gateway/gateway.mjs';
 import { candidateTaskDirectory, candidateTaskIdState } from './gateway/candidate-task-path.mjs';
 import { createTunnel } from './tunnel.mjs';
+const TUNNEL_PENDING = '外网共享连接暂未建立，正在后台重试；本机使用不受影响';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
 import { videoRuntimeUrl } from './runtime-services.mjs';
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength, audioGraphExtras } from './comfy/workflow-runner.mjs';
@@ -990,6 +991,8 @@ export function createWorker(options) {
     let sentStatus = 'maintenance';
     try {
       if (tunnel) state.endpointUrl = tunnel.url || '';
+      // A node that started without a tunnel registered as 'direct'; say so again once the address exists.
+      if (tunnel?.url && state.transport !== 'tunnel') { state.transport = 'tunnel'; await register(); }
       const previous = { ...state.comfy };
       state.comfy.image = await comfyImage.isUp();
       state.comfy.video = await comfyVideo.isUp();
@@ -1028,7 +1031,7 @@ export function createWorker(options) {
       }
       state.platformOnline = true;
       state.lastHeartbeatAt = nowIso();
-      state.lastError = '';
+      state.lastError = tunnel && !tunnel.url ? TUNNEL_PENDING : '';
       // The policy may have changed in this response after the server already
       // stored an idle heartbeat; withdraw that advertisement immediately.
       if (sentStatus !== 'maintenance' && (claimsPaused || (registrationProfile === 'compute-only' && !mayAdvertiseCompute()))) {
@@ -2121,11 +2124,13 @@ export function createWorker(options) {
       onProgress(55, '正在建立外网共享连接');
       tunnel = createTunnel({ port, logger: log });
       const publicUrl = await tunnel.start();
-      if (!publicUrl) throw new Error('外网共享连接未能建立，请检查网络后重试；本地使用不受影响');
       state.endpointUrl = publicUrl || state.localEndpointUrl;
       state.transport = publicUrl ? 'tunnel' : 'direct';
       if (!publicUrl) {
+        // Not fatal: the node stays registered on its local address and reports maintenance until the
+        // tunnel, which keeps retrying on its own, hands back an address (see performHeartbeat).
         log('no public address: only a browser on this machine can fetch results');
+        state.lastError = TUNNEL_PENDING;
       }
     } else if (!state.endpointUrl) {
       state.endpointUrl = state.localEndpointUrl;

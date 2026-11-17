@@ -85,7 +85,7 @@ export function createTunnel({ port, host = '127.0.0.1', exePath, logger } = {})
       url = '';
       restarts += 1;
       // Without the tool's own last words the log only says "code 1", which explains nothing.
-      const reason = output.split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(-3).join(' | ').slice(-400);
+      const reason = output.split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(-6).join(' | ').slice(-500);
       log('tunnel closed, reopening', { code, restarts, previous: had, reason });
       // A tunnel that never opened is being refused: asking again every few seconds only prolongs that.
       setTimeout(launch, had ? Math.min(30000, 2000 * restarts) : Math.min(60000, 5000 * 2 ** (restarts - 1)));
