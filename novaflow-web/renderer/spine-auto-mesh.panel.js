@@ -3568,7 +3568,7 @@
       if (typeof window.showOpenFilePicker !== 'function') { nfPicker.click(); return }
       let handle
       try {
-        [handle] = await window.showOpenFilePicker({ id: 'foart-project', types: [{ description: 'Foart 工程', accept: { 'application/octet-stream': ['.foart', '.nfproj'] } }] })
+        [handle] = await window.showOpenFilePicker({ id: 'foart-project', types: [{ description: 'Foart 工程', accept: { 'application/x-foart': ['.foart', '.nfproj'] } }] })
       } catch (e) {
         if (e && e.name === 'AbortError') return
         nfPicker.click(); return

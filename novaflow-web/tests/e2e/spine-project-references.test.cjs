@@ -508,14 +508,15 @@ test('append keeps independent projects, refresh keeps saving, and replace disca
   await f.c.loadSource(src, { operation: 'append' })
   assert.equal(f.projects.length, 2)
   await vm.runInContext('saveProjectFileNow()', f.c)
-  assert.equal(picks, 2, 'append detaches the previous save file')
+  assert.equal(picks, 1, 'an added project joins the file the tree was saved to')
+  assert.equal((await unpack(new Uint8Array(await (await original.getFile()).arrayBuffer()))).projects.length, 2)
   await f.c.loadSource(src, { operation: 'refresh' })
   await vm.runInContext('saveProjectFileNow()', f.c)
-  assert.equal(picks, 2, 'internal write-backs keep the explicit save file')
+  assert.equal(picks, 1, 'internal write-backs keep the explicit save file')
   await f.c.loadSource(src, { operation: 'replace' })
   assert.equal(f.projects.length, 1)
   await vm.runInContext('saveProjectFileNow()', f.c)
-  assert.equal(picks, 3, 'replacement detaches the previous save file')
+  assert.equal(picks, 2, 'replacement detaches the previous save file')
 })
 
 test('workspace replacement clears old selection, filtering, hidden layers, undo, previews and clipboard', async () => {
@@ -936,7 +937,7 @@ test('a legacy .nfproj opens, and saving writes a new .foart with the Foart form
   await f.open(await legacy.getFile(), legacy, { directory: { handle: d.root } })
   assert.equal(f.projects.length, 1)
   let picks = 0; f.window.directory = d.root
-  f.window.showSaveFilePicker = async opts => { picks++; assert.equal(opts.suggestedName, 'cards.foart'); assert.equal(JSON.stringify(opts.types[0].accept['application/octet-stream']), '[".foart"]'); return d.root.getFileHandle('cards.foart', { create: true }) }
+  f.window.showSaveFilePicker = async opts => { picks++; assert.equal(opts.suggestedName, 'cards.foart'); assert.equal(JSON.stringify(opts.types[0].accept['application/x-foart']), '[".foart"]'); return d.root.getFileHandle('cards.foart', { create: true }) }
   await vm.runInContext('saveProjectFileNow()', f.c)
   assert.equal(picks, 1)
   assert.deepEqual(new Uint8Array(await (await legacy.getFile()).arrayBuffer()), before)

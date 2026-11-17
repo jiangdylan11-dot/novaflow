@@ -411,7 +411,9 @@
       throw error
     }
     if (replaceAll) clearReplacedWorkspace()
-    if (p.operation === 'append' || p.operation === 'replace' || p.operation === 'new') detachProjectFile()
+    // a project added beside the open ones joins the file they were saved to / opened from: Ctrl+S
+    // still writes that whole tree back there (user 2026-11-17: 老工程中置入新工程，Ctrl+S 不该变成单独保存新工程)
+    if (p.operation === 'replace') detachProjectFile()
     if (p.replace && projects[activeProject]) dropProjectRuntime(projects[activeProject].id)
     state.initialJson = state.json
     state.unticked = new Set()
@@ -948,7 +950,8 @@
     })
     return projectChoice
   }
-  const NFPROJ_TYPES = [{ description: 'Foart 工程', accept: { 'application/octet-stream': [PROJECT_EXT] } }]
+  // a type of its own: application/octet-stream made Windows list *.com;*.exe;*.bin beside *.foart
+  const NFPROJ_TYPES = [{ description: 'Foart 工程', accept: { 'application/x-foart': [PROJECT_EXT] } }]
 
   const EMPTY_PROJECT_MESSAGE = '工程文件为空（0 字节），无法打开，请让对方重新保存后再发送'
 
@@ -1095,7 +1098,7 @@
     let createdEmpty = false
     let directory = null
     if (!handle) {
-      try { handle = await window.showSaveFilePicker({ suggestedName: (opts && opts.name ? name : (projectFile && projectStem(projectFile.name)) || name) + PROJECT_EXT, types: NFPROJ_TYPES, ...(state.imageFolder && state.imageFolder.handle ? { startIn: state.imageFolder.handle } : {}) }) } catch (error) { if(error?.name==='AbortError')return null;throw error }
+      try { handle = await window.showSaveFilePicker({ suggestedName: (opts && opts.name ? name : (projectFile && projectStem(projectFile.name)) || treeFileName(name)) + PROJECT_EXT, types: NFPROJ_TYPES, ...(state.imageFolder && state.imageFolder.handle ? { startIn: state.imageFolder.handle } : {}) }) } catch (error) { if(error?.name==='AbortError')return null;throw error }
       const created = await handle.getFile().catch(() => null)
       createdEmpty = !created || created.size === 0
     }
@@ -1120,6 +1123,13 @@
       if (createdEmpty) await discardEmptyCreated(directory, handle).catch(() => {})
       throw err
     }
+  }
+
+  /** A new file for the whole tree is named after its first project, not whichever one is picked. */
+  function treeFileName(fallback) {
+    const first = activeProject === 0 ? state : projects[0] && projects[0].snap
+    const A = window.NovaFlowSequenceAtlas, raw = first && first.name
+    return (raw && (A && A.safeName ? A.safeName(raw) : String(raw).replace(/[\\/:*?"<>|]+/g, '_'))) || fallback
   }
 
   /** Whether a project can only be saved with the file's folder: no image folder, and nothing recorded to keep. */
@@ -1466,7 +1476,7 @@
     if (state.pendingSwapFolder && typeof offerSwapReconnect === 'function' && typeof document !== 'undefined' && document.body) offerSwapReconnect(state.pendingSwapFolder)
     if (state.pendingSwapFolder && typeof refresh === 'function') refresh()
     // opened into an empty tree, the tree is that file: 保存工程 / Ctrl+S write back to it
-    // (added to projects already open, the next save still asks - it would hold them all)
+    // (added to projects already open, the tree keeps the file it already had)
     if (handle && (wasEmpty || operation === 'replace')) { projectFile = handle; projectSaveDirectory = projectDirectory }
     const hidden = projects[activeProject].visible === false
       ? `；当前工程「${state.name}」已隐藏，请点击工程树左侧的显示圆点恢复` : ''
