@@ -834,7 +834,9 @@
       s.imageFolder = folder
       await connectProjectImages(s, folder)
     }
-    await refreshFolderPictures(s, folder)
+    // pixels already read from this folder stay current through the folder watch (and on switching
+    // projects); the file only records paths, so a save does not re-read every picture
+    if (!folderImageVersions.has(folder)) await refreshFolderPictures(s, folder)
     let prefix = directory ? await directory.resolve(folder.handle) : null
     let imagePath, externalFolder = false
     if (!directory) {
@@ -856,6 +858,7 @@
       }
     }
     const files = await listProjectImages(folder), regions = Attach.parseAtlas(s.atlasText), pages = new Map()
+    const onDisk = new Set(files.map((f) => lower(f.rel)))
     for (const r of regions.values()) { if (!pages.has(r.page)) pages.set(r.page, []); pages.get(r.page).push(r) }
     const images = [], missing = [], usedPages = usedProjectImagePages(s.json, s.atlasText, s.projectImageRefs)
     for (const [fileName, regionsOnPage] of pages) {
@@ -873,9 +876,9 @@
       const expectedPath = !folder.recordedPaths && single && /^__(?:nf|foart)_(?:swap|folder|transfer)[/_]/.test(fileName)
         ? regionsOnPage[0].name + ((ref && ref.path && ref.path.match(/\.[^.\/]+$/)) || ['.png'])[0] : ref && ref.path || fileName
       let path = source ? source.rel : projectPath(generated ? (single ? regionsOnPage[0].name + '.png' : fileName) : expectedPath).join('/')
-      const existsAt = async (rel) => {
-        try { const parts = projectPath(rel); const d = await projectSubdir(folder.handle, parts.slice(0, -1)); await d.getFileHandle(parts.at(-1)); return true } catch { return false }
-      }
+      // the folder was just listed: a picture is checked against that list, not asked of the disk one by one
+      // (user 2026-11-17: Ctrl+S 要等 10 多秒 - three disk calls per picture on every save)
+      const existsAt = async (rel) => { try { return onDisk.has(lower(projectPath(rel).join('/'))) } catch { return false } }
       let exists = await existsAt(path)
       if (generated) {
         const original = path, dot = original.lastIndexOf('.')
@@ -888,6 +891,7 @@
         }
         else {
           if (!await folder.write(path, await projectImageBlob(im))) throw new Error(`图片目录「${folder.name}」没有写入权限，无法保存新图片「${path}」`)
+          onDisk.add(lower(path))
           s.images = new Map(s.images)
           s.images.set(lower(fileName), { ...im, sourceFolder: folder, sourcePath: path, sessionGenerated: false })
         }
@@ -1112,6 +1116,7 @@
         return null
       }
       if (as) separateFolderKeys()
+      status('正在保存工程…')
       const { bytes, count, missing } = await projectFileBytes(directory, over)
       assertProjectBytes(bytes)
       handle = await commitProjectFile(directory, handle, bytes)

@@ -257,7 +257,7 @@ test('an explicitly assigned folder outside the project directory stays external
   assert.equal(await g.state.images.get('pic.png').blob.text(), 'current external bytes')
 })
 
-test('Ctrl+S retains its file and reads modified external pixels without another picker', async () => {
+test('Ctrl+S retains its file, does not re-read every picture, and the folder watch brings modified pixels', async () => {
   const d = disk(), f = fixture(), handle = await d.put('scene.foart', '')
   await d.put('pic.png', 'first')
   f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
@@ -272,6 +272,8 @@ test('Ctrl+S retains its file and reads modified external pixels without another
   assert.equal(r.overwritten, true)
   assert.equal(saves, 1)
   assert.equal(f.picker.length, 0)
+  assert.equal(await f.state.images.get('pic.png').blob.text(), 'first', 'a save leaves pixels to the folder watch')
+  await vm.runInContext('refreshFolderPictures(state, state.imageFolder)', f.c)
   assert.equal(await f.state.images.get('pic.png').blob.text(), 'second')
   assert.equal((await unpack(await read('scene.foart'))).version, 2)
   assert.equal(d.root.nodes.has('scene.foart.bak'), false)
