@@ -51,6 +51,7 @@ import {
   requirementsFor
 } from '../../packages/shared/src/protocol.mjs';
 import { runMatting, probeMatting } from './matting.mjs';
+import { assertH3Beta7Runnable } from './h3-beta7-support.mjs';
 
 export function validateQwenUiTask(task) {
   const scoped = task?.parameters || {};
@@ -1244,6 +1245,7 @@ export function createWorker(options) {
     }
 
     assertSupportedDrawingGraph(intent, graph, task);
+    assertH3Beta7Runnable(graph);
     await loraCatalog.validateGraph(graph, parameters);
 
     // 3. Run.

@@ -11361,7 +11361,7 @@
   function isAiAnimationModelMethodSelect(node) {
     if (!(node instanceof HTMLSelectElement)) return false;
     return Array.from(node.options || []).some((option) =>
-      ["local_a", "minimax_h3_local", "beta5_int8", "beta6_int8"].includes(String(option.value || ""))
+      ["local_a", "minimax_h3_local", "beta5_int8", "beta6_int8", "beta7_int8"].includes(String(option.value || ""))
     );
   }
 
@@ -11369,7 +11369,7 @@
     if (!(root instanceof Document) && !(root instanceof HTMLElement)) return "";
     const modelSelect = Array.from(root.querySelectorAll("select")).find((node) => isAiAnimationModelMethodSelect(node));
     if (!(modelSelect instanceof HTMLSelectElement)) return "";
-    return ["beta5_int8","beta6_int8"].includes(modelSelect.value) ? "minimax_h3_local" : String(modelSelect.value || "").trim();
+    return ["beta5_int8","beta6_int8","beta7_int8"].includes(modelSelect.value) ? "minimax_h3_local" : String(modelSelect.value || "").trim();
   }
 
   function isAiAnimationCloudModelMethod(root = document) {
@@ -11380,7 +11380,8 @@
     if (!(root instanceof Document) && !(root instanceof HTMLElement)) return;
     Array.from(root.querySelectorAll('select')).filter(isAiAnimationModelMethodSelect).forEach((select) => {
       Array.from(select.options || []).forEach((option) => {
-        if (["minimax_h3_local", "beta5_int8", "beta6_int8"].includes(option.value) && option.textContent !== "MiniMaxH3(本地)") option.textContent = "MiniMaxH3(本地)";
+        const label = option.value === "beta7_int8" ? "MiniMaxH3 Beta7(本地)" : "MiniMaxH3(本地)";
+        if (["minimax_h3_local", "beta5_int8", "beta6_int8", "beta7_int8"].includes(option.value) && option.textContent !== label) option.textContent = label;
       });
     });
   }
