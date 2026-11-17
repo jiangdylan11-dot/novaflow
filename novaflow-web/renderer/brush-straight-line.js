@@ -12,9 +12,9 @@
  * 用法：FoartBrushLine.watch(selectorOrElement, isActive)
  *   isActive(el, event) 为真时，这块画布当前是笔刷（不是吸管、框选等别的工具）。
  *
- * 手绘板（笔）：
- *   - 浏览器每帧只发一次 pointermove，笔在两帧之间的采样都合在 getCoalescedEvents() 里。
- *     这里把它们逐个转发给笔刷画布，快速画弧线不再是折线。
+ * 手感（鼠标和笔都一样）：
+ *   - 浏览器每帧只发一次 pointermove，两帧之间的采样都合在 getCoalescedEvents() 里。
+ *     这里把它们全部取出，连成圆滑的曲线再发给笔刷画布，快画也没有折角。
  *   - FoartBrushLine.pressure(event) 给出笔压对应的笔刷比例（0.1–1），鼠标恒为 1；
  *     各笔刷用它缩放笔刷半径（权重笔刷缩放力度），所以有轻重粗细的笔触。
  */
@@ -135,7 +135,12 @@
     if (ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.altKey) return
     const found = findTarget(ev.target)
     if (!found || !activeFor(found, ev)) return
-    if (!ev.shiftKey) { plain = { key: found.entry.key, el: found.el, pointerId: ev.pointerId, pointerType: ev.pointerType }; return }
+    if (!ev.shiftKey) {
+      const first = [ev.clientX, ev.clientY, Number(ev.pressure) > 0 ? Number(ev.pressure) : 0.5]
+      plain = { key: found.entry.key, el: found.el, pointerId: ev.pointerId, time: Number(ev.timeStamp) || 0, pressure: first[2], last: first, from: first,
+        base: { pointerId: ev.pointerId, pointerType: ev.pointerType, pressure: first[2], clientX: ev.clientX, clientY: ev.clientY, screenX: ev.screenX, screenY: ev.screenY } }
+      return
+    }
     ev.preventDefault()
     ev.stopImmediatePropagation()
     const press = [ev.clientX, ev.clientY]
@@ -154,32 +159,70 @@
     s.queue = new Promise((resolve) => setTimeout(resolve, READY_MS))
   }
 
-  // 笔的普通笔画：把这一帧合并掉的采样点逐个发给笔刷（最后一个就是这个事件本身的位置）
-  function forwardCoalesced(ev) {
-    if (!plain || ev.pointerId !== plain.pointerId || plain.pointerType !== 'pen' || !(Number(ev.buttons) & 1)) return false
-    if (!plain.el.isConnected || typeof ev.getCoalescedEvents !== 'function') return false
-    let list
-    try { list = ev.getCoalescedEvents() } catch { return false }
-    if (!list || list.length < 2) return false
+  // 普通笔画（鼠标、笔、触摸都走这里）：像 Photoshop 那样把采样点连成圆滑的曲线。
+  //   - 一帧里合并掉的采样点全部取出来用（getCoalescedEvents）
+  //   - 相邻采样点的中点之间走二次曲线，采样点本身当控制点：转弯处没有折角，
+  //     只比指针慢半个采样间隔；抬笔时补到真实的终点
+  //   - 笔压做一点时间上的平滑，粗细变化连续，不随每个采样点跳
+  const PRESSURE_TAU_MS = 12
+  const FLATNESS_PX = 0.1
+  function strokeSample(p, c, fallback) {
+    const x = Number(c.clientX), y = Number(c.clientY)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+    const raw = Number(c.pressure) > 0 ? Number(c.pressure) : Number(fallback.pressure) > 0 ? Number(fallback.pressure) : 0.5
+    const t = Number(c.timeStamp) || 0
+    const dt = Math.max(1, Math.min(50, t - p.time || 4))
+    p.time = t || p.time
+    p.pressure += (raw - p.pressure) * (1 - Math.exp(-dt / PRESSURE_TAU_MS))
+    return [x, y, p.pressure]
+  }
+
+  function emit(p, x, y, pressure, buttons) {
+    p.base.pressure = pressure
+    fire(p.el, 'pointermove', x, y, p.base, buttons)
+  }
+
+  // 从 p.from 经控制点 c 到 to 的二次曲线，按弯曲程度切成小直线段发给笔刷
+  function curveTo(p, c, to, buttons) {
+    const a = p.from
+    const bend = Math.hypot(a[0] - 2 * c[0] + to[0], a[1] - 2 * c[1] + to[1])
+    const n = Math.max(1, Math.min(24, Math.ceil(Math.sqrt(bend / (8 * FLATNESS_PX)))))
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, u = 1 - t
+      emit(p, u * u * a[0] + 2 * u * t * c[0] + t * t * to[0], u * u * a[1] + 2 * u * t * c[1] + t * t * to[1], a[2] + (to[2] - a[2]) * t, buttons)
+    }
+    p.from = to
+  }
+
+  function plainMove(ev) {
+    const p = plain
+    if (!p || ev.pointerId !== p.pointerId || !(Number(ev.buttons) & 1) || !p.el.isConnected) return false
+    let list = null
+    try { list = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : null } catch { list = null }
+    if (!list || !list.length) list = [ev]
     ev.preventDefault()
     ev.stopImmediatePropagation()
-    const base = { pointerId: ev.pointerId, pointerType: ev.pointerType, clientX: ev.clientX, clientY: ev.clientY, screenX: ev.screenX, screenY: ev.screenY }
-    let last = null
-    list.forEach((c, i) => {
-      const x = Number(c.clientX), y = Number(c.clientY)
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return
-      // 太密的点（不到 0.75 px）跳过，但最后一个一定发，终点不差
-      if (last && i < list.length - 1 && Math.hypot(x - last[0], y - last[1]) < 0.75) return
-      last = [x, y]
-      base.pressure = Number(c.pressure) > 0 ? Number(c.pressure) : ev.pressure
-      fire(plain.el, 'pointermove', x, y, base, ev.buttons)
-    })
+    for (const c of list) {
+      const q = strokeSample(p, c, ev)
+      if (!q || Math.hypot(q[0] - p.last[0], q[1] - p.last[1]) < 0.3) continue
+      curveTo(p, p.last, [(p.last[0] + q[0]) / 2, (p.last[1] + q[1]) / 2, (p.last[2] + q[2]) / 2], ev.buttons)
+      p.last = q
+    }
     return true
+  }
+
+  // 抬笔：把还没画到的半段补完，停在真实的终点
+  function plainFinish(ev) {
+    const p = plain
+    if (!p || !p.el.isConnected || ev.type !== 'pointerup') return
+    const end = [Number(ev.clientX), Number(ev.clientY), p.last[2]]
+    if (!Number.isFinite(end[0]) || !Number.isFinite(end[1])) return
+    if (Math.hypot(p.from[0] - p.last[0], p.from[1] - p.last[1]) >= 0.3 || Math.hypot(end[0] - p.last[0], end[1] - p.last[1]) >= 0.3) curveTo(p, p.last, end, 1)
   }
 
   function onMove(ev) {
     if (mine.has(ev)) return
-    if (!stroke) { forwardCoalesced(ev); return }
+    if (!stroke) { plainMove(ev); return }
     if (ev.pointerId !== stroke.base.pointerId) return
     ev.preventDefault()
     ev.stopImmediatePropagation()
@@ -203,6 +246,7 @@
   function onEnd(ev) {
     if (mine.has(ev)) return
     if (plain && ev.pointerId === plain.pointerId) {
+      plainFinish(ev)
       const f = plain.el.isConnected ? toFraction(plain.el, ev.clientX, ev.clientY) : null
       if (f) lastEnd.set(plain.key, f)
       plain = null
