@@ -40,8 +40,19 @@
     return MIN_PRESSURE_SCALE + (1 - MIN_PRESSURE_SCALE) * Math.min(1, p)
   }
 
+  // 笔在 touch-action: auto 的画布上拖几像素就被浏览器当成平移手势，发 pointercancel 结束笔画，
+  // 画出来只剩一个点（视频抠图擦除/修复用笔“画不上”）。所有笔刷画布都关掉浏览器手势。
+  let touchSheet = null
+  function noTouchGestures(target) {
+    if (typeof target !== 'string') { if (target.style) target.style.touchAction = 'none'; return }
+    if (!root.document) return
+    if (!touchSheet) { touchSheet = root.document.createElement('style'); touchSheet.setAttribute('data-foart-brush-touch', '1'); (root.document.head || root.document.documentElement).appendChild(touchSheet) }
+    touchSheet.textContent += `${target}{touch-action:none !important}\n`
+  }
+
   function watch(target, isActive) {
     if (!target) return () => {}
+    noTouchGestures(target)
     const entry = { target, key: target, isActive: typeof isActive === 'function' ? isActive : () => true }
     targets.push(entry)
     return () => { const i = targets.indexOf(entry); if (i >= 0) targets.splice(i, 1); lastEnd.delete(entry.key) }

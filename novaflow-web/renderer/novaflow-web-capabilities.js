@@ -1382,8 +1382,119 @@
     return { ok: true, dir, result: { dir } };
   };
 
+  // 视频抠图保存：每帧像素直接交给编码器（桌面版同名接口）。以前每帧先压成 PNG 再解出来，
+  // 992×992 一帧 PNG 编码就要约 1 秒，保存几十帧要等半分钟以上；视频编码本身只要一两秒。
+  // 编码在第一帧到达时就开始，边生成边编码，内存里只留还没编码的几帧。
+  const rawSessions = new Map();
+  let rawSessionSeq = 0;
+  async function rawCalibrationTable(png) {
+    // 旧路径的颜色 = PNG 编码 + 画布解码各取整一次；用同一条路径解一次 256×256 校准图得到映射表。
+    try {
+      const bitmap = await root.createImageBitmap(new Blob([png], { type: 'image/png' }));
+      const canvas = root.document.createElement('canvas'); canvas.width = canvas.height = 256;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(bitmap, 0, 0); bitmap.close?.();
+      const data = ctx.getImageData(0, 0, 256, 256).data, table = new Uint8Array(65536);
+      for (let i = 0; i < 65536; i++) {
+        if (data[i * 4 + 3] !== i >>> 8 || data[i * 4] !== data[i * 4 + 1] || data[i * 4] !== data[i * 4 + 2]) return null;
+        table[i] = data[i * 4];
+      }
+      return table;
+    } catch (_) { return null; }
+  }
+  api.cutoutRawStart = async (payload) => {
+    const p = payload || {};
+    const width = Number(p.width), height = Number(p.height), frames = Number(p.frames), fps = clampNumber(Number(p.fps) || 24, 1, 120);
+    if (![width, height, frames].every(Number.isInteger) || width < 16 || height < 16 || width > 8192 || height > 8192 || frames < 1 || frames > 2000) return fail('视频帧尺寸或帧数无效');
+    const dir = String(p.dir || '');
+    if (!webTempDirs.has(dir)) return fail('导出临时目录不存在', { code: 'web_temp_dir_missing' });
+    const s = { id: 'raw-' + (++rawSessionSeq), dir, width, height, fps, frames, next: 0, store: new Map(), waiters: new Map(), drained: null, aborted: false,
+      table: p.pngRoundTrip ? await rawCalibrationTable(p.pngRoundTrip) : null, pattern: /%0?\d*d/.test(String(p.pattern || '')) ? String(p.pattern) : 'NF_%04d.png' };
+    const ew = Math.max(2, Math.trunc(width / 2) * 2), eh = Math.max(2, Math.trunc(height / 2) * 2);
+    s.streaming = typeof root.createImageBitmap === 'function' && !!root.document?.createElement && await alphaWebm.supported(ew, eh, fps);
+    if (s.streaming) {
+      const src = root.document.createElement('canvas'); src.width = width; src.height = height;
+      const out = root.document.createElement('canvas'); out.width = ew; out.height = eh;
+      const sctx = src.getContext('2d'), octx = out.getContext('2d', { willReadFrequently: true });
+      const take = (i) => s.store.has(i) ? Promise.resolve(s.store.get(i)) : new Promise((resolve, reject) => {
+        if (s.aborted) { reject(new Error('已取消')); return; }
+        s.waiters.set(i, { resolve, reject });
+      });
+      s.result = alphaWebm.encode({ width: ew, height: eh, fps, count: frames, frameAt: async (i) => {
+        const pixels = await take(i);
+        if (i > 1) { s.store.delete(i); if (s.drained) { const d = s.drained; s.drained = null; d(); } }
+        let data;
+        if (ew === width && eh === height) data = new Uint8ClampedArray(pixels);
+        else {
+          sctx.putImageData(new ImageData(pixels, width, height), 0, 0);
+          octx.clearRect(0, 0, ew, eh); octx.imageSmoothingQuality = 'high'; octx.drawImage(src, 0, 0, ew, eh);
+          data = octx.getImageData(0, 0, ew, eh).data;
+        }
+        clearFlatCutoutPixels(data, ew, eh);
+        return data;
+      } });
+      s.result.catch((error) => { s.error = error; if (s.drained) { const d = s.drained; s.drained = null; d(); } });
+      s.encodedWidth = ew; s.encodedHeight = eh;
+    }
+    rawSessions.set(s.id, s);
+    return { ok: true, sessionId: s.id, result: { sessionId: s.id } };
+  };
+  api.cutoutRawWrite = async (payload) => {
+    const p = payload || {}, s = rawSessions.get(String(p.sessionId || ''));
+    if (!s || s.aborted) return fail('视频编码会话不存在');
+    if (s.error) return fail('视频编码失败：' + String((s.error && s.error.message) || s.error));
+    if (Number(p.frameIndex) !== s.next || s.next >= s.frames) return fail('视频帧顺序不一致');
+    const src = p.bytes;
+    if (!src || src.length !== s.width * s.height * 4) return fail('视频帧尺寸不一致');
+    // 复制一份：传进来的可能是预览缓存里的像素，不能原地改
+    const pixels = new Uint8ClampedArray(src.length); pixels.set(src);
+    if (s.table) for (let i = 0; i < pixels.length; i += 4) {
+      const alpha = pixels[i + 3]; if (alpha === 255) continue;
+      if (!alpha) { pixels[i] = pixels[i + 1] = pixels[i + 2] = 0; continue; }
+      const o = alpha << 8; pixels[i] = s.table[o + pixels[i]]; pixels[i + 1] = s.table[o + pixels[i + 1]]; pixels[i + 2] = s.table[o + pixels[i + 2]];
+    }
+    const index = s.next++;
+    if (s.streaming) {
+      s.store.set(index, pixels);
+      const waiter = s.waiters.get(index); if (waiter) { s.waiters.delete(index); waiter.resolve(pixels); }
+      // 编码跟不上时等一等，内存里最多压 8 帧
+      while (!s.aborted && !s.error && s.store.size > 10) await new Promise((resolve) => { s.drained = resolve; });
+      return ok({ written: index });
+    }
+    // 浏览器不支持透明 WebCodecs 编码：按旧路径落 PNG，交给 ffmpeg
+    const canvas = root.document.createElement('canvas'); canvas.width = s.width; canvas.height = s.height;
+    canvas.getContext('2d').putImageData(new ImageData(pixels, s.width, s.height), 0, 0);
+    const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => b ? resolve(b) : reject(new Error('PNG 编码失败')), 'image/png'));
+    const name = s.pattern.replace(/%0?(\d*)d/, (m, w) => String(index).padStart(Number(w) || 1, '0'));
+    webTempDirs.get(s.dir)?.set(name, new Uint8Array(await blob.arrayBuffer()));
+    return ok({ written: index });
+  };
+  api.cutoutRawAbort = async (payload) => {
+    const s = rawSessions.get(String((payload && payload.sessionId) || ''));
+    if (!s) return ok({ aborted: false });
+    rawSessions.delete(s.id); s.aborted = true;
+    for (const w of s.waiters.values()) w.reject(new Error('已取消'));
+    s.waiters.clear(); s.store.clear(); if (s.drained) s.drained();
+    return ok({ aborted: true });
+  };
+
   api.exportEncodeFramesToVideo = async (payload) => {
     const options = payload || {};
+    const raw = options.rawSessionId ? rawSessions.get(String(options.rawSessionId)) : null;
+    if (options.rawSessionId && !raw) return fail('视频编码会话不存在');
+    if (raw && raw.streaming) {
+      if (raw.next !== raw.frames) return fail('视频帧没有写完（' + raw.next + '/' + raw.frames + '）');
+      let bytes;
+      try { bytes = await raw.result; } catch (error) { return fail('视频编码失败：' + String((error && error.message) || error)); }
+      const out = { ok: true, format: 'webm', mimeType: 'video/webm', fps: raw.fps, width: raw.encodedWidth, height: raw.encodedHeight, frames: raw.frames, bytes: bytes.length, encoder: 'webcodecs-raw' };
+      if (options.returnBase64 !== false || options.returnBytesOnly) out.base64 = base64FromBytes(bytes);
+      if (options.returnBytesOnly) return out;
+      const outPathName = String(options.outPath || '').split(/[\\/]/).pop() || '';
+      const fileName = sanitizeVideoName(outPathName) || 'cutout_' + Date.now() + '.webm';
+      try { Object.assign(out, await deliverVideoExport(new Blob([bytes], { type: 'video/webm' }), videoStem(fileName, 'video') + '.webm', options.outPath, String(options.outPath || '').startsWith('web-export://'))); }
+      catch (error) { return fail('导出失败：' + String((error && error.message) || error)); }
+      return out;
+    }
     const files = webTempDirs.get(String(options.dir || ''));
     if (!files) return fail('导出临时目录不存在', { code: 'web_temp_dir_missing' });
     const names = [...files.keys()].filter((name) => /\.(?:png|jpe?g|webp)$/i.test(name)).sort();
