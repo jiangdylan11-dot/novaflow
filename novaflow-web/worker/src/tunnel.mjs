@@ -67,6 +67,7 @@ export function createTunnel({ port, host = '127.0.0.1', exePath, logger } = {})
       if (url) return;
       const address = tunnelAddress(output);
       if (address) {
+        restarts = 0;
         log('tunnel open', { url: address, target });
         settle(address);
       }
@@ -84,7 +85,8 @@ export function createTunnel({ port, host = '127.0.0.1', exePath, logger } = {})
       url = '';
       restarts += 1;
       log('tunnel closed, reopening', { code, restarts, previous: had });
-      setTimeout(launch, Math.min(30000, 2000 * restarts));
+      // A tunnel that never opened is being refused: asking again every few seconds only prolongs that.
+      setTimeout(launch, had ? Math.min(30000, 2000 * restarts) : Math.min(60000, 5000 * 2 ** (restarts - 1)));
     });
   }
 

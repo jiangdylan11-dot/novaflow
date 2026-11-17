@@ -16,6 +16,8 @@ const configFile = path.join(dataDir, 'compute.config.json');
 fs.mkdirSync(dataDir, { recursive: true });
 let win, tray, assistant, assistantFactory, operation = null, lastError = '', paused = false, quitting = false;
 let queue = Promise.resolve();
+// Each failed start opens a new quick tunnel; retrying every 30 s for long gets the machine refused by the tunnel service.
+let failedStarts = 0, nextStartAt = 0;
 let resources = { ram: null, vram: null, cpu: null, gpu: null };
 let previousCpu = null;
 let cpuTemperature = null;
@@ -85,6 +87,7 @@ async function connect() {
       assistant.onChange(emit);
     }
     await assistant.start();
+    failedStarts = 0; nextStartAt = 0;
     return { ok: true, state: state() };
   } catch (error) {
     const raw = String(error.message || error); log('连接失败', { error: raw, status: error.status || null });
@@ -93,6 +96,7 @@ async function connect() {
       : /aborted due to timeout|fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND/i.test(raw) ? '连接服务器超时，助手会自动重试，请检查网络'
       : raw;
     await assistant?.stop().catch(() => {}); assistant = null;
+    failedStarts += 1; nextStartAt = Date.now() + Math.min(300000, 30000 * 2 ** (failedStarts - 1)) - 5000;
     return { ok: false, error: lastError, state: state() };
   } finally { operation = null; emit(); }
 }
@@ -194,7 +198,7 @@ else {
     void serial(connect);
     // Retry temporary network/environment failures; an explicit pause wins.
     const retry = setInterval(() => {
-      if (!paused && !operation && !assistant?.getState().sharing) void serial(connect);
+      if (!paused && !operation && !assistant?.getState().sharing && Date.now() >= nextStartAt) void serial(connect);
     }, 30000);
     retry.unref();
   });
