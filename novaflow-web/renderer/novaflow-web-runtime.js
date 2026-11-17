@@ -3512,7 +3512,7 @@
       catch (error) { return { ok: false, error: String(error.message || error), items: [] }; }
     },
     async minimaxH3LoraCatalog(payload = {}) {
-      try { return await control('GET', '/api/web/loras/h3?mode=' + encodeURIComponent(payload.mode || 'i2v') + '&steps=' + encodeURIComponent(payload.steps || 4)); }
+      try { return await control('GET', '/api/web/loras/h3?mode=' + encodeURIComponent(payload.mode || 'i2v') + '&steps=' + encodeURIComponent(payload.steps || 8)); }
       catch (error) { return { ok: false, error: String(error.message || error), items: [] }; }
     },
     async minimaxH3LoraValidate(payload) {

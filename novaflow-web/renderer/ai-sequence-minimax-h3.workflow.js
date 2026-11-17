@@ -1,6 +1,6 @@
 (function (root, factory) {
   const profiles = Object.freeze([
-    Object.freeze({ id: 'beta5_int8', label: 'MiniMaxH3(本地)', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
+    Object.freeze({ id: 'beta5_int8', label: 'MiniMaxH3(本地)', steps: 8, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
   ])
   const instances = new Map(profiles.map(profile => [profile.id, factory(profile)]))
   const storageKey = 'novaflow-h3-beta5-profiles-v1'
@@ -27,6 +27,13 @@
         if (Number(settings[id]?.steps) === 20) settings[id] = { ...settings[id], steps: 4 }
       }
     }
+    // 2026-11-17: the default moved from 4 to 8 steps. Saved settings carry
+    // the old default as 4, so lift 4 to 8 once; other custom values stay.
+    if (!(saved.defaultsVersion >= 3)) {
+      for (const { id } of profiles) {
+        if (Number(settings[id]?.steps) === 4) settings[id] = { ...settings[id], steps: 8 }
+      }
+    }
   } catch (_) {}
   const profileFor = id => {
     if (isRetiredProfile(id)) throw retiredProfileError()
@@ -37,7 +44,7 @@
     return profile
   }
   const persist = () => {
-    try { root.localStorage.setItem(storageKey, JSON.stringify({ selected, settings, defaultsVersion: 2, uiVersion: 4 })) } catch (_) {}
+    try { root.localStorage.setItem(storageKey, JSON.stringify({ selected, settings, defaultsVersion: 3, uiVersion: 4 })) } catch (_) {}
   }
   const getProfileSettings = (id = selected) => {
     // Restore retired selections for display only; generation still rejects them.

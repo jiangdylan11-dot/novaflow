@@ -13,7 +13,7 @@ const api = load();
 assert.deepEqual(JSON.parse(JSON.stringify(api.normalizeCustomResolution({width:1000,height:550}))), {width:992,height:544});
 for (const size of [{width:0,height:512},{width:512.5,height:512},{width:2048,height:2048},{width:NaN,height:512}]) assert.throws(()=>api.normalizeCustomResolution(size));
 for (const mode of ['t2v','i2v','fl2v','r2v']) {
- const graph = api.buildWorkflow({mode,width:992,height:544,steps:4,acceleration:'sage',prompt:'A bird flies',...(mode==='i2v'?{images:['first.png']}:mode==='fl2v'?{images:['first.png','last.png']}:mode==='r2v'?{referenceImages:['ref.png']}:{})});
+ const graph = api.buildWorkflow({mode,width:992,height:544,steps:8,acceleration:'sage',prompt:'A bird flies',...(mode==='i2v'?{images:['first.png']}:mode==='fl2v'?{images:['first.png','last.png']}:mode==='r2v'?{referenceImages:['ref.png']}:{})});
  const nodes = Object.values(graph.prompt || graph);
  assert.ok(nodes.some(n=>n.inputs?.width===992 && n.inputs?.height===544), mode);
  api.validateWorkflow(graph,{mode});

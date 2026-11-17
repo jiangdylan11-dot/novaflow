@@ -7,7 +7,7 @@
 
   const MIN_STEPS = 1
   const MAX_STEPS = 10000
-  const DEFAULT_STEPS = 4
+  const DEFAULT_STEPS = 8
 
   const MODE_FAMILY = Object.freeze({
     text_video: 'fl2va',
