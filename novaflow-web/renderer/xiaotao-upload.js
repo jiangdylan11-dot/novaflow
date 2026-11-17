@@ -326,6 +326,20 @@
       ...(item===firstMulti&&swapSlot?{swapSlot}:item===firstMulti&&!task.revision?{clearBoard:true}:{}),
       ...(item.destination.id==='img2img' ? {replaceReferences:true,referenceIndex:drawingIndex++} : {})})), ask, reject};
   }
+  // Placements from a reading of the turn (xiaotao-intent-reader.js): the brain said which of this turn's pictures
+  // goes where; this only turns that into the same placement rows planRoutes makes.
+  function routeTo(files, reading) {
+    const list = Array.from(files || []), place = [];
+    const pick = name => {const hit = /^new([1-9])$/.exec(name || ''); return hit ? list[Number(hit[1]) - 1] || null : null;};
+    if (reading?.surface === 'video') {
+      if (reading.mode === 'first_last') {const first = pick(reading.first), last = pick(reading.last); if (first) place.push(imagePlace(first, 'first_frame')); if (last) place.push(imagePlace(last, 'last_frame'));}
+      else if (reading.mode === 'image_video') {const first = pick(reading.first); if (first) place.push(imagePlace(first, 'image_video'));}
+      else if (reading.mode === 'multi_reference') for (const file of list) place.push(carried(file, destinationById('multi_reference')));
+    } else if (reading?.surface === 'image' && reading.mode === 'img2img') for (const file of list.filter(item => item.kind === 'image')) place.push(imagePlace(file, 'img2img'));
+    let drawingIndex = 0; const firstMulti = place.find(item => item.destination.id === 'multi_reference');
+    return {place: place.map(item => ({...item, targetSurface: reading.surface, ...(item === firstMulti ? {clearBoard: true} : {}),
+      ...(item.destination.id === 'img2img' ? {replaceReferences: true, referenceIndex: drawingIndex++} : {})})), ask: [], reject: []};
+  }
   function carried(file, destination) {
     const blob = file?.file && typeof file.file === 'object' ? file.file : file;
     return {file:blob, name:file.name, kind:file.kind, mimeType:file.mimeType || blob?.type || '', previewUrl:file.previewUrl || '', destination};
@@ -586,7 +600,7 @@
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, toolRequest, smallTalk, goAhead, positiveTaskText, missedResultRequest, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, routeTo, toolRequest, smallTalk, goAhead, positiveTaskText, missedResultRequest, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

@@ -15,10 +15,12 @@ const ROUTES={foartOperationStart:'planner',artAgentChat:'chat',promptAssistantV
 // page: 'drawing' | 'video' | 'audio' | 'other'; prompt: what the page's prompt box holds;
 // task: what 小桃 finished earlier in this conversation; plan: what the planner answers.
 // frame: the first picture in the video page's slot ({width,height}); controls: native fields the planner may set.
-export async function probe({page='drawing',prompt='',task=null,genType='text_video',plans=[],pending=null,frame=null,controls=[],draftFailures=0}={}) {
+export async function probe({page='drawing',prompt='',task=null,genType='text_video',plans=[],pending=null,frame=null,controls=[],draftFailures=0,reading=null}={}) {
   const root={console:{...console,warn(){},debug(){}},crypto:webcrypto,AbortController,setTimeout,clearTimeout,btoa:value=>Buffer.from(value,'binary').toString('base64')};
+  if(reading)root.localStorage={getItem:key=>key==='foart.xiaotao.brain-reads'?'1':null,setItem(){}};
   root.window=root;createContext(root);
-  for(const file of ['xiaotao-prompt-source.js','xiaotao-upload.js','xiaotao-art-agent.js'])runInContext(read(file),root);
+  // reading: what the brain answers when it reads the turn (an object, or a function of the question); without it the rules decide.
+  for(const file of ['xiaotao-prompt-source.js','xiaotao-upload.js',...(reading?['xiaotao-intent-reader.js']:[]),'xiaotao-art-agent.js'])runInContext(read(file),root);
   const rtState={active:page==='drawing',prompt:page==='drawing'?prompt:'',mode:'txt2img',count:1};
   root.__NovaFlowArtGenerate={state:rtState,capturePrompt(){},references:()=>[],capturePromptSourceGuard:()=>({isCurrent:()=>true}),
     captureContext:()=>({generationSurface:page==='drawing'?'drawing':'other',state:rtState,routeRevision:1,references:[]})};
@@ -42,10 +44,10 @@ export async function probe({page='drawing',prompt='',task=null,genType='text_vi
   Object.assign(config.xiaotao_online,{billing_scope:'operation',minimum_positive_credits:1,operation_text_chat_v3:true,operation_vision_chat_v3:true,operation_foart_open_v3:true,
     operation_foart_general_v3:true,operation_video_rewrite_v3:true,operation_audio_rewrite_v3:true,operation_art_v3:true,operation_ui_draft_v3:true});
   const policy={version:'sha256:'+'a'.repeat(64),expiresAt:Date.now()+60000,defaultModel:MODEL,config,models:[{id:MODEL,available:true}]};
-  const touched=[],starts=[];
+  const touched=[],starts=[],questions=[];
   const base={captureFoartBillingOwner:()=>({owner:'test-user',current:()=>true}),captureFoartSessionGuard:()=>()=>true,onlineBusinessAvailableSync:()=>true,
     artAgentStop:async()=>({ok:true}),artAgentStatus:async()=>({ok:true}),companionPricing:async()=>({ok:true,policy}),foartOperationCancel:async()=>({ok:true}),
-    artAgentChat:async payload=>({ok:true,data:{reply:'好的。',history:[...payload.history,{role:'user',content:payload.message},{role:'assistant',content:'好的。'}]}}),
+    artAgentChat:async payload=>reading&&/^你是 Foart 里的助手小桃/.test(payload.message)?(questions.push(payload.message),{ok:true,data:{reply:JSON.stringify(typeof reading==='function'?reading(payload.message):reading)}}):({ok:true,data:{reply:'好的。',history:[...payload.history,{role:'user',content:payload.message},{role:'assistant',content:'好的。'}]}}),
     foartOperationStart:async payload=>{starts.push(payload);const next=plans.shift();
       if(next?.busy)return {ok:false,providerSubmitted:false,errorCode:'operation-busy',error:'请求已发送或另一操作正在运行。'};
       return {ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:next?'act':'done',reply:next?'开始':'好的。',operations:next?[next]:[]},...(next?{foartOperationSession:{opaque:starts.length}}:{})}};},
@@ -59,7 +61,7 @@ export async function probe({page='drawing',prompt='',task=null,genType='text_vi
   c.setModel(MODEL);await c.refreshPricingPolicy();
   if(task)c.state.activeTask={executor:'foart',status:'completed',revisions:[],outputs:[],...task};
   touched.length=0;
-  return {c,root,starts,executed,video,
+  return {c,root,starts,executed,video,questions,
     async say(message){
       touched.length=0;const before=c.state.messages.length;
       const ok=await c.send(message);

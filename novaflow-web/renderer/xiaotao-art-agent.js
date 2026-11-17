@@ -1056,6 +1056,53 @@
       for(let i=0;i<40;i++){await new Promise(done=>root.setTimeout(done,50));if(holds())return true;}
       return false;
     }
+    // The brain reads the turn before anything is decided (xiaotao-intent-reader.js): one request with the conversation,
+    // the page, the last task and this turn's pictures, answered with what the person wants. null = no reading
+    // (not online, a kind of attachment it cannot see, no answer in time, an answer the app cannot carry out);
+    // the keyword rules then stand in, as before.
+    let turnReading=null;
+    // Off until its score on the understanding cases is measured on the live models; one line to turn on for that run.
+    const brainReadsTurn=()=>{try{return root.localStorage?.getItem('foart.xiaotao.brain-reads')==='1';}catch{return false;}};
+    async function readTurn(message,uploads){
+      const reader=root.FoartXiaotaoIntent,chat=api()?.artAgentChat,pictures=uploads.filter(item=>item.kind==='image'&&(item.previewUrl||item.dataUrl));
+      if(!reader||typeof chat!=='function'||state.provider!=='api'||uploads.length>3||pictures.length!==uploads.length)return null;
+      const pricing=selectedPricingPayload(),guard=api()?.captureFoartSessionGuard?.();
+      if(pricing.operationBillingV3!==true||pictures.length&&pricing.operationVisionBillingV3!==true||typeof guard!=='function'||guard()!==true)return null;
+      const info=activePromptSource(),video=videoPage(),rt=root.__NovaFlowArtGenerate,task=state.activeTask;
+      const page=!info?{surface:'other'}:info.surface==='video'?{surface:'video',mode:video?.genType,frames:(video?.referenceSlots||[]).map(slot=>slot.occupied?slot.name||'已有图片':''),
+          seconds:video?.h3?.seconds,width:video?.h3?.width,height:video?.h3?.height,prompt:info.pagePrompt}
+        :info.surface==='audio'?{surface:'audio'}:{surface:'image',mode:rt?.state?.mode,refs:Array.from(rt?.references?.()||[]).filter(Boolean).map(ref=>ref.name||'已有图片'),prompt:info.pagePrompt};
+      const last=task?{surface:task.surface,mode:task.mode,loop:task.loop,request:task.baseRequest,outputs:(task.outputs||[]).map(output=>output?.name).filter(Boolean)}:null;
+      const id=root.crypto.randomUUID(),billing={id:root.crypto.randomUUID(),modelId:state.modelId,owner:billingOwner(),confirmed:0,confirmedCount:0,quoted:0,allQuoted:true,unknown:false,inFlight:false,decimal:onlineOperationDecimalConfirmed()};
+      const call=Promise.resolve(chat({requestId:id,provider:'api',...selectedModelPayload(state.modelId),...pricing,mode:'chat',promptLanguage:'en',
+        message:reader.buildQuestion({message,history:state.history||[],page,last,pictureCount:pictures.length}),history:[],artContext:{},
+        images:pictures.map((item,index)=>({dataUrl:item.previewUrl||item.dataUrl,role:'attachment',source:index+1,name:item.name})),uploads:[],
+        ...(pictures.length?{imageSessionGuard:guard,confirmImageUpload:async()=>guard()===true}:{})})).catch(()=>null);
+      const answer=await Promise.race([call,new Promise(resolve=>root.setTimeout(()=>resolve(null),45000))]);
+      if(!answer){
+        // Stopped, then left to wind down: the page runs one online request at a time.
+        await api()?.artAgentStop?.({requestId:id,provider:'api'});
+        const late=await Promise.race([call,new Promise(resolve=>root.setTimeout(()=>resolve(null),30000))]);
+        if(late)collectBilling(billing,late);return null;
+      }
+      collectBilling(billing,answer);
+      const reading=answer.ok===true?reader.parseReading(answer.data?.reply,{pictureCount:pictures.length}):null;
+      if(reading?.kind!=='make')return reading;
+      // "keep" needs something there to keep.
+      const frames=page.surface==='video'&&page.mode===reading.mode?page.frames||[]:[];
+      if(reading.surface==='video'&&(reading.first==='keep'&&!frames[0]||reading.mode==='first_last'&&reading.last==='keep'&&!frames[1]))return null;
+      if(reading.surface==='image'&&reading.first==='keep'&&!(page.refs||[]).length&&task?.surface!=='image')return null;
+      return reading;
+    }
+    // A reading as the task the rest of the turn works from.
+    function taskFromReading(reading,ruled){
+      if(reading.kind==='talk')return {surface:'chat',mode:'chat',discussion:true,named:[],fromReading:true};
+      if(reading.kind==='operate')return {...(ruled||{surface:'chat',mode:'',named:[]}),discussion:false,revision:false,operate:true,fromReading:true};
+      const previous=state.activeTask,brought=state.staged.some(item=>item.status==='ready');
+      const revision=!!previous&&previous.surface===reading.surface&&(!brought||reading.first==='keep'||reading.last==='keep');
+      const seconds=reading.seconds??(revision&&Number.isFinite(previous.seconds)?previous.seconds:undefined);
+      return {surface:reading.surface,mode:reading.mode,loop:reading.loop===true,discussion:false,named:[],revision,...(Number.isFinite(seconds)?{seconds}:{}),fromReading:true};
+    }
     // A prompt in the box that has not been generated yet: "开始吧" means this one.
     function promptWaiting(){
       const info=activePromptSource(),text=info?.pagePrompt?.trim();
@@ -1239,7 +1286,7 @@
       const taskText=uploads.positiveTaskText?.(message)??message;
       const nativeArtRequest=/抠图|拆图|钢笔|放大|扩图|画布|去背|姿势参考|智能补图|局部编辑|蒙版|对象替换/.test(taskText)&&!/视频|音视|音频|音效|音乐/.test(taskText);
       const productionRequest=nativeArtRequest||uploads.effectsPanelRequest?.(message)===true||uploads.toolRequest?.(message)===true||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
-      const plan = productionRequest||!place?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask,pageTask());
+      const plan = !place?{place:[],reject:[]}:turnReading?.kind==='make'&&typeof uploads.routeTo==='function'?uploads.routeTo(ready,turnReading):productionRequest?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask,pageTask());
       const notes = []; let failed = plan.reject.length > 0;
       deferredDrawing = deferDrawing ? plan.place.filter(item => item.destination?.id === 'img2img') : [];
       for (const item of plan.place) {
@@ -1746,17 +1793,23 @@
         const promptOnly=/提示词|提示语|prompt/i.test(message)&&uploadApi()?.videoRequestKind?.(message)!=='generate'||forbidsGeneration(message)||/只优化|只修改提示词/.test(message);
         const resultSurface=!intent?.discussion&&!promptOnly&&['image','video','audio'].includes(intent?.surface)?intent.surface:'';
         const wantsResult=!resultSurface?'':intent.go?'用户让你现在就开始：按页面上已有的提示词和素材直接生成，不要改写内容，也不要再询问。'
-          :intent.fromPage||intent.revision?'用户正停在'+({image:'绘图',video:'视频生成',audio:'音频生成'}[resultSurface])+'页面，这句话'+(intent.revision?'是对刚完成的结果提的修改':'没有点名别的功能，说的就是这个页面要出的内容')+'：直接用生成操作出结果，不要只优化提示词，也不要让用户自己点生成。'+(resultSurface==='image'?'该先问绘图线路时照常先问一次。':''):'';
+          :intent.fromPage||intent.revision||intent.fromReading?'用户正停在'+({image:'绘图',video:'视频生成',audio:'音频生成'}[resultSurface])+'页面，这句话'+(intent.revision?'是对刚完成的结果提的修改':'没有点名别的功能，说的就是这个页面要出的内容')+'：直接用生成操作出结果，不要只优化提示词，也不要让用户自己点生成。'+(resultSurface==='image'?'该先问绘图线路时照常先问一次。':''):'';
         // A picture brought after a finished task starts over: the earlier turns would only lend it their scene (live: a new toy picture kept the last picture's dusk).
         const ownPictureTask=turnBroughtFiles&&!!priorTask&&!intent?.revision&&resultSurface==='image';
         // "960*960，重新做": the size is set here, by the app, so no brain has to find the two fields.
-        const saidSize=/(\d{3,4})\s*[*x×X＊]\s*(\d{3,4})/.exec(positiveRequest);
-        const sizeNamed=SIZE_SAID.test([...(intent?.revision?[priorTask?.baseRequest,...(priorTask?.revisions||[])]:[]),message].filter(Boolean).join('\n'));
+        const reading=turnReading;turnReading=null;
+        // A video the brain read as 文生/图生/首尾帧 is made in that mode: the page is opened and switched before planning.
+        if(reading?.kind==='make'&&reading.surface==='video'){
+          if(root.NovaFlowAudioStudio?.isOpen?.()!==true||root.NovaFlowAudioStudio?.sub?.()!=='video')await tools.execute({action:'open',surface:'video'},{signal});
+          if(videoPage()?.genType!==reading.mode){uploadApi()?.switchMode?.(root.document,reading.mode);for(let i=0;i<30&&videoPage()?.genType!==reading.mode;i++)await new Promise(done=>root.setTimeout(done,100));}
+        }
+        const saidSize=reading?.width&&reading?.height?[null,reading.width,reading.height]:/(\d{3,4})\s*[*x×X＊]\s*(\d{3,4})/.exec(positiveRequest);
+        const sizeNamed=!!(reading?.width&&reading?.height)||SIZE_SAID.test([...(intent?.revision?[priorTask?.baseRequest,...(priorTask?.revisions||[])]:[]),message].filter(Boolean).join('\n'));
         let sizeNote='';
         if(intent?.surface==='video'&&!intent.discussion&&saidSize&&await setVideoSize(videoSizeFor(saidSize[1],saidSize[2]))){
           const now=root.NovaFlowAiSequenceGeneration.capture().h3;sizeNote='视频分辨率已按用户说的设为 '+now.width+'×'+now.height+'，不用再设置宽和高，直接做剩下的事。';
         }
-        if(intent?.surface==='video'&&!intent.discussion&&Number.isFinite(intent.seconds)&&/\d\s*(?:秒|s\b)/i.test(positiveRequest)){
+        if(intent?.surface==='video'&&!intent.discussion&&Number.isFinite(intent.seconds)&&(Number.isFinite(reading?.seconds)||/\d\s*(?:秒|s\b)/i.test(positiveRequest))){
           try{if(videoPage()?.mode==='minimax_h3_local'&&Number(videoPage().h3?.seconds)!==intent.seconds){root.NovaFlowAiSequenceGeneration.setRequest({seconds:intent.seconds});
             for(let i=0;i<40&&Number(videoPage()?.h3?.seconds)!==intent.seconds;i++)await new Promise(done=>root.setTimeout(done,50));}
             if(Number(videoPage()?.h3?.seconds)===intent.seconds)sizeNote+=(sizeNote?'\n':'')+'视频时长已按用户说的设为 '+intent.seconds+' 秒，不用再设置时长。';
@@ -1772,7 +1825,9 @@
         // Every picture brought for a video is looked at before planning, 图生 and 首尾帧 included: the framework sees the frames
         // later, but the planner writes the brief it works from, and a brief written blind contradicts the picture.
         const videoPictures=state.provider==='api'&&intent?.surface==='video'?freshPictures:[];
-        if(videoPictures.length&&selectedPricingPayload().operationVisionBillingV3===true){
+        // The reading already looked at this turn's pictures.
+        if(reading?.pictures?.some(Boolean))pictureFacts=reading.pictures.map((text,index)=>text?'图'+(index+1)+'：'+text:'').filter(Boolean).join('\n').slice(0,500);
+        else if(videoPictures.length&&selectedPricingPayload().operationVisionBillingV3===true){
           onStatus('正在看图…');
           // One picture per look: several in one request run past the edge function's limit.
           const facts=[];
@@ -1815,6 +1870,7 @@
             +(/视频|首尾帧|多参|图生|文生/.test(positiveRequest)||intent?.surface==='video'?'\n视频 prompt 只写画面和动作，用户没提声音就不要写声音或音乐。':'')
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(wantsResult?'\n'+wantsResult:'')
+            +(reading?.brief?'\n这句话的意思（已结合对话、页面和图片读过）：'+reading.brief:'')
             +(sizeNote?'\n'+sizeNote+(resultSurface==='video'&&!receipts.length?'这些参数不要再用 set_control 去设，这一轮直接给出 generate_video 这一个操作。':''):'')
             +(ownPictureTask?'\n这次带来了新图片，是一个新任务：只处理这次的图片，画面内容只来自这句话和这张图。'+(priorTask.surface==='image'?'绘图线路本对话已经定过，沿用当前选中的，不要再问。':''):'')
             +(stalePrompt?'\n页面输入框里留着的是上一个已完成任务的旧提示词，和这次无关：不要沿用它的任何内容，只按这次的要求'+(turnBroughtFiles?'和这次的图片':'')+'重新写。'+(turnStaleRefs?'参考位置里还留着上一个任务的'+(staleSurface==='video'?'素材：这句话说的是它就接着用，是全新的内容就先切到文生视频。':'图：这句话说的是那张图就接着用（图生图），是全新的画面就用文生图。'):''):'')
@@ -2345,6 +2401,15 @@
         return rewriteQwenAudioText(message,qwenAudioIntent,{recordMessage});
       recoverActiveTask();
       let task=capabilityOnly||reverseImage?{surface:'chat',mode:'chat',discussion:true,named:[]}:uploadApi()?.inferTask?.(message,invocationUploads,state.activeTask,pageTask());
+      // The brain reads the turn; the rule-based task above is what stands in when it cannot. A greeting, an answer to
+      // 小桃's own question and a request for the prompt text are plain enough to skip the reading.
+      turnReading=null;
+      if(brainReadsTurn()&&state.provider==='api'&&!capabilityOnly&&!reverseImage&&!includeResult&&!pendingIntent&&uploadApi()?.smallTalk?.(message)!==true&&uploadApi()?.goAhead?.(message)!=='strong'){
+        state.pending=true;state.error='';state.status='小桃正在理解这句话…';notify();
+        let reading=null;try{reading=await readTurn(message,state.staged.filter(item=>item.status==='ready'));}catch{}finally{state.pending=false;}
+        if(retired)return false;
+        if(reading&&reading.kind!=='prompt'){turnReading=reading;task=taskFromReading(reading,task);}
+      }
       // The local model only chats and rewrites prompts; every software
       // operation belongs to an online model.
       if(communityChatOnly && !promptDiscussion && localOperationIntent(message))return offerLocalPrompt(message,{recordMessage});
@@ -2366,7 +2431,7 @@
       // "开始吧 / 继续 / 就按这个来" with a prompt waiting on the page means: run it.
       else if(task?.surface==='chat'&&!task.discussion&&uploadApi()?.goAhead?.(message)==='strong'&&promptWaiting())task={...task,...pageTask(),go:true};
       // A greeting or a bare "好的" that answers nothing is talk, even right after a finished task.
-      const talkOnly=!continuation&&!invocationUploads.length&&uploadApi()?.smallTalk?.(message)===true;
+      const talkOnly=!continuation&&(turnReading?turnReading.kind==='talk':!invocationUploads.length&&uploadApi()?.smallTalk?.(message)===true);
       const predictionInput = state.provider === 'api' ? onlineEstimateInput(message,{includeResult}) : null;
       const prediction = predictionInput ? predictOnline(predictionInput) : null;
       let stagedReady = false;
@@ -2402,7 +2467,7 @@
       const operationVision=operationTextOnly && selectedPricingPayload().operationVisionBillingV3===true;
       const visionUploads=operationVision && invocationUploads.length>0 && invocationUploads.every(item=>item?.kind==='image');
       // Anything that is not a question or small talk is something to do: the planner reads it with the page in view.
-      const operationNeedsTools=!reverseImage&&!talkOnly&&(includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||!invocationUploads.length&&!task.discussion||
+      const operationNeedsTools=!reverseImage&&!talkOnly&&(!!turnReading||includeResult||!task||task.surface!=='chat'||task.revision||state.activeTask||(!visionUploads&&invocationUploads.length)||!invocationUploads.length&&!task.discussion||
         /打开|关闭|进入|切换|操作|执行|调用|生成|制作|设计|新建|创建|建立|添加|增加|配上|配个|配一|配齐|特效|光效|动效|扫光|刀光|背光|转光|金币|做(?:一|个|张|段|套)|来(?:一|个|张|段)|配乐|配音|转成|转换|合成|渲染|改|换|抠|去掉|去除|擦|放大|扩|拆|补|裁|压缩|画|加上|加个|调整|编辑|删除|导入|导出|保存|播放|暂停|选择|选中|移动|旋转|缩放|画布|图层|时间轴|当前(?:页面|作品|工程|画面|图片|视频)|放(?:进|到|入)|加(?:进|到|入)|作为.{0,4}(?:参考|素材)|参考图|用这|拿这|做成|变成|换成|换掉|替换|迁移|(?:图|第)\s*[1-9一二三四五六七八九].{0,12}(?:风格|画风)/.test(message));
       const operationGeneral=state.provider==='api'&&!capabilityOnly&&!!operationNeedsTools;
       deferDrawing=operationGeneral;
