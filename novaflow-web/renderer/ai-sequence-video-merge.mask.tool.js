@@ -101,8 +101,13 @@
       }
     }
 
-    function paintSegment(stroke, startX, startY, endX, endY) {
-      const changed = !!root.NovaFlowSoftBrush.paintCoverageSegment(stroke.raster, startX, startY, endX, endY)
+    function pressureOf(value) {
+      const p = Number(value)
+      return Number.isFinite(p) && p > 0 ? Math.min(1, p) : 1
+    }
+
+    function paintSegment(stroke, startX, startY, endX, endY, startScale = 1, endScale = startScale) {
+      const changed = !!root.NovaFlowSoftBrush.paintCoverageSegment(stroke.raster, startX, startY, endX, endY, startScale, endScale)
       stroke.modified = stroke.modified || changed
       return changed
     }
@@ -166,6 +171,7 @@
         featherPx: effectiveFeather,
         lastX: x,
         lastY: y,
+        lastPressure: pressureOf(input.pressure),
         tiles: new Map(),
         modified: false,
       }
@@ -174,7 +180,7 @@
         tiles: activeStroke.tiles, read: copyRegion,
         write(tile) { writeRegion(tile, tile.data); markDirtyBounds(tile.x, tile.y, tile.x + tile.width, tile.y + tile.height) }
       })
-      if (paintSegment(activeStroke, x, y, x, y)) revision += 1
+      if (paintSegment(activeStroke, x, y, x, y, activeStroke.lastPressure)) revision += 1
       return true
     }
 
@@ -183,9 +189,11 @@
       if (!activeStroke) throw new Error('extendStroke requires an active stroke')
       const x = finiteNumber(input.x, 'x')
       const y = finiteNumber(input.y, 'y')
-      const changed = paintSegment(activeStroke, activeStroke.lastX, activeStroke.lastY, x, y)
+      const pressure = pressureOf(input.pressure)
+      const changed = paintSegment(activeStroke, activeStroke.lastX, activeStroke.lastY, x, y, activeStroke.lastPressure, pressure)
       activeStroke.lastX = x
       activeStroke.lastY = y
+      activeStroke.lastPressure = pressure
       if (changed) revision += 1
       return changed
     }

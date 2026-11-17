@@ -333,3 +333,19 @@ test('real cutout, image-mask and video-mask pixels share a continuous core/feat
     }
   }
 })
+
+test('pen pressure tapers the stroke core while a full-pressure stroke is unchanged', () => {
+  const widthAt = (surface, x) => { let n = 0; for (let y = 0; y < 121; y++) if (surface.sample(x, y) < 128) n++; return n }
+  for (const feather of [0, 12]) {
+    const plain = mask.createSurface({ width: 241, height: 121 }), full = mask.createSurface({ width: 241, height: 121 })
+    plain.beginStroke({ x: 20.5, y: 60.5, radiusPx: 20, featherPx: feather, mode: 'erase' }); plain.extendStroke({ x: 220.5, y: 60.5 })
+    full.beginStroke({ x: 20.5, y: 60.5, radiusPx: 20, featherPx: feather, mode: 'erase', pressure: 1 }); full.extendStroke({ x: 220.5, y: 60.5, pressure: 1 })
+    assert.deepEqual(full.getCoverage(), plain.getCoverage(), 'pressure 1 must paint exactly like a mouse')
+    const pen = mask.createSurface({ width: 241, height: 121 })
+    pen.beginStroke({ x: 20.5, y: 60.5, radiusPx: 20, featherPx: feather, mode: 'erase', pressure: 0.2 })
+    pen.extendStroke({ x: 220.5, y: 60.5, pressure: 1 })
+    const light = widthAt(pen, 40), heavy = widthAt(pen, 200)
+    assert(light < heavy * 0.5, `light end ${light}px should be well under the heavy end ${heavy}px`)
+    assert(Math.abs(heavy - widthAt(plain, 200) * 0.92) <= 2, `the core follows the pressure along the segment: ${heavy} vs ${widthAt(plain, 200)}`)
+  }
+})

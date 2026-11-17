@@ -4896,10 +4896,12 @@
     return out
   }
 
-  function weightDab(sx, sy) {
+  // 手绘板笔压按比例减轻这一下的力度（鼠标 1），见 brush-straight-line.js
+  function weightDab(sx, sy, ev) {
     const we = state.weightEdit, st = state.weightStroke
     if (!st || we.bone == null) return
-    const hits = weightHits(st.model, sx, sy, we.size, we.feather)
+    const scale = window.FoartBrushLine && typeof window.FoartBrushLine.pressure === 'function' ? window.FoartBrushLine.pressure(ev) : 1
+    const hits = weightHits(st.model, sx, sy, we.size, we.feather).map(([i, f]) => [i, f * scale])
     if (!hits.length) return
     // 替换 moves toward 力度 itself; 增加 / 减少 a little per step, 力度 setting how much
     st.model = we.mode === 'set'
@@ -6630,7 +6632,7 @@
           return
         }
         state.weightStroke = { model: ctx.model, changed: false }
-        weightDab(sx, sy)
+        weightDab(sx, sy, e)
         drag = { kind: 'weights', sx, sy, moved: true }
         capturePointer(e)
         return
@@ -6839,7 +6841,7 @@
       if (!drag && state.pathEdit) { state.meshPointer = [sx, sy]; return }
       if (!drag && state.weightEdit && state.weightEdit.binding) { const hov = rt.skeleton ? hitBone(sx, sy) : null; if (hov !== state.hover) state.hover = hov; return }
       if (!drag && (state.meshEdit || state.weightEdit)) return
-      if (drag && drag.kind === 'weights') { weightDab(sx, sy); return }
+      if (drag && drag.kind === 'weights') { weightDab(sx, sy, e); return }
       // 路径约束 picking its path: the path under the pointer lights up, with a label at the pointer (Spine's PICK)
       if (!drag && state.pick && state.pick.want === 'slot') {
         const ph = rt.skeleton ? hitPathCurve(sx, sy, true) : null

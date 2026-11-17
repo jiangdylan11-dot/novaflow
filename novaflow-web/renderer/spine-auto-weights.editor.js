@@ -673,11 +673,13 @@
       }
       let lastPointer = null
 
-      function stamp(ix, iy, force) {
+      // 手绘板笔压按比例减轻这一下的力度（鼠标 1），见 brush-straight-line.js
+      function stamp(ix, iy, force, ev) {
         if (sel < 0) return
         if (!force && lastStamp && Math.hypot(ix - lastStamp[0], iy - lastStamp[1]) < radius * 0.25) return
         lastStamp = [ix, iy]
-        const hits = brushHits(animOn && posed ? posed : V, n, ix, iy, radius, 1)
+        const scale = window.FoartBrushLine && typeof window.FoartBrushLine.pressure === 'function' ? window.FoartBrushLine.pressure(ev) : 1
+        const hits = brushHits(animOn && posed ? posed : V, n, ix, iy, radius, scale)
         if (!hits.length) return
         if (mode === 'add') paintAdd(W, nb, sel, hits, strength * 0.15)
         else if (mode === 'sub') paintSub(W, nb, sel, hits, strength * 0.15)
@@ -722,7 +724,7 @@
         }
         pushUndo()
         painting = true; lastStamp = null
-        stamp(ix, iy, true); draw()
+        stamp(ix, iy, true, ev); draw()
       })
       canvas.addEventListener('pointermove', (ev) => {
         const rect = canvas.getBoundingClientRect()
@@ -739,7 +741,7 @@
           return
         }
         lastPointer = mode === 'set' ? null : [ix, iy]
-        if (painting) stamp(ix, iy, false)
+        if (painting) stamp(ix, iy, false, ev)
         requestDraw()
       })
       canvas.addEventListener('pointerleave', () => { lastPointer = null; draw() })

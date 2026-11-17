@@ -68,7 +68,17 @@ export function patchCutoutBrushLikeEditor(source) {
     .replaceAll('Dn.current={t:s,lastX:', 'Dn.current={strokeId:c?.strokeId??Sn.current,t:s,lastX:')
     .replaceAll('Math.round(i*100)/100,a].join', 'Math.round(i*100)/100,a,t.strokeId].join')
     .replaceAll('e.feather,e.mode!==`erase`);', 'e.feather,e.mode!==`erase`,t.strokeId);')
-    .replaceAll('f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`);', 'f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId);');
+    .replaceAll('f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`);', 'f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId);')
+    // 手绘板笔压（brush-straight-line.js）：每段两端的笔刷半径比例 s0 / s1，鼠标恒为 1
+    .replaceAll('(async()=>{try{await Yr(e.clientX,e.clientY,Ge)}', '(async()=>{try{await Yr(e.clientX,e.clientY,Ge,window.FoartBrushLine?.pressure?.(e)??1)}')
+    .replaceAll('Yr=async(e,t,n)=>{', 'Yr=async(e,t,n,nfP=1)=>{')
+    .replaceAll('t:l,x0:s,y0:c,x1:s,y1:c,mode:n,w:i,h:a,r:u})', 't:l,x0:s,y0:c,x1:s,y1:c,mode:n,w:i,h:a,r:u,s0:nfP,s1:nfP})')
+    .replaceAll('l=Math.max(.5,Ye/2)/Math.max(1e-6,Number(i.screenScale)||1);if(!c||c.t!==s){', 'l=Math.max(.5,Ye/2)/Math.max(1e-6,Number(i.screenScale)||1),nfP=window.FoartBrushLine?.pressure?.(e)??1;if(!c||c.t!==s){')
+    .replaceAll('lastX:a,lastY:o,mode:Ge,w:n,h:r,r:l},Ar({scope:qe?`global`:`frame`,t:s,x0:a,y0:o,x1:a,y1:o,mode:Ge,w:n,h:r,r:l});return}', 'lastX:a,lastY:o,mode:Ge,w:n,h:r,r:l,nfP},Ar({scope:qe?`global`:`frame`,t:s,x0:a,y0:o,x1:a,y1:o,mode:Ge,w:n,h:r,r:l,s0:nfP,s1:nfP});return}')
+    .replaceAll('x0:c.lastX,y0:c.lastY,x1:a,y1:o,mode:Ge,w:n,h:r,r:l}),Dn.current={...c,lastX:a,lastY:o,r:l}}', 'x0:c.lastX,y0:c.lastY,x1:a,y1:o,mode:Ge,w:n,h:r,r:l,s0:c.nfP??nfP,s1:nfP}),Dn.current={...c,lastX:a,lastY:o,r:l,nfP}}')
+    .replaceAll('Dn.current={strokeId:Dn.current?.strokeId??Sn.current,t:r,lastX:a.x,lastY:a.y,mode:Ge,w:n,h:i,r:', 'Dn.current={nfP:window.FoartBrushLine?.pressure?.(e)??1,strokeId:Dn.current?.strokeId??Sn.current,t:r,lastX:a.x,lastY:a.y,mode:Ge,w:n,h:i,r:')
+    .replaceAll('e.feather,e.mode!==`erase`,t.strokeId);', 'e.feather,e.mode!==`erase`,t.strokeId,t.s0,t.s1);')
+    .replaceAll('f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId);', 'f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId,e.s0,e.s1);');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

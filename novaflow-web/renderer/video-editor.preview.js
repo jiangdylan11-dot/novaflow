@@ -224,6 +224,8 @@
       const k = stage.scale * clip.transform.scale; // css px per source px
       return { x: (p.x - g.left) / k, y: (p.y - g.top) / k, k };
     }
+    // 手绘板笔压 -> 笔刷半径比例（鼠标 1），见 brush-straight-line.js
+    function penScale(event) { const api = globalThis.FoartBrushLine; return api && typeof api.pressure === 'function' ? api.pressure(event) : 1; }
     function positionBrush(p) {
       if (!maskEditing || !p) { brushRing.hidden = true; brushFeather.hidden = true; return; }
       const size = maskEditing.brushSize, feather = maskEditing.feather;
@@ -239,7 +241,7 @@
         const local = maskLocal(p); if (!local) return;
         try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* synthetic */ }
         const radius = Math.max(0.5, maskEditing.brushSize / 2) / Math.max(1e-6, local.k), feather = Math.max(0, maskEditing.feather / local.k);
-        try { maskEditing.surface.beginStroke({ mode: maskEditing.mode, radiusPx: radius, featherPx: feather, x: local.x, y: local.y }); }
+        try { maskEditing.surface.beginStroke({ mode: maskEditing.mode, radiusPx: radius, featherPx: feather, x: local.x, y: local.y, pressure: penScale(event) }); }
         catch (error) { console.warn('[lab] mask stroke', error); return; }
         drag = { paint: true };
         draw();
@@ -260,7 +262,7 @@
       const p = point(event);
       hover = p;
       if (maskEditing) { positionBrush(p); canvas.style.cursor = 'none'; }
-      if (drag && drag.paint) { maskEditing.surface.extendStroke({ x: maskLocal(p).x, y: maskLocal(p).y }); draw(); return; }
+      if (drag && drag.paint) { maskEditing.surface.extendStroke({ x: maskLocal(p).x, y: maskLocal(p).y, pressure: penScale(event) }); draw(); return; }
       if (!drag) { if (!maskEditing) canvas.style.cursor = clipAt(p) ? 'grab' : 'default'; return; }
       if (drag.pan) { view.panX = drag.panX + (p.x - drag.startX); view.panY = drag.panY + (p.y - drag.startY); applyView(); return; }
       let dx = p.x - drag.startX, dy = p.y - drag.startY;

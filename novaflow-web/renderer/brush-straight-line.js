@@ -11,6 +11,12 @@
  *
  * 用法：FoartBrushLine.watch(selectorOrElement, isActive)
  *   isActive(el, event) 为真时，这块画布当前是笔刷（不是吸管、框选等别的工具）。
+ *
+ * 手绘板（笔）：
+ *   - 浏览器每帧只发一次 pointermove，笔在两帧之间的采样都合在 getCoalescedEvents() 里。
+ *     这里把它们逐个转发给笔刷画布，快速画弧线不再是折线。
+ *   - FoartBrushLine.pressure(event) 给出笔压对应的笔刷比例（0.1–1），鼠标恒为 1；
+ *     各笔刷用它缩放笔刷半径（权重笔刷缩放力度），所以有轻重粗细的笔触。
  */
 (function (root) {
   'use strict'
@@ -24,6 +30,15 @@
   const mine = new WeakSet()
   let stroke = null
   let plain = null
+
+  const MIN_PRESSURE_SCALE = 0.1
+  // 笔压 -> 笔刷比例。只认笔：鼠标、触摸和松开时都是 1，笔刷保持原来的大小。
+  function pressure(ev) {
+    if (!ev || ev.pointerType !== 'pen' || !(Number(ev.buttons) & 1)) return 1
+    const p = Number(ev.pressure)
+    if (!Number.isFinite(p) || p <= 0) return 1
+    return MIN_PRESSURE_SCALE + (1 - MIN_PRESSURE_SCALE) * Math.min(1, p)
+  }
 
   function watch(target, isActive) {
     if (!target) return () => {}
@@ -68,7 +83,7 @@
       screenY: y + (Number(base.screenY) - Number(base.clientY) || 0),
       pointerId: base.pointerId, pointerType: base.pointerType || 'mouse', isPrimary: true,
       button: type === 'pointermove' ? -1 : 0, buttons,
-      pressure: buttons ? 0.5 : 0, width: 1, height: 1,
+      pressure: buttons ? (base.pressure > 0 ? base.pressure : 0.5) : 0, width: 1, height: 1,
       shiftKey: false, ctrlKey: false, altKey: false, metaKey: false
     }
     const Ctor = typeof root.PointerEvent === 'function' ? root.PointerEvent : root.MouseEvent
@@ -109,11 +124,11 @@
     if (ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.altKey) return
     const found = findTarget(ev.target)
     if (!found || !activeFor(found, ev)) return
-    if (!ev.shiftKey) { plain = { key: found.entry.key, el: found.el, pointerId: ev.pointerId }; return }
+    if (!ev.shiftKey) { plain = { key: found.entry.key, el: found.el, pointerId: ev.pointerId, pointerType: ev.pointerType }; return }
     ev.preventDefault()
     ev.stopImmediatePropagation()
     const press = [ev.clientX, ev.clientY]
-    const base = { pointerId: ev.pointerId, pointerType: ev.pointerType, clientX: ev.clientX, clientY: ev.clientY, screenX: ev.screenX, screenY: ev.screenY }
+    const base = { pointerId: ev.pointerId, pointerType: ev.pointerType, pressure: ev.pressure, clientX: ev.clientX, clientY: ev.clientY, screenX: ev.screenX, screenY: ev.screenY }
     // 先不落笔：松开时没拖动 = 点击，从上一笔终点连过来；拖出去了 = 从按下处画锁定直线
     stroke = { key: found.entry.key, el: found.el, base, press, from: fromFraction(found.el, lastEnd.get(found.entry.key)),
       started: false, last: null, anchor: press, dir: null, pending: null, queue: Promise.resolve() }
@@ -128,11 +143,37 @@
     s.queue = new Promise((resolve) => setTimeout(resolve, READY_MS))
   }
 
+  // 笔的普通笔画：把这一帧合并掉的采样点逐个发给笔刷（最后一个就是这个事件本身的位置）
+  function forwardCoalesced(ev) {
+    if (!plain || ev.pointerId !== plain.pointerId || plain.pointerType !== 'pen' || !(Number(ev.buttons) & 1)) return false
+    if (!plain.el.isConnected || typeof ev.getCoalescedEvents !== 'function') return false
+    let list
+    try { list = ev.getCoalescedEvents() } catch { return false }
+    if (!list || list.length < 2) return false
+    ev.preventDefault()
+    ev.stopImmediatePropagation()
+    const base = { pointerId: ev.pointerId, pointerType: ev.pointerType, clientX: ev.clientX, clientY: ev.clientY, screenX: ev.screenX, screenY: ev.screenY }
+    let last = null
+    list.forEach((c, i) => {
+      const x = Number(c.clientX), y = Number(c.clientY)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      // 太密的点（不到 0.75 px）跳过，但最后一个一定发，终点不差
+      if (last && i < list.length - 1 && Math.hypot(x - last[0], y - last[1]) < 0.75) return
+      last = [x, y]
+      base.pressure = Number(c.pressure) > 0 ? Number(c.pressure) : ev.pressure
+      fire(plain.el, 'pointermove', x, y, base, ev.buttons)
+    })
+    return true
+  }
+
   function onMove(ev) {
-    if (mine.has(ev) || !stroke || ev.pointerId !== stroke.base.pointerId) return
+    if (mine.has(ev)) return
+    if (!stroke) { forwardCoalesced(ev); return }
+    if (ev.pointerId !== stroke.base.pointerId) return
     ev.preventDefault()
     ev.stopImmediatePropagation()
     const s = stroke
+    if (Number(ev.pressure) > 0) s.base.pressure = ev.pressure
     if (!s.started) {
       if (Math.hypot(ev.clientX - s.press[0], ev.clientY - s.press[1]) < LOCK_PX) return
       start(s, s.press)
@@ -188,7 +229,7 @@
   root.addEventListener('pointercancel', onEnd, true)
   root.addEventListener('wheel', onWheel, { capture: true, passive: true })
 
-  root.FoartBrushLine = { watch, hint: 'Shift 直线' }
+  root.FoartBrushLine = { watch, pressure, hint: 'Shift 直线' }
 
   // 视频抠图（擦除 / 修复）：吸管取色时光标是吸管图，不接管
   watch('[data-novaflow-ai-cutout-edit-canvas]', (el) => !/^url\(/.test(String(el.style.cursor || '')))

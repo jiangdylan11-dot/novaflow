@@ -70,7 +70,7 @@
   // with a compact circular kernel gives smooth concave joins, unlike taking the
   // maximum of per-segment feather ramps (which leaves radial bisector creases).
   // Both disk radii add up to core + feather, so the feather stays in pixel units.
-  function featherShape(stroke, x0, y0, x1, y1) {
+  function featherShape(stroke, x0, y0, x1, y1, s0 = 1, s1 = s0) {
     let shape = stroke.shape
     if (!shape) {
       const scale = Math.max(1, stroke.feather / 32), radius = stroke.feather / (2 * scale), kernel = []
@@ -92,7 +92,7 @@
       if (value > old) tile[i] = value
       return old
     }
-    const mid = (stroke.radius + stroke.feather / 2) / scale
+    const midAt = t => (stroke.radius * (s0 + (s1 - s0) * t) + stroke.feather / 2) / scale, mid = midAt(s0 > s1 ? 0 : 1)
     x0 /= scale; y0 /= scale; x1 /= scale; y1 /= scale
     const dx = x1 - x0, dy = y1 - y0, ll = dx * dx + dy * dy, halo = Math.ceil(radius) + 2
     const gx0 = Math.max(-halo, Math.floor(Math.min(x0, x1) - mid - 1)), gy0 = Math.max(-halo, Math.floor(Math.min(y0, y1) - mid - 1))
@@ -100,7 +100,7 @@
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (let y = gy0; y < gy1; y++) for (let x = gx0; x < gx1; x++) {
       const px = x + 0.5 - x0, py = y + 0.5 - y0, t = ll ? Math.max(0, Math.min(1, (px * dx + py * dy) / ll)) : 0
-      const value = Math.fround(Math.max(0, Math.min(1, mid + 0.5 - Math.hypot(px - t * dx, py - t * dy))))
+      const value = Math.fround(Math.max(0, Math.min(1, midAt(t) + 0.5 - Math.hypot(px - t * dx, py - t * dy))))
       if (value <= cell(x, y)) continue
       cell(x, y, value); minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y)
     }
@@ -140,8 +140,11 @@
     return changed ? {left, top, right, bottom} : null
   }
   // Build coverage against the pointerdown snapshot, so retracing is idempotent.
-  function paintCoverageSegment(stroke, x0, y0, x1, y1) {
-    const outer = stroke.radius + stroke.feather, outerSquared = outer * outer
+  // s0 / s1 scale the core radius at the two ends (pen pressure); the feather keeps its pixel width.
+  function paintCoverageSegment(stroke, x0, y0, x1, y1, s0 = 1, s1 = s0) {
+    s0 = Number.isFinite(s0) && s0 > 0 ? Math.min(1, s0) : 1; s1 = Number.isFinite(s1) && s1 > 0 ? Math.min(1, s1) : s0
+    const tapered = s0 !== 1 || s1 !== 1
+    const outer = stroke.radius * Math.max(s0, s1) + stroke.feather, outerSquared = outer * outer
     const left = Math.max(0, Math.floor(Math.min(x0, x1) - outer))
     const top = Math.max(0, Math.floor(Math.min(y0, y1) - outer))
     const right = Math.min(stroke.width, Math.ceil(Math.max(x0, x1) + outer + 1))
@@ -161,9 +164,10 @@
           const ex = px - t * dx, ey = py - t * dy, squared = ex * ex + ey * ey
           if (squared > outerSquared) continue
           const distance = Math.sqrt(squared)
+          const core = tapered ? stroke.radius * (s0 + (s1 - s0) * t) : stroke.radius, edge = core + stroke.feather
           const amount = smooth
-            ? distance <= stroke.radius ? 255 : distance >= outer ? 0 : Math.max(1, Math.min(254, alphaByte(strength(distance, stroke.radius, outer))))
-            : alphaByte(strength(distance, stroke.radius, outer) * (stroke.opacity ?? 1))
+            ? distance <= core ? 255 : distance >= edge ? 0 : Math.max(1, Math.min(254, alphaByte(strength(distance, core, edge))))
+            : alphaByte(strength(distance, core, edge) * (stroke.opacity ?? 1))
           const index = (y - tile.y) * tile.width + x - tile.x
           if (amount <= tile.alpha[index]) continue
           tile.alpha[index] = amount
@@ -172,7 +176,7 @@
         if (dirty) { stroke.write(tile); changed = true }
       }
     }
-    return smooth ? featherShape(stroke, x0, y0, x1, y1) : changed ? { left, top, right, bottom } : null
+    return smooth ? featherShape(stroke, x0, y0, x1, y1, s0, s1) : changed ? { left, top, right, bottom } : null
   }
   function createCanvasStroke(ctx, radius, feather, white) {
     return createCoverageStroke({
@@ -182,13 +186,13 @@
       write: tile => ctx.putImageData(tile.image, tile.x, tile.y)
     })
   }
-  function paintCanvas(ctx,x0,y0,x1,y1,radius,feather,white,strokeId) {
+  function paintCanvas(ctx,x0,y0,x1,y1,radius,feather,white,strokeId,s0,s1) {
     let state=canvasStrokes.get(ctx)
     const key=[ctx.canvas.width,ctx.canvas.height,radius,feather,white,ctx.globalCompositeOperation,ctx.globalAlpha,strokeId ?? ''].join('|')
     if (!state || state.key!==key || (strokeId == null && (Math.hypot(x0-state.x,y0-state.y)>0.01 || (x0===x1&&y0===y1)))) {
       state={key, raster:createCanvasStroke(ctx,radius,feather,white)}; canvasStrokes.set(ctx,state)
     }
-    const bounds = paintCoverageSegment(state.raster,x0,y0,x1,y1)
+    const bounds = paintCoverageSegment(state.raster,x0,y0,x1,y1,s0,s1)
     state.x=x1; state.y=y1
     return bounds
   }

@@ -17242,9 +17242,20 @@
     hideSplitToolFloatingSurfaces()
   }
 
-  function paintSelectionPoint(session, point) {
+  // 手绘板笔压：笔刷半径的比例（鼠标 1），见 brush-straight-line.js
+  function brushPressureScale(event) {
+    const api = window.FoartBrushLine
+    return api && typeof api.pressure === 'function' ? api.pressure(event) : 1
+  }
+
+  function pointPressure(point) {
+    const p = point && Number(point.p)
+    return Number.isFinite(p) && p > 0 ? Math.min(1, p) : 1
+  }
+
+  function paintSelectionPoint(session, point, scale = 1) {
     const ctx = session.maskCanvas.getContext('2d')
-    const { radius } = selectionBrushMetrics()
+    const radius = selectionBrushMetrics().radius * scale
     const erase = state.selectionTool && state.selectionTool.paintMode === 'erase'
     ctx.save()
     ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over'
@@ -17263,10 +17274,11 @@
     const steps = Math.max(1, Math.ceil(distance / step))
     let bounds = null
     session.hasMaskPaint = true
+    const p0 = pointPressure(last), p1 = pointPressure(point)
     for (let i = 0; i <= steps; i += 1) {
       const t = i / steps
       const nextPoint = { x: last.x + (point.x - last.x) * t, y: last.y + (point.y - last.y) * t }
-      paintSelectionPoint(session, nextPoint)
+      paintSelectionPoint(session, nextPoint, p0 + (p1 - p0) * t)
       bounds = unionPaintBounds(bounds, pointPaintBounds(nextPoint, radius, session.width, session.height))
     }
     session.lastPoint = point
@@ -17397,7 +17409,8 @@
     const point = toPoint || fromPoint
     if (!point) return
     const distance = last ? Math.hypot(point.x - last.x, point.y - last.y) : 0
-    const step = Math.max(1, radius / 5)
+    const p0 = pointPressure(last), p1 = pointPressure(point)
+    const step = Math.max(1, radius * Math.min(p0, p1) / 5)
     const steps = Math.max(1, Math.ceil(distance / step))
     ctx.save()
     ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over'
@@ -17407,7 +17420,7 @@
       const x = last ? last.x + (point.x - last.x) * t : point.x
       const y = last ? last.y + (point.y - last.y) * t : point.y
       ctx.beginPath()
-      ctx.arc(x, y, radius, 0, Math.PI * 2)
+      ctx.arc(x, y, radius * (p0 + (p1 - p0) * t), 0, Math.PI * 2)
       ctx.fill()
     }
     ctx.restore()
@@ -17780,7 +17793,7 @@
     pushSelectionToolUndo(session)
     state.selectionTool.painting = true
     state.selectionTool.paintPointerId = selectionPaintPointerId(event)
-    state.selectionTool.cursor = selectionToolPoint(event, canvas, { rect, resolvedCanvas: true })
+    state.selectionTool.cursor = { ...selectionToolPoint(event, canvas, { rect, resolvedCanvas: true }), p: brushPressureScale(event) }
     session.lastPoint = state.selectionTool.cursor
     paintSelectionStroke(session, state.selectionTool.cursor)
     paintSelectionOverlayStroke(canvas, session, state.selectionTool.cursor, state.selectionTool.cursor, { rect })
@@ -17819,7 +17832,7 @@
       return
     }
     if (state.selectionTool.painting && !pointerMatches) return
-    state.selectionTool.cursor = selectionToolPoint(event, canvas, { rect, resolvedCanvas: true })
+    state.selectionTool.cursor = { ...selectionToolPoint(event, canvas, { rect, resolvedCanvas: true }), p: brushPressureScale(event) }
     if (state.selectionTool.painting && primaryDown) {
       queueSelectionPaintStroke(canvas, session, state.selectionTool.cursor, cursorEl, { rect })
     } else if (state.selectionTool.painting && !primaryDown) {
@@ -28093,7 +28106,7 @@
     if (!session.lastPoint) session.softBrushStroke = {}
     for (const point of points) {
       const last = session.lastPoint || point
-      segments.push({ x0: last.x, y0: last.y, x1: point.x, y1: point.y })
+      segments.push({ x0: last.x, y0: last.y, x1: point.x, y1: point.y, s0: pointPressure(last), s1: pointPressure(point) })
       session.lastPoint = point
     }
     return segments
@@ -28114,13 +28127,13 @@
     let bounds = null
     for (const segment of segments) {
       const changed = window.NovaFlowSoftBrush.paintCoverageSegment(stroke.raster,
-        segment.x0 ?? segment.x, segment.y0 ?? segment.y, segment.x1 ?? segment.x, segment.y1 ?? segment.y)
+        segment.x0 ?? segment.x, segment.y0 ?? segment.y, segment.x1 ?? segment.x, segment.y1 ?? segment.y, segment.s0 ?? 1, segment.s1 ?? segment.s0 ?? 1)
       if (changed) bounds = unionPaintBounds(bounds, changed)
     }
     return bounds
   }
   function queueMaskEditorStrokePoint(event, canvas, options = {}) {
-    const point = maskEditorPoint(event, canvas, { rect: options.rect })
+    const point = { ...maskEditorPoint(event, canvas, { rect: options.rect }), p: brushPressureScale(event) }
     const pointerId = maskPaintPointerId(event)
     if (!maskEditorPendingStroke || maskEditorPendingStroke.pointerId !== pointerId || maskEditorPendingStroke.partId !== (state.maskEditor && state.maskEditor.partId)) {
       maskEditorPendingStroke = {
@@ -28143,6 +28156,7 @@
     points.forEach((scenePoint) => {
       const local = maskEditorLocalPoint(scenePoint, session)
       if (!Number.isFinite(local.x) || !Number.isFinite(local.y)) return
+      local.p = pointPressure(scenePoint)
       localPoints.push(local)
     })
     const bounds = paintMaskEditorStampBatch(session, maskEditorStrokeStampPoints(session, localPoints))
