@@ -196,3 +196,8 @@ test('a new picture in the middle of a video task goes where the task and the wo
   assert.equal(placed('把背景换成海边',one,null,null),'img2img');
   assert.equal(upload.inferTask('帮我画一张海报',[],null,page).surface,'image');
 });
+test('a planner call refused because an earlier request is still winding down is sent again, not shown as an error',async()=>{
+  const p=await probe({page:'video',prompt:P,plans:[{busy:true},{busy:true},generateVideo(P)]});
+  const r=await p.say('生成吧');
+  assert.equal(r.error,'');assert.deepEqual(r.ops,['generate_video']);assert.equal(p.starts.length,3);
+});

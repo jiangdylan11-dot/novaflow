@@ -47,6 +47,7 @@ export async function probe({page='drawing',prompt='',task=null,genType='text_vi
     artAgentStop:async()=>({ok:true}),artAgentStatus:async()=>({ok:true}),companionPricing:async()=>({ok:true,policy}),foartOperationCancel:async()=>({ok:true}),
     artAgentChat:async payload=>({ok:true,data:{reply:'好的。',history:[...payload.history,{role:'user',content:payload.message},{role:'assistant',content:'好的。'}]}}),
     foartOperationStart:async payload=>{starts.push(payload);const next=plans.shift();
+      if(next?.busy)return {ok:false,providerSubmitted:false,errorCode:'operation-busy',error:'请求已发送或另一操作正在运行。'};
       return {ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:next?'act':'done',reply:next?'开始':'好的。',operations:next?[next]:[]},...(next?{foartOperationSession:{opaque:starts.length}}:{})}};},
     foartOperationResume:async()=>{const next=plans.shift();
       return {ok:true,data:{toolPlan:{schema:FOART_TOOL_SCHEMA,status:next?'act':'done',reply:next?'继续':'好的。',operations:next?[next]:[]},...(next?{foartOperationSession:{opaque:1}}:{})}};},

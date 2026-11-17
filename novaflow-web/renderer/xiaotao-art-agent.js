@@ -1628,10 +1628,19 @@
         // so a slow or failed look never holds up the request itself.
         const lookAt=async(pictures,question)=>{
           const lookId=root.crypto.randomUUID();
-          const seen=await Promise.race([api()?.artAgentChat?.({requestId:lookId,provider:'api',...selectedModelPayload(state.modelId),...selectedPricingPayload(),mode:'chat',promptLanguage:'en',
+          const call=Promise.resolve(api()?.artAgentChat?.({requestId:lookId,provider:'api',...selectedModelPayload(state.modelId),...selectedPricingPayload(),mode:'chat',promptLanguage:'en',
             message:question,history:[],artContext:{},images:pictures.map((item,index)=>({dataUrl:item.dataUrl,role:'attachment',source:index+1,name:item.name})),uploads:[],
-            imageSessionGuard:imageGuard,confirmImageUpload:async()=>imageGuard()}),new Promise(resolve=>setTimeout(()=>resolve(null),60000))]);
-          if(seen)collectBilling(billing,seen);else await api()?.artAgentStop?.({requestId:lookId,provider:'api'});
+            imageSessionGuard:imageGuard,confirmImageUpload:async()=>imageGuard()})).catch(()=>null);
+          const seen=await Promise.race([call,new Promise(resolve=>setTimeout(()=>resolve(null),60000))]);
+          if(seen)collectBilling(billing,seen);
+          else{
+            // A look that ran out of time is stopped, and stopping only cancels it: the page counts it as running until it
+            // has wound down, and it lets one online request run at a time. Going on at once made the very next step fail
+            // with "另一操作正在运行" on an idle machine (live 2.0.385).
+            await api()?.artAgentStop?.({requestId:lookId,provider:'api'});
+            const late=await Promise.race([call,new Promise(resolve=>setTimeout(()=>resolve(null),30000))]);
+            if(late)collectBilling(billing,late);
+          }
           return seen?.ok===true?String(seen.data?.reply||''):'';
         };
         // Mask tools need a painted region: find the target by eye, then paint its box.
@@ -1770,7 +1779,7 @@
           for(const [index,picture] of videoPictures.entries()){const seen=(await lookAt([picture],'用不超过六十字客观描述图片：人物朝向、姿势、服饰、场景和画风。只输出描述。')).trim();if(!seen)break;facts.push('图'+(index+1)+'：'+seen);}
           pictureFacts=facts.join('\n').slice(0,500);
         }
-        let spoken='',stuck=false,pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=(op,ctx)=>op.action==='assign_upload'?'assign_upload|'+(ctx?.controls?.find(c=>c.id===op.controlId)?.label||op.controlId)+'|'+(op.uploadIds||[op.uploadId]).join(','):op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
+        let spoken='',stuck=false,busyWaits=0,pricingRetried=false,planningLimit=10,mixHandoffBudget=false,exportScopeRetries=0,mixRemovalRetries=0,artActionRetries=0,invalidPlanRetries=0,invalidPlanIssue='';const finishedOps=new Set(),opKey=(op,ctx)=>op.action==='assign_upload'?'assign_upload|'+(ctx?.controls?.find(c=>c.id===op.controlId)?.label||op.controlId)+'|'+(op.uploadIds||[op.uploadId]).join(','):op.action==='media'&&op.operation?.action==='optimize_video_prompt'?'optimize_video_prompt':JSON.stringify(op);
         const enhancementNames={split:'一键拆图',generativeSplit:'对象分离',imageOutpaint:'无限扩图',imageUpscale:'高清放大',objectTransfer:'万物迁移',imageAngleAdjust:'角度调整',poseReference:'姿势参考'};
         const namedEnhancements=Object.keys(enhancementNames).filter(name=>positiveRequest.includes(enhancementNames[name]));
         for(let round=0;round<planningLimit;round++){
@@ -1833,6 +1842,13 @@
           const responsePromise=finishNow?Promise.resolve({ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:receipts.find(r=>r?.plannerPrompt===true)?.message||summarize(terminalFacts.length?terminalFacts:receipts),operations:[]}}}):foartOperationSession?api()?.foartOperationResume?.({requestId:activeRequest,session:foartOperationSession,previousContext:foartPreviousContext,receipt:receipts.at(-1),context:foartWireContext(snapshot,stalePrompt),signal})
               :api()?.foartOperationStart?.({requestId:activeRequest,modelId:state.modelId,...selectedPricingPayload(),message:planMessage,history:memoryHistory(ownPictureTask?[]:compactFoartHistory(previousHistory)),promptLanguage:'en',foartContext:foartWireContext(snapshot,stalePrompt),signal})
           if(!finishNow)startStatusPolling(operation,activeRequest);let response=await responsePromise;stopStatusPolling();
+          // Refused because an earlier online request of this panel has not wound down yet: nothing was sent, so wait for it
+          // and send again. The person is not shown a busy page that is about to be free.
+          if(response&&response.ok!==true&&response.providerSubmitted!==true&&(response.errorCode==='operation-busy'||/另一操作正在运行|操作仍在处理中/.test(String(response.error||'')))&&busyWaits<20&&!signal.aborted){
+            busyWaits++;round--;await new Promise(done=>root.setTimeout(done,1500));
+            if(billing?.inFlight){billing.inFlight=false;publishBilling(billing);}
+            continue;
+          }
           // The tool already finished; a planner round that times out or outlives its ticket must not turn real work into an error.
           if(response&&response.ok!==true&&response.errorCode!=='operation-planner-incomplete'&&receipts.at(-1)?.phase==='completed'){if(response.errorCode==='invalid-operation-ticket')foartOperationSession=null;response={ok:true,data:{toolPlan:{schema:contract.FOART_TOOL_SCHEMA,status:'done',reply:summarize(receipts.slice(-1)),operations:[]},...(response.data?.quota?{quota:response.data.quota}:{})}};billing.inFlight=false;billing.unknown=false;}
           if(response?.data?.foartOperationSession||response?.session){foartOperationSession=response.data?.foartOperationSession||response.session;foartPreviousContext=foartWireContext(snapshot,stalePrompt);billing.inFlight=false;billing.unknown=true;publishBilling(billing);}
