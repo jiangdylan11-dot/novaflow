@@ -87,7 +87,11 @@ async function connect() {
     await assistant.start();
     return { ok: true, state: state() };
   } catch (error) {
-    lastError = String(error.message || error); log('连接失败', { error: lastError });
+    const raw = String(error.message || error); log('连接失败', { error: raw, status: error.status || null });
+    // The server's bare 500 text and fetch's timeout wording tell the user nothing; the log keeps the raw reason.
+    lastError = Number(error.status) >= 500 || /^internal error$|^control plane 5\d\d$/i.test(raw) ? '服务器暂时繁忙，无法登记算力节点，助手会自动重试'
+      : /aborted due to timeout|fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND/i.test(raw) ? '连接服务器超时，助手会自动重试，请检查网络'
+      : raw;
     await assistant?.stop().catch(() => {}); assistant = null;
     return { ok: false, error: lastError, state: state() };
   } finally { operation = null; emit(); }
