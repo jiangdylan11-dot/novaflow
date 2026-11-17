@@ -65,13 +65,10 @@ test('the video panel local option is MiniMaxH3(本地)', () => {
   assert.equal(workflow.PROFILES[0].label, 'MiniMaxH3(本地)');
   assert.equal(workflow.PROFILES[0].id, 'beta5_int8');
   const brand = readFileSync(new URL('novaflow-brand-runtime.js', renderer), 'utf8');
-  assert.match(brand, /option\.value === "beta7_int8" \? "MiniMaxH3 Beta7\(本地\)" : "MiniMaxH3\(本地\)"/);
-  assert.match(brand, /option\.textContent = label/);
-  assert.equal(workflow.PROFILES[1].id, 'beta7_int8');
+  assert.match(brand, /option\.textContent = "MiniMaxH3\(本地\)"/);
   const bundle = readFileSync(new URL('assets/index-BbIa-2NM.js', renderer), 'utf8');
   assert.match(bundle, /label:`MiniMaxH3\(本地\)`/);
   assert.match(bundle, /value:`beta5_int8`,children:`MiniMaxH3\(本地\)`/);
-  assert.match(bundle, /value:`beta7_int8`,children:`MiniMaxH3 Beta7\(本地\)`/);
 });
 
 test('retired selector names are not the image or video option labels', () => {

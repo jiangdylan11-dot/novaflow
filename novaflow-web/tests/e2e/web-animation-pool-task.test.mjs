@@ -172,12 +172,6 @@ check([view.job.state, view.job.message], ['error', '生成失败且未发现输
 view = panel();
 job({ status: { status_str: 'error' } }, view, 'error', 'p1');
 check([view.job.state, view.job.message], ['error', '生成失败且未发现输出文件（请检查工作流执行日志）'], 'desktop wording unchanged');
-view = panel();
-job({ status: { status_str: 'error', messages: [['execution_error', { exception_message: '这台算力节点的运行环境还不支持 Beta7 线路，请在模型方式里换回默认线路，或更新运行环境后重试' }]] }, novaflow: { status: 'failed' } }, view, 'error', 'anim-task');
-check([view.job.state, view.job.message], ['error', '这台算力节点的运行环境还不支持 Beta7 线路，请在模型方式里换回默认线路，或更新运行环境后重试'], 'a node reason written for people is shown');
-view = panel();
-job({ status: { status_str: 'error', messages: [['execution_error', { exception_message: 'Error(s) in loading state_dict for MiniMaxH3' }]] } }, view, 'error', 'p1');
-check([view.job.state, view.job.message], ['error', '生成失败且未发现输出文件（请检查工作流执行日志）'], 'a raw engine exception stays behind the generic line');
 
 // ---- the node: sampler steps from ComfyUI's websocket become the reported percentage
 const frame = (text) => {

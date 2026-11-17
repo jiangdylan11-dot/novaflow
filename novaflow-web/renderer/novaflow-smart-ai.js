@@ -375,9 +375,9 @@
     const selects = document.querySelectorAll ? document.querySelectorAll("select") : [];
     const select = Array.from(selects).find((node) => (
       node instanceof HTMLSelectElement &&
-      Array.from(node.options || []).some((option) => [MINIMAX_H3_MODEL_ID, "beta5_int8", "beta6_int8", "beta7_int8"].includes(String(option?.value || "")))
+      Array.from(node.options || []).some((option) => [MINIMAX_H3_MODEL_ID, "beta5_int8", "beta6_int8"].includes(String(option?.value || "")))
     ));
-    return select instanceof HTMLSelectElement ? (["beta5_int8","beta6_int8","beta7_int8"].includes(select.value) ? MINIMAX_H3_MODEL_ID : String(select.value || "").trim()) : "";
+    return select instanceof HTMLSelectElement ? (["beta5_int8","beta6_int8"].includes(select.value) ? MINIMAX_H3_MODEL_ID : String(select.value || "").trim()) : "";
   }
 
   function miniMaxH3ActiveModelMethod(workspace) {

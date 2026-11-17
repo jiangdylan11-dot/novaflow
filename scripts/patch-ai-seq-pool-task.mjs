@@ -11,12 +11,6 @@ export const POOL_CANCELLED = 'o?.novaflow?.status===`cancelled`';
 export const AI_SEQ_INTERRUPT_INIT =
   '{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify({prompt_id:e.aiSeqComfyPromptIdRef.current||void 0})}';
 
-// A failed pool task's history entry carries the node's own reason (taskErrorText, written for
-// people and in Chinese), e.g. that its environment cannot run the selected video line. Show it;
-// a ComfyUI entry's raw engine exception stays behind the generic line.
-export const POOL_NODE_REASON =
-  '(nfErr=>/[\u4e00-\u9fff]/.test(nfErr)?(globalThis.NovaFlowNeutralText?.(nfErr)||nfErr):`生成失败且未发现输出文件（请检查工作流执行日志）`)(String(o?.status?.messages?.find?.(nfM=>nfM?.[0]===`execution_error`)?.[1]?.exception_message||``))';
-
 export const AI_SEQ_SUBMIT_STOPPED = 'if(t!==e.aiSeqRunTokenRef.current)return;';
 
 export function patchAiSeqPoolTask(source) {
@@ -25,7 +19,7 @@ export function patchAiSeqPoolTask(source) {
     [
       'e.setAiSeqJob({state:`error`,message:f.includes(`error`)?`生成失败且未发现输出文件（请检查工作流执行日志）`',
       'e.setAiSeqJob({state:' + POOL_CANCELLED + '?`done`:`error`,message:' + POOL_CANCELLED +
-        '?`任务已中止`:f.includes(`error`)?' + POOL_NODE_REASON
+        '?`任务已中止`:f.includes(`error`)?`生成失败且未发现输出文件（请检查工作流执行日志）`'
     ],
     // 任务中止 names its own prompt (ComfyUI's /interrupt takes a prompt_id too), so on the Web it
     // stops this panel's task and not a 美工 or 特效 run of the same user; and it reads 任务已中止.

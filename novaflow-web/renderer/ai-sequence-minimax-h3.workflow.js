@@ -1,10 +1,6 @@
 (function (root, factory) {
   const profiles = Object.freeze([
     Object.freeze({ id: 'beta5_int8', label: 'MiniMaxH3(本地)', steps: 8, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
-    // Beta7 is an 8-step TURBO build (acceleration merged, see the file name and
-    // FastH3 metadata). Same graph as beta5; its w6a8_int8 layers need the
-    // environment's comfy-w6a8 patch, which the node reports as minimax-h3-beta7.
-    Object.freeze({ id: 'beta7_int8', label: 'MiniMaxH3 Beta7(本地)', steps: 8, checkpoint: 'Minimax_H3\\10Eros_Max_h3_8stepTURBO_beta7_activation_learned_compact_w4w6int8_14.65gb.safetensors' }),
   ])
   const instances = new Map(profiles.map(profile => [profile.id, factory(profile)]))
   const storageKey = 'novaflow-h3-beta5-profiles-v1'

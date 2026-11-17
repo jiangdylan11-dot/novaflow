@@ -11,7 +11,7 @@ param(
   [string] $AssetsPath,
   [string] $ModelsPath,
   [string] $CustomNodesPath,
-  [string] $Version = "0.5.2",
+  [string] $Version = "0.5.1",
   [switch] $NoZip
 )
 
@@ -585,11 +585,6 @@ $comfyVersion = Get-ComfyVersion $SourceComfyRoot
 if ($comfyVersion -and $comfyVersion -ge [version] "0.37.0") {
   & (Join-Path $pythonDest "python.exe") (Join-Path $scriptRoot "patch-qwen21-lora.py") $comfyDest
   if ($LASTEXITCODE -ne 0) { throw "Qwen 2.1 LoRA key-map patch failed" }
-  # Beta7 video line: w6a8_int8 layers need the ComfyUI 0.44 loader branch and comfy-kitchen 0.2.41.
-  & (Join-Path $pythonDest "python.exe") -m pip install --disable-pip-version-check --no-deps "comfy-kitchen==0.2.41"
-  if ($LASTEXITCODE -ne 0) { throw "comfy-kitchen 0.2.41 install failed" }
-  & (Join-Path $pythonDest "python.exe") (Join-Path $scriptRoot "patch-comfy-w6a8.py") $comfyDest
-  if ($LASTEXITCODE -ne 0) { throw "w6a8 loader patch failed" }
   Write-Host "ComfyUI $comfyVersion carries INT8 TensorWise natively; the 0.24.1 Runtime patches are not applied."
 } else {
   $runtimePatcher = Join-Path $scriptRoot "apply-runtime-patches.ps1"
