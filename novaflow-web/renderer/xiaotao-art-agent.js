@@ -1238,7 +1238,7 @@
       const uploads = uploadApi(); if (!uploads) {state.error = '上传模块未加载'; notify(); return false;}
       const taskText=uploads.positiveTaskText?.(message)??message;
       const nativeArtRequest=/抠图|拆图|钢笔|放大|扩图|画布|去背|姿势参考|智能补图|局部编辑|蒙版|对象替换/.test(taskText)&&!/视频|音视|音频|音效|音乐/.test(taskText);
-      const productionRequest=nativeArtRequest||uploads.effectsPanelRequest?.(message)===true||/压缩|去黑|图集|查看器|粒子|模板|(?:转换|转为|转成).{0,8}(?:MP4|GIF|WEBM|MOV|AVI|MKV|格式)/i.test(taskText)||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
+      const productionRequest=nativeArtRequest||uploads.effectsPanelRequest?.(message)===true||uploads.toolRequest?.(message)===true||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
       const plan = productionRequest||!place?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask,pageTask());
       const notes = []; let failed = plan.reject.length > 0;
       deferredDrawing = deferDrawing ? plan.place.filter(item => item.destination?.id === 'img2img') : [];
@@ -1616,7 +1616,7 @@
         // the unrelated editor that happened to be open before the user spoke.
         // Otherwise an art attachment can be offered to a skeleton file input.
         const uiRequest=/\bUI\b|UI设计|UI版块|界面设计/i.test(positiveRequest);
-        const specialized=uploadApi()?.effectsPanelRequest?.(message)===true||/粒子|压缩|去黑|图集|查看器|格式转换|模板制作|风格库/.test(positiveRequest);
+        const specialized=uploadApi()?.effectsPanelRequest?.(message)===true||uploadApi()?.toolRequest?.(message)===true;
         const explicitTools=/(?:工具(?:版块|板块|模块)|(?:PNG|JPG|MP4)\s*压缩|PNG\s*去黑|视频格式转换|图集.{0,8}WebP|Spine\s*查看器)/i.test(positiveRequest);
         const explicitEffects=/AI\s*特效|特效(?:版块|板块|模块).{0,12}(?:材质|视频|风格)/i.test(positiveRequest);
         const explicitParticle=/粒子(?:特效|编辑|系统)|发射器|发射率/.test(positiveRequest);

@@ -201,3 +201,14 @@ test('a planner call refused because an earlier request is still winding down is
   const r=await p.say('生成吧');
   assert.equal(r.error,'');assert.deepEqual(r.ops,['generate_video']);assert.equal(p.starts.length,3);
 });
+test('a word that describes the picture is not a request for a tool',async()=>{
+  const p=await probe({page:'video'});
+  const upload=p.root.NovaFlowXiaotaoUpload,one=[{kind:'image',name:'baboon.png'}],page={surface:'video',mode:'text_video'};
+  const words='做一个2秒循环待机动画，要求白狒狒上下浮动，表情严肃，动画生动。前方粒子持续向上飘动消失';
+  assert.equal(upload.toolRequest(words),false);
+  assert.equal(upload.planRoutes(words,one,null,page).place.map(item=>item.destination.id).join(),'first_frame,last_frame');
+  // Later in the same task, particles as content are still a change to that video.
+  assert.equal(upload.inferTask('粒子再多一点',[],{surface:'video',mode:'first_last',loop:true},{...page,mode:'first_last'}).revision,true);
+  // The tools by their own names.
+  for(const tool of ['帮我压缩这张PNG','打开粒子编辑','把这个转成GIF','做成图集','模板制作里加一个'])assert.equal(upload.toolRequest(tool),true,tool);
+});

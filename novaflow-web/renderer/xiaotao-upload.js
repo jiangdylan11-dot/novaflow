@@ -160,6 +160,14 @@
     const text=positiveTaskText(message);
     return /AI\s*特效|特效(?:版块|板块|模块|面板)/i.test(text)||/特效/.test(text)&&!/粒子特效/.test(text)&&!MAKES_VIDEO.test(text);
   }
+  // A request for one of the utility tools (compress, atlas, the particle editor, the template maker), by the tool's own
+  // name. A word that only describes the picture is not one: "前方粒子持续向上飘动" in a video request is content
+  // (live 2.0.387: it kept the attached picture out of the frames and 小桃 asked for the picture it had been given).
+  function toolRequest(message){
+    const text=positiveTaskText(message);
+    if(videoRequestKind(message)==='generate')return false;
+    return /压缩|去黑|图集|查看器|粒子(?:特效|编辑|系统|版块|板块|面板)|发射器|发射率|模板(?:制作|库)|风格库|格式转换|(?:转换|转为|转成).{0,8}(?:MP4|GIF|WEBM|MOV|AVI|MKV|格式)/i.test(text);
+  }
   // One reading of a video request for every brain and path: 'generate' submits a video,
   // 'prompt' only writes the prompt box, '' is not about making a video.
   const VIDEO_GO=new RegExp('(?:并|再|然后|接着|直接|开始|继续|马上|现在)(?:帮我|给我)?(?:生成|出片|制作|做)|重新(?:生成|做|制作)|重做|'+MAKES_VIDEO.source);
@@ -231,7 +239,7 @@
     if(animationAuthoring)surface='animation';
     if (discussion) surface = 'chat';
     // Work on another part of the app is never a change to the task that just finished.
-    const elsewhere=/打开|进入|切换|关闭|主题|换皮|拆图|拆分|拆一下|压缩|去黑|图集|查看器|粒子|骨骼|积分|价格|多少钱/.test(positive);
+    const elsewhere=/打开|进入|切换|关闭|主题|换皮|拆图|拆分|拆一下|压缩|去黑|图集|查看器|粒子(?:特效|编辑|系统|版块|板块|面板)|骨骼|积分|价格|多少钱/.test(positive);
     const unnamed=surface==='chat'&&!discussion&&!elsewhere&&!smallTalk(text)&&!goAhead(text)&&!/特效|导入|导出|保存|下载|模型|线路/.test(positive);
     const fromPage=unnamed&&!!page?.surface&&(!previous||(previous.surface||previous.kind)===page.surface);
     if(fromPage)surface=page.surface;
@@ -578,7 +586,7 @@
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, smallTalk, goAhead, positiveTaskText, missedResultRequest, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    switchMode, dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, inferTask, planRoutes, toolRequest, smallTalk, goAhead, positiveTaskText, missedResultRequest, effectsPanelRequest, videoRequestKind, bareGenerateCommand, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
