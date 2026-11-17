@@ -64,12 +64,14 @@
       '- 绘图：这一句带了图并要改图，改的就是带来的这张新图（first 写 new1），用 img2img；没带图而是改上一张成品，first 写 keep；全新画面用 txt2img。绘图没有别的模式。',
       '- 用户明说了时长、尺寸才填 seconds / width / height，没说就填 null。',
       asked ? '- 你已经问过一次，用户也回答了：把原来的要求和这次的回答合起来理解，sure 必须写 true，不要再问。'
-        : '- 意思清楚，或者有合理的默认做法（尺寸、时长、线路、沿用页面上的图），就直接理解并执行，sure 写 true。画面怎么动、什么风格、什么构图这类创作细节由你自己发挥，不要问；图片内容和话里的称呼对不上也不要问，按图来做。只有不问就没法动手、猜错会白做一遍的事才把 sure 写 false，并在 ask 里用一句简短的中文问清楚：带来的图不知道该放首帧还是尾帧（页面上两处都已有图，话里又没说换哪一处）、只说“处理一下/弄一下/做个东西”却没说要做成什么、分不清要图片还是视频、话里说的“这个/那张/上次那个”找不到对应的东西。已经说清楚的事不要再确认，一次只问一个问题。',
+        : '- 意思清楚，或者有合理的默认做法（尺寸、时长、线路、沿用页面上的图），就直接理解并执行，sure 写 true。画面怎么动、什么风格、什么构图这类创作细节由你自己发挥，不要问；图片内容和话里的称呼对不上也不要问，按图来做。只有不问就没法动手、猜错会白做一遍的事才把 sure 写 false，并在 ask 里用一句简短的中文问清楚：带来的图不知道该放首帧还是尾帧（页面上两处都已有图，话里又没说换哪一处）、带了两张或更多图却既没说每张图做什么用、也没说要做成什么（例如“用这两张图做个东西”；说了“图1变成图2/从…到…/第二张开头”就是清楚的，不要问）、只说“处理一下/弄一下/做个东西”却没说要做成什么、分不清要图片还是视频、话里说的“这个/那张/上次那个”找不到对应的东西。已经说清楚的事不要再确认，一次只问一个问题。用户在提问、抱怨、催进度（“怎么还没出来”“你自己不会上传吗”）时是 talk，用话回答，不是要你反问。',
       '',
-      'JSON 字段：',
-      '{"kind":"make|prompt|operate|talk","surface":"video|image|audio|other","mode":"text_video|image_video|first_last|multi_reference|txt2img|img2img|music|sfx|",',
+      // The decision comes first: with sure/ask last, a brain had already written a mode and then called itself sure
+      // (live: DeepSeek asked about "换一下" in one run and guessed in the next).
+      'JSON 字段（按这个顺序写：先定 sure，再写理解）：',
+      '{"sure":true|false,"ask":"sure 为 false 时要问用户的那一句话，否则留空","kind":"make|prompt|operate|talk","surface":"video|image|audio|other","mode":"text_video|image_video|first_last|multi_reference|txt2img|img2img|music|sfx|",',
       '"first":"new1|new2|new3|keep|none","last":"new1|new2|new3|keep|first|none","loop":true|false,"seconds":数字或null,"width":数字或null,"height":数字或null,',
-      '"pictures":["图1里实际有什么（不超过五十字）", …],"brief":"用一两句话复述他要的成品画面和动作，只写画面内容","sure":true|false,"ask":"sure 为 false 时要问用户的那一句话，否则留空"}',
+      '"pictures":["图1里实际有什么（不超过五十字）", …],"brief":"用一两句话复述他要的成品画面和动作，只写画面内容"}',
     ].join('\n');
   }
 
