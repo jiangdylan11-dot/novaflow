@@ -26,6 +26,10 @@ test('a reading the app cannot carry out is no reading',()=>{
   assert.equal(read({kind:'make',surface:'video',mode:'image_video',first:'none'}),null);
   assert.equal(read({kind:'make',surface:'other',mode:''}),null);
   assert.equal(read({kind:'talk'}).kind,'talk');
+  // A picture brought with the sentence is used: a reading that makes something without it is no reading.
+  assert.equal(read({kind:'make',surface:'video',mode:'text_video',first:'none',last:'none'},1),null);
+  assert.equal(read({kind:'make',surface:'image',mode:'txt2img'},1),null);
+  assert.equal(read({kind:'make',surface:'image',mode:'img2img',first:'new1'},1).first,'new1');
   // A loop is one picture at both ends, however the brain wrote it.
   const loop=read('```json\n'+JSON.stringify({kind:'make',surface:'video',mode:'first_last',first:'new1',last:'first',seconds:2,width:null,height:null,pictures:['一只白狒狒'],brief:'白狒狒上下浮动'})+'\n```',1);
   assert.equal(loop.first,'new1');assert.equal(loop.last,'new1');assert.equal(loop.loop,true);assert.equal(loop.seconds,2);assert.equal(loop.width,null);

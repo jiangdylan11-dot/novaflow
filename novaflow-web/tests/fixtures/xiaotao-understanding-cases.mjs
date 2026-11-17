@@ -122,6 +122,12 @@ export const CASES = [
   {id: 'dragon-flames-drawing', page: D(), last: null, files: [], say: '一条喷火的龙，火焰飘动，赛博朋克风格', want: {kind: 'make', surface: 'image', mode: 'txt2img'}},
   {id: 'dragon-flames-video', page: V(), last: null, files: [], say: '一条喷火的龙，火焰飘动，赛博朋克风格', want: {kind: 'make', surface: 'video', mode: 'text_video'}},
   {id: 'wizard-particles-video', page: V(), last: null, files: [], say: '一个魔法师，周围有发光粒子环绕', want: {kind: 'make', surface: 'video', mode: 'text_video'}},
+  // Live 2.0.393: on the video page "画一只橘猫，Q版风格" was made as a 3-second video.
+  {id: 'draw-cat-on-video-page', page: V(), last: null, files: [], say: '画一只橘猫，Q版风格', want: {kind: 'make', surface: 'image', mode: 'txt2img'}},
+  {id: 'draw-cat-after-video', page: V('first_last', ['a.png', 'a.png']), last: loopTask, files: [], say: '帮我画个橘猫头像', want: {kind: 'make', surface: 'image', mode: 'txt2img'}},
+  {id: 'cat-animation-on-drawing-page', page: D(), last: null, files: [], say: '做一个橘猫跑步的动画，2秒', want: {kind: 'make', surface: 'video', mode: 'text_video', seconds: 2}},
+  // Live 2.0.393: after a 文生视频, a picture brought with "把背景换成海边" was made as another 文生视频, without it.
+  {id: 'edit-brought-picture-after-text-video', page: V(), last: textVideoTask, files: pic(1), say: '把背景换成海边', want: {kind: 'make', surface: 'image', mode: 'img2img', first: 'new1'}},
   // --- not sure: one short question first (Dylan, 2026-11-17) ---
   {id: 'ask-two-pictures', page: V(), last: null, files: pic(2), say: '用这两张图做个东西', want: {kind: 'ask'}},
   {id: 'ask-which-frame', page: V('first_last', ['a.png', 'b.png']), last: pairTask, files: pic(1), say: '换一下', want: {kind: 'ask'}},

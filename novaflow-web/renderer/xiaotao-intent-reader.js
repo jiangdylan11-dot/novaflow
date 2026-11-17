@@ -58,7 +58,9 @@
       '- 没带新图而接着上一个任务说，就沿用页面上已有的图和模式（first/last 写 keep）。',
       '- 用户要的是全新的画面、和页面上留着的图无关时，用 txt2img 或 text_video，不要沿用那张旧图。',
       '- 尾帧要和首帧用同一张图时，last 写 first。',
+      '- 他说的是“画”（画一只、画个、画一张、帮我画）时，要的是一张静态图片（surface 写 image），不管他正停在哪个页面；他说“动画、视频、动起来、几秒”才是视频。页面只在这句话本身分不出图片还是视频时才用来判断。',
       '- 用户要做的东西本身是一个特效（“做个金币掉落的特效”“来个爆炸特效”）时，要的是会动的视频（没有图就是 text_video），即使他正停在绘图页面。除此之外按他所在的页面和整句话的意思判断：在绘图页面描述一个画面，或者说“画/画一个/画一张/图片/海报/插画”，要的就是图片，画面里有粒子、光效、火焰飘动只是这张图的内容；同样一句画面描述出现在视频页面，要的就是视频。',
+      '- 这一句带了图片，就一定要把图用上，不能读成 text_video 或 txt2img：改这张图就是 img2img（哪怕上一个任务是视频），让它动起来才是视频。',
       '- 带了新图，要判断每张图的用途：一张图做循环待机，就首帧尾帧都用它；“图1变成图2/从…到…”是 图1 首帧、图2 尾帧，顺序以用户的话为准；只说换某一帧，就只换那一帧，另一帧 keep。',
       '- 视频模式：没有图用 text_video；一张图让它动起来用 image_video；只要说了“循环”或“待机”，或者有首有尾，就用 first_last（循环待机时首帧尾帧是同一张图）。',
       '- 绘图：这一句带了图并要改图，改的就是带来的这张新图（first 写 new1），用 img2img；没带图而是改上一张成品，first 写 keep；全新画面用 txt2img。绘图没有别的模式。',
@@ -112,6 +114,9 @@
     };
     // Slots only matter where the mode has them: a 文生 job that names a slot is still a 文生 job.
     const slotless = mode === 'text_video' || mode === 'txt2img';
+    // A picture brought with the sentence is there to be used. A reading that makes something without it has dropped
+    // it (live 2.0.393: a picture + "把背景换成海边" was made as 文生视频): no reading, the rules place the picture.
+    if (slotless && pictureCount > 0 && data.kind === 'make') return null;
     const first = slotless ? 'none' : slot(data.first, []), last = slotless || mode === 'image_video' || surface === 'image' ? 'none' : slot(data.last, ['first']);
     if (first === null || last === null) return null;
     if (surface === 'video') {

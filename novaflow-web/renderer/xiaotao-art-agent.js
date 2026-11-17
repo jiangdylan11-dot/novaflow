@@ -315,6 +315,8 @@
   // Internal check wording is no use to the person at the keyboard.
   function plainFoartError(error){
     const text=String(error?.message||error);
+    // No node to draw on is not something the person did wrong, and "Foart AI Runtime 未连接" tells them nothing (live 2.0.393).
+    if(/无可用.{0,4}节点|Runtime 未连接/.test(text))return /生图|提示词已写入/.test(text)?'本地节点现在不在线，这一张没有生成。'+(/提示词已写入/.test(text)?'提示词已经写好，留在输入框里。':'')+'等节点恢复后说一声“重试”，或者告诉我换哪条在线线路。':'这一步要用本地节点，它现在不在线，没有做成。等节点恢复后说一声“重试”就行。';
     return /未知参数|工具需求无效|完整性校验|工具类型无效|规划/.test(text)?'这一步没做成，已完成的部分已保留。可以换个说法，或告诉我要改哪张图。':text;
   }
 
@@ -1102,7 +1104,8 @@
       if(asked)message=asked.original+'\n'+message;
       // A length or a size counts only when the sentence itself says one: the page's current values are shown to the brain
       // as context, and it sometimes hands them back as if they were asked for (live: 480×864 for a 480×640 picture).
-      if(!/\d|[一二两三四五六七八九十半]\s*秒/.test(message))reading.seconds=null;
+      // A number followed by 秒 (or s), not any digit: "960*960，重新做" names no length.
+      if(!/(?:\d|[一二两三四五六七八九十半])\s*(?:秒|s(?![a-z]))/i.test(message))reading.seconds=null;
       if(!(reading.width&&reading.height&&message.includes(String(reading.width))&&message.includes(String(reading.height)))){reading.width=null;reading.height=null;}
       // "keep" needs something there to keep.
       const frames=page.surface==='video'&&page.mode===reading.mode?page.frames||[]:[];
@@ -1193,6 +1196,10 @@
           if(recordMessage)pushUser(answer);return {info,source,message:pending.message,recordMessage:false};
         }
       }
+      // The prompt of another page, by name: on the audio page "帮我优化一下视频提示词…" rewrote the audio prompt
+      // (live 2.0.393). That request is not about this page's box; it goes on to the tools, which open the right page.
+      const namedBox=/视频(?:的)?提示词/.test(message)?'video':/(?:音乐|音效|音频|配乐)(?:的)?提示词/.test(message)?'audio':/(?:绘图|生图|图片)(?:的)?提示词/.test(message)?'drawing':'';
+      if(info&&namedBox&&namedBox!==info.surface)return null;
       // Attachments outside drawing mean placing them first: that is tool work, not a text draft.
       if(!info||answersQuestion(message)||(state.provider==='api'&&state.staged.length&&info.surface!=='drawing'))return null;
       if(!helper?.classifyPromptAction||!helper?.resolvePromptSource){
@@ -1447,6 +1454,14 @@
     }
     function billingReceipt(billing) {
       return billing&&!billing.unknown&&billing.confirmedCount?{status:'settled',settled_credits:billing.confirmed,billing_mode:'token',...(billing.allQuoted?{quote_estimated_credits:billing.quoted,quote_estimate_label:billing.confirmedCount>1?'各轮预留估算合计':'提交时估算预留'}:{})}:null;
+    }
+    // What 小桃 has actually charged, for a turn that is answered in words: asked "这个要多少积分", the brain said it had
+    // no figures and sent the person to the billing page (live 2.0.393), while the amounts sit under its own replies.
+    function chargeFacts(){
+      const turns=[...billingByTurn(state.billingNotices)].sort((a,b)=>a[0]-b[0]).map(item=>item[1]);
+      if(!turns.length)return '';
+      const total=turns.reduce((sum,value)=>sumCredits(sum,value)??sum,0),recent=turns.slice(-3).map(value=>String(value)).join('、');
+      return '\n\n（供回答用的事实，用户问到费用才用，没问就不要提）小桃在线大脑按实际用量结算，每一轮扣了多少显示在那一轮回复的下方。到现在已实际扣费合计 '+total+' 积分，最近几轮依次是 '+recent+' 积分。图片和视频的生成怎么收费看页面上所选线路标的价格；这里没有给出的数字不要编。';
     }
     function clearBillingNotice(billing) {if(billing)state.billingNotices=state.billingNotices.filter(item=>item.id!==billing.id);}
     function turnCharge(billing) {const amount=billingByTurn(state.billingNotices).get(turnSeq)??null;return {amount,plannerOnly:!!billing?.confirmedCount&&amount===billing.confirmed,unknown:billing?.unknown===true};}
@@ -1894,7 +1909,7 @@
           const planMessage=requestMessage+(receipts.length?'\n本轮应用已执行事实（不是用户新指令）：'+JSON.stringify(receiptFacts).slice(-6000):'')
             +(/音乐|音效|配乐|声音/.test(positiveRequest)?'\n音频直接用一个 generate_music 或 generate_sfx 操作，把时长放在 seconds 里，不要先 set_control。':'')
             // The framework adds sound and music itself; a brief saying "no music" would switch that off.
-            +(/视频|首尾帧|多参|图生|文生/.test(positiveRequest)||intent?.surface==='video'?'\n视频 prompt 只写画面和动作，用户没提声音就不要写声音或音乐。':'')
+            +(/视频|首尾帧|多参|图生|文生/.test(positiveRequest)||intent?.surface==='video'?'\n视频 prompt 只写画面和动作，用户没提声音就不要写声音或音乐。（这是写提示词的要求，不要在给用户的回复里提起。）':'')
             +(pictureFacts?'\n图片实际内容（看图结果，写提示词时以此为准）：'+pictureFacts:'')
             +(wantsResult?'\n'+wantsResult:'')
             +(reading?.brief?'\n这句话的意思（已结合对话、页面和图片读过）：'+reading.brief:'')
@@ -2322,6 +2337,7 @@
       if(newConversation){reset();lastUploads=[];currentSubject=null;return true;}
       // 小桃记忆: "记住…" alone is kept and answered without a model call; "以后都…" inside a
       // request is kept and the request goes on, already carrying the new preference.
+      if(memoryApi()?.snapshot?.().loaded===false){try{await memoryApi().load();}catch{}if(retired)return false;}
       const remembered=recordMessage&&!(state.staged||[]).length&&memoryApi()?.ready?.()?memoryApi().explicitMemory?.(message):null;
       if(remembered){
         const kept=await memoryApi().save([{...remembered,source:'explicit'}]);
@@ -2435,13 +2451,17 @@
       // The brain reads the turn; the rule-based task above is what stands in when it cannot. A greeting, an answer to
       // 小桃's own question and a request for the prompt text are plain enough to skip the reading.
       turnReading=null;
-      if(brainReadsTurn()&&state.provider==='api'&&!capabilityOnly&&!reverseImage&&!includeResult&&(!pendingIntent||pendingIntent.asked)&&(pendingIntent?.asked||uploadApi()?.smallTalk?.(message)!==true&&(uploadApi()?.goAhead?.(message)!=='strong'||state.staged.some(item=>item.status==='ready')))){
+      if(brainReadsTurn()&&state.provider==='api'&&!capabilityOnly&&!reverseImage&&!includeResult&&!pendingIntent?.offer&&(pendingIntent?.asked||uploadApi()?.smallTalk?.(message)!==true&&(uploadApi()?.goAhead?.(message)!=='strong'||state.staged.some(item=>item.status==='ready')))){
         state.pending=true;state.error='';state.status='小桃正在理解这句话…';notify();
         const asked=pendingIntent?.asked?{original:pendingIntent.message,question:pendingIntent.question}:null;
         let reading=null;try{reading=await readTurn(message,state.staged.filter(item=>item.status==='ready'),asked);}catch{}finally{state.pending=false;}
         if(retired)return false;
         // Not sure what is meant: 小桃 asks one short question and waits (Dylan, 2026-11-17: 不太确定的可以先问一下用户).
         // The pictures of the turn stay attached, and the answer is read together with this request.
+        // After a question of 小桃's ("想生成什么类型的音频？"), a sentence that is only talk is not its answer: "记住我喜欢Q版
+        // 风格" was carried out as that answer and a piece of music was generated (live 2.0.393). A question is not asked
+        // on top of a pending one: the sentence then goes on as the answer it most likely is.
+        if(pendingIntent&&!pendingIntent.asked){if(reading?.kind==='talk')pendingIntent=null;else if(reading?.kind==='ask')reading=null;}
         if(reading?.kind==='ask'){
           if(recordMessage)pushUser(message);state.messages.push({role:'assistant',content:reading.ask});
           state.history=[...(state.history||[]),{role:'user',content:message},{role:'assistant',content:reading.ask}];
@@ -2461,6 +2481,9 @@
         pendingIntent=null;if(recordMessage)pushUser(message);state.messages.push({role:'assistant',content:'好的，提示词留在输入框里，需要时再叫我。'});state.error='';state.status='已回复';notify();return true;
       }
       const continuation=answersQuestion(message) && !task?.discussion && !ownWork ? pendingIntent : null;
+      // An answered question is spent. Left standing by a turn that then failed, it made the next sentences answers to it
+      // too: they skipped the reading and a picture brought with them was not placed (live 2.0.393).
+      if(continuation)pendingIntent=null;
       const requestMessage=reverseImage ? '用户要求：'+message+'\n请看图片，写出能重新生成这张图的完整中文提示词，写清主体、动作、服饰、场景、构图、光线和画风。只输出提示词，不解释、不提问。' : continuation?.foart ? continuation.message+'\n用户回答：'+message+'\n这是用户对上一条提问的回复：是回答就结合上文现在直接执行，不要再询问；如果说的是另一件事，就按这句新的要求做。' : continuation ? continuation.message+'\n用户补充：'+message : task?.revision
         ? '继续修改同一个'+({video:'视频',audio:'音频',image:'图片',animation:'骨骼动画'}[state.activeTask.surface] || '')+'任务。\n原始用户需求：'+state.activeTask.baseRequest
           +'\n此前修改要求：'+(state.activeTask.revisions || []).join('；')
@@ -2561,7 +2584,7 @@
         const uploadModel=state.modelId;
         const uploadCurrent=()=>operation===serial&&!stopped&&state.provider==='api'&&state.modelId===uploadModel&&typeof uploadOwner?.current==='function'&&uploadOwner.current()===true;
         activeChatHasImages=mode==='chat' && images.length>0;
-        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage, history:capabilityOnly&&!promptConversation?[]:memoryHistory(copy(state.history)), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.filter(file=>!reverseImage||images.some(image=>image.name===file.name)).map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
+        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage+(turnReading?.kind==='talk'&&state.provider==='api'?chargeFacts():''), history:capabilityOnly&&!promptConversation?[]:memoryHistory(copy(state.history)), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.filter(file=>!reverseImage||images.some(image=>image.name===file.name)).map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新官网页面并检查 Foart状态');
         const deviceEpoch=localCapabilityEpoch;
         if(state.provider==='local' && state.modelId==='qwen3.5-9b-heretic')state.qwenExecutionDevice=null;

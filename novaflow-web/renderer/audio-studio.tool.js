@@ -2328,6 +2328,11 @@
       const outputBoard=state.boards[state.board],outputEpoch=textReviewEpoch;
       const outputCurrent=()=>state.active&&state.sub==='audio'&&state.mode===kind&&state.boards[state.board]===outputBoard&&textReviewEpoch===outputEpoch;
       const receipts=[];
+      // With no node that has the audio model, the task would sit in the queue and 小桃 would wait on "正在准备请求…"
+      // with nothing to say, while this page already shows the reason (live 2.0.393). Say it instead of waiting.
+      const pool=await Promise.resolve(window.NovaFlowWebRuntime?.control?.('GET','/api/web/capabilities')).catch(()=>null);
+      if(Array.isArray(pool?.taskTypes)&&!(Number(pool.taskTypes.find(item=>item.task_type===(music?'audio_music':'audio_sfx'))?.available_workers)>0))
+        throw new Error('当前无可用音频节点：本机算力节点还没有音频模型就绪');
       for(let i=0;i<count;i++){
         if(signal?.aborted)throw new Error('已停止剩余音效任务，已完成的结果保留');
         if(scoped&&!current())throw new Error('模型选择已变化，未提交剩余音频任务。');
