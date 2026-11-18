@@ -169,14 +169,12 @@ def _blend(rgb, gen, mask):
 
 
 def _fill_holes(m):
-    n, lab, st, _ = cv2.connectedComponentsWithStats((~m).astype(np.uint8), 4)
+    """Everything not reachable from the picture's border through the outside of the mask becomes mask."""
     h, w = m.shape
-    out = m.copy()
-    for i in range(1, n):
-        x, y, ww, hh, _a = st[i]
-        if x > 0 and y > 0 and x + ww < w and y + hh < h:
-            out[lab == i] = True
-    return out
+    outside = np.zeros((h + 2, w + 2), np.uint8)
+    outside[1:-1, 1:-1] = m
+    cv2.floodFill(outside, None, (0, 0), 2, flags=8)          # the one-pixel frame joins every border region
+    return outside[1:-1, 1:-1] != 2
 
 
 def _biggest(m):
@@ -500,8 +498,10 @@ def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress
                         body = m
                     hull = np.zeros((H, W), np.uint8)
                     cv2.fillConvexPoly(hull, cv2.convexHull(cv2.findNonZero(body.astype(np.uint8))), 1)
-                    if _fill_holes(body).sum() < 0.93 * hull.sum():
-                        m = _rounded_box(r["box"], W, H)      # a torn outline on what is really a bar
+                    solid = _fill_holes(_biggest(m))
+                    in_pieces = solid.sum() < 0.9 * m.sum() or (solid & ~m).sum() > 0.03 * area
+                    if _fill_holes(body).sum() < 0.93 * hull.sum() and (in_pieces or ((x1 - x0) >= 3 * (y1 - y0) and m.sum() >= 0.85 * area)):
+                        m = _rounded_box(r["box"], W, H)      # a torn outline on what is really a bar or a board
             elif m is None:
                 m = _rounded_box(r["box"], W, H)
                 r["boxed"] = True
@@ -545,7 +545,18 @@ def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress
             ch = np.zeros((H, W), bool)
             for j in kids[i]:
                 ch |= _mor(ui[j]["alpha"] > 8, cv2.MORPH_DILATE, 2)
-            body = _row_col_fill(_mor(r["mask"] & ~ch, cv2.MORPH_OPEN, 2))
+            body = _fill_holes(_row_col_fill(_mor(r["mask"] & ~ch, cv2.MORPH_OPEN, 2)))     # what a child hides is still plate
+            # an end a child bit most of the way through (a coin over the end of a bar) is cut straight: the child covers it
+            heights = body.sum(axis=0)
+            cols = np.nonzero(heights)[0]
+            if len(cols) > 8:
+                full = float(np.median(heights[cols]))
+                near_child = _mor(ch, cv2.MORPH_DILATE, 2).any(axis=0)
+                for side in (cols, cols[::-1]):
+                    for x in side[:max(1, len(cols) // 4)]:
+                        if heights[x] >= 0.5 * full or not near_child[x]:
+                            break
+                        body[:, x] = False
             # a plate that is convex but for nicks (a corner under a decoration, an edge under a gem) gets them back
             hull = np.zeros((H, W), np.uint8)
             if body.any():
@@ -717,10 +728,16 @@ def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress
         if "text_layer" in r:
             x0, y0, rgba = r["text_layer"]
             add(r, "text", x0, y0, rgba)
-        elif "crop" in r:                      # fallback: the box cut from the original
+        elif "crop" in r:                      # fallback: cut from the original, by its letters when they were found
             x0, y0, crop = r["crop"]
             bx0, by0, bx1, by1 = [int(v) for v in r["box"]]
-            add(r, "text", bx0, by0, np.dstack([rgb[by0:by1, bx0:bx1], np.full((by1 - by0, bx1 - bx0), 255, np.uint8)]))
+            if r.get("glyphs"):
+                g = cv2.GaussianBlur(_mor(r["mask"], cv2.MORPH_DILATE, 1).astype(np.float32), (0, 0), 0.7)
+                gx0, gy0, gx1, gy1 = _bbox(r["mask"], 2, W, H)
+                a = (g[gy0:gy1, gx0:gx1] * 255).clip(0, 255).astype(np.uint8)
+                add(r, "text", gx0, gy0, np.dstack([_clean_rgb(rgb[gy0:gy1, gx0:gx1], a), a]))
+            else:
+                add(r, "text", bx0, by0, np.dstack([rgb[by0:by1, bx0:bx1], np.full((by1 - by0, bx1 - bx0), 255, np.uint8)]))
     T["total"] = round(sum(T.values()), 1)
     return {"width": W, "height": H, "layers": layers, "timing": T, "seed": seed}
 
