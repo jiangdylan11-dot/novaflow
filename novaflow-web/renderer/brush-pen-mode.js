@@ -31,8 +31,9 @@
   let busy = false
   let spaceDown = false
   let dragPointer = null
+  let downPointer = null
   let lastPointer = { pointerId: 1, pointerType: 'mouse' }
-  let bar = null, overlay = null, hintEl = null
+  let overlay = null
 
   // 只有登记了 radius 或 fill 的笔刷有钢笔状态（权重笔刷没有）
   function hasPen(found) {
@@ -89,42 +90,12 @@
     return true
   }
 
-  // ---- 切换条和路径层
+  // ---- 路径层。切换按钮不在这里：每个版块画板上方的工具条自己放（见文件头的「工具条约定」）
   function ensureUi() {
-    if (bar) return
+    if (overlay) return
     const style = doc.createElement('style')
-    style.textContent = `
-      .foart-brush-pen-bar{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:6px;padding:3px;border-radius:8px;background:#1f1f1f;box-shadow:0 0 0 1px #2e2e2e;font:400 12px/1 system-ui,"Microsoft YaHei",sans-serif;color:#cfcfcf;user-select:none}
-      .foart-brush-pen-bar[hidden]{display:none!important}
-      .foart-brush-pen-bar button{all:unset;box-sizing:border-box;height:24px;padding:0 10px;border-radius:5px;font:400 12px/24px system-ui,"Microsoft YaHei",sans-serif;color:#cfcfcf;cursor:pointer;white-space:nowrap}
-      .foart-brush-pen-bar button:hover{background:#2a2a2a}
-      .foart-brush-pen-bar button[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
-      .foart-brush-pen-bar button[aria-pressed="true"]:hover{background:#215043}
-      .foart-brush-pen-bar button[data-act="apply"]{background:#1ea672;color:#fff}
-      .foart-brush-pen-bar button[data-act="apply"]:hover{background:#23b97f}
-      .foart-brush-pen-bar button[hidden]{display:none}
-      .foart-brush-pen-bar span{padding:0 6px 0 2px;color:#8c8c8c;white-space:nowrap}
-      .foart-brush-pen-bar span[hidden]{display:none}
-      .foart-brush-pen-layer{position:fixed;z-index:2147483647;pointer-events:none}
-      .foart-brush-pen-layer[hidden]{display:none!important}`
+    style.textContent = '.foart-brush-pen-layer{position:fixed;z-index:2147483647;pointer-events:none}.foart-brush-pen-layer[hidden]{display:none!important}'
     ;(doc.head || doc.documentElement).appendChild(style)
-    bar = doc.createElement('div')
-    bar.className = 'foart-brush-pen-bar'
-    bar.hidden = true
-    bar.setAttribute('data-novaflow-source-layout', '1')
-    bar.setAttribute('data-foart-brush-pen-bar', '1')
-    const button = (label, act) => { const b = doc.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.act = act; b.setAttribute('data-novaflow-source-layout', '1'); bar.appendChild(b); return b }
-    button('画笔', 'brush'); button('钢笔', 'pen'); button('应用', 'apply'); button('清除', 'clear')
-    hintEl = doc.createElement('span'); bar.appendChild(hintEl)
-    ;['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick'].forEach((type) => bar.addEventListener(type, (ev) => {
-      ev.stopPropagation()
-      if (type !== 'click') return
-      const act = ev.target && ev.target.dataset ? ev.target.dataset.act : ''
-      if (act === 'brush' || act === 'pen') setMode(act)
-      else if (act === 'apply') apply()
-      else if (act === 'clear') { if (tool && tool.points.length) pushUndo(); clearPath() }
-    }))
-    doc.body.appendChild(bar)
     overlay = doc.createElement('canvas')
     overlay.className = 'foart-brush-pen-layer'
     overlay.hidden = true
@@ -152,29 +123,56 @@
     render()
   }
 
+  function hintText() {
+    const count = tool ? tool.points.length : 0
+    return busy ? '正在处理…' : count >= 3 ? (tool.closed ? 'Enter 应用 · Esc 清除' : '点回起点闭合 · Enter 应用') : '点击加点，按住拖出曲线'
+  }
+
+  // 工具条约定：工具条里的元素用这些标记，这里按当前状态显示 / 隐藏、写文字
+  //   data-foart-pen-when="brush" | "pen"   只在画笔 / 钢笔状态显示（笔刷滑条 / 应用、清除、提示）
+  //   data-foart-brush-toggle               「画笔 N」那个按钮，点它切换；钢笔时显示「钢笔」
+  //   data-foart-pen-hint                   提示文字
+  //   data-foart-pen-need="path"            路径不到 3 个点时不可用（应用）
+  function syncControls() {
+    const pen = mode === 'pen'
+    const count = pen && tool ? tool.points.length : 0
+    doc.querySelectorAll('[data-foart-pen-when]').forEach((el) => {
+      const show = (el.getAttribute('data-foart-pen-when') === 'pen') === pen
+      const hiddenNow = el.getAttribute('data-foart-pen-hidden') === '1'
+      if (show && hiddenNow) {
+        const was = el.getAttribute('data-foart-pen-display') || ''
+        if (was) el.style.setProperty('display', was); else el.style.removeProperty('display')
+        el.removeAttribute('data-foart-pen-hidden')
+      } else if (!show && !hiddenNow) {
+        el.setAttribute('data-foart-pen-display', el.style.display || '')
+        el.setAttribute('data-foart-pen-hidden', '1')
+        el.style.setProperty('display', 'none', 'important')
+      }
+    })
+    doc.querySelectorAll('[data-foart-brush-toggle]').forEach((el) => {
+      const value = pen ? 'pen' : 'brush'
+      if (el.getAttribute('data-foart-brush-toggle') !== value) el.setAttribute('data-foart-brush-toggle', value)
+      const title = pen ? '当前是钢笔：点击切回画笔' : '当前是画笔：点击切换到钢笔'
+      if (el.title !== title) el.title = title
+    })
+    const hint = pen ? hintText() : ''
+    doc.querySelectorAll('[data-foart-pen-hint]').forEach((el) => { if (el.textContent !== hint) el.textContent = hint })
+    doc.querySelectorAll('[data-foart-pen-need="path"]').forEach((el) => {
+      const off = count < 3 || busy
+      if (!!el.disabled !== off) el.disabled = off
+      const opacity = off ? '0.45' : ''
+      if (el.style.opacity !== opacity) el.style.opacity = opacity
+    })
+  }
+
   function render() {
     ensureUi()
+    syncControls()
     const el = cur && cur.el
-    if (!el || !el.isConnected) { bar.hidden = true; overlay.hidden = true; return }
+    if (!el || !el.isConnected) { overlay.hidden = true; return }
     const rect = rectOf(el)
-    if (!(rect.width > 2) || !(rect.height > 2)) { bar.hidden = true; overlay.hidden = true; return }
+    if (!(rect.width > 2) || !(rect.height > 2)) { overlay.hidden = true; return }
     const pen = mode === 'pen'
-    bar.hidden = false
-    bar.querySelector('[data-act="brush"]').setAttribute('aria-pressed', String(!pen))
-    bar.querySelector('[data-act="pen"]').setAttribute('aria-pressed', String(pen))
-    const count = pen && tool ? tool.points.length : 0
-    bar.querySelector('[data-act="apply"]').hidden = !(pen && count >= 3)
-    bar.querySelector('[data-act="clear"]').hidden = !(pen && count > 0)
-    hintEl.hidden = !pen
-    hintEl.textContent = busy ? '正在处理…' : count >= 3 ? (tool.closed ? 'Enter 应用 · Esc 清除' : '点回起点闭合 · Enter 应用') : '点击加点，按住拖出曲线'
-    const vw = root.innerWidth || doc.documentElement.clientWidth, vh = root.innerHeight || doc.documentElement.clientHeight
-    // 登记时 barAlign: 'center' = 切换条放在画布顶部正中（左上角有别的东西的编辑器）
-    const centered = cur.entry.options && cur.entry.options.barAlign === 'center'
-    const left = Math.max(4, Math.min(vw - bar.offsetWidth - 4, centered ? rect.left + (rect.width - bar.offsetWidth) / 2 : rect.left + 8))
-    // 画布小的时候切换条放在画布上方，不挡画面
-    const small = (rect.width < 420 || rect.height < 300) && rect.top - 38 >= 4
-    const top = Math.max(4, Math.min(vh - 34, small ? rect.top - 38 : rect.top + 8))
-    bar.style.left = left + 'px'; bar.style.top = top + 'px'
     syncRef(rect)
     if (!pen || !tool || !tool.points.length) { overlay.hidden = true; return }
     const dpr = root.devicePixelRatio || 1
@@ -191,7 +189,7 @@
     Path().draw(ctx, tool, (px) => px, { fill: 'rgba(30,166,114,0.22)', stroke: 'rgba(155,228,205,0.98)' })
   }
 
-  // 找出当前生效的笔刷画布；没有就收起切换条
+  // 找出当前生效的笔刷画布；没有笔刷在用时回到画笔状态
   function refresh() {
     if (!Line() || !Path()) return
     const list = Line().activeTargets().filter((found) => { const r = rectOf(found.el); return hasPen(found) && r.width > 2 && r.height > 2 })
@@ -199,15 +197,16 @@
     const next = keep || list[0] || null
     if (!next) {
       if (cur) { cur = null; if (tool) clearPath() }
-      if (bar) { bar.hidden = true; overlay.hidden = true }
+      if (mode !== 'brush' && !busy) mode = 'brush'
+      if (overlay) overlay.hidden = true
+      syncControls()
       return
     }
     if (!cur || cur.el !== next.el) {
       cur = next
       if (tool) clearPath()
-      // 全屏的编辑器（自动权重）是后加进页面的同层级浮层：换画布时把切换条挪到最后，保持在最上面
       ensureUi()
-      doc.body.appendChild(overlay); doc.body.appendChild(bar)
+      doc.body.appendChild(overlay) // 后加进页面的全屏浮层会盖住路径层：换画布时挪到最后
     } else cur = next
     render()
   }
@@ -231,6 +230,8 @@
       const rect = rectOf(found.el)
       syncRef(rect)
       lastPointer = { pointerId: ev.pointerId, pointerType: ev.pointerType || 'mouse', screenX: ev.screenX, screenY: ev.screenY, clientX: ev.clientX, clientY: ev.clientY }
+      downPointer = ev.pointerId
+      hideBrushRing() // 指针进画布时笔刷已经把圈画出来了
       Path().pointerDown(tool, ev, localPoint(ev, rect), POINT_PX, SEGMENT_PX, pushUndo)
       if (tool.drag) { dragPointer = ev.pointerId; try { found.el.setPointerCapture(ev.pointerId) } catch { /* 指针已松开 */ } }
       found.el.style.cursor = Path().cursorFor(ev, tool.hover)
@@ -255,7 +256,10 @@
       return true
     }
     if (type === 'pointerup' || type === 'pointercancel') {
-      if (!cur || !tool || !tool.drag || ev.pointerId !== dragPointer) return false
+      // 这一下按下是钢笔接的，松开也不给笔刷（不然笔刷圈会跟过来）
+      const mine = downPointer != null && ev.pointerId === downPointer
+      downPointer = null
+      if (!cur || !tool || !tool.drag || ev.pointerId !== dragPointer) { if (mine) consume(ev); return mine }
       consume(ev)
       Path().pointerUp(tool, TINY_PX)
       dragPointer = null
@@ -393,12 +397,17 @@
   root.addEventListener('keyup', onKeyUp, true)
   root.addEventListener('blur', () => { spaceDown = false })
   root.addEventListener('resize', () => { if (cur) render() })
+  // 工具条重画（美工每次同步都会重建）后马上按当前状态补上显示 / 隐藏，不等下一次轮询
+  try { new root.MutationObserver(() => { if (mode === 'pen') syncControls() }).observe(doc.documentElement, { childList: true, subtree: true }) } catch { /* 没有也只是慢 0.3 秒 */ }
   root.addEventListener('scroll', () => { if (cur) render() }, true)
   root.addEventListener('wheel', () => { if (cur) root.setTimeout(render, 0) }, { capture: true, passive: true })
   root.setInterval(refresh, 300)
 
   root.FoartBrushPen = {
-    handle, apply, setMode, refresh,
+    handle, apply, setMode, refresh, syncControls,
+    toggle() { setMode(mode === 'pen' ? 'brush' : 'pen') },
+    clear() { if (busy || !tool) return; if (tool.points.length) pushUndo(); clearPath() },
+    get hint() { return hintText() },
     get mode() { return mode },
     get points() { return tool ? tool.points.length : 0 },
     get busy() { return busy },

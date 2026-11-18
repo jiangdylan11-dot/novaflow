@@ -3789,6 +3789,31 @@
     node.style.setProperty('background-color', background, 'important')
   }
 
+  // 画笔 / 钢笔：工具条里的「画笔 N」是个按钮，点它在两种状态之间切换（brush-pen-mode.js）。
+  // 画笔状态后面跟笔刷大小的滑条；钢笔状态换成 应用 / 清除 和一句提示。
+  function brushPenToolbarNodes(valueKey, brushText, rangeInput) {
+    const pen = window.FoartBrushPen
+    const penOn = !!(pen && pen.mode === 'pen')
+    const call = (name) => (event) => { if (event) event.stopPropagation(); const api = window.FoartBrushPen; if (api && typeof api[name] === 'function') api[name]() }
+    const hiddenStyle = (show, style) => (show ? style : Object.assign({}, style, { display: 'none' }))
+    const mark = (when, show, style) => ({ 'data-foart-pen-when': when, 'data-foart-pen-hidden': show ? null : '1', 'data-foart-pen-display': show ? null : (style.display || ''), style: hiddenStyle(show, style) })
+    const toggle = button('', call('toggle'), false, { 'data-foart-brush-toggle': penOn ? 'pen' : 'brush', title: penOn ? '当前是钢笔：点击切回画笔' : '当前是画笔：点击切换到钢笔' })
+    toggle.textContent = ''
+    toggle.appendChild(h('span', Object.assign({ [TOOL_VALUE_ATTR]: valueKey }, mark('brush', !penOn, {})), brushText))
+    toggle.appendChild(h('span', mark('pen', penOn, {}), '钢笔'))
+    const labelStyle = { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, border: '0', color: '#fff', display: 'flex', alignItems: 'center', gap: '7px', padding: '0 8px', fontSize: '11px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, boxShadow: 'none' }
+    const apply = button('应用', call('apply'), false, Object.assign({ 'data-foart-pen-need': 'path', title: '把钢笔圈出的区域按当前模式处理（Enter）' }, mark('pen', penOn, {})))
+    const clear = button('清除', call('clear'), false, Object.assign({ title: '清除钢笔路径（Esc）' }, mark('pen', penOn, {})))
+    const hintStyle = { height: '28px', display: 'flex', alignItems: 'center', padding: '0 2px', fontSize: '11px', color: '#8c8c8c', whiteSpace: 'nowrap' }
+    return [
+      toggle,
+      h('label', mark('brush', !penOn, labelStyle), [rangeInput]),
+      apply,
+      clear,
+      h('span', Object.assign({ 'data-foart-pen-hint': '1' }, mark('pen', penOn, hintStyle)), pen && penOn ? pen.hint : '')
+    ]
+  }
+
   function button(label, onClick, active, extraProps) {
     const props = extraProps && typeof extraProps === 'object' ? { ...extraProps } : {}
     const extraStyle = props.style && typeof props.style === 'object' ? props.style : null
@@ -23923,10 +23948,8 @@
         }) : null,
         button('\u7ed8\u5236', () => setSelectionPaintMode('draw'), paintMode === 'draw', { [TOOL_ACTION_ATTR]: 'selectionDraw' }),
         button('\u64e6\u9664', () => setSelectionPaintMode('erase'), paintMode === 'erase', { [TOOL_ACTION_ATTR]: 'selectionErase' }),
-        h('label', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, border: '0', color: '#fff', display: 'flex', alignItems: 'center', gap: '7px', padding: '0 8px', fontSize: '11px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, boxShadow: 'none' } }, [
-          h('span', { [TOOL_VALUE_ATTR]: 'selectionBrush' }, `\u753b\u7b14 ${brush}`),
-          h('input', { [TOOL_RANGE_ATTR]: 'selectionBrush', type: 'range', min: '1', max: '260', value: brush, oninput: (event) => { setSelectionBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 260, '92px') })
-        ]),
+        ...brushPenToolbarNodes('selectionBrush', `\u753b\u7b14 ${brush}`,
+          h('input', { [TOOL_RANGE_ATTR]: 'selectionBrush', type: 'range', min: '1', max: '260', value: brush, oninput: (event) => { setSelectionBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 260, '92px') })),
         button('\u9000\u51fa', () => stopSelectionTool(), false, { [TOOL_ACTION_ATTR]: 'selectionExit' }),
         isCutoutTool && !isGenerativeSplit ? button('\u53bb\u80cc', () => executeSelectionRemoveBackground(), false, {
           [TOOL_ACTION_ATTR]: 'selectionRemoveBackground',
@@ -28520,10 +28543,8 @@
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
         button('擦除', () => setMaskEditorMode('erase'), state.maskEditor && state.maskEditor.mode !== 'restore', { [TOOL_ACTION_ATTR]: 'maskErase' }),
         button('恢复', () => setMaskEditorMode('restore'), state.maskEditor && state.maskEditor.mode === 'restore', { [TOOL_ACTION_ATTR]: 'maskRestore' }),
-        h('label', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, border: '0', color: '#fff', display: 'flex', alignItems: 'center', gap: '7px', padding: '0 8px', fontSize: '11px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, boxShadow: 'none' } }, [
-          h('span', { [TOOL_VALUE_ATTR]: 'maskBrush' }, `画笔 ${brush}`),
-          h('input', { [TOOL_RANGE_ATTR]: 'maskBrush', type: 'range', min: '1', max: '300', value: brush, oninput: (event) => { setMaskBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 300, '92px') })
-        ]),
+        ...brushPenToolbarNodes('maskBrush', `画笔 ${brush}`,
+          h('input', { [TOOL_RANGE_ATTR]: 'maskBrush', type: 'range', min: '1', max: '300', value: brush, oninput: (event) => { setMaskBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 300, '92px') })),
         h('label', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, border: '0', color: '#fff', display: 'flex', alignItems: 'center', gap: '7px', padding: '0 8px', fontSize: '11px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, boxShadow: 'none' } }, [
           h('span', { [TOOL_VALUE_ATTR]: 'maskFeather' }, `羽化 ${feather}`),
           h('input', { [TOOL_RANGE_ATTR]: 'maskFeather', type: 'range', min: '0', max: '300', step: '1', value: feather, oninput: (event) => { setMaskFeather(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(feather, 0, 300, '92px') })
