@@ -271,7 +271,7 @@
     if (kind === "green") {
       const refined = refineChromaMaterial(frame, matteGreen(frame, { ...options, screen }), options);
       const before = options.cleanEdges && refined ? { data: new Uint8ClampedArray(refined.data), alpha: new Uint8ClampedArray(refined.alpha) } : null;
-      return finishShadow(frame, lightThroughSubject(frame, subjectByMask(frame, polish(refined), options, before), options, plainOf, before), options);
+      return finishShadow(frame, lightThroughSubject(frame, solidLitSubject(frame, subjectByMask(frame, polish(refined), options, before), options, before), options, plainOf, before), options);
     }
     // Reuse the validated chroma/glow solution with blue and green exchanged.
     const swapped = new Uint8ClampedArray(frame.data);
@@ -283,7 +283,7 @@
     result.screen = screen;
     const refined = refineChromaMaterial(frame, result, options);
     const before = options.cleanEdges && refined ? { data: new Uint8ClampedArray(refined.data), alpha: new Uint8ClampedArray(refined.alpha) } : null;
-    return finishShadow(frame, lightThroughSubject(frame, subjectByMask(frame, polish(refined), options, before), options, plainOf, before), options);
+    return finishShadow(frame, lightThroughSubject(frame, solidLitSubject(frame, subjectByMask(frame, polish(refined), options, before), options, before), options, plainOf, before), options);
   }
 
   function nearestSeeds(seeds, w, h) {
@@ -1214,6 +1214,39 @@
     return result;
   }
 
+  // A lit, saturated part of the subject (a glowing gem in the hands) has the colour of the light
+  // around it, so the covered-light handling made it translucent and recoloured it towards the
+  // screen's complement (user: 主体被挖了). Light effects the mask covers (a ball of light in
+  // front of the legs, a trail crossing the arm) are the same pixels; no colour or region
+  // statistic separated the two on the test clips. What does: around a glowing object there is
+  // only a soft halo (never above ~.7 opacity outside the mask, 18 px at most above .5), while a
+  // frame with light effects has hundreds to thousands of strongly opaque light pixels outside
+  // the subject. Without such light in the frame, the confident subject that came out
+  // translucent or recoloured is put back as 光效透明保留 off cuts it (the mask's opacity, the
+  // frame's colours). Sheer white/grey material (a veil) is never touched.
+  function solidLitSubject(frame, result, options, before = null) {
+    if (!result || options.sheerMaterial || !options.subjectMask?.data || !result.screen?.rgb) return result;
+    const { width: w, height: h, data } = frame, n = w * h;
+    const mask = subjectOpacity(options.subjectMask, w, h);
+    if (!mask) return result;
+    const screen = result.screen.rgb, key = result.screen.kind === "blue" ? 2 : 1, o1 = 0, o2 = key === 1 ? 2 : 1;
+    const outside = (before || result).alpha, limit = Math.max(60, n * 6e-5);
+    let strong = 0;
+    for (let p = 0, i = 0; p < n && strong < limit; p++, i += 4) {
+      if (mask[p] < .1 && outside[p] >= 128 && Math.max(data[i + o1] - screen[o1], data[i + o2] - screen[o2]) >= 40) strong++;
+    }
+    if (strong >= limit) return result;
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      if (mask[p] < .98) continue;
+      const n1 = data[i + o1], n2 = data[i + o2];
+      if (Math.max(n1 - screen[o1], n2 - screen[o2]) < 60 || Math.min(n1, n2) >= .6 * Math.max(n1, n2, 1)) continue;
+      if (result.alpha[p] >= 215 && Math.abs(result.data[i + key] - data[i + key]) <= 40) continue;
+      result.alpha[p] = result.data[i + 3] = Math.round(mask[p] * 255);
+      result.data[i] = data[i]; result.data[i + 1] = data[i + 1]; result.data[i + 2] = data[i + 2];
+    }
+    return result;
+  }
+
   // A glow that touches the subject (a gem held up in the hands). The glow outside the AI mask
   // stays whole: 边缘净化 does not thin it and the mask-aware refinement does not grey it right
   // at the subject. The subject is never treated as light: making a gem or the screen between
@@ -1255,18 +1288,6 @@
     if (before) for (let k = 0; k < seeds; k++) take(before, queue[k]);
     const plain = plainOf();
     if (!plain) return result;
-    // Next to a glow the glow solution also takes hold of the subject's own lit, saturated parts
-    // (the bright cyan facets of a gem held up against a blue screen came out part transparent
-    // and recoloured). Confident subject that clearly emits and came out translucent is put back
-    // as 光效透明保留 off cuts it. Plain screen colour the mask covers (a gap) stays keyed, and
-    // sheer white/grey material (a veil: its two non-key channels alike) stays translucent.
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const p = y * w + x, m = mask[p]; if (m < .98 || result.alpha[p] >= 215 || !(box(x, y, reach * 2)[0] > 0)) continue;
-      const i = p * 4, n1 = data[i + o1], n2 = data[i + o2];
-      if (Math.max(n1 - screen[o1], n2 - screen[o2]) < 60 || Math.min(n1, n2) >= .6 * Math.max(n1, n2, 1)) continue;
-      result.alpha[p] = result.data[i + 3] = Math.round(m * 255);
-      result.data[i] = data[i]; result.data[i + 1] = data[i + 1]; result.data[i + 2] = data[i + 2];
-    }
     // Screen the mask covers next to a glow (the gap between the raised hands under the gem) is
     // lit by the glow, so it is no longer "nearly the screen itself" and stayed an opaque block of
     // screen colour. The plain chroma solution tells it from the gem: lit screen comes out below

@@ -124,3 +124,35 @@ test('边缘净化 keeps the glow around the subject', () => {
   const a = runGem(true), b = runGem(true, { cleanEdges: true });
   for (const [x, y] of [[36, 40], [84, 40], [60, 22]]) { const p = y * 120 + x; assert.ok(b.alpha[p] >= a.alpha[p] - 3, `glow ${x},${y}: ${b.alpha[p]} vs ${a.alpha[p]}`); }
 });
+
+// 2026-11-18 round 5 (Dylan, live 2.0.398: 开启光效，好多帧主体被挖了). With the gem held at the
+// chest and only a soft halo around it, the covered-light handling made the gem translucent and
+// green. A lit, saturated part of the confident subject is the subject unless the frame has
+// strongly opaque light effects outside the subject (DivinePower's ball and trail), where the
+// covered light must stay light.
+function chestGemClip(strongLight) {
+  const N = 120, data = new Uint8ClampedArray(N * N * 4), mask = new Uint8ClampedArray(N * N), BLUE_SCREEN = [0, 63, 241];
+  const put = (x, y, rgb) => { const i = (y * N + x) * 4; data[i] = rgb[0]; data[i + 1] = rgb[1]; data[i + 2] = rgb[2]; data[i + 3] = 255; };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const d = Math.hypot(x - 60, y - 60), halo = Math.max(0, 1 - Math.max(0, d - 30) / 10) * .25;       // soft halo only
+    put(x, y, BLUE_SCREEN.map((c, k) => Math.round(c + ([90, 230, 250][k] - c) * halo)));
+  }
+  if (strongLight) for (let y = 4; y < 24; y++) for (let x = 4; x < 60; x++) put(x, y, [120, 250, 255]);   // an opaque light effect elsewhere
+  for (let y = 30; y < 90; y++) for (let x = 30; x < 90; x++) { put(x, y, [110, 80, 60]); mask[y * N + x] = 255; }
+  for (let y = 50; y < 70; y++) for (let x = 50; x < 70; x++) put(x, y, (x + y) % 5 ? [48, 195, 231] : [48, 150, 180]); // the gem
+  return { frame: { width: N, height: N, data }, mask, N };
+}
+test('a glowing gem held by the subject stays solid and keeps its colour', () => {
+  const c = chestGemClip(false), r = api.matte(c.frame, { preserveShadow: true, subjectMask: { data: c.mask, width: c.N, height: c.N }, requireSubjectMask: true });
+  for (const [x, y] of [[55, 55], [60, 60], [66, 63]]) { const p = y * 120 + x, i = p * 4;
+    assert.equal(r.alpha[p], 255, `gem alpha at ${x},${y}`);
+    assert.ok(Math.abs(r.data[i + 2] - c.frame.data[i + 2]) <= 2 && Math.abs(r.data[i + 1] - c.frame.data[i + 1]) <= 2, `gem colour at ${x},${y}: ${[r.data[i], r.data[i + 1], r.data[i + 2]]}`); }
+});
+// The covered-light handling needs a real clip's light profile to trigger, so this synthetic frame
+// only guards the contract (the gem test above also passes without the restore); the real check
+// is the per-frame scan of green_win and DivinePower recorded in the commit message.
+test('the solid-subject restore is skipped when the frame has strong light outside the subject', () => {
+  const src = readFileSync(join(ROOT, 'renderer/ai-sequence-green-screen-matting.js'), 'utf8');
+  assert.ok(src.includes('if (strong >= limit) return result;'));
+  assert.ok(src.includes('solidLitSubject(frame, subjectByMask(frame, polish(refined), options, before), options, before)'));
+});
