@@ -1267,6 +1267,18 @@
       result.alpha[p] = result.data[i + 3] = Math.round(m * 255);
       result.data[i] = data[i]; result.data[i + 1] = data[i + 1]; result.data[i + 2] = data[i + 2];
     }
+    // Screen the mask covers next to a glow (the gap between the raised hands under the gem) is
+    // lit by the glow, so it is no longer "nearly the screen itself" and stayed an opaque block of
+    // screen colour. The plain chroma solution tells it from the gem: lit screen comes out below
+    // ~.3 opacity there, the gem's facets above ~.45. Only that low end follows the plain solution.
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = y * w + x; if (mask[p] < .5 || !(box(x, y, reach * 2)[0] > 0)) continue;
+      const pa = plain.alpha[p] / 255, g = 1 - smooth(.28, .45, pa), ra = result.alpha[p] / 255;
+      if (g <= 0 || pa >= ra) continue;
+      const i = p * 4, na = g * pa + (1 - g) * ra;
+      for (let c = 0; c < 3; c++) result.data[i + c] = na > 1 / 255 ? Math.round(clamp((g * pa * plain.data[i + c] + (1 - g) * ra * result.data[i + c]) / na, 0, 255)) : 0;
+      result.alpha[p] = result.data[i + 3] = Math.round(na * 255);
+    }
     // Right at the subject the mask-aware refinement thins and greys the glow (a dark ring around
     // the hands): within a few pixels of the mask the glow keeps the plain solution's opacity.
     const near = new Int32Array(stride * (h + 1)), R = Math.max(6, Math.round(Math.min(w, h) / 80));
