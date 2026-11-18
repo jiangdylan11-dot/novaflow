@@ -83,6 +83,12 @@
   const hosts = [cutout, videoEdit]
   let bar = null, parts = null, host = null
 
+  // 左侧面板里的这几行从第一帧起就不显示（等工具条出现后再收起会先闪一下老样子）
+  const earlyStyle = doc.createElement('style')
+  earlyStyle.setAttribute('data-foart-brush-bar-early', '1')
+  earlyStyle.textContent = '[data-novaflow-manual-brush="1"] > :has(input[type="range"]),[data-novaflow-manual-brush="1"] > :has(input[type="checkbox"]),[data-novaflow-manual-brush="1"] > :has(button){display:none!important}#ve-mask-box{display:none!important}'
+  ;(doc.head || doc.documentElement).appendChild(earlyStyle)
+
   function build() {
     const style = doc.createElement('style')
     style.textContent = `
@@ -191,6 +197,17 @@
   }
 
   root.setInterval(sync, 200)
+  // 面板一出现就摆好工具条，不等下一次轮询
+  let queued = false
+  try {
+    new root.MutationObserver(() => {
+      if (queued) return
+      const need = (!host && (cutout.panel() || doc.body.getAttribute('data-nf-ve-masking') === '1')) || (host && !host.active())
+      if (!need) return
+      queued = true
+      root.requestAnimationFrame(() => { queued = false; sync() })
+    }).observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-nf-ve-masking', 'data-novaflow-manual-brush'] })
+  } catch { /* 轮询兜底 */ }
   root.addEventListener('resize', sync)
   root.FoartBrushToolBar = { sync }
 })(typeof window !== 'undefined' ? window : null)

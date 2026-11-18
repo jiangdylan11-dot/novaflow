@@ -94,7 +94,8 @@
   function ensureUi() {
     if (overlay) return
     const style = doc.createElement('style')
-    style.textContent = '.foart-brush-pen-layer{position:fixed;z-index:2147483647;pointer-events:none}.foart-brush-pen-layer[hidden]{display:none!important}'
+    style.textContent = '.foart-brush-pen-layer{position:fixed;z-index:2147483647;pointer-events:none}.foart-brush-pen-layer[hidden]{display:none!important}' +
+      'body[data-foart-brush-mode="pen"] :is([data-novaflow-selection-brush-cursor],[data-novaflow-mask-brush-cursor],[data-novaflow-ai-cutout-brush-cursor],.nf-ve-brush,.nf-ve-brush-feather){display:none!important}'
     ;(doc.head || doc.documentElement).appendChild(style)
     overlay = doc.createElement('canvas')
     overlay.className = 'foart-brush-pen-layer'
@@ -135,6 +136,8 @@
   //   data-foart-pen-need="path"            路径不到 3 个点时不可用（应用）
   function syncControls() {
     const pen = mode === 'pen'
+    // 钢笔状态下各版块的笔刷圈不显示（样式在 ensureUi 里），指针在画板外面时笔刷也收不到「离开」
+    if (doc.body && doc.body.getAttribute('data-foart-brush-mode') !== (pen ? 'pen' : 'brush')) doc.body.setAttribute('data-foart-brush-mode', pen ? 'pen' : 'brush')
     const count = pen && tool ? tool.points.length : 0
     doc.querySelectorAll('[data-foart-pen-when]').forEach((el) => {
       const show = (el.getAttribute('data-foart-pen-when') === 'pen') === pen

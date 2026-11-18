@@ -166,7 +166,12 @@
     if (!found || !activeFor(found, ev)) return
     if (!ev.shiftKey) {
       const first = [ev.clientX, ev.clientY, Number(ev.pressure) > 0 ? Number(ev.pressure) : 0.5]
+      // 大笔刷每一段都要算一大片（羽化越大越贵），1000 Hz 的鼠标一帧十几个采样会把画面卡住：
+      // 采样间距和曲线细分按笔刷半径放宽（半径的 1/10 和 1/100），大笔刷上看不出差别
+      let radius = 0
+      try { const r = found.entry.options && found.entry.options.radius; if (typeof r === 'function') radius = Number(r(found.el)) || 0 } catch { radius = 0 }
       plain = { key: found.entry.key, el: found.el, pointerId: ev.pointerId, time: Number(ev.timeStamp) || 0, pressure: first[2], last: first, from: first,
+        step: Math.max(0.3, radius * 0.1), flat: Math.max(FLATNESS_PX, radius * 0.01),
         base: { pointerId: ev.pointerId, pointerType: ev.pointerType, pressure: first[2], clientX: ev.clientX, clientY: ev.clientY, screenX: ev.screenX, screenY: ev.screenY } }
       return
     }
@@ -215,7 +220,7 @@
   function curveTo(p, c, to, buttons) {
     const a = p.from
     const bend = Math.hypot(a[0] - 2 * c[0] + to[0], a[1] - 2 * c[1] + to[1])
-    const n = Math.max(1, Math.min(24, Math.ceil(Math.sqrt(bend / (8 * FLATNESS_PX)))))
+    const n = Math.max(1, Math.min(24, Math.ceil(Math.sqrt(bend / (8 * (p.flat || FLATNESS_PX))))))
     for (let i = 1; i <= n; i++) {
       const t = i / n, u = 1 - t
       emit(p, u * u * a[0] + 2 * u * t * c[0] + t * t * to[0], u * u * a[1] + 2 * u * t * c[1] + t * t * to[1], a[2] + (to[2] - a[2]) * t, buttons)
@@ -233,7 +238,7 @@
     ev.stopImmediatePropagation()
     for (const c of list) {
       const q = strokeSample(p, c, ev)
-      if (!q || Math.hypot(q[0] - p.last[0], q[1] - p.last[1]) < 0.3) continue
+      if (!q || Math.hypot(q[0] - p.last[0], q[1] - p.last[1]) < (p.step || 0.3)) continue
       curveTo(p, p.last, [(p.last[0] + q[0]) / 2, (p.last[1] + q[1]) / 2, (p.last[2] + q[2]) / 2], ev.buttons)
       p.last = q
     }
