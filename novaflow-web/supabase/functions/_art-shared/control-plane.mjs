@@ -77,6 +77,8 @@ import { MODEL_MANIFEST, QWEN21_MODEL_ID, RETIRED_MODEL_IDS, findModel } from '.
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 12000;
 const UI_CPU_CAPABILITY = 'foart-ui-cpu-compiler-v1';
+const UI_LAYER_SPLIT_CAPABILITY = 'foart-ui-layer-split-v1';
+const UI_LAYER_SPLIT_SCOPE = 'layer-split-v1';
 const QWEN21_NATIVE_REWRITE_V3_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-native-rewrite-v3';
 const QWEN_PLAN_SCOPE = 'qwen-foart-plan-v1';
 const QWEN_PLAN_CAPABILITY = 'qwen3.5-9b-heretic-foart-plan-v1';
@@ -235,6 +237,14 @@ export function validateTaskParameters(taskType, raw) {
     // model. The server alone assigns its model identity and the worker checks
     // the actual uploaded request against the scoped action whitelist.
     if (Object.hasOwn(input,'ui_scope') || Object.hasOwn(input,'uiScope')) {
+      // UI 拆图: a node cuts the confirmed boxes into complete layers. Same rule as the CPU compiler: the server
+      // names the capability, so only a node that reported it is given the task.
+      if (input.ui_scope === UI_LAYER_SPLIT_SCOPE) {
+        if (Object.hasOwn(input,'uiScope') || action !== 'reverse-image-prompt' ||
+            hasScope || Object.hasOwn(input,'assistant_model_id') || Object.hasOwn(input,'assistantModelId') ||
+            Object.hasOwn(input,'model_id') || Object.hasOwn(input,'modelId')) throw bad('invalid UI layer split scope');
+        return {action,ui_scope:UI_LAYER_SPLIT_SCOPE,model_id:UI_LAYER_SPLIT_CAPABILITY,references:cleanRefs};
+      }
       if (input.ui_scope !== 'cpu-v1' || Object.hasOwn(input,'uiScope') || action !== 'reverse-image-prompt' ||
           hasScope || Object.hasOwn(input,'assistant_model_id') || Object.hasOwn(input,'assistantModelId') ||
           Object.hasOwn(input,'model_id') || Object.hasOwn(input,'modelId')) throw bad('invalid UI CPU scope');
@@ -1472,7 +1482,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
       parameters = validateTaskParameters(taskType, taskType === MATTING_TASK_TYPE || taskType === PROMPT_ASSISTANT_TASK_TYPE
         ? { ...body.parameters, references: sanitizeReferences(body.references) }
         : body.parameters);
-      if (taskType === PROMPT_ASSISTANT_TASK_TYPE && [PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID,PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY,UI_CPU_CAPABILITY].includes(parameters.model_id)) {
+      if (taskType === PROMPT_ASSISTANT_TASK_TYPE && [PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID,PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY,UI_CPU_CAPABILITY,UI_LAYER_SPLIT_CAPABILITY].includes(parameters.model_id)) {
         req = { ...req, modelId: parameters.model_id, minVramMb: 0 };
       }
       if (parameters.assistant_tool_scope === QWEN_PLAN_SCOPE || parameters.assistant_tool_scope === QWEN_IMAGE_EDIT_SCOPE)
@@ -1533,6 +1543,8 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
       throw new HttpError(409, ERROR_CODE.NOT_FOUND, '当前本人节点尚未支持 Qwen 基础操作，本次未提交。');
     if (req.modelId === UI_CPU_CAPABILITY && capable === 0)
       throw new HttpError(409, ERROR_CODE.NOT_FOUND, '所选算力节点不支持 UI CPU 编译，本次未提交。');
+    if (req.modelId === UI_LAYER_SPLIT_CAPABILITY && capable === 0)
+      throw new HttpError(409, ERROR_CODE.NOT_FOUND, '当前没有可用的拆图节点，本次未提交。');
     if (req.modelId === QWEN21_EDIT_LORA_CAPABILITY && capable === 0)
       throw new HttpError(409, ERROR_CODE.NOT_FOUND, '没有可用的兼容编辑节点：需要新版算力助手、Qwen 2.1 Turbo 底模及指定兼容 LoRA，任务未提交。');
     const inputManifest = {
@@ -2057,6 +2069,10 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
     const qwen35BusinessTrial = user ? await store.countCapableWorkers(PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY, 0,
       HEARTBEAT_TIMEOUT_SECONDS, workerId, canUsePremiumNodes(user.plan), user.id,
       canUseSharedCompute(user.plan)).catch(() => 0) : 0;
+    // UI 拆图 completes layers on a node that reported it can; the page crops the boxes itself otherwise.
+    const uiLayerSplit = user ? await store.countCapableWorkers(UI_LAYER_SPLIT_CAPABILITY, 0,
+      HEARTBEAT_TIMEOUT_SECONDS, workerId, canUsePremiumNodes(user.plan), user.id,
+      canUseSharedCompute(user.plan)).catch(() => 0) : 0;
     let qwen21NativeRewriteV3=false;
     if(user && workerId && typeof store.getWorkerById==='function') {
       const node=await store.getWorkerById(workerId).catch(()=>null);
@@ -2117,6 +2133,7 @@ export function createControlPlane({ store, secrets, logger=()=>{}, companion=nu
         qwen21LocalImageEdit:qwenImageEditReady,qwen21LocalImageEditOwnerLeaseBound:qwenImageEditReady,
         qwen35FoartRotationCandidate:qwenRotationReady,qwen35FoartRotationOwnerLeaseBound:qwenRotationReady,
         qwen35UiDraft: false, qwen35UiOwnerLeaseBound: false,
+        uiLayerSplit: Number(uiLayerSplit) > 0, uiLayerSplitWorkers: Number(uiLayerSplit) || 0,
         h3CreateOnce:h3CreateOnceEnabled===true && typeof store.createH3TaskOnce==='function' && typeof store.countH3CapableWorkers==='function' },
       models: MODEL_MANIFEST.map((m) => ({
         model_id: m.model_id,
