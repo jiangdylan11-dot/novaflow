@@ -1,5 +1,7 @@
 // Chromium Canvas + the real editor coordinator. Only Comfy/network and cache
 // are replaced; image composition, layer records, selection and history are real.
+// The flow under test is the one the page has since 2026-11-18: 智能抠图 with the
+// 补全 switch on, one painted object per run (no route select, no 添加对象).
 const { app, BrowserWindow } = require('electron');
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../..');
@@ -14,8 +16,8 @@ app.whenReady().then(async () => {
     await win.loadURL('data:text/html;charset=utf-8,<body><div id="fixture"></div>');
     const evaluate = code => win.webContents.executeJavaScript(code, true);
     await evaluate(fs.readFileSync(path.join(root, 'renderer/generative-split.workflow.js'), 'utf8'));
-    const seam = `window.splitTest = { state, executeGenerativeSplitTool, addGenerativeSplitTarget, ensureSelectionToolSession,
-      generativeSplitToolbarNodes, stopSplitRun, undoSplitLayerEdit, redoSplitLayerEdit,
+    const seam = `window.splitTest = { state, executeCutoutTool, toggleSelectionCompletion, ensureSelectionToolSession,
+      stopSplitRun, undoSplitLayerEdit, redoSplitLayerEdit,
       install(info) {
         // No application workspace is mounted in this Canvas fixture. Keep its
         // visibility synchronizers from closing the otherwise real selection.
@@ -58,8 +60,8 @@ app.whenReady().then(async () => {
       ok(outside === 0 && inside > 0, 'background keeps every RGBA byte outside feathered selection');
       let mismatch = false; try { api.restoreFrame(canvas(32, 32), frame); } catch { mismatch = true; }
       ok(mismatch, 'wrong output dimensions rejected before placement');
-      const info = Object.fromEntries(['LoadImage','NovaFlowGGUFBF16Loader','CLIPLoader','VAELoader','TextEncodeQwenImage21','QwenImage21Cache','BasicGuider','RandomNoise','KSamplerSelect','SamplerCustomAdvanced','VAEDecode','SaveImage','ManualSigmas','BasicScheduler'].map(k => [k, {}]));
-      info.NovaFlowGGUFBF16Loader.input = { required: { unet_name: [['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors','qwen-image-2.1-UC-BF16.gguf']] } };
+      const info = Object.fromEntries(['LoadImage','UNETLoader','CLIPLoader','VAELoader','TextEncodeQwenImage21','QwenImage21Cache','BasicGuider','RandomNoise','KSamplerSelect','SamplerCustomAdvanced','VAEDecode','SaveImage','ManualSigmas','BasicScheduler'].map(k => [k, {}]));
+      info.UNETLoader.input = { required: { unet_name: [['Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors']] } };
       info.CLIPLoader.input = { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']] } };
       info.VAELoader.input = { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } };
       window.splitUploads = {}; window.splitCalls = []; window.splitPrompts = []; t.install(info);
@@ -74,49 +76,51 @@ app.whenReady().then(async () => {
           for (let i = 0; i < p.length; i += 4) if (p[i] < 20 && p[i + 1] > 240 && p[i + 2] < 20) { const px = i / 4 % c.width, py = Math.floor(i / 4 / c.width); x = Math.min(x, px); y = Math.min(y, py); r = Math.max(r, px); b = Math.max(b, py); }
           g.clearRect(0, 0, c.width, c.height); g.fillStyle = '#2040f0'; g.fillRect(x - 12, y - 12, r - x + 25, b - y + 25);
         }
-        if (failure === 'second-object' && call === 3) throw Error('second object failed');
+        if (failure === 'object-error' && call === 2) throw Error('object stage failed');
         if (failure === 'stale' && call === 2) s.source = { ...s.source, dataUrl: source.toDataURL() + '#changed' };
         if (failure === 'stop' && call === 2) t.stopSplitRun();
         return c.toDataURL();
       };
       const select = async (x = 100, y = 80) => { const session = await t.ensureSelectionToolSession(); if (!session) throw Error('No selection session: ' + JSON.stringify({ message: s.message, busy: s.busy, selection: s.selectionTool })); const g = session.maskCanvas.getContext('2d'); g.clearRect(0, 0, 256, 256); g.fillStyle = '#fff'; g.fillRect(x, y, 40, 40); };
-      const begin = async () => { NovaFlowSpineSplitDebug.setSource('fixture.png', source.toDataURL()); await image(source.toDataURL()); await t.executeGenerativeSplitTool(); await select(); call = 0; splitCalls.length = 0; };
+      // 智能抠图 opens the brush tool, 补全 switches it to the completing route, 执行抠图 runs it
+      const begin = async () => {
+        NovaFlowSpineSplitDebug.setSource('fixture.png', source.toDataURL()); await image(source.toDataURL());
+        await t.executeCutoutTool();
+        if (!s.selectionTool.generativeSplit) t.toggleSelectionCompletion();
+        await select(); call = 0; splitCalls.length = 0;
+      };
       await begin();
-      const toolbar = document.querySelector('#fixture'); toolbar.replaceChildren(...t.generativeSplitToolbarNodes());
-      ok(s.generativeSplit.profile === 'turbo', 'the one route is the default');
-      s.generativeSplit.advancedPrompts = true; s.generativeSplit.objectName = '对象甲'; s.generativeSplit.objectPrompt = '去掉蓝色遮挡板'; s.generativeSplit.backgroundPrompt = '保持米色平涂底色'; toolbar.querySelector('[data-novaflow-generative-split-add]').click();
-      for (let i = 0; i < 20 && s.generativeSplit.objectName; i++) await new Promise(r => setTimeout(r, 10));
-      ok(!s.generativeSplit.objectName, 'native toolbar click queues object and clears current selection');
-      await select(170, 150); s.generativeSplit.objectName = '对象乙'; s.generativeSplit.objectPrompt = '补全帽沿'; failure = 'second-object';
-      const before = JSON.stringify(s.parts); await t.executeGenerativeSplitTool();
-      ok(JSON.stringify(s.parts) === before && /second object failed/.test(s.message), 'second-object failure leaves all original layers untouched');
-      const customPrompts = splitPrompts.slice(-3);
-      ok(customPrompts[0].includes('保持米色平涂底色') && !customPrompts[0].includes('去掉蓝色遮挡板') && !customPrompts[0].includes('补全帽沿'), 'background receives only its own instructions');
-      ok(customPrompts[1].includes('去掉蓝色遮挡板') && !customPrompts[1].includes('补全帽沿') && customPrompts[2].includes('补全帽沿') && !customPrompts[2].includes('去掉蓝色遮挡板'), 'each queued object keeps its own explicit instructions');
-      s.generativeSplit.advancedPrompts = false;
-      failure = ''; call = 0; splitCalls.length = 0; await t.executeGenerativeSplitTool();
-      ok(s.parts.length === 3 && !s.busy, 'retry commits clean base and two objects together');
-      ok(splitCalls.join(',') === 'background,object,object', 'multiple objects use separate sequential model runs');
-      const prompts = splitPrompts.slice(-3);
-      ok(prompts.every(prompt => !prompt.includes('Additional instructions')), 'closing advanced requirements disables stored background and queued-object overrides');
-      ok(prompts[1].includes('reconstruct the missing target parts') && prompts[1].includes('colors, texture, material, illumination'), 'automatic mode completes occlusion and preserves appearance without manual instructions');
+      ok(s.selectionTool.active && s.selectionTool.mode === 'cutout' && s.selectionTool.generativeSplit === true, '补全 turns 智能抠图 into the completing route');
+      ok(s.generativeSplit.profile === 'turbo' && s.generativeSplit.advancedPrompts === false, 'the one route and no extra requests are the defaults');
+      t.toggleSelectionCompletion(); ok(s.selectionTool.generativeSplit === false, '补全 switches off again');
+      t.toggleSelectionCompletion(); await select();
+      s.generativeSplit.objectName = '对象甲'; failure = 'object-error';
+      const before = JSON.stringify(s.parts); await t.executeCutoutTool();
+      ok(splitCalls.join(',') === 'background,object', 'a run asks for the clean base, then the object');
+      ok(JSON.stringify(s.parts) === before && /object stage failed/.test(s.message) && !s.busy, 'a failed run leaves all original layers untouched');
+      failure = ''; call = 0; splitCalls.length = 0; await select(); s.generativeSplit.objectName = '对象甲'; await t.executeCutoutTool();
+      ok(s.parts.length === 2 && !s.busy, 'retry commits the clean base and the object together');
+      ok(splitCalls.join(',') === 'background,object', 'one object uses one background run and one object run');
+      const prompts = splitPrompts.slice(-2);
+      ok(prompts.every(prompt => !prompt.includes('Additional instructions')), 'no extra requests reach the model');
+      ok(prompts[1].includes('对象甲') && prompts[1].includes('reconstruct the missing target parts') && prompts[1].includes('colors, texture, material, illumination'), 'the optional target hint names the object; occlusion is completed and the look preserved without manual instructions');
       const object = s.parts.find(p => (p.name || '').includes('对象甲'));
       const full = canvas(256, 256), f = full.getContext('2d'), oi = await image(object.dataUrl); f.drawImage(oi, object.x, object.y);
       ok(f.getImageData(100, 125, 1, 1).data[3] > 0, 'completed object pixels outside painted mask survive layer crop and placement');
       ok(t.undoSplitLayerEdit(), 'split supports undo');
       await new Promise(r => setTimeout(r, 80)); ok(s.parts.length === 0, 'undo removes the whole generated layer group');
       ok(t.redoSplitLayerEdit(), 'split supports redo');
-      await new Promise(r => setTimeout(r, 80)); ok(s.parts.length === 3, 'redo restores the whole generated layer group');
-      for (const reason of ['opaque', 'stale', 'stop']) {
-        await begin(); failure = reason; const before = JSON.stringify(s.parts); await t.executeGenerativeSplitTool();
+      await new Promise(r => setTimeout(r, 80)); ok(s.parts.length === 2, 'redo restores the whole generated layer group');
+      for (const reason of ['opaque', 'stale', 'stop', 'object-error']) {
+        await begin(); failure = reason; const before = JSON.stringify(s.parts); await t.executeCutoutTool();
         ok(JSON.stringify(s.parts) === before && s.messageError, reason + ' output cannot commit partial or late results');
       }
-      failure = ''; window.splitCacheFail = true; await begin(); await t.executeGenerativeSplitTool();
+      failure = ''; window.splitCacheFail = true; await begin(); await t.executeCutoutTool();
       ok(s.parts.length === 2 && /手动保存/.test(s.message), 'cache failure retains completed layers and gives recoverable notice');
       window.splitCacheFail = false;
       const sourceId = s.parts[0].id, unrelatedId = s.parts[1].id, unrelatedImage = s.parts[1].dataUrl;
       s.activePartId = sourceId; s.selectedPartIds = [sourceId]; s.viewMode = 'parts';
-      await t.executeGenerativeSplitTool(); await select(); call = 0; await t.executeGenerativeSplitTool();
+      await t.executeCutoutTool(); if (!s.selectionTool.generativeSplit) t.toggleSelectionCompletion(); await select(); call = 0; await t.executeCutoutTool();
       ok(s.parts.length === 4 && s.parts.find(p => p.id === sourceId).visible === false, 'layer input retains its original as a hidden layer');
       ok(s.parts.find(p => p.id === unrelatedId).dataUrl === unrelatedImage, 'layer input leaves unrelated layer images unchanged');
       t.undoSplitLayerEdit(); await new Promise(r => setTimeout(r, 80));
