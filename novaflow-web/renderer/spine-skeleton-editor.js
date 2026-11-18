@@ -6817,6 +6817,9 @@
     c.addEventListener('pointerleave', () => { state.hoverImg = null; if (state.meshEdit) state.meshPointer = null })
     // 权重笔刷：Shift 点击连直线、Shift 拖动锁直线（brush-straight-line.js）
     if (window.FoartBrushLine) window.FoartBrushLine.watch(c, () => { const we = state.weightEdit; return !!(rt.skeleton && we && !we.binding && !we.direct && !pfx && !state.meshEdit && !state.clipEdit && !state.pathEdit) }, {
+      // 钢笔状态的切换条放顶部正中（左上角是「设置 / 动画」），路径跟着画面缩放 / 平移
+      barAlign: 'center',
+      anchor: () => { const o = toScreen(0, 0); return { x: o[0], y: o[1], k: 1 / rt.cam.zoom } },
       // 钢笔状态：圈住的顶点按当前模式（增加 / 减少 / 替换）和力度一次处理，一步撤销
       fill: (el, polygon) => {
         const we = state.weightEdit, wctx = weightContext()

@@ -747,6 +747,8 @@
       canvas.addEventListener('pointerleave', () => { lastPointer = null; draw() })
       // 增加 / 减少 笔刷：Shift 点击连直线、Shift 拖动锁直线（brush-straight-line.js）；直接 模式下 Shift 拖动仍是平移
       const unwatchBrushLine = window.FoartBrushLine ? window.FoartBrushLine.watch(canvas, () => !done && mode !== 'set', {
+        // 钢笔路径跟着画面缩放 / 平移
+        anchor: () => ({ x: view.ox, y: view.oy, k: view.scale }),
         // 钢笔状态：圈住的顶点按当前模式（增加 / 减少）和权重一次处理，一步撤销
         fill: (el, polygon) => {
           if (sel < 0) return

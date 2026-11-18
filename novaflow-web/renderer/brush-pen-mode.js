@@ -40,6 +40,7 @@
   // 画布缩放 / 改尺寸后路径跟着画布走
   function syncRef(rect) {
     if (!tool) return
+    if (cur) syncView(cur.el)
     if (!ref || !tool.points.length) { ref = { w: rect.width, h: rect.height }; return }
     if (Math.abs(ref.w - rect.width) < 0.5 && Math.abs(ref.h - rect.height) < 0.5) return
     const kx = rect.width / Math.max(1e-6, ref.w), ky = rect.height / Math.max(1e-6, ref.h)
@@ -47,6 +48,26 @@
     tool.points.forEach((p) => { scale(p); scale(p.in); scale(p.out) })
     undo.forEach((snap) => snap.points.forEach((p) => { scale(p); scale(p.in); scale(p.out) }))
     ref = { w: rect.width, h: rect.height }
+  }
+
+  // 画布不动、里面的画面自己缩放 / 平移的编辑器（骨骼动画、自动权重）：登记时给 anchor(el)
+  // = { x, y, k }（画面原点在画布里的位置和缩放），路径跟着画面走
+  let viewRef = null
+  function syncView(el) {
+    if (!tool || !cur) return
+    const anchor = cur.entry.options && cur.entry.options.anchor
+    if (typeof anchor !== 'function') { viewRef = null; return }
+    let now = null
+    try { now = anchor(el) } catch { now = null }
+    if (!now || !Number.isFinite(now.x) || !Number.isFinite(now.y) || !(now.k > 0)) return
+    if (!viewRef || !tool.points.length) { viewRef = { x: now.x, y: now.y, k: now.k }; return }
+    if (Math.abs(viewRef.x - now.x) < 0.01 && Math.abs(viewRef.y - now.y) < 0.01 && Math.abs(viewRef.k - now.k) < 1e-9) return
+    const r = now.k / viewRef.k, old = viewRef
+    const move = (p) => { if (p) { p.x = (p.x - old.x) * r + now.x; p.y = (p.y - old.y) * r + now.y } }
+    tool.points.forEach((p) => { move(p); move(p.in); move(p.out) })
+    undo.forEach((snap) => snap.points.forEach((p) => { move(p); move(p.in); move(p.out) }))
+    if (tool.drag && tool.drag.point) { move(tool.drag.point); move(tool.drag.point.in); move(tool.drag.point.out); move(tool.drag.start) }
+    viewRef = { x: now.x, y: now.y, k: now.k }
   }
 
   function pushUndo() {
@@ -140,13 +161,15 @@
     hintEl.hidden = !pen
     hintEl.textContent = busy ? '正在处理…' : count >= 3 ? (tool.closed ? 'Enter 应用 · Esc 清除' : '点回起点闭合 · Enter 应用') : '点击加点，按住拖出曲线'
     const vw = root.innerWidth || doc.documentElement.clientWidth, vh = root.innerHeight || doc.documentElement.clientHeight
-    const left = Math.max(4, Math.min(vw - bar.offsetWidth - 4, rect.left + 8))
+    // 登记时 barAlign: 'center' = 切换条放在画布顶部正中（左上角有别的东西的编辑器）
+    const centered = cur.entry.options && cur.entry.options.barAlign === 'center'
+    const left = Math.max(4, Math.min(vw - bar.offsetWidth - 4, centered ? rect.left + (rect.width - bar.offsetWidth) / 2 : rect.left + 8))
     // 画布小的时候切换条放在画布上方，不挡画面
     const small = (rect.width < 420 || rect.height < 300) && rect.top - 38 >= 4
     const top = Math.max(4, Math.min(vh - 34, small ? rect.top - 38 : rect.top + 8))
     bar.style.left = left + 'px'; bar.style.top = top + 'px'
-    if (!pen || !tool || !tool.points.length) { overlay.hidden = true; return }
     syncRef(rect)
+    if (!pen || !tool || !tool.points.length) { overlay.hidden = true; return }
     const dpr = root.devicePixelRatio || 1
     const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr))
     if (overlay.width !== w) overlay.width = w
