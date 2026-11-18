@@ -746,7 +746,19 @@
       })
       canvas.addEventListener('pointerleave', () => { lastPointer = null; draw() })
       // 增加 / 减少 笔刷：Shift 点击连直线、Shift 拖动锁直线（brush-straight-line.js）；直接 模式下 Shift 拖动仍是平移
-      const unwatchBrushLine = window.FoartBrushLine ? window.FoartBrushLine.watch(canvas, () => !done && mode !== 'set') : null
+      const unwatchBrushLine = window.FoartBrushLine ? window.FoartBrushLine.watch(canvas, () => !done && mode !== 'set', {
+        // 钢笔状态：圈住的顶点按当前模式（增加 / 减少）和权重一次处理，一步撤销
+        fill: (el, polygon) => {
+          if (sel < 0) return
+          const r = el.getBoundingClientRect(), poly = polygon.map((p) => ({ x: p.x - r.left, y: p.y - r.top })), P = animOn && posed ? posed : V, hits = []
+          for (let i = 0; i < n; i++) { const [x, y] = toScreen(P[2 * i], P[2 * i + 1]); if (window.FoartPenPath.pointInPolygon(poly, x, y)) hits.push({ i, f: 1 }) }
+          if (!hits.length) return
+          pushUndo()
+          if (mode === 'add') paintAdd(W, nb, sel, hits, strength)
+          else if (mode === 'sub') paintSub(W, nb, sel, hits, strength)
+          renderBones(); draw()
+        }
+      }) : null
       canvas.addEventListener('pointerup', (ev) => {
         try { canvas.releasePointerCapture(ev.pointerId) } catch { /* not captured */ }
         if (panning) { panning = false; panStart = null; return }

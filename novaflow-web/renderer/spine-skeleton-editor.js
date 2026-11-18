@@ -6816,7 +6816,18 @@
     })
     c.addEventListener('pointerleave', () => { state.hoverImg = null; if (state.meshEdit) state.meshPointer = null })
     // 权重笔刷：Shift 点击连直线、Shift 拖动锁直线（brush-straight-line.js）
-    if (window.FoartBrushLine) window.FoartBrushLine.watch(c, () => { const we = state.weightEdit; return !!(rt.skeleton && we && !we.binding && !we.direct && !pfx && !state.meshEdit && !state.clipEdit && !state.pathEdit) })
+    if (window.FoartBrushLine) window.FoartBrushLine.watch(c, () => { const we = state.weightEdit; return !!(rt.skeleton && we && !we.binding && !we.direct && !pfx && !state.meshEdit && !state.clipEdit && !state.pathEdit) }, {
+      // 钢笔状态：圈住的顶点按当前模式（增加 / 减少 / 替换）和力度一次处理，一步撤销
+      fill: (el, polygon) => {
+        const we = state.weightEdit, wctx = weightContext()
+        if (!we || !wctx || we.bone == null) { status('先在权重面板里选一根骨骼'); return }
+        const r = el.getBoundingClientRect(), poly = polygon.map((p) => ({ x: p.x - r.left, y: p.y - r.top })), hits = []
+        wctx.model.points.forEach((p, i) => { const q = weScreen(wctx, p); if (window.FoartPenPath.pointInPolygon(poly, q[0], q[1])) hits.push([i, 1]) })
+        if (!hits.length) { status('钢笔区域里没有顶点'); return }
+        const model = ME().paintWeights(wctx.model, hits, we.bone, we.mode === 'set' ? 'set' : we.mode, we.strength / 100)
+        commitWeights(model, `已用钢笔处理「${rt.skeleton.bones[we.bone].data.name}」的权重（${hits.length} 个顶点）`)
+      }
+    })
     c.addEventListener('pointermove', (e) => {
       const [sx, sy] = at(e)
       if (state.creating) {

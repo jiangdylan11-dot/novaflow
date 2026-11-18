@@ -17248,6 +17248,14 @@
     return api && typeof api.pressure === 'function' ? api.pressure(event) : 1
   }
 
+  // 钢笔状态（brush-pen-mode.js）要知道笔刷在屏幕上的半径
+  window.NovaFlowSplitBrushScreenRadius = (kind, canvas) => {
+    const rect = canvas && canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null
+    const k = rect && rect.width && canvas.width ? rect.width / canvas.width : 1
+    const radius = kind === 'mask' ? maskBrushMetrics().coreRadius : selectionBrushMetrics().radius
+    return Math.max(0.5, (Number(radius) || 1) * k)
+  }
+
   function pointPressure(point) {
     const p = point && Number(point.p)
     return Number.isFinite(p) && p > 0 ? Math.min(1, p) : 1
@@ -17270,11 +17278,11 @@
     const last = session.lastPoint || point
     const distance = Math.hypot(point.x - last.x, point.y - last.y)
     const { radius } = selectionBrushMetrics()
-    const step = Math.max(0.5, radius / 20)
+    const p0 = pointPressure(last), p1 = pointPressure(point)
+    const step = Math.max(0.5, radius * Math.min(p0, p1) / 20)
     const steps = Math.max(1, Math.ceil(distance / step))
     let bounds = null
     session.hasMaskPaint = true
-    const p0 = pointPressure(last), p1 = pointPressure(point)
     for (let i = 0; i <= steps; i += 1) {
       const t = i / steps
       const nextPoint = { x: last.x + (point.x - last.x) * t, y: last.y + (point.y - last.y) * t }
@@ -24253,54 +24261,11 @@
   }
 
   function penSegmentHitTest(point, canvas) {
-    const tool = state.penTool || {}
-    const points = tool.points || []
-    if (points.length < 2) return null
-    const segmentCount = tool.closed ? points.length : points.length - 1
-    const radius = penCanvasUnit(canvas, 7)
-    let best = null
-    for (let index = 0; index < segmentCount; index += 1) {
-      const current = points[index]
-      const nextIndex = (index + 1) % points.length
-      const next = points[nextIndex]
-      if (!current || !next) continue
-      const hasCurve = !!(current.out || next.in)
-      if (!hasCurve) {
-        const hit = penPointToLineDistance(point, current, next)
-        if (!best || hit.distance < best.distance) best = { type: 'segment', index, nextIndex, t: hit.t, point: hit.point, distance: hit.distance }
-        continue
-      }
-      const p0 = current
-      const p1 = current.out || current
-      const p2 = next.in || next
-      const p3 = next
-      const samples = 44
-      for (let step = 1; step < samples; step += 1) {
-        const t = step / samples
-        const sample = penCubicPoint(p0, p1, p2, p3, t)
-        const distance = penDistance(point, sample)
-        if (!best || distance < best.distance) best = { type: 'segment', index, nextIndex, t, point: sample, distance }
-      }
-    }
-    return best && best.distance <= radius ? best : null
+    return window.FoartPenPath.segmentHitTest(state.penTool || {}, point, penCanvasUnit(canvas, 7))
   }
 
   function penPathToCanvasPath(ctx, points, closed) {
-    if (!points || !points.length) return false
-    ctx.beginPath()
-    ctx.moveTo(points[0].x, points[0].y)
-    const total = closed ? points.length : points.length - 1
-    for (let i = 0; i < total; i += 1) {
-      const current = points[i]
-      const next = points[(i + 1) % points.length]
-      if (!next) continue
-      const c1 = current.out || current
-      const c2 = next.in || next
-      if (current.out || next.in) ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, next.x, next.y)
-      else ctx.lineTo(next.x, next.y)
-    }
-    if (closed) ctx.closePath()
-    return true
+    return window.FoartPenPath.pathToCanvasPath(ctx, points, closed)
   }
 
   function penMaskCanvas(size, featherPx) {
@@ -24325,26 +24290,11 @@
   }
 
   function penHitTest(point, canvas) {
-    const tool = state.penTool || {}
-    const points = tool.points || []
-    const radius = penCanvasUnit(canvas, 9)
-    for (let i = points.length - 1; i >= 0; i -= 1) {
-      const item = points[i]
-      if (item.out && penDistance(point, item.out) <= radius) return { type: 'handleOut', index: i }
-      if (item.in && penDistance(point, item.in) <= radius) return { type: 'handleIn', index: i }
-    }
-    if (!tool.closed && points.length >= 3 && penDistance(point, points[0]) <= radius) return { type: 'close', index: 0 }
-    for (let i = points.length - 1; i >= 0; i -= 1) {
-      if (penDistance(point, points[i]) <= radius) return { type: 'point', index: i }
-    }
-    return penSegmentHitTest(point, canvas)
+    return window.FoartPenPath.hitTest(state.penTool || {}, point, penCanvasUnit(canvas, 9), penCanvasUnit(canvas, 7))
   }
 
   function penPointModifierAction(event, hit) {
-    if (!hit || (hit.type !== 'point' && hit.type !== 'close')) return ''
-    if (event && event.shiftKey) return 'delete'
-    if (event && event.altKey) return 'corner'
-    return ''
+    return window.FoartPenPath.modifierAction(event, hit)
   }
 
   function updatePenCanvasCursor(canvas, event, hit) {
@@ -24370,58 +24320,15 @@
   }
 
   function deletePenPointAt(index) {
-    const tool = state.penTool || {}
-    if (!tool.points || index < 0 || index >= tool.points.length) return false
-    tool.points.splice(index, 1)
-    if (tool.points.length < 3) tool.closed = false
-    tool.drag = null
-    tool.hover = null
-    return true
+    return window.FoartPenPath.deletePointAt(state.penTool || {}, index)
   }
 
   function makePenCornerAt(index) {
-    const tool = state.penTool || {}
-    const item = tool.points && tool.points[index]
-    if (!item) return false
-    item.in = null
-    item.out = null
-    return true
+    return window.FoartPenPath.makeCornerAt(state.penTool || {}, index)
   }
 
   function insertPenPointOnSegment(hit) {
-    const tool = state.penTool || {}
-    const points = tool.points || []
-    if (!hit || hit.type !== 'segment' || hit.index < 0 || hit.index >= points.length) return -1
-    const current = points[hit.index]
-    const nextIndex = (hit.index + 1) % points.length
-    const next = points[nextIndex]
-    if (!current || !next) return -1
-    const t = clampNumber(Number(hit.t) || 0.5, 0.02, 0.98)
-    const hasCurve = !!(current.out || next.in)
-    let newPoint
-    if (hasCurve) {
-      const p0 = current
-      const p1 = current.out || current
-      const p2 = next.in || next
-      const p3 = next
-      const p01 = penLerpPoint(p0, p1, t)
-      const p12 = penLerpPoint(p1, p2, t)
-      const p23 = penLerpPoint(p2, p3, t)
-      const p012 = penLerpPoint(p01, p12, t)
-      const p123 = penLerpPoint(p12, p23, t)
-      const p0123 = penLerpPoint(p012, p123, t)
-      current.out = p01
-      next.in = p23
-      newPoint = { x: p0123.x, y: p0123.y, in: p012, out: p123 }
-    } else {
-      const point = hit.point || penLerpPoint(current, next, t)
-      newPoint = { x: point.x, y: point.y, in: null, out: null }
-    }
-    const insertIndex = hit.index + 1
-    points.splice(insertIndex, 0, newPoint)
-    tool.drag = null
-    tool.hover = { type: 'point', index: insertIndex }
-    return insertIndex
+    return window.FoartPenPath.insertPointOnSegment(state.penTool || {}, hit)
   }
 
   function drawPenToolPreview(canvas, session) {
@@ -24672,36 +24579,7 @@
   }
 
   function updatePenDrag(event, canvas, point) {
-    const tool = state.penTool || {}
-    const drag = tool.drag
-    if (!drag || !tool.points || !tool.points[drag.index]) return
-    const item = tool.points[drag.index]
-    const original = drag.point || clonePenPoint(item)
-    if (drag.type === 'point') {
-      const dx = point.x - drag.start.x
-      const dy = point.y - drag.start.y
-      item.x = clampNumber(original.x + dx, 0, canvas.width)
-      item.y = clampNumber(original.y + dy, 0, canvas.height)
-      if (original.in) item.in = { x: clampNumber(original.in.x + dx, 0, canvas.width), y: clampNumber(original.in.y + dy, 0, canvas.height) }
-      if (original.out) item.out = { x: clampNumber(original.out.x + dx, 0, canvas.width), y: clampNumber(original.out.y + dy, 0, canvas.height) }
-      return
-    }
-    if (drag.type === 'cornerHandle') {
-      item.in = null
-      item.out = { x: clampNumber(point.x, 0, canvas.width), y: clampNumber(point.y, 0, canvas.height) }
-      return
-    }
-    if (drag.type === 'handleIn' || drag.type === 'handleOut' || drag.type === 'newHandle') {
-      const key = drag.type === 'handleIn' ? 'in' : 'out'
-      const otherKey = key === 'in' ? 'out' : 'in'
-      item[key] = { x: clampNumber(point.x, 0, canvas.width), y: clampNumber(point.y, 0, canvas.height) }
-      if (!event.altKey) {
-        item[otherKey] = {
-          x: clampNumber(item.x * 2 - point.x, 0, canvas.width),
-          y: clampNumber(item.y * 2 - point.y, 0, canvas.height)
-        }
-      }
-    }
+    return window.FoartPenPath.updateDrag(state.penTool || {}, event, point, canvas.width, canvas.height)
   }
 
   async function movePenPointer(event, canvas) {

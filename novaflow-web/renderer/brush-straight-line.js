@@ -33,7 +33,9 @@
 
   const MIN_PRESSURE_SCALE = 0.1
   // 笔压 -> 笔刷比例。只认笔：鼠标、触摸和松开时都是 1，笔刷保持原来的大小。
+  const forcedScale = new WeakMap() // 钢笔铺满区域时发出的事件：指定的笔刷比例
   function pressure(ev) {
+    if (ev && forcedScale.has(ev)) return forcedScale.get(ev)
     if (!ev || ev.pointerType !== 'pen' || !(Number(ev.buttons) & 1)) return 1
     const p = Number(ev.pressure)
     if (!Number.isFinite(p) || p <= 0) return 1
@@ -50,10 +52,13 @@
     touchSheet.textContent += `${target}{touch-action:none !important}\n`
   }
 
-  function watch(target, isActive) {
+  // options（钢笔状态用，见 brush-pen-mode.js）：
+  //   radius(el)            笔刷在屏幕上的半径（像素）：钢笔圈出的区域用这支笔刷的细笔迹铺满
+  //   fill(el, polygon, ev) 不靠笔迹的笔刷（权重）自己把区域内的东西处理掉；polygon 是屏幕坐标
+  function watch(target, isActive, options) {
     if (!target) return () => {}
     noTouchGestures(target)
-    const entry = { target, key: target, isActive: typeof isActive === 'function' ? isActive : () => true }
+    const entry = { target, key: target, isActive: typeof isActive === 'function' ? isActive : () => true, options: options || {} }
     targets.push(entry)
     return () => { const i = targets.indexOf(entry); if (i >= 0) targets.splice(i, 1); lastEnd.delete(entry.key) }
   }
@@ -72,6 +77,28 @@
 
   function activeFor(found, ev) {
     try { return !!found.entry.isActive(found.el, ev) } catch { return false }
+  }
+
+  // 当前生效的笔刷画布（钢笔状态的切换条要知道它在哪）
+  function activeTargets() {
+    const out = []
+    for (const entry of targets) {
+      let els = []
+      try { els = typeof entry.target === 'string' ? Array.from(root.document.querySelectorAll(entry.target)) : [entry.target] } catch { els = [] }
+      for (const el of els) {
+        if (!el || !el.isConnected) continue
+        const found = { entry, el }
+        if (activeFor(found, null)) out.push(found)
+      }
+    }
+    return out
+  }
+
+  // 钢笔状态接管这次按下 / 移动 / 松开时返回 true
+  function penTakes(ev) {
+    const pen = root.FoartBrushPen
+    if (!pen || typeof pen.handle !== 'function') return false
+    try { return pen.handle(ev) === true } catch (error) { try { console.warn('[brush-pen]', error) } catch {} return false }
   }
 
   function toFraction(el, x, y) {
@@ -100,6 +127,7 @@
     const Ctor = typeof root.PointerEvent === 'function' ? root.PointerEvent : root.MouseEvent
     const ev = new Ctor(type, init)
     mine.add(ev)
+    if (base.scale > 0) forcedScale.set(ev, Math.min(1, base.scale))
     if (!el.isConnected) return
     el.dispatchEvent(ev)
   }
@@ -132,6 +160,7 @@
   function onDown(ev) {
     if (mine.has(ev)) return
     plain = null
+    if (penTakes(ev)) return
     if (ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.altKey) return
     const found = findTarget(ev.target)
     if (!found || !activeFor(found, ev)) return
@@ -222,6 +251,7 @@
 
   function onMove(ev) {
     if (mine.has(ev)) return
+    if (penTakes(ev)) return
     if (!stroke) { plainMove(ev); return }
     if (ev.pointerId !== stroke.base.pointerId) return
     ev.preventDefault()
@@ -245,6 +275,7 @@
 
   function onEnd(ev) {
     if (mine.has(ev)) return
+    if (penTakes(ev)) return
     if (plain && ev.pointerId === plain.pointerId) {
       plainFinish(ev)
       const f = plain.el.isConnected ? toFraction(plain.el, ev.clientX, ev.clientY) : null
@@ -284,11 +315,14 @@
   root.addEventListener('pointercancel', onEnd, true)
   root.addEventListener('wheel', onWheel, { capture: true, passive: true })
 
-  root.FoartBrushLine = { watch, pressure, hint: 'Shift 直线' }
+  root.FoartBrushLine = { watch, pressure, findTarget, activeFor, activeTargets, fire, hint: 'Shift 直线' }
 
   // 视频抠图（擦除 / 修复）：吸管取色时光标是吸管图，不接管
-  watch('[data-novaflow-ai-cutout-edit-canvas]', (el) => !/^url\(/.test(String(el.style.cursor || '')))
+  watch('[data-novaflow-ai-cutout-edit-canvas]', (el) => !/^url\(/.test(String(el.style.cursor || '')) && el.getAttribute('data-foart-brush-on') !== '0',
+    { radius: (el) => Math.max(0.5, Number(el.getAttribute('data-foart-brush-size')) / 2 || 11) })
   // 美工拆图：选区 / 局部重绘 / 去除物体的涂抹画笔，和图层蒙版编辑的擦除 / 恢复画笔
-  watch('[data-novaflow-selection-tool-canvas]', () => true)
-  watch('[data-novaflow-mask-tool-canvas]', () => true)
+  // radius 由美工运行时给（spine-split-runtime.js 里的 NovaFlowSplitBrushScreenRadius）
+  const splitRadius = (kind) => (el) => { const f = root.NovaFlowSplitBrushScreenRadius; return typeof f === 'function' ? f(kind, el) : 11 }
+  watch('[data-novaflow-selection-tool-canvas]', () => true, { radius: splitRadius('selection') })
+  watch('[data-novaflow-mask-tool-canvas]', () => true, { radius: splitRadius('mask') })
 })(typeof window !== 'undefined' ? window : null)

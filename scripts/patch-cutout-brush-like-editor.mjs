@@ -78,7 +78,9 @@ export function patchCutoutBrushLikeEditor(source) {
     .replaceAll('x0:c.lastX,y0:c.lastY,x1:a,y1:o,mode:Ge,w:n,h:r,r:l}),Dn.current={...c,lastX:a,lastY:o,r:l}}', 'x0:c.lastX,y0:c.lastY,x1:a,y1:o,mode:Ge,w:n,h:r,r:l,s0:c.nfP??nfP,s1:nfP}),Dn.current={...c,lastX:a,lastY:o,r:l,nfP}}')
     .replaceAll('Dn.current={strokeId:Dn.current?.strokeId??Sn.current,t:r,lastX:a.x,lastY:a.y,mode:Ge,w:n,h:i,r:', 'Dn.current={nfP:window.FoartBrushLine?.pressure?.(e)??1,strokeId:Dn.current?.strokeId??Sn.current,t:r,lastX:a.x,lastY:a.y,mode:Ge,w:n,h:i,r:')
     .replaceAll('e.feather,e.mode!==`erase`,t.strokeId);', 'e.feather,e.mode!==`erase`,t.strokeId,t.s0,t.s1);')
-    .replaceAll('f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId);', 'f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId,e.s0,e.s1);');
+    .replaceAll('f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId);', 'f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId,e.s0,e.s1);')
+    // 钢笔状态（brush-pen-mode.js）：画布上标出笔刷是否在用和它的屏幕直径
+    .replaceAll('"data-novaflow-ai-cutout-edit-canvas":`1`,onPointerDown:', '"data-novaflow-ai-cutout-edit-canvas":`1`,"data-foart-brush-on":(Ge===`erase`||Ge===`restore`)&&C?`1`:`0`,"data-foart-brush-size":Ye,onPointerDown:');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
