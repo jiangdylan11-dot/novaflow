@@ -145,6 +145,7 @@
     "createStartMenuShortcut": true,
     "shortcutName": "Foart",
     "deleteAppDataOnUninstall": false,
+    "include": "installer/foart-installer.nsh",
     "installerLanguages": [
       "zh_CN",
       "en_US"

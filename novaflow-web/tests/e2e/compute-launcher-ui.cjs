@@ -8,8 +8,9 @@ let state = { version: require('../../worker/package.json').version, sharing: tr
   gpu: { name: 'NVIDIA GeForce RTX 4090 Laptop GPU', vramMb: 16384 }, comfy: { image: false },
   policy: { enabled: false, owner_enabled: false, sharing_enabled: false } };
 const errors = [], actions = [];
-for (const channel of ['state','website','logs','getLogs','freeMemory']) ipcMain.handle('compute:' + channel, async () => {
+for (const channel of ['state','website','logs','getLogs','freeMemory','setAutostart']) ipcMain.handle('compute:' + channel, async (_event, payload) => {
   actions.push(channel);
+  if (channel === 'setAutostart') { state = { ...state, autostart: payload === true }; return { ok: true, state }; }
   if (channel === 'state') return state;
   if (channel === 'getLogs') return ['节点运行日志：等待后台审批'];
   if (channel === 'website') return;
@@ -72,6 +73,15 @@ app.whenReady().then(async () => {
   assert.equal(await run(`document.querySelector('#freeMemory').disabled`), true, 'no manual release during a task');
   win.webContents.send('compute:state', state);
   await new Promise(resolve => setTimeout(resolve, 100));
+  // 开机自启: off by default, one click turns it on through the main process and the box follows the answer.
+  assert.equal(await run(`document.querySelector('#autostart').checked`), false);
+  assert.match(await run(`document.querySelector('label.autostart').textContent`), /开机自启/);
+  await run(`document.querySelector('#autostart').click()`);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  assert.equal(actions.at(-1), 'setAutostart');
+  assert.equal(state.autostart, true);
+  assert.equal(await run(`document.querySelector('#autostart').checked`), true);
+  assert.equal(await run(`(() => { const box = document.querySelector('label.autostart').getBoundingClientRect(), note = document.querySelector('.footer-note').getBoundingClientRect(); return box.right <= note.right + 1 && box.top >= note.top - 1 && box.bottom <= note.bottom + 1; })()`), true, 'the box sits inside the footer line');
   if (process.env.NOVAFLOW_TEST_SCREENSHOT_DIR) fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, 'compute-assistant-ready.png'), (await win.webContents.capturePage()).toPNG());
   const statusLayout = () => run(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const main=document.querySelector('main'), footer=document.querySelector('.footer-note').getBoundingClientRect(), action=document.querySelector('#website').getBoundingClientRect();

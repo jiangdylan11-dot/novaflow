@@ -6,6 +6,7 @@ const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { cpuSnapshot, cpuPercent, gpuRows, thermalZoneCelsius } = require('../src/resource-telemetry.cjs');
+const { createAutostart, startedByAutostart } = require('../src/autostart.cjs');
 const WEBSITE = 'https://foart.net/';
 const CONTROL = 'https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web';
 app.setName('Foart');
@@ -16,6 +17,8 @@ const configFile = path.join(dataDir, 'compute.config.json');
 fs.mkdirSync(dataDir, { recursive: true });
 let win, tray, assistant, assistantFactory, operation = null, lastError = '', paused = false, quitting = false;
 let queue = Promise.resolve();
+const autostartEntry = createAutostart();
+let autostart = false;
 // Each failed start opens a new quick tunnel; retrying every 30 s for long gets the machine refused by the tunnel service.
 let failedStarts = 0, nextStartAt = 0;
 let resources = { ram: null, vram: null, cpu: null, gpu: null };
@@ -55,7 +58,7 @@ function readConfig() {
 }
 function state() {
   const value = assistant?.getState() || {};
-  return { ...value, version: app.getVersion(), resources, operation, lastError: lastError || value.lastError || '', paused };
+  return { ...value, version: app.getVersion(), resources, operation, lastError: lastError || value.lastError || '', paused, autostart };
 }
 function emit() { if (win && !win.isDestroyed()) win.webContents.send('compute:state', state()); }
 function log(message, meta) {
@@ -194,6 +197,13 @@ handle('state', state);
 handle('website', () => shell.openExternal(WEBSITE));
 handle('logs', () => shell.openPath(dataDir));
 handle('getLogs', () => lines.slice());
+handle('setAutostart', enabled => {
+  autostart = autostartEntry.set(enabled === true);
+  log(autostart ? '已开启开机自启' : '已关闭开机自启');
+  if (autostart !== (enabled === true)) throw new Error('开机自启设置未生效，请检查系统是否禁止了启动项');
+  emit();
+  return { ok: true, state: state() };
+});
 handle('freeMemory', async () => {
   if (!assistant?.getState().sharing) throw new Error('请先连接算力节点');
   if (typeof assistant.worker?.releaseIdleModels !== 'function') throw new Error('当前运行环境不支持安全释放，请更新后重试');
@@ -214,7 +224,9 @@ else {
   });
   app.whenReady().then(() => {
     if (app.isPackaged) app.setAsDefaultProtocolClient('foart');
-    show();
+    autostart = autostartEntry.enabled();
+    // Started by Windows at sign-in: stay in the tray, the window opens from there.
+    if (!startedByAutostart()) show();
     void handleWarehouseLink(process.argv);
     sampleResources();
     const resourceTimer = setInterval(sampleResources, 5000);

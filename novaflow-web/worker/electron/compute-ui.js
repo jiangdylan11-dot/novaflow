@@ -18,6 +18,7 @@
     const ready = online && value.runtimeReady === true && !value.runtimeStarting && !value.environmentError && !value.pendingApproval
       && value.policy?.enabled === true && (value.policy.owner_enabled === true || value.policy.sharing_enabled === true);
     $('version').textContent = value.version ? 'v' + value.version : '';
+    $('autostart').checked = value.autostart === true;
     $('status').textContent = value.operation ? '正在启动…' : value.runtimeStarting ? '正在启动环境…' : online ? value.pendingApproval ? '等待后台开通' : value.policy?.enabled === false ? '后台已停用' : value.environmentError || value.runtimeReady !== true ? '环境未就绪' : !ready ? '等待使用权限' : '节点已连接' : connected ? '连接中断，正在重连…' : '正在连接…';
     $('statusDot').className = 'dot' + (online ? value.currentTaskId ? ' busy' : ' on' : value.lastError ? ' err' : '');
     $('activityBadge').textContent = value.operation ? '启动中' : value.pendingApproval ? '待审批' : value.runtimeStarting ? '准备中' : value.currentTaskId ? '工作中' : value.environmentError || online && value.runtimeReady !== true ? '待环境' : ready ? '空闲' : online ? '待权限' : '连接中';
@@ -60,6 +61,11 @@
   }
   $('website').onclick = openWebsite;
   $('openLogs').onclick = () => api.logs();
+  $('autostart').onchange = async event => {
+    const wanted = event.target.checked;
+    try { const result = await api.setAutostart(wanted); if (result?.ok === false) throw new Error(result.error); render({ ...current, ...(result.state || {}), lastError: '' }); }
+    catch (error) { render({ ...current, autostart: !wanted, lastError: error.message || String(error) }); }
+  };
   $('freeMemory').onclick = async () => {
     if (freeing) return; freeing = true; freeMessage = ''; render();
     try { const result = await api.freeMemory(); if (result?.ok === false) current = { ...current, lastError: result.error || '释放失败' }; else { current = { ...current, lastError: '' }; freeMessage = '已请求，完成未确认'; } }

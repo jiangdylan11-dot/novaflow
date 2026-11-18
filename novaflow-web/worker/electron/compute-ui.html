@@ -142,7 +142,11 @@
   #progress { margin:0; gap:4px; }
   #progressText { color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
   #error { max-height:36px;overflow-y:auto;padding:4px 8px;font-size:11px;overflow-wrap:anywhere; }
-  .footer-note { margin-top:2px;padding-top:4px; }
+  .footer-note { margin-top:2px;padding-top:4px;display:flex;align-items:center;justify-content:space-between;gap:12px; }
+  .footer-note > span { min-width:0;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .autostart { flex:none;display:inline-flex;align-items:center;gap:5px;height:14px;line-height:14px;color:#b2b2b2;cursor:pointer;user-select:none; }
+  .autostart:hover { color:#e5e7eb; }
+  .autostart input { width:12px;height:12px;margin:0;accent-color:#1EA672;cursor:pointer;outline:none; }
   .hardware-name .v { display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden; }
   #freeMemory { margin-left:auto;height:28px;padding:0 10px;font-size:12px;font-weight:500; }
   #websiteLink { color:#979797; }
@@ -172,7 +176,7 @@
 <div id="policy" class="hint" aria-live="polite">算力节点自动连接，使用权限由后台开通。</div>
 <div id="progress" class="launch-progress" hidden><progress max="100" value="0" aria-label="节点连接进度"></progress><span id="progressText"></span></div>
 </div>
-<div class="footer-note">节点自动连接 · 关闭窗口后在托盘继续运行</div>
+<div class="footer-note"><span>节点自动连接 · 关闭窗口后在托盘继续运行</span><label class="autostart"><input type="checkbox" id="autostart">开机自启</label></div>
 </div>
 </section>
 <section id="tab-logs" role="tabpanel" hidden><div class="card"><div id="logs" role="log" aria-label="运行日志"></div><button id="openLogs">打开日志文件夹</button></div></section>

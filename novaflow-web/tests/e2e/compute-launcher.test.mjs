@@ -12,6 +12,15 @@ let config = { workerName: 'fixture-node', registrationCode: 'test-code' };
 const app = Object.assign(new EventEmitter(), { setName() {}, setAppUserModelId() {}, setPath() {},
   getPath: () => 'C:/fixture', getVersion: () => 'test-version', isPackaged: true,
   whenReady: () => ({ then() {} }), requestSingleInstanceLock: () => true, quit() {} });
+// The Windows startup entries, as reg.exe adds, deletes and prints them.
+const loginItems = new Map();
+const fakeReg = ([verb, key, , name, ...rest]) => {
+  const id = key + '|' + name;
+  if (verb === 'add') { loginItems.set(id, rest[rest.indexOf('/d') + 1]); return ''; }
+  if (!loginItems.has(id)) throw Error('not found');
+  if (verb === 'delete') { loginItems.delete(id); return ''; }
+  return name + '    REG_SZ    ' + loginItems.get(id);
+};
 class Window extends EventEmitter {
   constructor(options) { super(); this.options = options; this.webContents = { send() {}, setWindowOpenHandler() {}, on() {} }; windows.push(this); }
   loadFile(value) { this.file = value; } show() {} focus() {} isDestroyed() { return false; }
@@ -26,6 +35,8 @@ const sandbox = createContext({ __dirname: 'C:/fixture/app/electron', process: {
     if (name === 'node:os') return { hostname: () => 'fixture', totalmem: () => 16 * 1024 ** 3, freemem: () => 4 * 1024 ** 3, cpus: () => [{times:{user:1,nice:0,sys:0,idle:1,irq:0}}] };
     if (name === 'node:child_process') return { execFile: (_exe, _args, _options, callback) => callback(null, 'Test GPU, 2048, 8192, 55, 18') };
     if (name === '../src/resource-telemetry.cjs') return requireTelemetry('../../worker/src/resource-telemetry.cjs');
+    if (name === '../src/autostart.cjs') { const real = requireTelemetry('../../worker/src/autostart.cjs');
+      return { ...real, createAutostart: () => real.createAutostart({ executable: 'C:\\Program Files\\FoartCompute\\FoartCompute.exe', run: fakeReg, platform: 'win32' }) }; }
     if (name === 'electron') return { app, BrowserWindow: Window, ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
       shell: { openExternal: async url => opened.push(url), openPath() {} }, dialog: {}, Tray: class {}, Menu: {} };
     throw Error(name);
@@ -56,6 +67,17 @@ assert.equal(windows[0].options.height, 480);
 assert.equal(windows[0].options.resizable, false);
 assert.equal(windows[0].options.maximizable, false);
 assert.equal(windows[0].options.fullscreenable, false);
+assert.equal((await call('state')).autostart, false, '开机自启 is off until the user ticks it');
+const autoOn = await call('setAutostart', true);
+assert.equal(autoOn.ok, true);
+assert.equal(autoOn.state.autostart, true);
+assert.equal(loginItems.size, 1);
+assert.match([...loginItems.keys()][0], /CurrentVersion\\Run\|Foart$/, 'the startup entry carries the product name');
+assert.equal([...loginItems.values()][0], '"C:\\Program Files\\FoartCompute\\FoartCompute.exe" --autostart', 'quoted path, and a start at sign-in is marked so it can stay in the tray');
+assert.equal((await handlers.get('compute:setAutostart')({ sender: {} }, false)).ok, false, 'only the assistant window may change it');
+assert.equal(loginItems.size, 1);
+assert.equal((await call('setAutostart', false)).state.autostart, false);
+assert.equal(loginItems.size, 0, 'unticking removes the entry');
 assert.equal((await call('freeMemory')).ok, false);
 assert.equal((await handlers.get('compute:freeMemory')({ sender: {} })).ok, false);
 assert.equal(instances.length, 0, 'untrusted renderer must not connect');
