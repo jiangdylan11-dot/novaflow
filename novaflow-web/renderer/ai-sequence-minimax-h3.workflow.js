@@ -243,6 +243,9 @@
     'LoadVideo',
     'GetVideoComponents',
     'LoadAudio',
+    'ImagePadForOutpaint',
+    'ImageCrop',
+    'ImageScale',
   ])
 
   const FORBIDDEN_KEY_TOKENS = new Set([
@@ -576,23 +579,107 @@
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 32 || height < 32 || width > 16384 || height > 16384) {
       throw new RangeError('自定义宽高须为 32–16384 的整数')
     }
-    const dimensions = { width: alignDimension(width), height: alignDimension(height) }
-    if (dimensions.width * dimensions.height > MAX_CANVAS_PIXELS) {
-      throw new RangeError('自定义分辨率超出 H3 2 MP 上限，请降低宽高')
-    }
-    return Object.freeze(dimensions)
+    // The result keeps exactly the size the user typed. Generation pads the
+    // canvas up to multiples of 32 (and scales down first when that canvas
+    // would exceed the limit), then crops and scales back to this size.
+    return Object.freeze({ width, height })
   }
 
-  function normalizeDimensions(options) {
+  const padTo32 = value => Math.ceil(value / RESOLUTION_MULTIPLE) * RESOLUTION_MULTIPLE
+
+  // How a requested output size is generated: the frames are fitted into
+  // scaledWidth x scaledHeight (no stretch, no crop), padded out to the
+  // 32-aligned canvas width x height, and the generated video is cropped back
+  // by the same pad and scaled up to outputWidth x outputHeight if needed.
+  function generationPlan(options) {
     if (options.aspectRatio != null || options.aspect != null || options.megapixels != null) {
-      return calculateResolution(options)
+      const preset = calculateResolution(options)
+      if (preset.width * preset.height > MAX_CANVAS_PIXELS) {
+        throw new RangeError('MiniMax H3 canvas exceeds the supported 2 MP preset envelope')
+      }
+      return sizePlan(preset.width, preset.height, preset.width, preset.height)
     }
-    let width = alignDimension(options.width, DEFAULT_WIDTH)
-    let height = alignDimension(options.height, DEFAULT_HEIGHT)
-    if (width * height > MAX_CANVAS_PIXELS) {
-      throw new RangeError('MiniMax H3 canvas exceeds the supported 2 MP preset envelope')
+    const outputWidth = clampInteger(options.width, DEFAULT_WIDTH, 32, 16384)
+    const outputHeight = clampInteger(options.height, DEFAULT_HEIGHT, 32, 16384)
+    let scaledWidth = outputWidth
+    let scaledHeight = outputHeight
+    if (padTo32(scaledWidth) * padTo32(scaledHeight) > MAX_CANVAS_PIXELS) {
+      let scale = Math.sqrt(MAX_CANVAS_PIXELS / (outputWidth * outputHeight))
+      do {
+        // The longer side sets the scale; the shorter one follows it with
+        // the same rounding the frames get, so the proportions stay exact.
+        if (outputWidth >= outputHeight) {
+          scaledWidth = Math.max(32, Math.floor(outputWidth * scale))
+          scaledHeight = Math.max(32, Math.round(outputHeight * scaledWidth / outputWidth))
+        } else {
+          scaledHeight = Math.max(32, Math.floor(outputHeight * scale))
+          scaledWidth = Math.max(32, Math.round(outputWidth * scaledHeight / outputHeight))
+        }
+        scale *= 0.995
+      } while (padTo32(scaledWidth) * padTo32(scaledHeight) > MAX_CANVAS_PIXELS)
     }
-    return { width, height }
+    return sizePlan(outputWidth, outputHeight, scaledWidth, scaledHeight)
+  }
+
+  function sizePlan(outputWidth, outputHeight, scaledWidth, scaledHeight) {
+    const width = padTo32(scaledWidth)
+    const height = padTo32(scaledHeight)
+    const left = Math.floor((width - scaledWidth) / 2)
+    const top = Math.floor((height - scaledHeight) / 2)
+    return Object.freeze({
+      outputWidth, outputHeight, scaledWidth, scaledHeight, width, height,
+      scaled: scaledWidth !== outputWidth || scaledHeight !== outputHeight,
+      pad: Object.freeze({ left, top, right: width - scaledWidth - left, bottom: height - scaledHeight - top }),
+    })
+  }
+
+  // One user frame onto the generation canvas: scale it to the requested size
+  // keeping its proportions, then pad around it. First and last frames share
+  // the plan, so they get the same pad coordinates. A frame with the requested
+  // proportions is only scaled; "center" just absorbs the sub-pixel rounding
+  // (a letterbox fit truncates and leaves a black line on one edge).
+  function fitFrameToCanvas(workflow, imageId, plan, label) {
+    const fitId = nextNodeId(workflow)
+    workflow[fitId] = node('ImageScale', {
+      image: [imageId, 0], upscale_method: 'lanczos', width: plan.scaledWidth, height: plan.scaledHeight, crop: 'center',
+    }, label + ' at the requested size')
+    const padId = nextNodeId(workflow)
+    workflow[padId] = node('ImagePadForOutpaint', {
+      image: [fitId, 0], ...plan.pad, feathering: 0,
+    }, label + ' padded to the generation canvas')
+    return [padId, 0]
+  }
+
+  function cropOutputToRequest(workflow, plan) {
+    const create = oneByClass(workflow, 'CreateVideo')[1]
+    const cropId = nextNodeId(workflow)
+    workflow[cropId] = node('ImageCrop', {
+      image: create.inputs.images.slice(), width: plan.scaledWidth, height: plan.scaledHeight,
+      x: plan.pad.left, y: plan.pad.top,
+    }, 'Remove the canvas padding')
+    create.inputs.images = [cropId, 0]
+    if (!plan.scaled) return
+    const scaleId = nextNodeId(workflow)
+    workflow[scaleId] = node('ImageScale', {
+      image: [cropId, 0], upscale_method: 'lanczos', width: plan.outputWidth, height: plan.outputHeight, crop: 'disabled',
+    }, 'Back to the requested size')
+    create.inputs.images = [scaleId, 0]
+  }
+
+  // Walks first/last frame links back through the fit and pad nodes.
+  function frameSourceId(workflow, link, canvas, label) {
+    const pad = isLink(link) ? workflow[link[0]] : null
+    if (pad?.class_type !== 'ImagePadForOutpaint' || link[1] !== 0) throw new TypeError(label + ' is not padded to the canvas')
+    const fitLink = pad.inputs.image
+    const fit = isLink(fitLink) ? workflow[fitLink[0]] : null
+    if (fit?.class_type !== 'ImageScale' || fit.inputs.crop !== 'center' || fitLink[1] !== 0) throw new TypeError(label + ' is not fitted to the requested size')
+    const { left, top, right, bottom, feathering } = pad.inputs
+    if (feathering !== 0 || fit.inputs.width + left + right !== canvas.width || fit.inputs.height + top + bottom !== canvas.height) {
+      throw new TypeError(label + ' padding does not match the canvas')
+    }
+    const source = fit.inputs.image
+    if (!isLink(source) || source[1] !== 0 || workflow[source[0]]?.class_type !== 'LoadImage') throw new TypeError(label + ' has no source image')
+    return { id: source[0], pad: [left, top, right, bottom].join(','), size: fit.inputs.width + 'x' + fit.inputs.height }
   }
 
   function alignFrameCount(value) {
@@ -1023,7 +1110,7 @@
   }
   function fullyCopiesReferenceAudio(prompt) { return copiedAudioIndex(prompt) >= 0 }
 
-  function patchFrameWorkflow(workflow, mode, conditioning, options) {
+  function patchFrameWorkflow(workflow, mode, conditioning, options, plan) {
     const images = fileList(options.images, 'images')
     const firstFrame = optionalFile(
       firstProvided(options.firstFrame, options.firstImage, images[0]),
@@ -1057,7 +1144,7 @@
       }
       if (imageNodes.length !== 1) throw new TypeError('MiniMax H3 i2v template requires one LoadImage')
       imageNodes[0][1].inputs.image = firstFrame
-      conditioning.inputs.first_frame = [imageNodes[0][0], 0]
+      conditioning.inputs.first_frame = fitFrameToCanvas(workflow, imageNodes[0][0], plan, 'First frame')
       delete conditioning.inputs.last_frame
       return
     }
@@ -1069,8 +1156,8 @@
     if (imageNodes.length !== 2) throw new TypeError('MiniMax H3 fl2v template requires two LoadImage nodes')
     imageNodes[0][1].inputs.image = firstFrame
     imageNodes[1][1].inputs.image = lastFrame
-    conditioning.inputs.first_frame = [imageNodes[0][0], 0]
-    conditioning.inputs.last_frame = [imageNodes[1][0], 0]
+    conditioning.inputs.first_frame = fitFrameToCanvas(workflow, imageNodes[0][0], plan, 'First frame')
+    conditioning.inputs.last_frame = fitFrameToCanvas(workflow, imageNodes[1][0], plan, 'Last frame')
   }
 
   function applyUserLoras(workflow, loras, steps) {
@@ -1122,11 +1209,11 @@
     const conditioning = mode === 'r2v'
       ? oneByClass(workflow, 'MiniMaxH3ReferenceToVideo')[1]
       : oneByClass(workflow, 'MiniMaxH3ImageToVideo')[1]
-    const dimensions = normalizeDimensions(normalized)
+    const plan = generationPlan(normalized)
     const fps = normalizeFps(normalized.fps)
     conditioning.inputs.prompt = requiredText(normalized.prompt, 'MiniMax H3 prompt')
-    conditioning.inputs.width = dimensions.width
-    conditioning.inputs.height = dimensions.height
+    conditioning.inputs.width = plan.width
+    conditioning.inputs.height = plan.height
     // Ref2VA timestamps and generated audio always use a 24 fps timeline.
     // A 16 fps export must resample that timeline, not slow it down by 1.5x.
     conditioning.inputs.length = normalizeLength(mode === 'r2v' ? {...normalized, fps:24} : normalized)
@@ -1140,7 +1227,7 @@
       conditioning.inputs.ref_image_size = 'match'
       patchReferenceWorkflow(workflow, conditioning, normalized)
     } else {
-      patchFrameWorkflow(workflow, mode, conditioning, normalized)
+      patchFrameWorkflow(workflow, mode, conditioning, normalized, plan)
     }
 
     if (profile.referenceOnly && Array.isArray(normalized.frameGuides)) {
@@ -1153,6 +1240,7 @@
       })
       oneByClass(workflow,'BasicGuider')[1].inputs.conditioning = positive
     }
+    cropOutputToRequest(workflow, plan)
 
     // A supplied template may not smuggle pre-existing LoRA nodes into the
     // controlled chain. Validate the clean topology first, then build the
@@ -1470,6 +1558,20 @@
 
     const createVideo = oneByClass(workflow, 'CreateVideo')[1]
     let outputImageLink = createVideo.inputs.images
+    const frameScales = { t2v: 0, i2v: 1, fl2v: 2, r2v: 0 }[mode]
+    const scales = entriesByClass(workflow, 'ImageScale')
+    if (scales.length !== frameScales && scales.length !== frameScales + 1) throw new TypeError('H3 output scaling topology is invalid')
+    const outputScale = workflow[outputImageLink?.[0]]
+    if (outputScale?.class_type === 'ImageScale') {
+      if (scales.length !== frameScales + 1 || outputScale.inputs.crop !== 'disabled' || outputImageLink[1] !== 0) throw new TypeError('H3 output scaling topology is invalid')
+      outputImageLink = outputScale.inputs.image
+    } else if (scales.length !== frameScales) throw new TypeError('H3 output scaling topology is invalid')
+    const [cropId, crop] = oneByClass(workflow, 'ImageCrop')
+    requireLink(outputImageLink, cropId, 0, 'H3 output crop')
+    if (crop.inputs.x + crop.inputs.width > conditioning.inputs.width || crop.inputs.y + crop.inputs.height > conditioning.inputs.height) {
+      throw new TypeError('H3 output crop is outside the canvas')
+    }
+    outputImageLink = crop.inputs.image
     if (mode === 'r2v' && createVideo.inputs.fps !== 24) {
       const [framesId, outputFrames] = oneByClass(workflow, 'NovaFlowH3OutputVideoFrames')
       requireLink(outputImageLink, framesId, 0, 'H3 output frame rate')
@@ -1519,20 +1621,15 @@
     } else if (mode === 'i2v') {
       requireClassCount(workflow, 'LoadImage', 1)
       const imageId = oneByClass(workflow, 'LoadImage')[0]
-      requireLink(conditioning.inputs.first_frame, imageId, 0, 'MiniMax H3 first frame')
+      if (frameSourceId(workflow, conditioning.inputs.first_frame, conditioning.inputs, 'MiniMax H3 first frame').id !== imageId) throw new TypeError('MiniMax H3 first frame is not the uploaded image')
       if (conditioning.inputs.last_frame != null) {
         throw new TypeError('MiniMax H3 i2v must not contain a last frame')
       }
     } else if (mode === 'fl2v') {
       requireClassCount(workflow, 'LoadImage', 2)
-      const imageIds = new Set(entriesByClass(workflow, 'LoadImage').map(([id]) => id))
-      if (
-        !isLink(conditioning.inputs.first_frame) ||
-        !isLink(conditioning.inputs.last_frame) ||
-        !imageIds.has(conditioning.inputs.first_frame[0]) ||
-        !imageIds.has(conditioning.inputs.last_frame[0]) ||
-        conditioning.inputs.first_frame[0] === conditioning.inputs.last_frame[0]
-      ) {
+      const first = frameSourceId(workflow, conditioning.inputs.first_frame, conditioning.inputs, 'MiniMax H3 first frame')
+      const last = frameSourceId(workflow, conditioning.inputs.last_frame, conditioning.inputs, 'MiniMax H3 last frame')
+      if (first.id === last.id || first.pad !== last.pad || first.size !== last.size) {
         throw new TypeError('MiniMax H3 fl2v keyframe topology is invalid')
       }
     } else {
@@ -1542,6 +1639,9 @@
       validateReferenceTopology(workflow, conditioning)
     }
 
+    if (mode === 't2v' || mode === 'r2v') {
+      requireClassCount(workflow, 'ImagePadForOutpaint', 0)
+    }
     if (mode !== 'r2v') {
       requireClassCount(workflow, 'LoadVideo', 0)
       requireClassCount(workflow, 'GetVideoComponents', 0)
@@ -1596,6 +1696,7 @@
     calculateResolution,
     matchResolution,
     normalizeCustomResolution,
+    generationPlan,
     normalizeSteps,
     normalizeFps,
     normalizeLoras,
