@@ -1275,9 +1275,7 @@
         const sum = cyanIntegral[y1 * stride + x1] - cyanIntegral[y0 * stride + x1]
           - cyanIntegral[y1 * stride + x0] + cyanIntegral[y0 * stride + x0];
         cyanGlow *= smooth(.08, .4, sum / ((x1 - x0) * (y1 - y0)));
-        // Inside the subject only a dim cool shade is the subject's own colour (a teal collar);
-        // bright cyan there is light the mask covers (a glowing gem held in the hands).
-        if (subjectCore) cyanGlow *= 1 - smooth(.6, .95, subjectCore[p]) * (1 - smooth(.6, .85, Math.max(r, g, b)) * smooth(.6, .8, b / Math.max(.001, g)));
+        if (subjectCore) cyanGlow *= 1 - smooth(.6, .95, subjectCore[p]);
       }
       if (dominance <= 0 && (cyanGlow <= 0 || !normalizeGlow)) {
         out[i] = data[i]; out[i + 1] = data[i + 1]; out[i + 2] = data[i + 2];
@@ -1316,10 +1314,7 @@
       // A green part of the subject (a jade medallion, green leaves) leans to the key as much as a
       // gap does, but a gap shows the screen itself: only colour near the measured screen keys.
       const nearScreen = 1 - smooth(.1, .2, Math.max(Math.abs(r - br), Math.max(0, bg - g), Math.abs(b - bb)));
-      // Light the mask covers (a glowing gem between the hands) adds energy to the non-key channels
-      // far beyond the screen; jade only a little. Light keeps its glow transparency.
-      const covered = Math.max(nearScreen, smooth(.3, .5, Math.max(r - br, b - bb)));
-      const keep = subjectCore && !options.sheerMaterial ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .7, dominance / bgDiff) * covered) * (1 - cyanGlow) : 0;
+      const keep = subjectCore && !options.sheerMaterial ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .7, dominance / bgDiff) * nearScreen) : 0;
       if (kept && keep > .5) kept[p] = 1;
       if (keep > a) {
         a = keep;

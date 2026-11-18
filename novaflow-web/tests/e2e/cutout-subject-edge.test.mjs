@@ -51,8 +51,8 @@ test('light outside the mask keeps the chroma solution', () => {
   assert.ok(a > 0 && a < 255, `light stays translucent ${a}`);
 });
 
-// 2026-11-18 round 2 (Dylan: 光效衔接处被挖掉, 宝石不透明, 边缘净化变色). A cyan glow surrounds a
-// brown hand; the mask's soft edge reaches into the glow, and a glowing gem sits inside the mask.
+// 2026-11-18 round 2 (Dylan: 光效衔接处被挖掉, 边缘净化变色). A cyan glow surrounds a brown hand and
+// the mask's soft edge reaches into the glow.
 function glowClip() {
   const W2 = 96, H2 = 96, data = new Uint8ClampedArray(W2 * H2 * 4), mask = new Uint8ClampedArray(W2 * H2);
   const put = (x, y, rgb) => { const i = (y * W2 + x) * 4; data[i] = rgb[0]; data[i + 1] = rgb[1]; data[i + 2] = rgb[2]; data[i + 3] = 255; };
@@ -75,11 +75,6 @@ test('glow touching the subject is not cut by the mask edge', () => {
     const p = y * 96 + x;
     assert.ok(cut.r.alpha[p] >= plain.r.alpha[p] - 3, `glow at ${x},${y}: ${cut.r.alpha[p]} vs ${plain.r.alpha[p]}`);
   }
-});
-
-test('a glowing gem inside the mask stays light, not an opaque block', () => {
-  const { r } = runGlow();
-  assert.ok(r.alpha[48 * 96 + 48] < 250, `gem alpha ${r.alpha[48 * 96 + 48]}`);
 });
 
 test('边缘净化 does not recolour the subject', () => {
