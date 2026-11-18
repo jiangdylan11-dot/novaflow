@@ -377,7 +377,7 @@
           if (data?.visualSchema === 'nf.ui.layers.v1') project = core.projectFromNodeLayers(next.source, work, data)
           // No node can take the request (or the one that got it cannot run it): the boxes are cropped here
           // instead, and the user is told the result is not filled in. A split that started and failed is an error.
-          else if (result?.ok === false && (result.errorCode === 'ui-split-node-unavailable' || result.errorCode === 'flash-model-missing')) unfilled = '当前没有可用的拆图节点'
+          else if (result?.ok === false && (result.errorCode === 'ui-split-node-unavailable' || result.errorCode === 'flash-model-missing' || result.errorCode === 'ui-layer-split-unavailable' || String(result.error || '').startsWith('当前没有可用的拆图节点'))) unfilled = '当前没有可用的拆图节点'
           else if (result?.ok === false && /拆图|分割|去除|图像服务/.test(String(result.error || ''))) throw new Error(result.error)
           if (unfilled) message(unfilled + '，改为按识别框直接裁切（未补全）…')
         }

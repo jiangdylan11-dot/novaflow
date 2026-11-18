@@ -21,6 +21,7 @@ import { readComfyMemorySnapshot } from './runtime-memory-observer.mjs';
 import { createGateway, sweepTaskFiles } from './gateway/gateway.mjs';
 import { candidateTaskDirectory, candidateTaskIdState } from './gateway/candidate-task-path.mjs';
 import { createTunnel } from './tunnel.mjs';
+import { UI_LAYER_SPLIT_CAPABILITY, UI_LAYER_SPLIT_SCOPE } from './ui-layer-split-node.mjs';
 const TUNNEL_PENDING = '外网共享连接暂未建立，正在后台重试；本机使用不受影响';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
 import { videoRuntimeUrl } from './runtime-services.mjs';
@@ -274,6 +275,7 @@ export const WORKER_VERSION = (() => {
 // inputs. Require them to agree before entering any assistant/model code.
 export const UI_CPU_CAPABILITY = 'foart-ui-cpu-compiler-v1';
 export const UI_PE_SOURCE_CAPABILITY = 'foart-ui-pe-source-v1';
+export { UI_LAYER_SPLIT_CAPABILITY, UI_LAYER_SPLIT_SCOPE };
 export const QWEN21_NATIVE_REWRITE_V3_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-native-rewrite-v3';
 export function validatePromptAssistantModelRoute(task, request) {
   validateQwenRotationCandidateTask(task,request);
@@ -290,6 +292,11 @@ export function validatePromptAssistantModelRoute(task, request) {
       && request?.surface==='ui-design' && request?.uiPlanner==='grok-vision-cpu-v1'
       && ['capabilities','grok-vision-job','compile-grok-vision','native-ui-cloud','native-ui-compile'].includes(request?.action);
     if(uiCpu)return;
+    // UI 拆图: confirmed boxes in, complete layers out. Bound to its own capability so no other request rides on it.
+    const uiLayerSplit=parameters.action==='reverse-image-prompt' && !selected
+      && parameters.ui_scope===UI_LAYER_SPLIT_SCOPE && parameters.model_id===UI_LAYER_SPLIT_CAPABILITY && task?.model_id===UI_LAYER_SPLIT_CAPABILITY
+      && request?.surface==='ui-design' && request?.purpose==='ui-layer-split' && request?.visualSchema==='nf.ui.layers.v1';
+    if(uiLayerSplit)return;
     const uiPe=parameters.action==='reverse-image-prompt' && !selected && parameters.ui_scope==='pe-source-v1'
       && parameters.model_id===UI_PE_SOURCE_CAPABILITY && task?.model_id===UI_PE_SOURCE_CAPABILITY
       && request?.surface==='ui-design' && request?.uiPlanner==='native-catalog-v3' && request?.uiAnalysisStage==='source-only'
@@ -910,6 +917,12 @@ export function createWorker(options) {
       try { uiCpuReady=await assistant?.probeUiCpu?.()===true; } catch { /* fail closed */ }
       models.push({model_id:UI_CPU_CAPABILITY,model_version:'1',status:uiCpuReady?'ready':'missing',detail:uiCpuReady?{}:{reason:'ui_cpu_components_unavailable'}});
       models.push({model_id:UI_PE_SOURCE_CAPABILITY,model_version:'1',status:'missing',detail:{reason:'ui_pe_source_runtime_not_verified'}});
+      // UI 拆图 needs its own files plus the image-service models that fill what the UI covered.
+      let uiSplit={ok:false,missing:'assistant'};
+      try { uiSplit=assistant?.probeUiLayerSplit?.() || uiSplit; } catch { /* fail closed */ }
+      const uiSplitNeeds=[FLUX_REMOVAL_CAPABILITY,SEETHROUGH_LAMA_CAPABILITY,'qwen-image-2.1-turbo'].find(id=>!models.some(model=>model.model_id===id && model.status==='ready'));
+      const uiSplitReady=uiSplit.ok===true && !uiSplitNeeds;
+      models.push({model_id:UI_LAYER_SPLIT_CAPABILITY,model_version:'1',status:uiSplitReady?'ready':'missing',detail:uiSplitReady?{}:{reason:uiSplit.ok===true?'image_models_missing:'+uiSplitNeeds:'ui_layer_split_files_missing:'+uiSplit.missing}});
       const qwenReady = qwenCpuAdvertisable(status, state.currentTaskId);
       models.push({ model_id: PROMPT_ASSISTANT_QWEN_CPU_MODEL_ID, model_version: '1',
         status: qwenReady ? 'ready' : 'missing', detail: { trial: 'cpu-chat-images' } });

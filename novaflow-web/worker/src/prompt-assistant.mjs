@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { createStrataPromptAssistant, strataConfigPath as defaultStrataConfigPath, readStrataConfig } from './strata-prompt-assistant.mjs';
 import { createQwenPrivateInferenceBridge } from './qwen-private-inference-bridge.mjs';
 import { foartRuntimeJsonPath } from './runtime-location.mjs';
+import { uiLayerSplitFiles, runUiLayerSplit } from './ui-layer-split-node.mjs';
 
 export const MODEL_TYPE = 'qwen3_vl_8b_abliterated_nf4';
 export const MODEL_DIR = 'Huihui-Qwen3-VL-8B-Instruct-Abliterated';
@@ -755,7 +756,31 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         return {ok:true,data:await cpuCatalog({python:cfg.pythonPath,serviceScript:cfg.serviceScript},payload)};
       } catch(error) {return {ok:false,error:String(error?.message||error),errorCode:'ui-design-cpu-failed'};}
     },
+    // UI 拆图: cut the confirmed boxes into complete layers. No brain model is involved, so this does not need a
+    // Flash session; the image service hands its memory over first because SAM3 loads in the split's own process.
+    probeUiLayerSplit() { const cfg = config(); return uiLayerSplitFiles({ python: cfg.pythonPath, serviceScript: cfg.serviceScript, runtimeJson: cfg.runtimeJsonPath }); },
+    async uiLayerSplit(payload) {
+      let normalized;
+      try { normalized = normalizeReverseRequest(payload); } catch (error) { return invalid(error); }
+      if (lease) return { ok: false, error: 'AI 助手正在处理另一项任务，请等待完成后重试', errorCode: 'prompt-assistant-busy', retryable: true };
+      lease = { command: 'uiLayerSplit', startedAt: Date.now() };
+      try {
+        const cfg = config();
+        const files = uiLayerSplitFiles({ python: cfg.pythonPath, serviceScript: cfg.serviceScript, runtimeJson: cfg.runtimeJsonPath });
+        if (!files.ok) return { ok: false, error: '当前算力节点缺少拆图所需的组件', errorCode: 'ui-layer-split-unavailable', missing: files.missing };
+        const handoff = await releaseRuntimes();
+        if (!handoff.ok) return { ok: false, error: handoff.error, errorCode: handoff.errorCode, retryable: true };
+        const { images, visualSchema, regions } = normalized.request;
+        const started = Date.now();
+        const result = await runUiLayerSplit({ python: cfg.pythonPath, serviceScript: cfg.serviceScript, runtimeJson: cfg.runtimeJsonPath,
+          payload: { visualSchema, images, regions, ...(comfyUrls[0] ? { comfyUrl: String(comfyUrls[0]).replace(/\/+$/, '') } : {}) },
+          isCancelled: () => taskIsCancelled(), onProgress: stage => log('ui layer split', { stage }) });
+        log(result.ok ? 'ui layer split completed' : 'ui layer split failed', { ms: Date.now() - started, regions: regions.length, ...(result.ok ? { layers: result.data.layers.length } : { error: result.error }) });
+        return result;
+      } finally { lease = null; }
+    },
     async reverseImagePrompt(payload) {
+      if (payload?.purpose === 'ui-layer-split' && payload?.surface === 'ui-design') return api.uiLayerSplit(payload);
       if(payload?.uiPlanner==='grok-vision-cpu-v1') {
         if(payload.surface!=='ui-design')return invalid(new Error('UI CPU 请求范围无效'));
         if(payload.action==='capabilities')return {ok:true,data:{protocol:'nf.ui.grok-cpu.v1',cpuOnly:true,localCompletePlanner:'native-catalog-v3',nativeCatalogProtocol:'flat-native-v3',sourceContract:'observed-rows-v2'}};

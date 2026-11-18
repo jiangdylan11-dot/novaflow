@@ -1305,9 +1305,10 @@
     if (qwenBusiness && caps?.features?.qwen35BusinessTrial !== true) throw new Error('当前没有支持该功能的 Qwen 节点，任务未提交。');
     if (qwenTrial && !qwenPlan && caps?.features?.qwen35CpuTrial !== true) throw new Error('当前算力节点没有可用的 Qwen3.5 9B 本地服务，未提交任务');
     // UI 拆图 asks a node to split confirmed boxes into complete layers; the caller crops the boxes itself when none can.
+    // It is routed by the capability nodes report for it (features.uiLayerSplit), not by the brain models.
     const uiLayerSplit = action==='reverse-image-prompt' && payload.surface==='ui-design' && payload.purpose==='ui-layer-split';
-    if (uiLayerSplit && (!type || !(type.available_workers > 0))) throw Object.assign(new Error('当前没有可用的拆图节点'), {code:'ui-split-node-unavailable'});
-    if (!qwenImageEdit && !qwenTrial && !qwenBusiness && !qwenStyle && !qwenUi && !uiCpu && (!type || !(type.available_workers > 0))) throw new Error(action==='art-agent-chat'
+    if (uiLayerSplit && caps?.features?.uiLayerSplit !== true) throw Object.assign(new Error('当前没有可用的拆图节点'), {code:'ui-split-node-unavailable'});
+    if (!qwenImageEdit && !qwenTrial && !qwenBusiness && !qwenStyle && !qwenUi && !uiCpu && !uiLayerSplit && (!type || !(type.available_workers > 0))) throw new Error(action==='art-agent-chat'
       ? '当前算力节点没有就绪的小桃模型服务，请检查节点助手的模型状态；机器开机不代表模型服务已就绪'
       : PROMPT_ASSISTANT_REFUSAL + '：当前算力池没有带本地模型的节点');
     const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -1358,7 +1359,7 @@
     } else created = await control('POST', '/api/web/tasks', {
       task_type: 'prompt_assistant',
       ...(qwenBoundBusiness ? {target_worker_id:selectedNode} : conversationNode ? {target_worker_id:conversationNode} : {}),
-      parameters: { action, ...(uiCpu ? {ui_scope:'cpu-v1'} : {}), ...(qwenUi ? {ui_scope:'qwen-ui-draft-v1',model_id:'qwen3.5-9b-heretic'} : {}), ...(qwenStyle ? {style_scope:'qwen-style-analysis-v1',style_kind:payload.kind,model_id:'qwen3.5-9b-heretic',...(payload.kind!=='aifx-supplement'?{image_upload_confirmed:true}:{})} : {}), ...(qwenTrial ? {model_id:'qwen3.5-9b-heretic'} : {}), ...(qwenRotationCandidate ? {assistant_tool_scope:'qwen-foart-rotation-candidate-v1'} : {}), ...(qwenBusiness ? {assistant_selection_scope:'xiaotao',assistant_model_id:payload.assistantModelId} : {}) },
+      parameters: { action, ...(uiCpu ? {ui_scope:'cpu-v1'} : {}), ...(uiLayerSplit ? {ui_scope:'layer-split-v1'} : {}), ...(qwenUi ? {ui_scope:'qwen-ui-draft-v1',model_id:'qwen3.5-9b-heretic'} : {}), ...(qwenStyle ? {style_scope:'qwen-style-analysis-v1',style_kind:payload.kind,model_id:'qwen3.5-9b-heretic',...(payload.kind!=='aifx-supplement'?{image_upload_confirmed:true}:{})} : {}), ...(qwenTrial ? {model_id:'qwen3.5-9b-heretic'} : {}), ...(qwenRotationCandidate ? {assistant_tool_scope:'qwen-foart-rotation-candidate-v1'} : {}), ...(qwenBusiness ? {assistant_selection_scope:'xiaotao',assistant_model_id:payload.assistantModelId} : {}) },
       references: [{ name: 'request.json', kind: 'json', bytes: bytes.length }]
     });
     if (!created || !created.task) throw new Error((created && created.error) || '提示词任务创建失败');

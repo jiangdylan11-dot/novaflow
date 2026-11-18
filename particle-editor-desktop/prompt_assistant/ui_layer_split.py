@@ -617,7 +617,7 @@ def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress
 
 
 # ------------------------------------------------------------------ service entry
-def split_request(payload, comfy_root, models_dir):
+def split_request(payload, comfy_root, models_dir, progress=None):
     """Called by prompt-assistant-service for purpose 'ui-layer-split'. Layers go back as PNG data URLs."""
     import base64
     images = payload.get("images") or []
@@ -625,7 +625,7 @@ def split_request(payload, comfy_root, models_dir):
         raise ValueError("拆图需要一张原图")
     comfy_url = str(payload.get("comfyUrl") or os.environ.get("NOVAFLOW_COMFY_URL") or "http://127.0.0.1:8188")
     image = Image.open(io.BytesIO(base64.b64decode(images[0]["dataUrl"].split(",", 1)[1])))
-    result = split(image, payload.get("regions"), comfy_url, comfy_root, models_dir, seed=payload.get("seed"))
+    result = split(image, payload.get("regions"), comfy_url, comfy_root, models_dir, seed=payload.get("seed"), progress=progress)
     for layer in result["layers"]:
         layer["dataUrl"] = "data:image/png;base64," + base64.b64encode(layer.pop("png")).decode("ascii")
     return {"visualSchema": "nf.ui.layers.v1", "maskProduced": True, **result}

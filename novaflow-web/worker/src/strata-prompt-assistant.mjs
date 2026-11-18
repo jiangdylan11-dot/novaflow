@@ -527,7 +527,20 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     const ticket=claimLease('uiPeSource',payload,false,'qwen');
     try {return await legacyApi.uiPeSource(payload,context);} finally {finishLease(ticket);}
   }
+  // UI 拆图: no brain model runs; the split's own process takes the graphics card, so the resident chat lets go first.
+  async function runUiLayerSplit(payload,context={}) {
+    if(context.isCancelled?.())return {ok:false,error:'任务已取消',errorCode:'task-cancelled'};
+    if(typeof legacyApi?.uiLayerSplit!=='function')return {ok:false,errorCode:'ui-layer-split-unavailable',error:'当前算力节点缺少拆图所需的组件'};
+    if(stopping || cleanupFault || lease || generationTaskId || handoffPending)return {ok:false,errorCode:'prompt-assistant-busy',error:'本地 AI 或生成任务正在执行或交接，请等待完成',retryable:true};
+    try {await closeChatForHandoff();} catch {return {ok:false,errorCode:'prompt-assistant-busy',error:'本地 AI 资源尚未释放，请稍后重试',retryable:true};}
+    if(stopping || cleanupFault || lease || generationTaskId || handoffPending)return {ok:false,errorCode:'prompt-assistant-busy',error:'本地 AI 或生成任务正在执行或交接，请等待完成',retryable:true};
+    const ticket=claimLease('uiLayerSplit',payload,false,'ui-layer-split');
+    try {return context.taskId ? await legacyApi.runForTask(context.taskId,'reverseImagePrompt',payload,context) : await legacyApi.uiLayerSplit(payload);}
+    catch(error){return {ok:false,error:String(error?.message || error),errorCode:'ui-layer-split-failed'};}
+    finally {finishLease(ticket);}
+  }
   function execute(method,payload,context) {
+    if(method==='reverseImagePrompt' && payload?.surface==='ui-design' && payload?.purpose==='ui-layer-split')return runUiLayerSplit(payload,context);
     if(method==='artAgentChat') {
       const failure=selectionFailure(payload);
       if(failure)return Promise.resolve(failure);
@@ -571,6 +584,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     },
     // Pure CPU UI tools require no model or GPU lease.
     probeUiCpu:()=>legacyApi?.probeUiCpu?.() || Promise.resolve(false),
+    probeUiLayerSplit:()=>legacyApi?.probeUiLayerSplit?.() || {ok:false,missing:'assistant'},
     uiDesignCpu:payload=>legacyApi?.uiDesignCpu(payload) || Promise.resolve({ok:false,error:'缺少 UI CPU 编译器'}),
     runForTask(taskId,method,payload,context={}) {
       // A pooled chat owns this worker task and must release its model before
