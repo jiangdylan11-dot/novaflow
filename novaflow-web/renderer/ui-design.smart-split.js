@@ -28,7 +28,6 @@
     const arrow = make('i', '', { class: accordion.chevronClass(false) }); Object.assign(arrow.style, accordion.chevronStyle()); header.append(arrow)
     const controls = make('div', '', { class: 'nf-panel-body' }); Object.assign(controls.style, accordion.bodyStyle(false))
     const actions = make('div'); Object.assign(actions.style, { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px' })
-    const editActions = make('div'); Object.assign(editActions.style, { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px' })
     const footerActions = make('div'); Object.assign(footerActions.style, { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '6px', marginTop: '6px' })
     const note = make('div', '先识别原图，修正选区后批量拆层。'); Object.assign(note.style, { color: '#aaa', fontSize: '11px', lineHeight: '1.5' })
     const selection = make('select', '', { 'aria-label': '选中区域的提取方式', 'data-novaflow-art-generate-select-field': '1' }); Object.assign(selection.style, { width: '100%', minWidth: '0', height: '30px', boxSizing: 'border-box', background: '#292929', color: '#ddd', border: '1px solid #444', borderRadius: '5px', padding: '5px 8px', fontSize: '12px' })
@@ -37,22 +36,56 @@
     const detailInput = make('input', '', { type: 'text', 'aria-label': '选中区域的名称或文字内容', 'data-ui-split-detail': '1', maxlength: '200' }); Object.assign(detailInput.style, { width: '100%', minWidth: '0', height: '30px', boxSizing: 'border-box', background: '#292929', color: '#ddd', border: '1px solid #444', borderRadius: '5px', padding: '5px 8px', fontSize: '12px', outline: 'none' })
     detailInput.addEventListener('input', () => { const region = selected().length === 1 ? selected()[0] : null; if (!region) return; if (region.kind === 'text') region.text = detailInput.value.slice(0, 200); else region.name = detailInput.value.slice(0, 120); region.manualEdits++; manualActions++; saveSession() })
     detailInput.addEventListener('keydown', event => event.stopPropagation())
-    const correctionHint = make('div', 'Ctrl 按住拖框添加选区；拖动框移动，拖边角缩放。Shift 多选，Delete 删除，Alt 重画。', { 'data-ui-split-correction-hint': '1' }); Object.assign(correctionHint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
-    controls.append(actions, editActions, selection, detailInput, correctionHint, note, footerActions); panel.append(header, controls)
+    const correctionHint = make('div', '空白处按住拖出新选区，按住 Ctrl 可在任何位置拖；拖动框移动，拖边角缩放。Shift 多选，点右上角的叉或按 Delete 删除，Alt 重画。', { 'data-ui-split-correction-hint': '1' }); Object.assign(correctionHint.style, { color: '#999', fontSize: '11px', lineHeight: '1.5' })
+    controls.append(actions, selection, detailInput, correctionHint, note, footerActions); panel.append(header, controls)
     const overlay = make('div', '', { 'data-novaflow-ui-split-preview': '1', tabindex: '0', 'aria-label': 'UI 拆图候选画布' }); Object.assign(overlay.style, { position: 'absolute', inset: '0', zIndex: '12', display: 'none', overflow: 'hidden', background: '#242424' })
     const previewImage = make('img', '', { draggable: 'false' }); Object.assign(previewImage.style, { position: 'absolute', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' })
     const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg'); Object.assign(svg.style, { position: 'absolute', touchAction: 'none', overflow: 'visible' }); overlay.append(previewImage, svg)
+    const deleteLayer = make('div', '', { 'data-ui-split-delete-layer': '1' }); Object.assign(deleteLayer.style, { position: 'absolute', inset: '0', pointerEvents: 'none' }); overlay.append(deleteLayer)
     const selected = () => proposal?.regions.filter(r => r.selected) || []
+    function removeRegion(id) {
+      if (!opened || busy || !proposal) return
+      cancelDrag(); proposal.regions = proposal.regions.filter(r => r.id !== id); manualActions++; render()
+    }
+    // 选中框右上角的删除叉：贴着框的右上角，出了画板就往里收
+    function placeDeleteButtons() {
+      const frame = svg.getBoundingClientRect(), host = overlay.getBoundingClientRect()
+      for (const b of deleteLayer.children) {
+        const region = proposal?.regions.find(r => r.id === b.getAttribute('data-ui-split-delete'))
+        if (!region || !frame.width) { b.style.display = 'none'; continue }
+        const x = frame.left - host.left + region.box[2] / 1000 * frame.width, y = frame.top - host.top + region.box[1] / 1000 * frame.height
+        b.style.display = 'block'
+        b.style.left = Math.max(2, Math.min(host.width - 20, x + 4)) + 'px'
+        b.style.top = Math.max(2, Math.min(host.height - 20, y - 22)) + 'px'
+      }
+    }
+    function renderDeleteButtons() {
+      deleteLayer.replaceChildren()
+      if (!proposal || busy) return
+      for (const region of selected()) {
+        const b = make('span', '×', { role: 'button', 'data-ui-split-delete': region.id, 'aria-label': '删除这个选区', title: '删除这个选区（Delete）', 'data-novaflow-source-layout': '1' })
+        Object.assign(b.style, { position: 'absolute', width: '18px', height: '18px', padding: '0', border: '0', borderRadius: '50%', background: '#1f1f1f', color: '#f1f1f1', font: '400 14px/18px system-ui, sans-serif', textAlign: 'center', cursor: 'pointer', pointerEvents: 'auto', boxShadow: '0 0 0 1px #4a4a4a', userSelect: 'none', display: 'block' })
+        // 这一页的统一样式会把小控件刷成透明：关键的几项写成 !important
+        const paint = (hot) => { for (const [key, value] of Object.entries({ background: hot ? '#b3403a' : '#1f1f1f', 'background-color': hot ? '#b3403a' : '#1f1f1f', color: '#f1f1f1', width: '18px', height: '18px', 'min-width': '18px', 'min-height': '18px', padding: '0', 'border-radius': '50%', 'box-shadow': '0 0 0 1px #6a6a6a', opacity: '1', 'font-size': '14px', 'line-height': '18px', 'box-sizing': 'border-box' })) b.style.setProperty(key, value, 'important') }
+        paint(false)
+        b.addEventListener('mouseenter', () => paint(true)); b.addEventListener('mouseleave', () => paint(false))
+        b.addEventListener('pointerdown', event => { event.preventDefault(); event.stopPropagation() })
+        b.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); removeRegion(region.id) })
+        deleteLayer.append(b)
+      }
+      placeDeleteButtons()
+    }
     const bridge = () => root.NovaFlowSpineSplitBridge
-    const message = (text, error = false) => { note.textContent = text; note.style.color = error ? '#fca5a5' : '#aaa' }
+    let busyPopup = null
+    const openBusy = (action, title) => { if (!busyPopup) busyPopup = bridge()?.beginExternalBusy?.({ action, message: title, detail: note.textContent, onStop: () => { cancelOperation(); message('已停止。'); render() } }) || null }
+    const closeBusy = () => { if (busyPopup) { const popup = busyPopup; busyPopup = null; popup.end() } }
+    const message = (text, error = false) => { note.textContent = text; note.style.color = error ? '#fca5a5' : '#aaa'; if (busyPopup && !error) busyPopup.update({ detail: text }) }
     function button(text, action, allowBusy = false, host = actions, primary = false) {
       const b = make('button', text, { type: 'button', 'data-foart-action': primary ? 'primary' : 'neutral' }); Object.assign(b.style, { width: '100%', minWidth: '0', height: '30px', minHeight: '30px', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid ' + (primary ? '#17a582' : '#343434'), borderRadius: '6px', color: '#e9e9e9', background: primary ? '#17a582' : '#262626', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' })
       b.addEventListener('click', () => { if (busy && !allowBusy) return; try { Promise.resolve(action()).catch(error => message(error.message, true)) } catch (error) { message(error.message, true) } }); host.append(b); return b
     }
-    const recognizeButton = button('对象识别', recognize, false, actions, true)
-    button('添加选区', () => { mode = 'add'; message('在原图上拖出遗漏区域。') }, false, editActions)
-    button('删除选区', removeSelectedCandidates, false, editActions)
-    const splitButton = button('确认拆图', split, false, footerActions, true)
+    const recognizeButton = button('对象识别', recognize, false, actions)
+    const splitButton = button('确认拆图', split, false, footerActions)
     const cancelButton = button('取消', () => { cancelOperation(); cancelDrag(); opened = false; render() }, true, footerActions)
     selection.addEventListener('change', () => { for (const region of selected()) { region.kind = selection.value; region.manualEdits++; } manualActions++; render() })
     header.addEventListener('click', () => {
@@ -91,7 +124,7 @@
       const previous = sessions.candidates.get(key)
       sessions.candidates.set(key, { version: (previous?.version || 0) + 1, source: { ...source }, proposal: copy(proposal), manualActions, refinementAttempts: copy(refinementAttempts) })
     }
-    function cancelOperation() { controller?.abort(); controller = null; operation = null; busy = false }
+    function cancelOperation() { controller?.abort(); controller = null; operation = null; busy = false; closeBusy() }
     function beginOperation(snapshot, type) {
       cancelDrag(); saveSession()
       const next = { source: { ...snapshot }, type, controller: new AbortController(), key: sessionKey(snapshot), version: sessions.candidates.get(sessionKey(snapshot))?.version || 0 }
@@ -102,7 +135,7 @@
     }
     function finishOperation(next) {
       if (operation !== next) return
-      operation = null; controller = null; busy = false; render()
+      operation = null; controller = null; busy = false; closeBusy(); render()
     }
     function show() {
       accordion.syncExpanded(panel, header, controls, arrow, opened)
@@ -147,7 +180,7 @@
         const width = bounds?.width || source.width * scale, height = bounds?.height || source.height * scale
         const left = bounds?.width ? bounds.left - host.left : (w - width) / 2, top = bounds?.height ? bounds.top - host.top : (h - height) / 2
         for (const node of [previewImage, svg]) Object.assign(node.style, { left: left + 'px', top: top + 'px', width: width + 'px', height: height + 'px' })
-        syncHandleSize()
+        syncHandleSize(); placeDeleteButtons()
       }
       const current = bridge()?.getState?.()
       if (opened && active && !source && !busy && current?.source?.dataUrl && current.sourceSize) activateCurrent().catch(error => message(error.message, true))
@@ -162,7 +195,7 @@
     }
     function render() {
       if (destroyed) return
-      svg.replaceChildren(); if (!proposal) { show(); sync(); return }
+      svg.replaceChildren(); if (!proposal) { renderDeleteButtons(); show(); sync(); return }
       updateGroups()
       svg.setAttribute('viewBox', '0 0 1000 1000'); svg.setAttribute('preserveAspectRatio', 'none')
       for (const region of proposal.regions) {
@@ -186,24 +219,32 @@
       detailInput.disabled = busy || !only; detailInput.placeholder = !only ? '选中一个框后可改名称或文字' : only.kind === 'text' ? '这段文字的内容' : '这个区域的名称'
       if (doc.activeElement !== detailInput) detailInput.value = !only ? '' : only.kind === 'text' ? (only.text || '') : (only.name || '')
       recognizeButton.disabled = busy; splitButton.disabled = busy || !proposal.regions.some(r => r.kind !== 'group'); cancelButton.disabled = false
+      renderDeleteButtons()
       saveSession(); show(); sync()
     }
     const point = event => { const rect = svg.getBoundingClientRect(); return [Math.max(0, Math.min(1000, (event.clientX - rect.left) / rect.width * 1000)), Math.max(0, Math.min(1000, (event.clientY - rect.top) / rect.height * 1000))] }
     svg.addEventListener('pointerdown', event => {
       if (busy || !proposal || event.button !== 0) return
       event.preventDefault(); overlay.focus({ preventScroll: true })
-      const adding = mode === 'add' || event.ctrlKey
-      const redraw = event.altKey && mode === 'select' && !adding
+      const onBlank = !event.target.getAttribute('data-region-id')
+      const redraw = event.altKey && mode === 'select' && !event.ctrlKey
+      const adding = event.ctrlKey || (onBlank && !redraw && mode === 'select')
       if (redraw && selected().length !== 1) { message('请先选中一个框，再按 Alt 拖框重画边界'); return }
       const p = point(event), id = event.target.getAttribute('data-region-id'), region = redraw ? selected()[0] : proposal.regions.find(r => r.id === id)
       if (mode === 'divide') { proposal.regions = core.divide(proposal.regions, selected()[0]?.id, event.shiftKey ? 'y' : 'x', p[event.shiftKey ? 1 : 0]); manualActions++; mode = 'select'; render(); return }
+      if (adding && onBlank && !event.shiftKey) { for (const r of proposal.regions) r.selected = false } // 点空白处 = 取消选中；拖出去才是新选区
       if (!adding && !redraw) { if (!event.shiftKey) for (const r of proposal.regions) r.selected = r === region; else if (region) region.selected = !region.selected }
-      drag = { point: p, region: region?.id, box: region?.box.slice(), resize: !!event.target.getAttribute('data-resize'), direction: event.target.getAttribute('data-resize-direction') || 'se', redraw, add: adding, pointer: event.pointerId }
+      drag = { point: p, region: adding ? undefined : region?.id, box: adding ? undefined : region?.box.slice(), resize: !adding && !!event.target.getAttribute('data-resize'), direction: event.target.getAttribute('data-resize-direction') || 'se', redraw, add: adding, pointer: event.pointerId }
       svg.setPointerCapture(event.pointerId); render()
     })
     svg.addEventListener('pointermove', event => {
       if (!drag || busy) return
       const p = point(event), region = proposal.regions.find(r => r.id === drag.region)
+      if (drag.add) {
+        if (!drag.ghost) { drag.ghost = doc.createElementNS(svg.namespaceURI, 'rect'); for (const [key, value] of Object.entries({ fill: '#60a5fa22', stroke: '#60a5fa', 'stroke-width': 2, 'stroke-dasharray': '6 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' })) drag.ghost.setAttribute(key, value); svg.append(drag.ghost) }
+        for (const [key, value] of Object.entries({ x: Math.min(p[0], drag.point[0]), y: Math.min(p[1], drag.point[1]), width: Math.abs(p[0] - drag.point[0]), height: Math.abs(p[1] - drag.point[1]) })) drag.ghost.setAttribute(key, value)
+        return
+      }
       if (region && !drag.add) {
         const [x, y, right, bottom] = drag.box
         if (drag.redraw) region.box = [Math.min(drag.point[0], p[0]), Math.min(drag.point[1], p[1]), Math.max(drag.point[0], p[0]), Math.max(drag.point[1], p[1])].map(Math.round)
@@ -276,6 +317,7 @@
           message('已恢复本图的候选调整。确认后才拆层。'); return
         }
         if (root.__NovaFlowArtGenerate?.state.running || bridge()?.getState?.().busy) throw new Error('当前有生成或拆图任务运行中，请完成后识别')
+        openBusy('uiRecognize', '正在识别对象...')
         message('正在用在线模型识别原图里的对象，约需半分钟到两分钟…')
         const screen = await readableScreen(snapshot.dataUrl)
         let parsed = await readOnline(screen, next.controller.signal).catch(error => { if (!error.retry) throw error; return null })
@@ -318,7 +360,7 @@
     async function split() {
       if (busy || !proposal) return
       if (!currentMatches(source)) throw new Error('原图已切换，请重新识别')
-      const next = beginOperation(source, 'split'); render()
+      const next = beginOperation(source, 'split'); openBusy('uiLayerSplit', '正在拆图...'); render()
       try {
         const work = proposal
         if (!work.regions.length) throw new Error('请先选中本次要提取的区域')

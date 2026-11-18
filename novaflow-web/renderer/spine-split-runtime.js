@@ -2662,8 +2662,23 @@
     return hours > 0 ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${pad(minutes)}:${pad(secs)}`
   }
 
+  // 借用弹框的外部任务：{ action, message, detail, startedAt, onStop, stopping }
+  let externalBusy = null
+  function splitBusyTimed(action) {
+    return COMFY_BUSY_ACTIONS.has(String(action || '')) || !!(externalBusy && externalBusy.action === action)
+  }
+  function beginExternalBusy(options = {}) {
+    const token = { action: String(options.action || 'external'), message: String(options.message || '正在处理...'), detail: String(options.detail || ''), startedAt: Date.now(), onStop: typeof options.onStop === 'function' ? options.onStop : null, stopping: false }
+    externalBusy = token
+    syncSplitGlobalBusyOverlay()
+    return {
+      update(patch = {}) { if (externalBusy !== token) return; if (patch.message != null) token.message = String(patch.message); if (patch.detail != null) token.detail = String(patch.detail); syncSplitGlobalBusyOverlay() },
+      end() { if (externalBusy !== token) return; externalBusy = null; syncSplitGlobalBusyOverlay() }
+    }
+  }
+
   function splitBusyElapsedText(busy) {
-    if (!busy || !COMFY_BUSY_ACTIONS.has(String(busy.action || ''))) return ''
+    if (!busy || !splitBusyTimed(busy.action)) return ''
     return `\u5df2\u7528\u65f6 ${formatSplitBusyElapsed(busy.elapsedSeconds || 0)}`
   }
 
@@ -2673,7 +2688,7 @@
   }
 
   function syncSplitBusyOverlayTimer(busy) {
-    const shouldTick = !!(busy && busy.visible && COMFY_BUSY_ACTIONS.has(String(busy.action || '')))
+    const shouldTick = !!(busy && busy.visible && splitBusyTimed(busy.action))
     if (!shouldTick) {
       clearSplitBusyOverlayTimer()
       return
@@ -2714,6 +2729,11 @@
       const action = String(state.busyAction || 'busy')
       const elapsedSeconds = COMFY_BUSY_ACTIONS.has(action) ? splitBusyElapsedSeconds(state.busyStartedAt) : 0
       const busy = { visible: true, action, message: splitGlobalBusyMessage(action), detail: COMFY_BUSY_ACTIONS.has(action) ? (window.NovaFlowNeutralText || String)(state.busyDetail || '') : '', elapsedSeconds, elapsedText: '' }
+      busy.elapsedText = splitBusyElapsedText(busy)
+      return busy
+    }
+    if (externalBusy) {
+      const busy = { visible: true, action: externalBusy.action, message: externalBusy.message, detail: externalBusy.detail, elapsedSeconds: splitBusyElapsedSeconds(externalBusy.startedAt), elapsedText: '', external: true }
       busy.elapsedText = splitBusyElapsedText(busy)
       return busy
     }
@@ -2945,7 +2965,7 @@
     const busy = splitGlobalBusyState()
     const visible = !!(busy.visible && isMountedCardVisible())
     syncSplitBusyOverlayTimer(visible ? busy : null)
-    const signature = visible ? `${busy.action}|${busy.message}|${busy.elapsedText || ''}|${busy.detail || ''}|${splitStopRequested() ? 1 : 0}` : ''
+    const signature = visible ? `${busy.action}|${busy.message}|${busy.elapsedText || ''}|${busy.detail || ''}|${splitStopRequested() || (externalBusy && externalBusy.stopping) ? 1 : 0}` : ''
     const existing = document.getElementById(SPLIT_BUSY_OVERLAY_ID)
     if (!visible || !document.body) {
       if (existing) removeSplitGlobalBusyOverlay()
@@ -3028,6 +3048,11 @@
           onclick: (event) => {
             event.preventDefault()
             event.stopPropagation()
+            if (!state.busy && externalBusy) {
+              if (!externalBusy.stopping) { externalBusy.stopping = true; try { if (externalBusy.onStop) externalBusy.onStop() } catch {} }
+              syncSplitGlobalBusyOverlay()
+              return
+            }
             stopSplitRun()
           },
           style: {
@@ -3101,8 +3126,8 @@
     }
     const stop = overlay.querySelector('[data-novaflow-spine-split-busy-stop="1"]')
     if (stop instanceof HTMLButtonElement) {
-      const stopping = splitStopRequested()
-      stop.style.display = COMFY_BUSY_ACTIONS.has(busy.action) ? 'flex' : 'none'
+      const stopping = busy.external ? !!(externalBusy && externalBusy.stopping) : splitStopRequested()
+      stop.style.display = (busy.external ? !!(externalBusy && externalBusy.onStop) : COMFY_BUSY_ACTIONS.has(busy.action)) ? 'flex' : 'none'
       stop.disabled = stopping
       stop.style.cursor = stopping ? 'default' : 'pointer'
       stop.style.opacity = stopping ? '0.6' : '1'
@@ -36087,6 +36112,8 @@
   }
 
   window.NovaFlowSpineSplitBridge = {
+    // 借用美工的「工作中」弹框（消息、已用时、停止）。返回 { update({message, detail}), end() }
+    beginExternalBusy,
     agentTransferContext() {
       const tool = state.objectTransfer
       if (!tool?.active) return null
