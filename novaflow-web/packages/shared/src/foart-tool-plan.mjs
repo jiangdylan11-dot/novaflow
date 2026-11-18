@@ -357,6 +357,9 @@ export function validateFoartPlan(plan,context){
   validateFoartContext(context);
   need(plain(plan)&&Object.keys(plan).every(k=>['schema','status','reply','operations'].includes(k))&&plan.schema===FOART_TOOL_SCHEMA,'Foart 工具方案格式无效');
   need(['act','reply','clarify','done'].includes(plan.status)&&typeof plan.reply==='string'&&plan.reply.trim()&&plan.reply.length<=4000,'Foart 工具回复无效');
+  // A brain that lists operations means to act, whatever status word it wrote beside them: "打开音频" came back as a
+  // reply carrying the open operation, was refused as "操作数量无效", and the page never opened (live 2.0.395, 豆包).
+  if(Array.isArray(plan.operations)&&plan.operations.length>0&&plan.status!=='act')plan.status='act';
   need(Array.isArray(plan.operations)&&plan.operations.length<=6&&(plan.status==='act'?plan.operations.length>0:plan.operations.length===0),'Foart 工具操作数量无效');
   const controls=new Map(context.controls.map(c=>[c.id,c]));
   for(const op of plan.operations){
@@ -526,6 +529,7 @@ export function readFoartPlan(text,context){
     need(Object.keys(operation).every(key=>['action','width','height','prompt','uploadId','anchor'].includes(key)),'无限扩图含未知参数');
     const {action,...fields}=operation;return {...fields,action:'art_action',name:'imageOutpaint'};
   })};
+  if(Array.isArray(value?.operations)&&value.operations.length>0&&['reply','clarify','done'].includes(value.status))value={...value,status:'act'};
   // Native buttons can replace controls or enable a previously disabled tool.
   // Execute only the independently valid prefix, then inspect its real result.
   if(value?.status==='act'&&Array.isArray(value.operations)&&value.operations.length<=6){

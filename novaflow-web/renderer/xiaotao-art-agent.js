@@ -317,6 +317,8 @@
     const text=String(error?.message||error);
     // No node to draw on is not something the person did wrong, and "Foart AI Runtime 未连接" tells them nothing (live 2.0.393).
     if(/无可用.{0,4}节点|Runtime 未连接/.test(text))return /生图|提示词已写入/.test(text)?'本地节点现在不在线，这一张没有生成。'+(/提示词已写入/.test(text)?'提示词已经写好，留在输入框里。':'')+'等节点恢复后说一声“重试”，或者告诉我换哪条在线线路。':'这一步要用本地节点，它现在不在线，没有做成。等节点恢复后说一声“重试”就行。';
+    // The node is there but its generation service has not come up (just restarted): "生成服务启动失败：stopped" (live 2.0.395).
+    if(/生成服务启动失败|服务(?:尚未|还没|未)就绪/.test(text))return '节点上的生成服务还没启动好，这一步没有做成。稍等一会儿说一声“重试”就行。';
     return /未知参数|工具需求无效|完整性校验|工具类型无效|规划/.test(text)?'这一步没做成，已完成的部分已保留。可以换个说法，或告诉我要改哪张图。':text;
   }
 
