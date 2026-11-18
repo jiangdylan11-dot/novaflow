@@ -1265,9 +1265,18 @@
       result.data[i] = from.data[i]; result.data[i + 1] = from.data[i + 1]; result.data[i + 2] = from.data[i + 2]; result.data[i + 3] = from.data[i + 3]; };
     // The glow outside the mask as it was before 边缘净化 thinned it.
     if (before) for (let k = 0; k < seeds; k++) take(before, queue[k]);
-    if (!covered) return result;
     const plain = plainOf();
-    if (plain) for (let k = seeds; k < tail; k++) take(plain, queue[k]);
+    if (!plain) return result;
+    for (let k = seeds; k < tail; k++) take(plain, queue[k]);
+    // Right at the subject the mask-aware refinement thins and greys the glow (a dark ring around
+    // the hands): within a few pixels of the mask the glow keeps the plain solution's opacity.
+    const near = new Int32Array(stride * (h + 1)), R = Math.max(6, Math.round(Math.min(w, h) / 80));
+    for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += mask[y * w + x] >= .1 ? 1 : 0; near[(y + 1) * stride + x + 1] = row + near[y * stride + x + 1]; } }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = y * w + x; if (mask[p] >= .1 || plain.alpha[p] <= result.alpha[p] || !(box(x, y, reach)[0] > 0)) continue;
+      const x0 = Math.max(0, x - R), x1 = Math.min(w, x + R + 1), y0 = Math.max(0, y - R), y1 = Math.min(h, y + R + 1);
+      if (near[y1 * stride + x1] - near[y0 * stride + x1] - near[y1 * stride + x0] + near[y0 * stride + x0] > 0) take(plain, p);
+    }
     return result;
   }
 
