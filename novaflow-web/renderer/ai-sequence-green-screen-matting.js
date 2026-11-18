@@ -1214,12 +1214,11 @@
     return result;
   }
 
-  // Light the AI mask covers. A glow around a gem held up in the hands continues between the
-  // fingers, where the mask says "subject": kept opaque it became a block of screen colour with
-  // notches around the hands. Light has spatial support, so the part of the subject that leans
-  // to the key and is connected to a substantial glow outside the mask is light too and takes
-  // the plain chroma solution (what 色键抠图 gives). 边缘净化 leaves that glow alone as well.
-  // Key-leaning subject colour with no glow next to it (a jade medallion, leaves) is untouched.
+  // A glow that touches the subject (a gem held up in the hands). The glow outside the AI mask
+  // stays whole: 边缘净化 does not thin it and the mask-aware refinement does not grey it right
+  // at the subject. The subject is never treated as light: making a gem or the screen between
+  // the arms follow the glow hollowed the subject (user: 主体被挖了). Frames with no
+  // substantial glow outside the mask are untouched.
   function lightThroughSubject(frame, result, options, plainOf, before = null) {
     if (!result || options.sheerMaterial || !options.subjectMask?.data || !result.screen?.rgb) return result;
     const { width: w, height: h, data } = frame, n = w * h;
@@ -1227,7 +1226,10 @@
     if (!mask) return result;
     const screen = result.screen.rgb, key = result.screen.kind === "blue" ? 2 : 1, o1 = 0, o2 = key === 1 ? 2 : 1;
     const bgDiff = Math.max(.1, (screen[key] - Math.max(screen[o1], screen[o2])) / 255);
-    const emits = (i) => Math.max(data[i + o1] - screen[o1], data[i + o2] - screen[o2]) > 10;
+    // Light adds to the non-key channels without darkening the screen; a cast shadow darkens it
+    // (and is often cool-tinted), so it is not glow.
+    const emits = (i) => { const e = Math.max(data[i + o1] - screen[o1], data[i + o2] - screen[o2]) / 255;
+      return e > 10 / 255 && e > .9 * Math.max(0, 1 - data[i + key] / Math.max(26, screen[key])); };
     // Substantial glow outside the mask: survives a 3 px erosion (a 1-2 px fringe does not).
     const stride = w + 1, glow = new Uint8Array(n), sum = new Int32Array(stride * (h + 1));
     const integrate = (src) => { for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += src[y * w + x]; sum[(y + 1) * stride + x + 1] = row + sum[y * stride + x + 1]; } } };
@@ -1246,34 +1248,31 @@
     const reach = Math.max(12, Math.round(Math.min(w, h) / 20));
     const lit = new Uint8Array(n), queue = new Int32Array(n); let tail = 0;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const p = y * w + x; if (glow[p] && box(x, y, reach)[0] > 0) { lit[p] = 1; queue[tail++] = p; } }
-    const seeds = tail; let covered = 0;
-    const keyed = (q) => { const i = q * 4; return 1 - Math.max(0, data[i + key] / 255 - Math.max(data[i + o1], data[i + o2]) / 255) / bgDiff < .92; };
-    // The glow also shows where the hands close around it (screen between the fingers with no
-    // open path to the outside): key-leaning subject right at the glow starts as light too.
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const p = y * w + x;
-      if (!lit[p] && mask[p] >= .1 && keyed(p) && box(x, y, reach)[0] > 0) { lit[p] = 2; queue[tail++] = p; covered++; } }
-    // ...and spreads through connected key-leaning subject, but stays near the glow.
-    for (let head = 0; head < tail; head++) {
-      const p = queue[head], x = p % w;
-      for (const q of [p - 1, p + 1, p - w, p + w]) {
-        if (q < 0 || q >= n || lit[q] || (q === p - 1 && x === 0) || (q === p + 1 && x === w - 1) || mask[q] < .1) continue;
-        if (!keyed(q) || !(box(q % w, (q - q % w) / w, reach * 2)[0] > 0)) continue;
-        lit[q] = 2; queue[tail++] = q; covered++;
-      }
-    }
+    const seeds = tail;
     const take = (from, p) => { const i = p * 4; result.alpha[p] = from.alpha[p];
       result.data[i] = from.data[i]; result.data[i + 1] = from.data[i + 1]; result.data[i + 2] = from.data[i + 2]; result.data[i + 3] = from.data[i + 3]; };
     // The glow outside the mask as it was before 边缘净化 thinned it.
     if (before) for (let k = 0; k < seeds; k++) take(before, queue[k]);
     const plain = plainOf();
     if (!plain) return result;
-    for (let k = seeds; k < tail; k++) take(plain, queue[k]);
+    // Next to a glow the glow solution also takes hold of the subject's own lit, saturated parts
+    // (the bright cyan facets of a gem held up against a blue screen came out part transparent
+    // and recoloured). Confident subject that clearly emits and came out translucent is put back
+    // as 光效透明保留 off cuts it. Plain screen colour the mask covers (a gap) stays keyed, and
+    // sheer white/grey material (a veil: its two non-key channels alike) stays translucent.
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = y * w + x, m = mask[p]; if (m < .98 || result.alpha[p] >= 215 || !(box(x, y, reach * 2)[0] > 0)) continue;
+      const i = p * 4, n1 = data[i + o1], n2 = data[i + o2];
+      if (Math.max(n1 - screen[o1], n2 - screen[o2]) < 60 || Math.min(n1, n2) >= .6 * Math.max(n1, n2, 1)) continue;
+      result.alpha[p] = result.data[i + 3] = Math.round(m * 255);
+      result.data[i] = data[i]; result.data[i + 1] = data[i + 1]; result.data[i + 2] = data[i + 2];
+    }
     // Right at the subject the mask-aware refinement thins and greys the glow (a dark ring around
     // the hands): within a few pixels of the mask the glow keeps the plain solution's opacity.
     const near = new Int32Array(stride * (h + 1)), R = Math.max(6, Math.round(Math.min(w, h) / 80));
     for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += mask[y * w + x] >= .1 ? 1 : 0; near[(y + 1) * stride + x + 1] = row + near[y * stride + x + 1]; } }
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const p = y * w + x; if (mask[p] >= .1 || plain.alpha[p] <= result.alpha[p] || !(box(x, y, reach)[0] > 0)) continue;
+      const p = y * w + x; if (mask[p] >= .1 || plain.alpha[p] <= result.alpha[p] || !emits(p * 4) || !(box(x, y, reach)[0] > 0)) continue;
       const x0 = Math.max(0, x - R), x1 = Math.min(w, x + R + 1), y0 = Math.max(0, y - R), y1 = Math.min(h, y + R + 1);
       if (near[y1 * stride + x1] - near[y0 * stride + x1] - near[y1 * stride + x0] + near[y0 * stride + x0] > 0) take(plain, p);
     }
