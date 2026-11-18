@@ -7,7 +7,8 @@
  * 笔刷自己的代码几乎不动：
  *   - 靠笔迹的笔刷（美工选区 / 蒙版、视频抠图、视频编辑蒙版）：把区域用这支笔刷的细笔迹
  *     （约 1.5 像素）描一圈再逐行铺满，事件发给笔刷画布，所以羽化、模式、撤销都照旧。
- *   - 权重笔刷没有笔迹宽度，注册时给一个 fill(el, polygon)，自己处理区域里的顶点。
+ *   - 没有笔迹宽度的笔刷可以在登记时给一个 fill(el, polygon)，自己处理区域里的东西。
+ *   - 登记时既没给 radius 也没给 fill 的笔刷没有钢笔状态：骨骼权重和自动权重编辑只有画笔。
  * 哪些画布是笔刷、当前是否生效，沿用 FoartBrushLine.watch 的登记（brush-straight-line.js）。
  */
 (function (root) {
@@ -32,6 +33,12 @@
   let dragPointer = null
   let lastPointer = { pointerId: 1, pointerType: 'mouse' }
   let bar = null, overlay = null, hintEl = null
+
+  // 只有登记了 radius 或 fill 的笔刷有钢笔状态（权重笔刷没有）
+  function hasPen(found) {
+    const options = found && found.entry && found.entry.options
+    return !!options && (typeof options.radius === 'function' || typeof options.fill === 'function')
+  }
 
   function freshTool() { tool = Path().createTool(); undo = []; ref = null }
 
@@ -187,7 +194,7 @@
   // 找出当前生效的笔刷画布；没有就收起切换条
   function refresh() {
     if (!Line() || !Path()) return
-    const list = Line().activeTargets().filter((found) => { const r = rectOf(found.el); return r.width > 2 && r.height > 2 })
+    const list = Line().activeTargets().filter((found) => { const r = rectOf(found.el); return hasPen(found) && r.width > 2 && r.height > 2 })
     const keep = cur && list.find((found) => found.el === cur.el)
     const next = keep || list[0] || null
     if (!next) {
@@ -216,7 +223,7 @@
     if (type === 'pointerdown') {
       if (ev.button !== 0 || ev.ctrlKey || ev.metaKey || spaceDown) return false
       const found = Line().findTarget(ev.target)
-      if (!found || !Line().activeFor(found, ev)) return false
+      if (!found || !hasPen(found) || !Line().activeFor(found, ev)) return false
       consume(ev)
       if (busy) return true
       if (!cur || cur.el !== found.el) { cur = found; freshTool() }
