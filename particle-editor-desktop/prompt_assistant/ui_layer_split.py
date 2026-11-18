@@ -230,6 +230,65 @@ def _png(rgba):
     return buf.getvalue()
 
 
+def glyph_mask(rgb, box, W, H):
+    """The letters inside a text box, not the box: what is behind text is recovered far better from a thin mask.
+    Pixels that match none of the colours found just around the box are letters. None when that reading is not
+    believable (busy surroundings), and the caller keeps the whole box."""
+    x0, y0, x1, y1 = int(box[0]), int(box[1]), int(math.ceil(box[2])), int(math.ceil(box[3]))
+    if x1 - x0 < 6 or y1 - y0 < 6:
+        return None
+    b = 4
+    ox0, oy0, ox1, oy1 = max(0, x0 - b), max(0, y0 - b), min(W, x1 + b), min(H, y1 + b)
+    crop = rgb[oy0:oy1, ox0:ox1].astype(np.float32)
+    inner = np.zeros(crop.shape[:2], bool)
+    inner[y0 - oy0:y1 - oy0, x0 - ox0:x1 - ox0] = True
+    ring = crop[~inner]
+    if len(ring) < 30:
+        return None
+    k = min(3, max(1, len(ring) // 40))
+    _, labels, centres = cv2.kmeans(ring, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 12, 1.0), 2, cv2.KMEANS_PP_CENTERS)
+    spread = float(np.mean([np.linalg.norm(ring[labels[:, 0] == i] - centres[i], axis=1).mean() if (labels[:, 0] == i).any() else 0 for i in range(k)]))
+    dist = np.min(np.stack([np.linalg.norm(crop - c, axis=2) for c in centres]), axis=0)
+    g = (dist > max(26.0, 3.0 * spread)) & inner
+    g = _mor(_mor(g, cv2.MORPH_CLOSE, 1), cv2.MORPH_DILATE, 2) & _mor(inner, cv2.MORPH_DILATE, 2)
+    cover = g.sum() / float(inner.sum())
+    if not 0.05 < cover < 0.85:
+        return None
+    full = np.zeros((H, W), bool)
+    full[oy0:oy1, ox0:ox1] = g
+    return full
+
+
+def row_fill(img, hole, plate=None):
+    """Paints over what sat on a plate from the plate itself: each hole run in a row is blended between the pixels at
+    its two ends. UI plates run sideways (bars, pills, boards), so this keeps their top highlight, bottom shade and
+    grain, where a general fill model invents lobes and seams on such small areas.
+    plate: where the plate is. An end of a run that lies off the plate is not used (the run continues the other end);
+    runs with no usable end are finished from their surroundings."""
+    out = img.copy()
+    left = np.zeros(hole.shape, bool)
+    H, W = hole.shape
+    ok = ~hole if plate is None else (plate & ~hole)
+    for y in np.nonzero(hole.any(axis=1))[0]:
+        xs = np.nonzero(hole[y])[0]
+        for run in np.split(xs, np.nonzero(np.diff(xs) > 1)[0] + 1):
+            a, b = int(run[0]), int(run[-1]) + 1
+            ca = img[y, max(0, a - 3):a][ok[y, max(0, a - 3):a]].astype(np.float32)
+            cb = img[y, b:min(W, b + 3)][ok[y, b:min(W, b + 3)]].astype(np.float32)
+            if not len(ca) and not len(cb):
+                left[y, a:b] = True
+                continue
+            ca, cb = (ca if len(ca) else cb).mean(axis=0), (cb if len(cb) else ca).mean(axis=0)
+            t = ((np.arange(a, b) - a + 1) / float(b - a + 1))[:, None]
+            out[y, a:b] = (ca * (1 - t) + cb * t).round().astype(np.uint8)
+    if hole.any():           # take the row streaks out without touching what was not text
+        soft = cv2.blur(out, (1, 3))
+        out[hole] = soft[hole]
+    if left.any():
+        out = cv2.inpaint(out, left.astype(np.uint8) * 255, 4, cv2.INPAINT_TELEA)
+    return out
+
+
 def key_out(img, key):
     """alpha + un-mixed colours of lettering drawn on a flat key colour (the real key is measured on the border)."""
     a = img.astype(np.float32)
@@ -296,10 +355,20 @@ class Segmenter:
         m = m.float().cpu()
         if m.ndim == 4:
             m = m.squeeze(1)
-        return [m[i].numpy() > 0.5 for i in range(m.shape[0])]
+        masks = [m[i].numpy() > 0.5 for i in range(m.shape[0])]
+        sc = st.get("scores")
+        try:
+            self.scores = [float(v) for v in sc.float().cpu().flatten()] if sc is not None else []
+        except Exception:
+            self.scores = []
+        if len(self.scores) != len(masks):
+            self.scores = [1.0] * len(masks)
+        return masks
 
-    def box(self, box, min_fill=0.12, pad=0.08):
-        """the biggest mask that lives inside the box"""
+    def box(self, box, min_fill=0.12, pad=0.08, union=False):
+        """the biggest mask that lives inside the box.
+        union: also take the other confident masks inside it. A symbol on a backdrop comes back as two answers (the
+        backdrop with a symbol-shaped hole, and the symbol); the biggest alone would export the hole."""
         H, W = self.size
         x0, y0, x1, y1 = box
         with self.torch.autocast("cuda", dtype=self.torch.bfloat16):
@@ -309,14 +378,20 @@ class Segmenter:
         px, py = (x1 - x0) * pad + 3, (y1 - y0) * pad + 3
         rect = np.zeros((H, W), bool)
         rect[max(0, int(y0 - py)):int(y1 + py) + 1, max(0, int(x0 - px)):int(x1 + px) + 1] = True
-        best, score = None, 0
-        for c in cands:
+        best, score, inside_ok = None, 0, []
+        for k, c in enumerate(cands):
             a = c.sum()
             if a < min_fill * (x1 - x0) * (y1 - y0) or a < 60:
                 continue
             inside = (c & rect).sum() / a
-            if inside >= 0.85 and a * inside > score:
-                best, score = c & rect, a * inside
+            if inside >= 0.85:
+                inside_ok.append((self.scores[k], c & rect))
+                if a * inside > score:
+                    best, score = c & rect, a * inside
+        if union and best is not None:
+            for conf, c in inside_ok:
+                if conf >= 0.1:
+                    best = best | c
         return best
 
     def words(self, words, conf=0.3):
@@ -376,8 +451,9 @@ def normalize_regions(regions, W, H):
     return out
 
 
-def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress=None):
-    """image: PIL image. Returns the layer package described at the top of this file."""
+def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress=None, debug=None):
+    """image: PIL image. Returns the layer package described at the top of this file.
+    debug: a dict that receives the intermediate state (masks, hierarchy, peeled pictures) for diagnosis."""
     rgb = np.asarray(image.convert("RGB"))
     H, W = rgb.shape[:2]
     R = normalize_regions(regions, W, H)
@@ -404,11 +480,14 @@ def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress
             x0, y0, x1, y1 = r["box"]
             area = (x1 - x0) * (y1 - y0)
             if r["kind"] == "text":
-                m = np.zeros((H, W), bool)
-                m[int(y0):int(math.ceil(y1)), int(x0):int(math.ceil(x1))] = True
+                m = glyph_mask(rgb, r["box"], W, H)
+                r["glyphs"] = m is not None
+                if m is None:
+                    m = np.zeros((H, W), bool)
+                    m[int(y0):int(math.ceil(y1)), int(x0):int(math.ceil(x1))] = True
                 r["mask"], r["alpha"] = m, (m * 255).astype(np.uint8)
                 continue
-            m = seg.box(r["box"])
+            m = seg.box(r["box"], union=r["kind"] == "element")
             if r["kind"] == "panel":
                 if m is None or m.sum() < 0.5 * area:
                     m, r["boxed"] = _rounded_box(r["box"], W, H) if area < 0.2 * W * H else None, True
@@ -416,15 +495,20 @@ def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress
                         m = np.zeros((H, W), bool)
                         m[int(y0):int(y1) + 1, int(x0):int(x1) + 1] = True
                 else:
+                    body = _biggest(_mor(m, cv2.MORPH_OPEN, max(2, int(min(x1 - x0, y1 - y0) * 0.18))))
+                    if not body.any():
+                        body = m
                     hull = np.zeros((H, W), np.uint8)
-                    cv2.fillConvexPoly(hull, cv2.convexHull(cv2.findNonZero(m.astype(np.uint8))), 1)
-                    if _fill_holes(m).sum() < 0.93 * hull.sum():
+                    cv2.fillConvexPoly(hull, cv2.convexHull(cv2.findNonZero(body.astype(np.uint8))), 1)
+                    if _fill_holes(body).sum() < 0.93 * hull.sum():
                         m = _rounded_box(r["box"], W, H)      # a torn outline on what is really a bar
             elif m is None:
                 m = _rounded_box(r["box"], W, H)
                 r["boxed"] = True
             else:
-                m = _biggest(_mor(m, cv2.MORPH_CLOSE, 2))
+                m = _fill_holes(_biggest(_mor(m, cv2.MORPH_CLOSE, 2)))
+                if m.sum() >= 0.85 * area:           # it fills its box: a tile, cut along the box instead of a ragged outline
+                    m = _rounded_box(r["box"], W, H)
             m = _fill_holes(m)
             r["mask"] = m
             r["alpha"] = seg.matte(rgb, m)
@@ -462,10 +546,18 @@ def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress
             for j in kids[i]:
                 ch |= _mor(ui[j]["alpha"] > 8, cv2.MORPH_DILATE, 2)
             body = _row_col_fill(_mor(r["mask"] & ~ch, cv2.MORPH_OPEN, 2))
-            if (r["mask"] & ~body).sum() > 50 and body.sum() > 0.5 * r["mask"].sum():
-                r["mask"] &= body
+            # a plate that is convex but for nicks (a corner under a decoration, an edge under a gem) gets them back
+            hull = np.zeros((H, W), np.uint8)
+            if body.any():
+                cv2.fillConvexPoly(hull, cv2.convexHull(cv2.findNonZero(body.astype(np.uint8))), 1)
+            convex = body.sum() >= 0.965 * hull.sum() > 0      # nicks only: a bite out of an end must not become a slant
+            if convex:
+                body = hull.astype(bool)
+            if ((r["mask"] & ~body).sum() > 50 or (convex and (body & ~r["mask"]).sum() > 20)) and body.sum() > 0.5 * r["mask"].sum():
+                added = body & ~r["mask"] if convex else np.zeros((H, W), bool)
+                r["mask"] = body if convex else r["mask"] & body
                 soft = (cv2.GaussianBlur(r["mask"].astype(np.float32), (0, 0), 0.8) * 255).astype(np.uint8)
-                near = _mor(ch, cv2.MORPH_DILATE, 3)
+                near = _mor(ch, cv2.MORPH_DILATE, 3) | _mor(added, cv2.MORPH_DILATE, 2)
                 r["alpha"] = np.where(near, np.where(r["mask"], soft, 0), r["alpha"]).astype(np.uint8)
                 r["alpha"][r["mask"] & ch] = 255
                 r["alpha"][~_mor(r["mask"], cv2.MORPH_DILATE, 2)] = 0
@@ -481,14 +573,31 @@ def split(image, regions, comfy_url, comfy_root, models_dir, seed=None, progress
             if d == 0:
                 break
             for rt in sorted(set(root[i] for i in level)):
-                m = np.zeros((H, W), bool)
+                # Text that covers much of its plate (a jackpot pill with its label and amount) is painted over from the
+                # plate itself (row_fill): the fill model has too little plate left to copy and invents lobes there.
+                # Everything else goes to the fill model, which is the better painter when it has context.
+                m, flat = np.zeros((H, W), bool), np.zeros((H, W), bool)
                 for i in level:
-                    if root[i] == rt:
+                    if root[i] == rt and ui[i]["kind"] == "text":
+                        flat |= ui[i]["alpha"] > 8
+                crowded = ui[rt]["kind"] == "panel" and (_mor(flat, cv2.MORPH_DILATE, 3) & ui[rt]["mask"]).sum() >= 0.3 * max(1, ui[rt]["mask"].sum())
+                for i in level:
+                    if root[i] == rt and not (crowded and ui[i]["kind"] == "text"):
                         m |= ui[i]["alpha"] > 8
-                m = _mor(m, cv2.MORPH_DILATE, 3)
-                x0, y0, x1, y1 = _bbox(ui[rt]["mask"] | m, 48, W, H)
-                cur[y0:y1, x0:x1] = comfy.lama(cur[y0:y1, x0:x1], m[y0:y1, x0:x1])
+                if not crowded:
+                    flat[:] = False
+                if m.any():
+                    m = _mor(m, cv2.MORPH_DILATE, 3)
+                    x0, y0, x1, y1 = _bbox(ui[rt]["mask"] | m, 48, W, H)
+                    cur[y0:y1, x0:x1] = comfy.lama(cur[y0:y1, x0:x1], m[y0:y1, x0:x1])
+                flat = _mor(flat, cv2.MORPH_DILATE, 3) & ~m
+                if flat.any():
+                    x0, y0, x1, y1 = _bbox(flat, 8, W, H)
+                    plate = (ui[rt]["mask"] | _mor(ui[rt]["alpha"] > 128, cv2.MORPH_DILATE, 1)) if ui[rt]["kind"] == "panel" else None
+                    cur[y0:y1, x0:x1] = row_fill(cur[y0:y1, x0:x1], flat[y0:y1, x0:x1], None if plate is None else plate[y0:y1, x0:x1])
         step("peel", "补全底板")
+        if debug is not None:
+            debug.update(ui=ui, parent=parent, depth=depth, root=root, peeled=cur.copy())
 
         # ---- the whole UI off the scene
         ui_all = np.zeros((H, W), bool)
