@@ -2662,7 +2662,7 @@
     }
   }
 
-  async function mattingInBrowser(jobId, frames, width, height, totalFrames) {
+  async function mattingInBrowser(jobId, frames, width, height, totalFrames, note = '现在没有在线算力，改在本机浏览器里抠图…') {
     const run = ++browserMattingRun;
     let adapter = null;
     try { adapter = root.navigator && root.navigator.gpu ? await root.navigator.gpu.requestAdapter() : null; } catch (_) { adapter = null; }
@@ -2672,7 +2672,7 @@
       return { ok: false, jobId, error: message };
     }
     try {
-      reportMatting(jobId, 'running', '现在没有在线算力，改在本机浏览器里抠图…', 0.02);
+      reportMatting(jobId, 'running', note, 0.02);
       const { ort, session } = await browserMattingSessionFor(jobId);
       const size = BROWSER_MATTING_SIZE, area = size * size;
       const canvas = typeof root.OffscreenCanvas === 'function' ? new root.OffscreenCanvas(size, size) : Object.assign(root.document.createElement('canvas'), { width: size, height: size });
@@ -2715,6 +2715,7 @@
     }
   }
 
+  const NODE_HANDOFF_SECONDS = 20;
   api.aiSeqRembgBatch = async (payload) => {
     const jobId = String((payload && payload.jobId) || '');
     const runtime = root.NovaFlowWebRuntime;
@@ -2733,6 +2734,11 @@
     if (await mattingNodesOnline(runtime) === 0) return mattingInBrowser(jobId, frames, width, height, totalFrames);
 
     let taskId = '', stage = '准备视频帧';
+    // The pool can list a node that never takes the job (it stopped sharing, its claim loop is
+    // stuck, or it is busy with something else). Matting must not hang on it: after
+    // NODE_HANDOFF_SECONDS without a node accepting the frames, cancel and matte in this browser.
+    const handoff = new AbortController();
+    let nodeSilent = false;
     try {
       reportMatting(jobId, 'running', '正在准备素材…', 0.02);
 
@@ -2761,8 +2767,9 @@
       stage = '上传视频帧';
       for (let index = 0; index < packs.length; index++) {
         await runtime.putTaskInput(taskId, references[index].name, packs[index], (seconds) => {
+          if (Number(seconds) >= NODE_HANDOFF_SECONDS && !nodeSilent) { nodeSilent = true; handoff.abort(); }
           reportMatting(jobId, 'running', '正在等待算力接收视频帧…（' + seconds + 's）', 0.06);
-        }, { retryConnection: true, onRetry: attempt => {
+        }, { retryConnection: true, signal: handoff.signal, onRetry: attempt => {
           reportMatting(jobId, 'running', '上传连接中断，正在重连算力节点…（' + attempt + '/2）', 0.06);
         } });
       }
@@ -2848,6 +2855,9 @@
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
+      }
+      if (nodeSilent || (stage === '上传视频帧' && /等不到空闲算力节点/.test(String(error?.message || '')))) {
+        return mattingInBrowser(jobId, frames, width, height, totalFrames, '算力节点没有接单，改在本机浏览器里抠图…');
       }
       const rawMessage = String((error && error.message) || error);
       const offline = !error?.status && /failed to fetch|fetch failed|networkerror|load failed/i.test(rawMessage);
