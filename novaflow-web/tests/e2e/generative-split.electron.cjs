@@ -83,8 +83,7 @@ app.whenReady().then(async () => {
       const begin = async () => { NovaFlowSpineSplitDebug.setSource('fixture.png', source.toDataURL()); await image(source.toDataURL()); await t.executeGenerativeSplitTool(); await select(); call = 0; splitCalls.length = 0; };
       await begin();
       const toolbar = document.querySelector('#fixture'); toolbar.replaceChildren(...t.generativeSplitToolbarNodes());
-      const profile = toolbar.querySelector('select'); profile.value = 'standard'; profile.dispatchEvent(new Event('change', { bubbles: true }));
-      ok(s.generativeSplit.profile === 'standard', 'profile select updates editor state'); s.generativeSplit.profile = 'turbo';
+      ok(s.generativeSplit.profile === 'turbo', 'the one route is the default');
       s.generativeSplit.advancedPrompts = true; s.generativeSplit.objectName = '对象甲'; s.generativeSplit.objectPrompt = '去掉蓝色遮挡板'; s.generativeSplit.backgroundPrompt = '保持米色平涂底色'; toolbar.querySelector('[data-novaflow-generative-split-add]').click();
       for (let i = 0; i < 20 && s.generativeSplit.objectName; i++) await new Promise(r => setTimeout(r, 10));
       ok(!s.generativeSplit.objectName, 'native toolbar click queues object and clears current selection');

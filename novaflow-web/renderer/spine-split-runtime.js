@@ -2859,7 +2859,7 @@
     const kind = activeSplitEditToolKind()
     if (!kind) return true
     const name = String(action || '')
-    if (kind === 'cutout') return name === (state.selectionTool.generativeSplit ? 'generativeSplit' : 'cutout')
+    if (kind === 'cutout') return name === 'cutout' || (name === 'generativeSplit' && !!state.selectionTool.generativeSplit)
     if (kind === 'inpaint') {
       const mode = inpaintModeForControlAction(name)
       return !!mode && mode === normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
@@ -13742,8 +13742,7 @@
       items: [
         { action: 'split', label: '一键拆图（骨骼动画）', style: { gridColumn: '1 / -1', height: '34px' } },
         { action: 'penCutout', label: '钢笔抠图', title: '使用可调曲线的钢笔闭合路径精准分割图层；右键拖动画布，滚轮缩放，Esc 退出' },
-        { action: 'cutout', label: '智能抠图', title: '绘制遮罩区域后执行对象提取；右键拖动画布，滚轮缩放，Esc 退出' },
-        { action: 'generativeSplit', label: '对象分离', title: '涂满目标可见范围，分离并补全透明对象，同时修复底图', style: { gridColumn: '1 / -1' } }
+        { action: 'cutout', label: '智能抠图', title: '绘制遮罩区域后执行对象提取；工具条上打开「补全」会补全被遮挡的部分并修复底图；右键拖动画布，滚轮缩放，Esc 退出' }
       ]
     },
     {
@@ -14278,7 +14277,7 @@
     const maskActive = state.maskEditor && state.maskEditor.active
     const maskApplying = !!maskEditorApplyPromise || maskActive && state.maskEditor.applying
     const objectTransferActive = state.objectTransfer && state.objectTransfer.active
-    const active = (name === 'cutout' && cutoutActive && !state.selectionTool.generativeSplit)
+    const active = (name === 'cutout' && cutoutActive)
       || (name === 'generativeSplit' && cutoutActive && state.selectionTool.generativeSplit)
       || (name === 'inpaint' && inpaintActive)
       || (name === 'inpaintCompletion' && inpaintActive && selectedInpaintMode === 'completion')
@@ -14299,7 +14298,7 @@
       objectTransfer: state.busy && state.busyAction === 'objectTransfer' ? '\u8fc1\u79fb\u4e2d\u2026' : (objectTransferActive ? '\u6267\u884c\u8fc1\u79fb' : '\u4e07\u7269\u8fc1\u79fb'),
       imageOutpaint: state.busy && state.busyAction === 'imageOutpaint' ? '无限扩图中…' : '无限扩图',
       imageAngleAdjust: state.busy && state.busyAction === 'imageAngleAdjust' ? '角度调整中…' : '角度调整',
-      cutout: isCutting ? '智能抠图中…' : (isEffectExtracting ? '特效提取中…' : (cutoutActive && !state.selectionTool.generativeSplit ? (effectModeActive ? '执行特效提取' : '执行抠图') : '智能抠图')),
+      cutout: isCutting ? '智能抠图中…' : (isEffectExtracting ? '特效提取中…' : (state.busy && state.busyAction === 'generativeSplit' ? '补全中…' : (cutoutActive ? (effectModeActive ? '执行特效提取' : '执行抠图') : '智能抠图'))),
       generativeSplit: state.busy && state.busyAction === 'generativeSplit' ? '分离中…' : (cutoutActive && state.selectionTool.generativeSplit ? '执行分离' : '对象分离'),
       inpaint: isEffectRemoving ? '特效去除中…' : (isInpainting ? selectionInpaintModeBusyLabel(selectedInpaintMode) : (inpaintActive ? (effectRemovalActive ? '执行特效去除' : selectionInpaintModeExecuteLabel(selectedInpaintMode)) : '\u667a\u80fd\u8865\u56fe')),
       inpaintCompletion: isInpainting && selectedInpaintMode === 'completion' ? selectionInpaintModeBusyLabel('completion') : (inpaintActive && selectedInpaintMode === 'completion' ? selectionInpaintModeExecuteLabel('completion') : selectionInpaintModeStartLabel('completion')),
@@ -22368,7 +22367,7 @@
       if (!state.selectionTool?.active) return
       state.selectionTool.generativeSplit = true
       generativeSplitTargets = []
-      setMessage('涂满对象可见范围后执行分离，自动补全遮挡并保持原图颜色和质感；对象说明可留空。多个对象可分别添加。')
+      setMessage('已打开补全：涂满对象可见范围后执行抠图，自动补全遮挡并修复底图；对象说明可留空。')
       render()
       syncSplitWorkspace()
       return
@@ -22495,6 +22494,7 @@
   async function executeCutoutTool() {
     if (state.busy) return
     if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'cutout') return startSelectionTool('cutout')
+    if (state.selectionTool.generativeSplit) return executeGenerativeSplitTool() // 「补全」开着：补全对象并修复底图
     if (state.selectionTool.effectMode) return executeEffectExtractTool()
     if (state.selectionTool.cutoutSource === 'original' && !state.selectionTool.sourceTargetLocked) {
       const activePart = activeSplitDataPart()
@@ -22730,12 +22730,33 @@
   function setSelectionEffectMode(enabled) {
     if (state.busy) return
     if (!selectionEffectModeAvailable()) return
+    if (enabled && state.selectionTool.generativeSplit) {
+      // 特效 和 补全 只能开一个：对象说明那一行要跟着收起，整条工具条重画
+      state.selectionTool.generativeSplit = false
+      state.selectionTool.effectMode = true
+      render()
+      syncSplitWorkspace()
+      return
+    }
     state.selectionTool.effectMode = !!enabled
     refreshSelectionToolSurface() // In-place toolbar refresh, same as the paint-mode switches.
     patchSplitControlActionButtons() // The left 执行抠图/执行删除 button relabels to the 特效 wording.
   }
 
   function toggleSelectionEffectMode() { setSelectionEffectMode(!(state.selectionTool && state.selectionTool.effectMode)) }
+
+  // 智能抠图的「补全」：关 = 只把涂选的像素抠成透明图层；开 = 补全被遮挡的部分并修复底图（原「对象分离」）。
+  // 涂好的选区留着，只换执行时走哪条线。
+  function toggleSelectionCompletion() {
+    const tool = state.selectionTool
+    if (state.busy || !tool || !tool.active || tool.mode !== 'cutout') return
+    tool.generativeSplit = !tool.generativeSplit
+    if (tool.generativeSplit) tool.effectMode = false
+    generativeSplitTargets = []
+    setMessage(tool.generativeSplit ? '已打开补全：涂满对象可见范围后执行抠图，自动补全遮挡并修复底图；对象说明可留空。' : '已关闭补全：执行抠图只提取涂选范围里的对象。')
+    render()
+    syncSplitWorkspace()
+  }
 
   function qwenEditReferenceSize(width, height) {
     // Mirrors the Qwen edit text encoder (ComfyUI comfy_extras/nodes_qwen.py): the reference latent is
@@ -23918,7 +23939,7 @@
     const selectedInpaintMode = normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
     const effectRemovalTool = isInpaint && selectedInpaintMode === 'repair' // 去除物体：把特效减掉，而不是重绘
     const isGenerativeSplit = isCutoutTool && !!state.selectionTool.generativeSplit
-    const effectToolAvailable = (isCutoutTool && !isGenerativeSplit) || effectRemovalTool
+    const effectToolAvailable = isCutoutTool || effectRemovalTool // 补全开着时 特效 仍在，点它会关掉补全
     const effectModeEnabled = effectToolAvailable && !!state.selectionTool.effectMode
     const showInpaintNsfw = isInpaint && selectionInpaintNsfwAvailable(selectedInpaintMode)
     const inpaintNsfwEnabled = showInpaintNsfw && !!(state.selectionTool && state.selectionTool.inpaintNsfwEnabled)
@@ -23935,6 +23956,15 @@
     }
     return h('div', { style: { width: '100%', height: '100%', minHeight: 0, display: 'grid', gridTemplateRows: isGenerativeSplit || isInpaint ? 'auto auto minmax(0, 1fr)' : 'auto minmax(0, 1fr)', gap: '10px', alignItems: 'center', justifyItems: 'center', padding: '12px', boxSizing: 'border-box' } }, [
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
+        isCutoutTool ? button('补全', (event) => { if (event) event.stopPropagation(); toggleSelectionCompletion() }, isGenerativeSplit, {
+          'data-novaflow-selection-completion': isGenerativeSplit ? 'on' : 'off',
+          role: 'switch',
+          'aria-checked': isGenerativeSplit ? 'true' : 'false',
+          'aria-label': `补全 ${isGenerativeSplit ? '已开启' : '已关闭'}`,
+          title: '补全：开启后执行抠图会补全对象被遮挡的部分，并把底图上这个对象去掉、补好背景，得到「干净底图」和「对象」两个图层；关闭时只把涂选范围里的对象抠成透明图层',
+          disabled: state.busy,
+          style: { marginRight: '2px' }
+        }) : null,
         effectToolAvailable ? button('\u7279\u6548', () => toggleSelectionEffectMode(), effectModeEnabled, {
           [TOOL_ACTION_ATTR]: 'selectionEffect',
           'data-novaflow-selection-effect': effectModeEnabled ? 'on' : 'off',
