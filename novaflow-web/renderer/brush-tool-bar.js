@@ -2,7 +2,7 @@
  * 画板上方居中的笔刷工具条（视频抠图、视频编辑蒙版）
  *
  * 和美工的选区 / 蒙版工具条一个样子、一个位置：
- *   擦除 | 修复 | 画笔 N（按钮，点它切换 画笔 / 钢笔）+ 滑条 | 羽化 N + 滑条 | 全局
+ *   擦除 | 修复 | 画笔 N（按钮，点它切换 画笔 / 钢笔）+ 滑条 | 羽化 N + 滑条 | 全局（视频抠图）/ 退出（视频编辑蒙版）
  * 切到钢笔后，笔刷滑条换成 应用 / 清除 和一句提示（brush-pen-mode.js 的工具条约定）。
  *
  * 这两处原来的控件在左侧面板里（视频抠图是打包好的界面，视频编辑是自己的面板）。
@@ -59,7 +59,9 @@
   const videoEdit = {
     key: 'video-edit',
     box() { return doc.getElementById('ve-mask-box') },
-    active() { const b = this.box(); return !!b && !b.hidden && b.isConnected && doc.body.getAttribute('data-nf-ve-masking') === '1' },
+    active() { const b = this.box(); return !!b && b.isConnected && doc.body.getAttribute('data-nf-ve-masking') === '1' },
+    // 退出 = 不要这次的改动（左侧的「应用蒙版」才是保留）
+    exit() { const n = doc.getElementById('ve-mask-cancel'); if (n) n.click() },
     // 蒙版编辑期间画板让出上面一条（样式里的 margin-top），工具条放在让出来的这条里
     place(height) {
       const stage = doc.querySelector('.nf-vm-stage')
@@ -75,7 +77,7 @@
     size() { return this.field('ve-mask-brush') },
     feather() { return this.field('ve-mask-feather') },
     global() { return null },
-    hide: '#ve-mask-box > .nf-ve-mode,#ve-mask-box > .nf-ve-line'
+    hide: '#ve-mask-box'
   }
 
   const hosts = [cutout, videoEdit]
@@ -116,11 +118,13 @@
       hint: el('span', { 'data-foart-pen-when': 'pen', 'data-foart-pen-hint': '1', class: 'hint' }),
       featherText: el('span', {}),
       featherRange: el('input', { type: 'range', step: '1' }),
-      global: el('button', { text: '全局', title: '开启后这一笔作用到所有帧；关闭时只改当前帧', 'aria-pressed': 'false' })
+      global: el('button', { text: '全局', title: '开启后这一笔作用到所有帧；关闭时只改当前帧', 'aria-pressed': 'false' }),
+      exit: el('button', { text: '退出', title: '退出蒙版编辑，不保留这次的改动（Esc）' })
     }
     parts.sizeLabel = el('label', { 'data-foart-pen-when': 'brush' }, [parts.sizeRange])
     parts.featherLabel = el('label', {}, [parts.featherText, parts.featherRange])
-    ;[parts.modes, parts.toggle, parts.sizeLabel, parts.apply, parts.clear, parts.hint, parts.featherLabel, parts.global].forEach((n) => bar.appendChild(n))
+    ;[parts.modes, parts.toggle, parts.sizeLabel, parts.apply, parts.clear, parts.hint, parts.featherLabel, parts.global, parts.exit].forEach((n) => bar.appendChild(n))
+    parts.exit.addEventListener('click', () => { if (host && typeof host.exit === 'function') host.exit(); root.setTimeout(sync, 0) })
     parts.toggle.addEventListener('click', pen('toggle'))
     parts.apply.addEventListener('click', pen('apply'))
     parts.clear.addEventListener('click', pen('clear'))
@@ -171,6 +175,8 @@
     // 全局（只有视频抠图有）
     const g = host.global()
     if (parts.global.hidden !== !g) parts.global.hidden = !g
+    const canExit = typeof host.exit === 'function'
+    if (parts.exit.hidden !== !canExit) parts.exit.hidden = !canExit
     if (g) { const p = String(!!g.on); if (parts.global.getAttribute('aria-pressed') !== p) parts.global.setAttribute('aria-pressed', p); if (parts.global.disabled !== !!g.disabled) parts.global.disabled = !!g.disabled }
     if (root.FoartBrushPen && typeof root.FoartBrushPen.syncControls === 'function') root.FoartBrushPen.syncControls()
     // 位置：画板上方居中

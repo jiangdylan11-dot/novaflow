@@ -107,7 +107,7 @@
     .nf-ve-busy[hidden],.nf-ve-busy-mask[hidden],.nf-ve-panel [hidden],.nf-ve-transport [hidden]{display:none!important}
     body[data-nf-ve-masking="1"] .nf-ve-panel .nf-ve-sec:not(:has(#ve-mask-box)),
     body[data-nf-ve-masking="1"] .nf-ve-panel .nf-ve-sec:has(#ve-mask-box) > :not(#ve-clip-box),
-    body[data-nf-ve-masking="1"] .nf-ve-panel #ve-clip-box > :not(#ve-mask-box),
+    body[data-nf-ve-masking="1"] .nf-ve-panel #ve-clip-box > :not(#ve-mask-box):not(:has(#ve-mask-edit)),
     body[data-nf-ve-masking="1"] .nf-ve-transport > *,
     body[data-nf-ve-masking="1"] .nf-vm-timeline,
     body[data-nf-ve-masking="1"] [data-novaflow-ai-resource-card="1"],
@@ -602,8 +602,10 @@
       if (documentRef.activeElement !== $('ve-clip-length')) $('ve-clip-length').value = clip.length.toFixed(1)
       setSlider('ve-fadein', clip.fadeIn, Math.min(30, clip.length)); if (documentRef.activeElement !== $('ve-fadein-value')) $('ve-fadein-value').value = clip.fadeIn.toFixed(1)
       setSlider('ve-fadeout', clip.fadeOut, Math.min(30, clip.length)); if (documentRef.activeElement !== $('ve-fadeout-value')) $('ve-fadeout-value').value = clip.fadeOut.toFixed(1)
-      $('ve-mask-edit').hidden = Boolean(maskEdit) || !clip.transform
-      $('ve-mask-edit').textContent = clip.mask && clip.maskRevision > 0 ? '蒙版（已有）' : '蒙版编辑'
+      $('ve-mask-edit').hidden = !clip.transform
+      $('ve-mask-edit').textContent = maskEdit ? '应用蒙版' : clip.mask && clip.maskRevision > 0 ? '蒙版（已有）' : '蒙版编辑'
+      $('ve-mask-edit').classList.toggle('primary', Boolean(maskEdit))
+      $('ve-mask-edit').title = maskEdit ? '应用蒙版（Enter）；不要这次的改动点工具条上的「退出」' : ''
     }
     $('ve-clip-name').addEventListener('change', () => { const c = editor.selectedClip(); if (c) { c.name = $('ve-clip-name').value.trim() || c.name; editor.draw() } })
     const applyScale = (pct) => { const c = editor.selectedClip(); if (c) { editor.setTransform(c.id, { scale: Math.max(5, finite(pct, 100)) / 100 }); preview.draw(); syncClipBox() } }
@@ -638,8 +640,9 @@
       if (!surface) surface = MaskTool.createSurface({ width: clip.source.width, height: clip.source.height })
       else entryCoverage = surface.copyCoverage()
       maskEdit = { clipId: clip.id, surface, entryCoverage }
-      $('ve-mask-edit').hidden = true; $('ve-mask-box').hidden = false
+      // 擦除 / 修复、笔刷、羽化、退出 在画板上方的工具条里（brush-tool-bar.js）；ve-mask-box 只留着给它驱动
       documentRef.body.setAttribute('data-nf-ve-masking', '1')
+      syncClipBox()
       MASK_BLOCK_EVENTS.forEach((type) => documentRef.addEventListener(type, blockWhileMasking, true))
       preview.setMaskEditing(maskState())
     }
@@ -648,7 +651,7 @@
       if (!maskEdit) return
       const target = event.target instanceof Element ? event.target : null
       if (!target) return
-      if (target.closest('#ve-mask-box, .nf-vm-stage, [data-foart-brush-pen-bar], #nf-xiaotao-art-root, [data-novaflow-primary-entry="1"], #novaflow-primary-audio-cell, [data-nf-mask-label]')) return
+      if (target.closest('#ve-mask-box, #ve-mask-edit, .nf-vm-stage, [data-foart-brush-pen-bar], #nf-xiaotao-art-root, [data-novaflow-primary-entry="1"], #novaflow-primary-audio-cell, [data-nf-mask-label]')) return
       event.preventDefault(); event.stopImmediatePropagation()
     }
     function endMask(apply) {
@@ -657,12 +660,11 @@
       if (apply) { const rev = maskEdit.surface.debugState().revision; if (clip) editor.setMask(clip.id, rev > 0 ? maskEdit.surface : null, rev) }
       else if (clip) { if (maskEdit.entryCoverage) maskEdit.surface.reset(maskEdit.entryCoverage); else { editor.setMask(clip.id, null, 0); maskEdit.surface.destroy() } }
       maskEdit = null
-      $('ve-mask-edit').hidden = false; $('ve-mask-box').hidden = true
       documentRef.body.removeAttribute('data-nf-ve-masking')
       MASK_BLOCK_EVENTS.forEach((type) => documentRef.removeEventListener(type, blockWhileMasking, true))
       preview.setMaskEditing({ enabled: false }); editor.draw(); syncClipBox()
     }
-    $('ve-mask-edit').addEventListener('click', beginMask)
+    $('ve-mask-edit').addEventListener('click', () => { if (maskEdit) endMask(true); else beginMask() })
     $('ve-mask-ok').addEventListener('click', () => endMask(true))
     $('ve-mask-cancel').addEventListener('click', () => endMask(false))
     const setMaskMode = (mode) => { $('ve-mask-erase').setAttribute('aria-pressed', String(mode === 'erase')); $('ve-mask-restore').setAttribute('aria-pressed', String(mode === 'restore')); if (maskEdit) preview.updateMaskBrush({ mode }) }
@@ -709,6 +711,7 @@
       const key = event.key
       if (maskEdit) {
         if (key === 'Escape') { event.preventDefault(); endMask(false) } else if (key === 'Enter') { event.preventDefault(); endMask(true) }
+        else if ((event.ctrlKey || event.metaKey) && (key === 'z' || key === 'Z')) { event.preventDefault(); $('ve-mask-undo').click() }
         // 美工's brush keys: [ ] size by 4, ; - / ' = feather by 1, E 擦除, R 修复
         else if (!event.ctrlKey && !event.metaKey && !event.altKey) {
           const code = event.code || ''
