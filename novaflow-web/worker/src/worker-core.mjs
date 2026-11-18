@@ -996,6 +996,7 @@ export function createWorker(options) {
       const previous = { ...state.comfy };
       state.comfy.image = await comfyImage.isUp();
       state.comfy.video = await comfyVideo.isUp();
+      if (previous.image !== state.comfy.image || previous.video !== state.comfy.video) log('generation service ' + (state.comfy.image || state.comfy.video ? 'answers again' : 'stopped answering'), { ...state.comfy });
       let qwenSignature = false;
       try { qwenSignature = qwenReportKey(promptAssistantRef()?.status?.(), state.currentTaskId,{
         rotationEnabled:qwenRotationCandidateEnabled===true && qwenRotationVerificationEnabled===true,
@@ -1720,8 +1721,27 @@ export function createWorker(options) {
     return result;
   }
 
+  // Why the node is not taking work right now. A node that is online yet idle for hours used to leave
+  // no trace of the reason; this writes it when it changes and again every ten minutes.
+  let lastClaimNote = '', lastClaimLogAt = 0, claimWaitSince = 0;
+  function noteClaim(reason) {
+    if (reason === lastClaimNote && Date.now() - lastClaimLogAt < 600000) return;
+    lastClaimNote = reason; lastClaimLogAt = Date.now();
+    log('claim: ' + reason, { status: state.status, comfy: { ...state.comfy }, runtimeReady: state.runtimeReady,
+      readyModels: (state.models || []).filter(m => m.status === 'ready').length });
+  }
+
   async function claimAndRun({ throttleCloud = false } = {}) {
-    if (claimsPaused || claimBusy || state.currentTaskId) return false;
+    if (claimsPaused || claimBusy || state.currentTaskId) {
+      // Two timers overlapping for a moment is normal; only a claim that stays in flight is worth a line.
+      if (claimsPaused) noteClaim('skipped, claims are paused');
+      else if (claimBusy && !state.currentTaskId) {
+        claimWaitSince ||= Date.now();
+        if (Date.now() - claimWaitSince > 60000) noteClaim('skipped, a previous claim or a memory release has been in progress for over a minute');
+      }
+      return false;
+    }
+    claimWaitSince = 0;
     claimBusy = true;
     try { return await claimAndRunLocked({ throttleCloud }); }
     finally {
@@ -1737,9 +1757,15 @@ export function createWorker(options) {
     let claim;
     const local = localRunning && localTasks?.next();
     if (local) claim = { task: local };
-    else if (!sharing || !running || (tunnel && !tunnel.url)) return false;
+    else if (!sharing || !running || (tunnel && !tunnel.url)) {
+      noteClaim(!sharing || !running ? 'skipped, the node is not sharing' : 'skipped, no public address yet');
+      return false;
+    }
     if (!local && registrationProfile === 'compute-only' && (!hasComputePolicy(state.policy) || !state.policy.enabled
-      || !(state.policy.owner_enabled || state.policy.sharing_enabled) || !state.runtimeReady)) return false;
+      || !(state.policy.owner_enabled || state.policy.sharing_enabled) || !state.runtimeReady)) {
+      noteClaim(!state.runtimeReady ? 'skipped, the model environment is not ready' : 'skipped, the administrator has not enabled this node');
+      return false;
+    }
     // Both existing polling timers share this gate. A private local task and
     // an explicit claimAndRun() call retain their immediate behavior.
     if (!local && throttleCloud && performance.now() < nextCloudClaimAt) return false;
@@ -1760,6 +1786,7 @@ export function createWorker(options) {
       // task. Preserve that uncertainty for later maintenance checks; normal
       // sharing still follows the existing retry behavior.
       claimOutcomeUnknown = true;
+      noteClaim('failed, ' + String(error?.message || error));
       if (!local) deferCloudClaim(backoffEpoch);
       if (registrationProfile === 'compute-only') {
         state.platformOnline = false;
@@ -1776,7 +1803,8 @@ export function createWorker(options) {
       if (!local) deferCloudClaim(backoffEpoch);
       return false;
     }
-    if (!claim.task) { if (!local) deferCloudClaim(backoffEpoch,true); return false; }
+    if (!claim.task) { noteClaim('asked, the server had no task for this node'); if (!local) deferCloudClaim(backoffEpoch,true); return false; }
+    noteClaim('took task ' + claim.task.id);
     if (!local) resetCloudClaimBackoff();
     if (claim.grantKey) state.grantKey = claim.grantKey;
 
@@ -2156,7 +2184,11 @@ export function createWorker(options) {
   async function stop() {
     await stopSharing();
     await stopLocal();
-    while (claimBusy) await new Promise(resolve => setTimeout(resolve, 100));
+    // A claim in flight normally ends within one control-plane timeout. One that never ends must not
+    // keep the node (and with it the whole assistant) from stopping.
+    const claimDeadline = Date.now() + 8000;
+    while (claimBusy && Date.now() < claimDeadline) await new Promise(resolve => setTimeout(resolve, 100));
+    if (claimBusy) log('stop: a task claim did not finish; closing anyway', { currentTaskId: state.currentTaskId, lastClaim: lastClaimNote });
     await closeSharing();
     state.status = 'offline';
     emit();

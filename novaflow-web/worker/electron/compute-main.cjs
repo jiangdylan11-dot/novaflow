@@ -139,7 +139,35 @@ async function handleWarehouseLink(argv = []) {
   }
   return true;
 }
-async function quit() { quitting = true; await serial(stop).catch(() => {}); app.quit(); }
+// Quit always ends. An orderly stop gets QUIT_GRACE_MS; whatever is still waiting then (a task claim,
+// a runtime that no longer answers, the control plane) is cut off: this process tree and the image
+// runtime the assistant started are killed by a helper that outlives the assistant.
+const QUIT_GRACE_MS = 20000;
+let quitTimer = null;
+function forceQuit(reason) {
+  log('退出：' + reason + '，强制结束');
+  try {
+    const { forceQuitCommand } = require('../src/force-quit.cjs');
+    const { spawn } = require('node:child_process');
+    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', forceQuitCommand()], {
+      detached: true, stdio: 'ignore', windowsHide: true,
+      env: { ...process.env, FOART_QUIT_PID: String(process.pid), FOART_QUIT_RUNTIMES: path.join(dataDir, 'owned-runtimes.json') }
+    }).unref();
+  } catch (error) { log('退出：强制结束失败', { error: String(error.message || error) }); }
+  setTimeout(() => app.exit(0), 1500);
+}
+async function quit() {
+  // A second 退出 while the first is still waiting means "now".
+  if (quitting) { if (quitTimer) { clearTimeout(quitTimer); quitTimer = null; forceQuit('再次点击退出'); } return; }
+  quitting = true;
+  log('退出：开始关闭');
+  quitTimer = setTimeout(() => { quitTimer = null; forceQuit('关闭超过 ' + QUIT_GRACE_MS / 1000 + ' 秒'); }, QUIT_GRACE_MS);
+  await serial(stop).catch(error => log('退出：关闭出错', { error: String(error.message || error) }));
+  if (!quitTimer) return;
+  clearTimeout(quitTimer); quitTimer = null;
+  log('退出：已关闭');
+  app.quit();
+}
 function show() {
   if (!win || win.isDestroyed()) {
     win = new BrowserWindow({ width: 560, height: 480, resizable: false, maximizable: false, fullscreenable: false,

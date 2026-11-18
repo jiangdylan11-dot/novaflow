@@ -78,6 +78,29 @@ export async function createComputeAssistant(options) {
     try { await stopServices(); } catch (error) { errors.push(error); }
     if (errors.length) throw new AggregateError(errors, '节点停止未完成：' + errors.map(error => error.message).join('；'));
   };
+  // A runtime whose GPU context died (a display driver reset) keeps its process and its port but
+  // answers 500 to everything. The node then stays online with no image or video model and gets no
+  // work until someone restarts it. Only a runtime this assistant started is restarted; one it
+  // borrowed belongs to whoever started it.
+  let unhealthySince = 0, lastHealthCheckAt = 0;
+  const runtimeAnswers = options.runtimeAnswers || (async url => {
+    try { return (await fetch(url + '/system_stats', { signal: AbortSignal.timeout(4000) })).ok; } catch { return false; }
+  });
+  async function runtimeNeedsRestart() {
+    const mine = [...new Set(runtimes.filter(r => r.running && r.url && !r.reused).map(r => r.url))];
+    if (!mine.length || worker.getState().currentTaskId) { unhealthySince = 0; return false; }
+    if (Date.now() - lastHealthCheckAt < (options.runtimeHealthIntervalMs ?? 15000)) return false;
+    lastHealthCheckAt = Date.now();
+    for (const url of mine) {
+      if (await runtimeAnswers(url)) continue;
+      unhealthySince ||= Date.now();
+      if (Date.now() - unhealthySince < (options.runtimeUnhealthyMs ?? 60000)) return false;
+      unhealthySince = 0;
+      return true;
+    }
+    unhealthySince = 0;
+    return false;
+  }
   async function reconcile() {
     if (!desired || stopping) return;
     if (!authorized()) {
@@ -89,7 +112,14 @@ export async function createComputeAssistant(options) {
       emit();
       return;
     }
-    if (servicesRunning || Date.now() < nextRuntimeAttempt) return;
+    if (servicesRunning) {
+      if (!await runtimeNeedsRestart()) return;
+      options.logger?.('generation service has not answered for over a minute; restarting it');
+      try { await stopServices(); }
+      catch (error) { servicesRunning = false; runtimes = []; options.logger?.('generation service stop failed', { error: error.message }); }
+      await worker.reportModels().catch(() => {});
+    }
+    if (Date.now() < nextRuntimeAttempt) return;
     runtimeStarting = true;
     runtimeError = '';
     emit();
