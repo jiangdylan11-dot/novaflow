@@ -22287,6 +22287,8 @@
     return api.buildWorkflow({ ...options, objectInfo: info })
   }
 
+  // 界面上已经不用（2026-11-18 用户去掉了线路下拉框、添加对象和特殊要求）；多对象排队和补充要求的
+  // 逻辑留着，分离流程和它的测试仍然走这些状态，默认值就是「一个对象、默认线路、不带补充要求」
   function generativeSplitToolbarNodes() {
     const api = window.NovaFlowGenerativeSplitWorkflow
     return [
@@ -23931,7 +23933,7 @@
       if (!event) return
       event.stopPropagation()
     }
-    return h('div', { style: { width: '100%', height: '100%', minHeight: 0, display: 'grid', gridTemplateRows: isGenerativeSplit ? 'auto auto auto minmax(0, 1fr)' : isInpaint ? 'auto auto minmax(0, 1fr)' : 'auto minmax(0, 1fr)', gap: '10px', alignItems: 'center', justifyItems: 'center', padding: '12px', boxSizing: 'border-box' } }, [
+    return h('div', { style: { width: '100%', height: '100%', minHeight: 0, display: 'grid', gridTemplateRows: isGenerativeSplit || isInpaint ? 'auto auto minmax(0, 1fr)' : 'auto minmax(0, 1fr)', gap: '10px', alignItems: 'center', justifyItems: 'center', padding: '12px', boxSizing: 'border-box' } }, [
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
         effectToolAvailable ? button('\u7279\u6548', () => toggleSelectionEffectMode(), effectModeEnabled, {
           [TOOL_ACTION_ATTR]: 'selectionEffect',
@@ -23957,7 +23959,6 @@
           disabled: state.busy,
           style: { marginLeft: '2px' }
         }) : null,
-        ...(isGenerativeSplit ? generativeSplitToolbarNodes() : []),
         showInpaintNsfw ? button('破限', () => toggleSelectionInpaintNsfw(), inpaintNsfwEnabled, {
           [TOOL_ACTION_ATTR]: 'selectionNsfw',
           'data-novaflow-selection-inpaint-nsfw': inpaintNsfwEnabled ? 'on' : 'off',
@@ -24051,7 +24052,6 @@
           }
         })
       ]) : null,
-      isGenerativeSplit ? generativeSplitPromptFields() : null,
       h('div', Object.assign(splitCanvasPanHandlers(), { onwheel: handleSplitCanvasWheel, style: transparentEditCanvasStyle({ width: '100%', height: '100%', minHeight: 0, overflow: 'auto', borderRadius: '10px', border: '0', padding: '10px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: splitCanvasIdlePanCursor() }) }),
         h('div', { 'data-novaflow-split-canvas-art': '1', style: splitCanvasPanStyle({ position: 'relative', width: `${cssW}px`, height: `${cssH}px`, lineHeight: '0', flex: '0 0 auto' }) }, [
           ...selectionToolBackgroundNodes(size),
