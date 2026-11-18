@@ -1237,7 +1237,7 @@
     // the same service answers from one of them - as a prompt_assistant task whose
     // request is one uploaded JSON file and whose reply is one output file.
     try { return await pooledPromptAssistant(action, payload || {}, guard); }
-    catch (error) { return { ok: false, error: String(error.message || error) }; }
+    catch (error) { return { ok: false, error: String(error.message || error), ...(typeof error.code === 'string' ? { errorCode: error.code } : {}) }; }
   }
   async function qwenCandidatePayloadDigest(bytes) {
     if(!root.crypto?.subtle || typeof root.crypto.subtle.digest!=='function' || !bytes || !Number.isSafeInteger(bytes.byteLength))
@@ -1304,6 +1304,9 @@
     if(qwenUi && (!selectedNode || caps?.features?.qwen35UiDraft!==true || caps?.features?.qwen35UiOwnerLeaseBound!==true)) throw new Error('Qwen UI draft is not enabled for this owned node.');
     if (qwenBusiness && caps?.features?.qwen35BusinessTrial !== true) throw new Error('当前没有支持该功能的 Qwen 节点，任务未提交。');
     if (qwenTrial && !qwenPlan && caps?.features?.qwen35CpuTrial !== true) throw new Error('当前算力节点没有可用的 Qwen3.5 9B 本地服务，未提交任务');
+    // UI 拆图 asks a node to split confirmed boxes into complete layers; the caller crops the boxes itself when none can.
+    const uiLayerSplit = action==='reverse-image-prompt' && payload.surface==='ui-design' && payload.purpose==='ui-layer-split';
+    if (uiLayerSplit && (!type || !(type.available_workers > 0))) throw Object.assign(new Error('当前没有可用的拆图节点'), {code:'ui-split-node-unavailable'});
     if (!qwenImageEdit && !qwenTrial && !qwenBusiness && !qwenStyle && !qwenUi && !uiCpu && (!type || !(type.available_workers > 0))) throw new Error(action==='art-agent-chat'
       ? '当前算力节点没有就绪的小桃模型服务，请检查节点助手的模型状态；机器开机不代表模型服务已就绪'
       : PROMPT_ASSISTANT_REFUSAL + '：当前算力池没有带本地模型的节点');

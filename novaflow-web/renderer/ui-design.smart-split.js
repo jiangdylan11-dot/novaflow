@@ -367,7 +367,7 @@
         // The compute node cuts each confirmed box along its outline, fills what was hidden (plates under icons, the
         // scene behind the UI, characters behind plates) and redraws text as clean lettering. A node that does not
         // know this request answers without layers; then the boxes are cropped here as before.
-        let project = null
+        let project = null, unfilled = ''
         const api = root.electronAPI, regions = work.regions.filter(r => r.kind !== 'group').map(r => ({ id: r.id, name: r.name, kind: r.kind, box: r.box, parentId: r.parentId || '', ...(r.kind === 'text' && r.text ? { text: r.text } : {}) }))
         if (typeof api?.promptAssistantReverseImagePrompt === 'function' && regions.length) {
           message('正在拆分 ' + regions.length + ' 个区域并补全被遮挡的部分，约需几分钟…')
@@ -375,7 +375,11 @@
           if (!operationCurrent(next)) return
           const data = result?.data || result
           if (data?.visualSchema === 'nf.ui.layers.v1') project = core.projectFromNodeLayers(next.source, work, data)
-          else if (result?.ok === false && /拆图|分割|去除|图像服务|模型/.test(String(result.error || ''))) throw new Error(result.error)
+          // No node can take the request (or the one that got it cannot run it): the boxes are cropped here
+          // instead, and the user is told the result is not filled in. A split that started and failed is an error.
+          else if (result?.ok === false && (result.errorCode === 'ui-split-node-unavailable' || result.errorCode === 'flash-model-missing')) unfilled = '当前没有可用的拆图节点'
+          else if (result?.ok === false && /拆图|分割|去除|图像服务/.test(String(result.error || ''))) throw new Error(result.error)
+          if (unfilled) message(unfilled + '，改为按识别框直接裁切（未补全）…')
         }
         const filled = !!project
         if (!project) project = await core.extract(next.source, work, { document: doc, signal: next.controller.signal, cutout: (data, options) => bridge().extractUiObject(data, options), onProgress: ({ index, total, name }) => message('提取 ' + (index + 1) + '/' + total + '：' + name) })
@@ -383,7 +387,7 @@
         next.importing = true
         const imported = await bridge().importUiLayerProject(project, { name: 'UI 智能拆图', activate: true })
         store?.patchProject?.({ uiSmartSplitLast: { sourceResourceId: source.id, sourceSha256: source.sha256, regions: proposal.regions, extractedRegionIds: work.regions.map(r => r.id), manualActions, layerCount: project.layers.length, failures: project.uiSplitFailures, setId: imported.setId } })
-        opened = false; message('已拆出 ' + (project.layers.length - 1) + (filled ? ' 个图层，背景和被遮挡的部分已补全。' : ' 个区域，另保留未补全背景。') + (project.uiSplitFailures.length ? '失败区域：' + project.uiSplitFailures.map(f => f.name + '（' + f.error + '）').join('；') : '') + ' 图层可拖到下方参考区修复。', project.uiSplitFailures.length > 0)
+        opened = false; message((unfilled ? unfilled + '，已按识别框直接裁切（未补全）：' : '已') + '拆出 ' + (project.layers.length - 1) + (filled ? ' 个图层，背景和被遮挡的部分已补全。' : ' 个区域，另保留未补全背景。') + (project.uiSplitFailures.length ? '失败区域：' + project.uiSplitFailures.map(f => f.name + '（' + f.error + '）').join('；') : '') + ' 图层可拖到下方参考区修复。', project.uiSplitFailures.length > 0)
       } finally { finishOperation(next) }
     }
     overlay.addEventListener('wheel', event => {
