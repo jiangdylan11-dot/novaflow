@@ -50,3 +50,42 @@ test('light outside the mask keeps the chroma solution', () => {
   const [, , , a] = at(r, 8, 8);
   assert.ok(a > 0 && a < 255, `light stays translucent ${a}`);
 });
+
+// 2026-11-18 round 2 (Dylan: 光效衔接处被挖掉, 宝石不透明, 边缘净化变色). A cyan glow surrounds a
+// brown hand; the mask's soft edge reaches into the glow, and a glowing gem sits inside the mask.
+function glowClip() {
+  const W2 = 96, H2 = 96, data = new Uint8ClampedArray(W2 * H2 * 4), mask = new Uint8ClampedArray(W2 * H2);
+  const put = (x, y, rgb) => { const i = (y * W2 + x) * 4; data[i] = rgb[0]; data[i + 1] = rgb[1]; data[i + 2] = rgb[2]; data[i + 3] = 255; };
+  const mix = (a, b, t) => a.map((c, k) => Math.round(c * t + b[k] * (1 - t)));
+  for (let y = 0; y < H2; y++) for (let x = 0; x < W2; x++) {
+    const d = Math.hypot(x - 48, y - 48), glow = Math.max(0, 1 - Math.max(0, d - 20) / 18);
+    put(x, y, mix([120, 255, 245], SCREEN, glow * .8));
+  }
+  for (let y = 36; y < 60; y++) for (let x = 36; x < 60; x++) { put(x, y, [110, 70, 50]); mask[y * W2 + x] = 255; }
+  for (let y = 44; y < 52; y++) for (let x = 44; x < 52; x++) put(x, y, [140, 255, 250]);             // gem light
+  for (let y = 30; y < 66; y++) for (let x = 30; x < 66; x++) if (!mask[y * W2 + x]) mask[y * W2 + x] = 90; // soft edge into the glow
+  return { frame: { width: W2, height: H2, data }, mask, W2 };
+}
+const runGlow = (opts = {}) => { const c = glowClip(); return { c, r: api.matte(c.frame, { preserveShadow: true, subjectMask: { data: c.mask, width: c.W2, height: c.W2 }, requireSubjectMask: true, ...opts }) }; };
+
+test('glow touching the subject is not cut by the mask edge', () => {
+  const plain = runGlow({ sheerMaterial: true }), cut = runGlow();
+  // sheerMaterial skips the mask treatment: the glow solution there is the reference.
+  for (const [x, y] of [[33, 48], [48, 32], [62, 48]]) {
+    const p = y * 96 + x;
+    assert.ok(cut.r.alpha[p] >= plain.r.alpha[p] - 3, `glow at ${x},${y}: ${cut.r.alpha[p]} vs ${plain.r.alpha[p]}`);
+  }
+});
+
+test('a glowing gem inside the mask stays light, not an opaque block', () => {
+  const { r } = runGlow();
+  assert.ok(r.alpha[48 * 96 + 48] < 250, `gem alpha ${r.alpha[48 * 96 + 48]}`);
+});
+
+test('边缘净化 does not recolour the subject', () => {
+  const a = runGlow().r, b = runGlow({ cleanEdges: true }).r;
+  for (const [x, y] of [[37, 37], [58, 40], [40, 58]]) {
+    const i = (y * 96 + x) * 4;
+    for (let k = 0; k < 4; k++) assert.ok(Math.abs(a.data[i + k] - b.data[i + k]) <= 1, `subject ${x},${y} channel ${k}: ${a.data[i + k]} vs ${b.data[i + k]}`);
+  }
+});
