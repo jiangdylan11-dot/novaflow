@@ -84,3 +84,37 @@ test('边缘净化 does not recolour the subject', () => {
     for (let k = 0; k < 4; k++) assert.ok(Math.abs(a.data[i + k] - b.data[i + k]) <= 1, `subject ${x},${y} channel ${k}: ${a.data[i + k]} vs ${b.data[i + k]}`);
   }
 });
+
+// 2026-11-18 round 3, Dylan's green_win (gem held up, glow around the hands): screen lit by the
+// glow shows between the fingers, where the AI mask says "subject". It stayed an opaque block of
+// screen colour. Key-leaning subject at a substantial glow outside the mask is light as well.
+function heldGemClip(withGlow) {
+  const N = 120, data = new Uint8ClampedArray(N * N * 4), mask = new Uint8ClampedArray(N * N), BLUE_SCREEN = [0, 63, 241];
+  const put = (x, y, rgb) => { const i = (y * N + x) * 4; data[i] = rgb[0]; data[i + 1] = rgb[1]; data[i + 2] = rgb[2]; data[i + 3] = 255; };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const d = Math.hypot(x - 60, y - 40), glow = withGlow ? Math.max(0, 1 - d / 34) : 0;
+    put(x, y, BLUE_SCREEN.map((c, k) => Math.round(c + ([90, 230, 250][k] - c) * glow * .7)));
+  }
+  for (let y = 30; y < 110; y++) for (let x = 40; x < 80; x++) mask[y * N + x] = 255;           // mask covers hands and the gap
+  for (let y = 30; y < 110; y++) for (let x = 40; x < 80; x++) if (x < 54 || x >= 66 || y >= 60) put(x, y, [110, 80, 60]); // hands/arms, gap left lit
+  for (let y = 80; y < 90; y++) for (let x = 50; x < 70; x++) put(x, y, [30, 150, 235]);       // cyan-blue part of the subject, far from the glow
+  return { frame: { width: N, height: N, data }, mask, N };
+}
+const runGem = (withGlow, opts = {}) => { const c = heldGemClip(withGlow); return api.matte(c.frame, { preserveShadow: true, subjectMask: { data: c.mask, width: c.N, height: c.N }, requireSubjectMask: true, ...opts }); };
+
+test('lit screen between the hands follows the glow instead of staying an opaque block', () => {
+  const r = runGem(true), p = 45 * 120 + 60;
+  assert.ok(r.alpha[p] < 200, `gap alpha ${r.alpha[p]}`);
+  assert.equal(r.alpha[70 * 120 + 45], 255, 'hand stays opaque');
+  assert.equal(r.alpha[85 * 120 + 60], 255, 'key-leaning subject away from the glow stays opaque');
+});
+
+test('without a glow outside the mask, key-leaning subject is untouched', () => {
+  const r = runGem(false);
+  assert.equal(r.alpha[85 * 120 + 60], 255);
+});
+
+test('边缘净化 keeps the glow around the subject', () => {
+  const a = runGem(true), b = runGem(true, { cleanEdges: true });
+  for (const [x, y] of [[36, 40], [84, 40], [60, 22]]) { const p = y * 120 + x; assert.ok(b.alpha[p] >= a.alpha[p] - 3, `glow ${x},${y}: ${b.alpha[p]} vs ${a.alpha[p]}`); }
+});

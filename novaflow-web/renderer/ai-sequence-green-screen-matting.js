@@ -264,12 +264,14 @@
     const screen = { ...detected, kind };
     // 边缘净化 is a post-pass on the chroma result; off, every byte is unchanged.
     const polish = r => options.cleanEdges ? cleanEdges(frame, r, options) : r;
+    // The same frame without the AI mask (what 色键抠图 gives), for light the mask covers.
+    const plainOf = () => matteScreen(frame, { ...options, screen, subjectMask: null, requireSubjectMask: false, cleanEdges: false, preserveShadow: true });
     if ((kind === "black" || kind === "white") && options.requireSubjectMask && !options.subjectMask?.data) return null;
     if (kind === "black" || kind === "white") return finishShadow(frame, matteNeutral(frame, screen, options), options);
     if (kind === "green") {
       const refined = refineChromaMaterial(frame, matteGreen(frame, { ...options, screen }), options);
       const before = options.cleanEdges && refined ? { data: new Uint8ClampedArray(refined.data), alpha: new Uint8ClampedArray(refined.alpha) } : null;
-      return finishShadow(frame, subjectByMask(frame, polish(refined), options, before), options);
+      return finishShadow(frame, lightThroughSubject(frame, subjectByMask(frame, polish(refined), options, before), options, plainOf, before), options);
     }
     // Reuse the validated chroma/glow solution with blue and green exchanged.
     const swapped = new Uint8ClampedArray(frame.data);
@@ -281,7 +283,7 @@
     result.screen = screen;
     const refined = refineChromaMaterial(frame, result, options);
     const before = options.cleanEdges && refined ? { data: new Uint8ClampedArray(refined.data), alpha: new Uint8ClampedArray(refined.alpha) } : null;
-    return finishShadow(frame, subjectByMask(frame, polish(refined), options, before), options);
+    return finishShadow(frame, lightThroughSubject(frame, subjectByMask(frame, polish(refined), options, before), options, plainOf, before), options);
   }
 
   function nearestSeeds(seeds, w, h) {
@@ -1209,6 +1211,63 @@
         result.data[i + c] = Math.round(clamp((w * sa * v + (1 - w) * oa * result.data[i + c] / 255) / a) * 255);
       }
     }
+    return result;
+  }
+
+  // Light the AI mask covers. A glow around a gem held up in the hands continues between the
+  // fingers, where the mask says "subject": kept opaque it became a block of screen colour with
+  // notches around the hands. Light has spatial support, so the part of the subject that leans
+  // to the key and is connected to a substantial glow outside the mask is light too and takes
+  // the plain chroma solution (what 色键抠图 gives). 边缘净化 leaves that glow alone as well.
+  // Key-leaning subject colour with no glow next to it (a jade medallion, leaves) is untouched.
+  function lightThroughSubject(frame, result, options, plainOf, before = null) {
+    if (!result || options.sheerMaterial || !options.subjectMask?.data || !result.screen?.rgb) return result;
+    const { width: w, height: h, data } = frame, n = w * h;
+    const mask = subjectOpacity(options.subjectMask, w, h);
+    if (!mask) return result;
+    const screen = result.screen.rgb, key = result.screen.kind === "blue" ? 2 : 1, o1 = 0, o2 = key === 1 ? 2 : 1;
+    const bgDiff = Math.max(.1, (screen[key] - Math.max(screen[o1], screen[o2])) / 255);
+    const emits = (i) => Math.max(data[i + o1] - screen[o1], data[i + o2] - screen[o2]) > 10;
+    // Substantial glow outside the mask: survives a 3 px erosion (a 1-2 px fringe does not).
+    const stride = w + 1, glow = new Uint8Array(n), sum = new Int32Array(stride * (h + 1));
+    const integrate = (src) => { for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += src[y * w + x]; sum[(y + 1) * stride + x + 1] = row + sum[y * stride + x + 1]; } } };
+    const box = (x, y, r) => { const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1), y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+      return [sum[y1 * stride + x1] - sum[y0 * stride + x1] - sum[y1 * stride + x0] + sum[y0 * stride + x0], (x1 - x0) * (y1 - y0)]; };
+    let any = 0;
+    for (let p = 0, i = 0; p < n; p++, i += 4) if (mask[p] < .1 && (before || result).alpha[p] >= 6 && emits(i)) { glow[p] = (before || result).alpha[p] >= 20 ? 1 : 2; any++; }
+    if (any < 40) return result;
+    const strong = new Uint8Array(n); for (let p = 0; p < n; p++) strong[p] = glow[p] === 1 ? 1 : 0;
+    integrate(strong);
+    const core = new Uint8Array(n); let cores = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const [c, area] = box(x, y, 3); if (c === area) { core[y * w + x] = 1; cores++; } }
+    if (cores < 20) return result;
+    integrate(core);
+    // The glow's faint rim belongs to it: everything lit within reach of its thick part.
+    const reach = Math.max(12, Math.round(Math.min(w, h) / 20));
+    const lit = new Uint8Array(n), queue = new Int32Array(n); let tail = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const p = y * w + x; if (glow[p] && box(x, y, reach)[0] > 0) { lit[p] = 1; queue[tail++] = p; } }
+    const seeds = tail; let covered = 0;
+    const keyed = (q) => { const i = q * 4; return 1 - Math.max(0, data[i + key] / 255 - Math.max(data[i + o1], data[i + o2]) / 255) / bgDiff < .92; };
+    // The glow also shows where the hands close around it (screen between the fingers with no
+    // open path to the outside): key-leaning subject right at the glow starts as light too.
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const p = y * w + x;
+      if (!lit[p] && mask[p] >= .1 && keyed(p) && box(x, y, reach)[0] > 0) { lit[p] = 2; queue[tail++] = p; covered++; } }
+    // ...and spreads through connected key-leaning subject, but stays near the glow.
+    for (let head = 0; head < tail; head++) {
+      const p = queue[head], x = p % w;
+      for (const q of [p - 1, p + 1, p - w, p + w]) {
+        if (q < 0 || q >= n || lit[q] || (q === p - 1 && x === 0) || (q === p + 1 && x === w - 1) || mask[q] < .1) continue;
+        if (!keyed(q) || !(box(q % w, (q - q % w) / w, reach * 2)[0] > 0)) continue;
+        lit[q] = 2; queue[tail++] = q; covered++;
+      }
+    }
+    const take = (from, p) => { const i = p * 4; result.alpha[p] = from.alpha[p];
+      result.data[i] = from.data[i]; result.data[i + 1] = from.data[i + 1]; result.data[i + 2] = from.data[i + 2]; result.data[i + 3] = from.data[i + 3]; };
+    // The glow outside the mask as it was before 边缘净化 thinned it.
+    if (before) for (let k = 0; k < seeds; k++) take(before, queue[k]);
+    if (!covered) return result;
+    const plain = plainOf();
+    if (plain) for (let k = seeds; k < tail; k++) take(plain, queue[k]);
     return result;
   }
 
