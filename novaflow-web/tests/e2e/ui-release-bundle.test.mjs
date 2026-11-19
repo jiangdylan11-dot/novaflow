@@ -77,7 +77,9 @@ test('actual emitted smart split registers and mounts its visible UI panel', asy
   const mounted = context.NovaFlowUiSmartSplit.mount({leftHost:host,store:{}});
   const panel = host.children.find(node => node.getAttribute('data-novaflow-ui-smart-split') === '1');
   assert.ok(panel && panel.isConnected); assert.equal(panel.style.display, '');
-  assert.equal(typeof mounted.recognize, 'function'); assert.equal(typeof mounted.refine, 'function');
+  assert.equal(panel.children.length, 1); assert.equal(panel.children[0].disabled, true);
+  assert.match(panel.children[0].textContent, /暂时停用/);
+  assert.equal(mounted.recognize, undefined); assert.equal(mounted.refine, undefined);
   mounted.destroy(); assert.equal(host.children.includes(panel), false);
 });
 

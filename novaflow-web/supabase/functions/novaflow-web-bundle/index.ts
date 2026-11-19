@@ -44,7 +44,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.410";
+const RELEASE_VERSION = "2.0.411";
 
 // ===== xiaotao-memory.mjs ============================================
 // GENERATED COPY - do not edit here.
@@ -1358,6 +1358,8 @@ function runtimeFor(modelId) {
 // Source: packages/shared/src/control-plane.mjs
 // Regenerate with: npm run sync:edge
 
+
+
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -1379,11 +1381,22 @@ function runtimeFor(modelId) {
 //   * Credits are computed here from validated parameters and settled here.
 //     The worker reports success/failure and execution metadata, nothing else.
 
+
+
+
+
+
+
+
+
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 12000;
 const UI_CPU_CAPABILITY = 'foart-ui-cpu-compiler-v1';
 const UI_LAYER_SPLIT_CAPABILITY = 'foart-ui-layer-atlas-v1';
 const UI_LAYER_SPLIT_SCOPE = 'layer-split-v1';
+function rejectPausedUiSplit() {
+  throw new HttpError(503, 'ui-split-paused', 'UI 拆图暂时停用，待新版验收后开放。');
+}
 const QWEN21_NATIVE_REWRITE_V3_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-native-rewrite-v3';
 const QWEN_PLAN_SCOPE = 'qwen-foart-plan-v1';
 const QWEN_PLAN_CAPABILITY = 'qwen3.5-9b-heretic-foart-plan-v1';
@@ -1421,6 +1434,8 @@ function randomChunk() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
+
+
 // ---------------------------------------------------------------------------
 // Parameter validation. Everything a browser sends is clamped to a range we
 // are willing to run; nothing is passed through to a workflow unexamined.
@@ -1428,6 +1443,8 @@ function randomChunk() {
 function sanitizeText(value, max) {
   return String(value == null ? '' : value).slice(0, max);
 }
+
+
 
 function validateTaskParameters(taskType, raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -1538,7 +1555,7 @@ function validateTaskParameters(taskType, raw) {
         if (Object.hasOwn(input,'uiScope') || action !== 'reverse-image-prompt' ||
             hasScope || Object.hasOwn(input,'assistant_model_id') || Object.hasOwn(input,'assistantModelId') ||
             Object.hasOwn(input,'model_id') || Object.hasOwn(input,'modelId')) throw bad('invalid UI layer split scope');
-        return {action,ui_scope:UI_LAYER_SPLIT_SCOPE,model_id:UI_LAYER_SPLIT_CAPABILITY,references:cleanRefs};
+        rejectPausedUiSplit();
       }
       if (input.ui_scope !== 'cpu-v1' || Object.hasOwn(input,'uiScope') || action !== 'reverse-image-prompt' ||
           hasScope || Object.hasOwn(input,'assistant_model_id') || Object.hasOwn(input,'assistantModelId') ||
@@ -1610,6 +1627,7 @@ function validateTaskParameters(taskType, raw) {
 
   throw bad('unsupported task type: ' + String(taskType));
 }
+
 
 // ---------------------------------------------------------------------------
 // Renderer-workflow options.
@@ -2626,6 +2644,8 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
   // -------------------------------------------------------------------------
 
   async function handleCreateTask(body, headers) {
+    if ((body.task_type || body.taskType) === PROMPT_ASSISTANT_TASK_TYPE &&
+        body.parameters?.ui_scope === UI_LAYER_SPLIT_SCOPE) rejectPausedUiSplit();
     const user = await requireUser(headers);
     const taskType = sanitizeText(body.task_type || body.taskType, 80);
     const assistantTaskId = body.assistant_task_id;
@@ -3363,10 +3383,6 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
     const qwen35BusinessTrial = user ? await store.countCapableWorkers(PROMPT_ASSISTANT_QWEN_BUSINESS_CAPABILITY, 0,
       HEARTBEAT_TIMEOUT_SECONDS, workerId, canUsePremiumNodes(user.plan), user.id,
       canUseSharedCompute(user.plan)).catch(() => 0) : 0;
-    // UI 拆图 completes layers on a node that reported it can; the page crops the boxes itself otherwise.
-    const uiLayerSplit = user ? await store.countCapableWorkers(UI_LAYER_SPLIT_CAPABILITY, 0,
-      HEARTBEAT_TIMEOUT_SECONDS, workerId, canUsePremiumNodes(user.plan), user.id,
-      canUseSharedCompute(user.plan)).catch(() => 0) : 0;
     let qwen21NativeRewriteV3=false;
     if(user && workerId && typeof store.getWorkerById==='function') {
       const node=await store.getWorkerById(workerId).catch(()=>null);
@@ -3427,7 +3443,7 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
         qwen21LocalImageEdit:qwenImageEditReady,qwen21LocalImageEditOwnerLeaseBound:qwenImageEditReady,
         qwen35FoartRotationCandidate:qwenRotationReady,qwen35FoartRotationOwnerLeaseBound:qwenRotationReady,
         qwen35UiDraft: false, qwen35UiOwnerLeaseBound: false,
-        uiLayerSplit: Number(uiLayerSplit) > 0, uiLayerSplitWorkers: Number(uiLayerSplit) || 0,
+        uiLayerSplit: false, uiLayerSplitWorkers: 0, uiLayerSplitStatus: 'paused',
         h3CreateOnce:h3CreateOnceEnabled===true && typeof store.createH3TaskOnce==='function' && typeof store.countH3CapableWorkers==='function' },
       models: MODEL_MANIFEST.map((m) => ({
         model_id: m.model_id,
@@ -3607,6 +3623,7 @@ function createControlPlane({ store, secrets, logger=()=>{}, companion=null, qwe
         }
       }
       if(method==='POST'&&path==='/api/web/companion/operation/prepare'){
+        if (body?.intent?.mode === 'style-analysis' && body.intent.kind === 'ui-layers') rejectPausedUiSplit();
         // Disabled unless a server-owned handler is explicitly injected. This
         // is not wired to v2 or to a provider and never enables paid traffic.
         const operationHeaders={authorization:String(headers.authorization || headers.Authorization || '')};

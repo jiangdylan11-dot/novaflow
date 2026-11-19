@@ -1,16 +1,13 @@
-// UI 拆图 → 确认拆图 on the website.
-// A node that reported the split capability gets the request as its own kind of task; when no node can take
-// it, the page crops the confirmed boxes itself and says the result is not filled in.
+// Old website clients must not enqueue splits or begin paid UI recognition during the pause.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createContext, runInContext } from 'node:vm';
 import { createControlPlane, validateTaskParameters } from '../packages/shared/src/control-plane.mjs';
-import { validatePromptAssistantModelRoute, UI_LAYER_SPLIT_CAPABILITY, UI_LAYER_SPLIT_SCOPE, UI_CPU_CAPABILITY } from '../worker/src/worker-core.mjs';
+import { UI_LAYER_SPLIT_CAPABILITY, UI_LAYER_SPLIT_SCOPE } from '../worker/src/worker-core.mjs';
 
 const runtime = await readFile(new URL('../renderer/novaflow-web-runtime.js', import.meta.url), 'utf8');
-const panel = await readFile(new URL('../renderer/ui-design.smart-split.js', import.meta.url), 'utf8');
 const begin = runtime.indexOf('  async function localPromptAssistant('), end = runtime.indexOf('  async function pooledPromptStatus(', begin);
 assert.ok(begin > 0 && end > begin);
 const userId = '22222222-2222-4222-8222-222222222222', secret = 'synthetic-session-secret';
@@ -37,43 +34,23 @@ function harness({ nodes = 0, reply = { ok: true, data: layers } } = {}) {
   return { run: ctx.run, created, counted, getUpload: () => upload };
 }
 
-test('a node that reported the split capability gets 确认拆图 as its own task', async () => {
-  const h = harness({ nodes: 1 }), result = await h.run('reverse-image-prompt', splitRequest);
-  assert.equal(result.ok, true);
-  assert.equal(result.data.visualSchema, 'nf.ui.layers.v1');
-  assert.equal(h.created.length, 1);
-  const entry = h.created[0], params = entry.inputManifest.parameters;
-  assert.equal(entry.taskType, 'prompt_assistant');
-  assert.equal(entry.modelId, UI_LAYER_SPLIT_CAPABILITY, 'only a node that reported the capability is given the task');
-  assert.equal(params.ui_scope, UI_LAYER_SPLIT_SCOPE);
-  assert.equal(params.model_id, UI_LAYER_SPLIT_CAPABILITY);
-  assert.deepEqual(h.getUpload().regions, splitRequest.regions, 'the confirmed boxes reach the node unchanged');
-  // The node accepts exactly this pairing of task and uploaded request, and nothing else under the scope.
-  const task = { model_id: entry.modelId, parameters: params };
-  assert.doesNotThrow(() => validatePromptAssistantModelRoute(task, h.getUpload()));
-  assert.throws(() => validatePromptAssistantModelRoute(task, { ...h.getUpload(), purpose: 'ui-layer-proposal' }));
-  assert.throws(() => validatePromptAssistantModelRoute(task, { surface: 'ui-design', uiPlanner: 'grok-vision-cpu-v1', action: 'capabilities' }));
-  assert.throws(() => validatePromptAssistantModelRoute({ model_id: UI_CPU_CAPABILITY, parameters: params }, h.getUpload()));
-});
-
-test('the server names the capability itself and refuses a caller that tries to', () => {
-  const refs = [{ name: 'request.json', kind: 'json', bytes: 10 }];
-  const clean = validateTaskParameters('prompt_assistant', { action: 'reverse-image-prompt', ui_scope: UI_LAYER_SPLIT_SCOPE, references: refs });
-  assert.equal(clean.model_id, UI_LAYER_SPLIT_CAPABILITY);
-  assert.equal(clean.ui_scope, UI_LAYER_SPLIT_SCOPE);
-  assert.throws(() => validateTaskParameters('prompt_assistant', { action: 'reverse-image-prompt', ui_scope: UI_LAYER_SPLIT_SCOPE, model_id: 'qwen3.5-9b-heretic', references: refs }));
-  assert.throws(() => validateTaskParameters('prompt_assistant', { action: 'optimize-prompt', ui_scope: UI_LAYER_SPLIT_SCOPE, references: refs }));
-  assert.throws(() => validateTaskParameters('prompt_assistant', { action: 'reverse-image-prompt', ui_scope: 'layer-split-v2', references: refs }));
-});
-
-test('with no node able to take it, 确认拆图 gets a marked refusal and creates no task', async () => {
-  const h = harness({ nodes: 0 }), result = await h.run('reverse-image-prompt', splitRequest);
-  assert.equal(result.ok, false);
-  assert.equal(result.errorCode, 'ui-split-node-unavailable');
-  assert.equal(result.error, '当前没有可用的拆图节点');
-  assert.doesNotMatch(result.error, /提示词助手/, 'a split never talks about the prompt assistant');
+test('a cached request is refused before a task is created even when a split worker is online', async () => {
+  const h = harness({ nodes: 1 });
+  const response = await h.run('reverse-image-prompt', splitRequest);
+  assert.equal(response.ok, false);
   assert.equal(h.created.length, 0);
-  assert.ok(h.counted.includes(UI_LAYER_SPLIT_CAPABILITY), 'the page asked the server how many nodes can split');
+  assert.equal(h.getUpload(), undefined);
+  const plane = createControlPlane({ store: {}, secrets: {sessionSecret: secret} });
+  for (const [path, body] of [
+    ['/api/web/tasks', {task_type:'prompt_assistant',parameters:{ui_scope:UI_LAYER_SPLIT_SCOPE}}],
+    ['/api/web/companion/operation/prepare', {intent:{mode:'style-analysis',kind:'ui-layers'}}]
+  ]) {
+    const result = await plane.handle({method:'POST', path, headers, body});
+    assert.equal(result.status, 503);
+    assert.equal(result.body.code, 'ui-split-paused');
+  }
+  assert.throws(() => validateTaskParameters('prompt_assistant', {action:'reverse-image-prompt',
+    ui_scope:UI_LAYER_SPLIT_SCOPE,references:[{name:'request.json',kind:'json',bytes:10}]}), /暂时停用/);
 });
 
 test('other prompt requests keep their own refusal', async () => {
@@ -81,11 +58,4 @@ test('other prompt requests keep their own refusal', async () => {
   assert.equal(result.ok, false);
   assert.equal(result.errorCode, undefined);
   assert.match(result.error, /提示词助手在 Web 版通过智能 AI 提供/);
-});
-
-test('a failed or legacy split preserves the editable proposal', () => {
-  const split = panel.slice(panel.indexOf('async function split()'), panel.indexOf("overlay.addEventListener('wheel'"));
-  assert.doesNotMatch(split, /core\.extract\(/);
-  assert.match(split, /result\?\.ok === false\) throw new Error/);
-  assert.ok(split.indexOf("data?.method !== 'qwen21-rgba-atlas-v1'") < split.indexOf('importUiLayerProject(project'));
 });
