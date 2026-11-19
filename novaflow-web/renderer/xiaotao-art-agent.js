@@ -312,6 +312,21 @@
   }
 
   const pageLimitQuestion=(op,count)=>op?.generationMode==='img2img'&&count>3?'一次最多用 3 张参考图，现在有 '+count+' 张。请告诉我用哪 3 张。':'';
+  // Taking things out of a picture ("把这张图的UI和人物去掉，只保留背景"): the edit model is told exactly that, in the
+  // words 去除物体 uses, instead of a prompt rewritten into a description of the picture. Rewritten, "remove" became a
+  // new scene: three of five pictures came back as fresh landscapes with the person still in them (live 2.0.407).
+  function removalInstruction(message){
+    const text=String(message||'').replace(/^(?:对这张图：)?用[^，,。]{0,12}(?:模型|线路)[，,]?\s*/,'');
+    const hit=/(?:去掉|去除|移除|删掉|删除|抹掉|擦掉|清除)(?:掉)?(?:这张图|图片|画面|图)?(?:的|里的|上的|中的|前面的|前景的?)?\s*([^，,。；;！!]{1,24}?)(?:都|全部|统统)?(?:去掉|去除|删掉)?\s*(?:[，,。；;！!]|只|$)/.exec(text)
+      ||/([^，,。；;！!把]{1,24}?)(?:都|全部)?(?:去掉|去除|删掉|删除|抹掉|擦掉)/.exec(text.replace(/^.*?把(?:这张图|图片|画面|图)?(?:的|里的|上的|中的)?/,''));
+    const what=hit?.[1]?.replace(/^(?:这张图|图片|画面|图)(?:的|里的|上的|中的)?/,'').replace(/[都全部]+$/,'').trim();
+    if(!what||/^背景$/.test(what))return '';
+    const keepBackground=/只(?:保留|留下?)(?:背景|场景)/.test(text),person=/人物|人|角色/.test(what);
+    // Named plainly, a person was kept (live: UI gone, the girl and the explorer still standing); spelled out with its
+    // shadow and "no person may remain", both were removed with the background intact.
+    const spelled=what.replace(/人物|角色|人(?!物)/,'人物角色（整个人连同影子）').replace(/UI|界面/,'所有UI界面元素（按钮、文字、图标、数值栏）');
+    return '去掉画面中的'+spelled+'，补全被它们挡住的背景'+(keepBackground?'，只保留背景':'')+'；'+(person?'画面里不能再有任何人物，':'')+'背景原有的颜色、光线和构图保持不变，不要新增任何东西。';
+  }
   // Internal check wording is no use to the person at the keyboard.
   function plainFoartError(error){
     const text=String(error?.message||error);
@@ -2258,6 +2273,58 @@
       if(job.stage==='ask'){folderJob=null;folderAskDone();}
       return null;
     }
+    // Writes into the drawing page's own prompt box the way typing does, so the page's run takes it as the person's words.
+    function typeDrawingPrompt(text){
+      const rt=root.__NovaFlowArtGenerate;
+      const box=Array.from(root.document?.querySelectorAll?.('[data-novaflow-art-drawing-host="1"] textarea, #novaflow-art-generate-workspace textarea')||[]).find(el=>!/反向/.test(el.placeholder||''));
+      const setter=box&&Object.getOwnPropertyDescriptor(root.HTMLTextAreaElement?.prototype||{},'value')?.set;
+      if(!setter||!rt?.state)return false;
+      setter.call(box,text);box.dispatchEvent(new root.Event('input',{bubbles:true}));
+      return String(rt.state.prompt||'').trim()===text;
+    }
+    // Several pictures, each to have things taken out: no planning round per picture. Each one goes alone into the drawing
+    // page's 图生图 slot with the removal instruction and the page's selected line runs it (live: 20-25 s a picture,
+    // against 60-90 s with a planning round that sometimes reached for 局部编辑 and painted a new scene).
+    async function removalBatch(items,steps,name){
+      const tools=root.NovaFlowFoartTools,rt=()=>root.__NovaFlowArtGenerate;
+      try{await tools?.execute?.({action:'open',surface:'drawing'},{snapshot:tools.capture()});}catch{}
+      for(let i=0;i<40&&rt()?.captureContext?.().generationSurface!=='drawing';i++)await new Promise(done=>root.setTimeout(done,100));
+      if(rt()?.captureContext?.().generationSurface!=='drawing'||typeof rt().setReference!=='function')return null;
+      const job={stop:false,stage:'run',name,items};folderJob=job;
+      const progress={role:'status',content:''};state.messages.push(progress);
+      const done=[],skipped=[];let why='';
+      for(const [index,item] of items.entries()){
+        if(job.stop||retired||folderJob!==job)break;
+        progress.content='正在处理 '+(index+1)+'/'+items.length+'：'+item.name;state.status=progress.content;notify();
+        try{
+          const page=rt();let dataUrl=await readPreview(item.file),previous=null;
+          for(const instruction of steps){
+            if(page.state.mode!=='img2img')page.setMode('img2img');
+            Array.from(page.references?.()||[]).forEach((ref,at)=>{if(ref)page.setReference(at,null);});
+            const size=await new Promise(ok=>{const image=new root.Image();image.onload=()=>ok({w:image.naturalWidth,h:image.naturalHeight});image.onerror=()=>ok({});image.src=dataUrl;});
+            page.setReference(0,{dataUrl,name:item.name,fileName:item.name,...size,width:size.w,height:size.h,drawingRole:'subject'});page.refreshReferences?.();page.render?.();
+            await new Promise(ok=>root.setTimeout(ok,600));
+            if(!typeDrawingPrompt(instruction))throw Error('绘图输入框没有准备好');
+            const before=new Set(Array.from(page.state.results||[],row=>row?.id));
+            await page.run();
+            if(page.state.error)throw Error(page.state.error);
+            const fresh=Array.from(page.state.results||[]).filter(row=>row&&!before.has(row.id));
+            if(!fresh.length)throw Error('没有拿到结果');
+            // Only the finished picture stays in the results; the in-between one is the next pass's input.
+            if(previous){const at=page.state.results.indexOf(previous);if(at>=0){page.state.results.splice(at,1);page.render?.();}}
+            previous=fresh[0];dataUrl=fresh[0].imageUrl;
+            if(job.stop||retired)break;
+          }
+          done.push(item.name);
+        }catch(error){skipped.push(item.name);why=why||plainFoartError(error);}
+      }
+      if(folderJob===job)folderJob=null;
+      const at=state.messages.indexOf(progress);if(at>=0)state.messages.splice(at,1);
+      const line=root.NovaFlowArtGenerateModels?.providerTitle?.(rt()?.state?.provider,rt()?.state)||(rt()?.state?.provider==='local'?'Qwen（本地）':'当前绘图线路');
+      state.status='';
+      return folderSay('「'+name+'」'+(done.length?'做完了 '+done.length+' 张':'没有做成')+(skipped.length?'，'+skipped.length+' 张没做成：'+skipped.join('、')+(why?'（'+why.replace(/[。.]$/,'')+'）':''):'')
+        +(job.stop?'，已按你的要求停下':'')+'。用的是 '+line+'，结果在绘图页面的结果里。');
+    }
     // Several pictures with one instruction for each of them ("分别把这5张图的UI和人物都去掉"): each picture is its own job,
     // made one after another with only that picture, through the same queue a folder uses. It is not one generation
     // with five references (live 2.0.407: "一次最多用 3 张参考图，请告诉我用哪 3 张", then one job carrying two pictures).
@@ -2285,9 +2352,11 @@
       if(staged.length)carryAttachments=staged.map(item=>({name:item.name,kind:'image',dataUrl:item.previewUrl,mimeType:item.mimeType}));
       pushUser(said);
       const instruction=eachPictureInstruction(message);
-      folderJob={name:'这 '+items.length+' 张图',items,left:0,kinds:['image'],instruction:()=>instruction,stage:'run'};
       lastUploads=[];lastPreparedTask='';
       state.messages.push({role:'assistant',content:'好的，这 '+items.length+' 张图我一张一张做，每张只用它自己。'});notify();
+      const removal=removalInstruction(instruction),people=removal&&/人物角色/.test(removal)?removalInstruction('去掉人物'):'';
+      if(removal){releasePreviews(state.staged);state.staged=[];const made=await removalBatch(items,[removal,...(people&&people!==removal?[people]:[])],'这 '+items.length+' 张图');if(made!==null)return made;}
+      folderJob={name:'这 '+items.length+' 张图',items,left:0,kinds:['image'],instruction:()=>instruction,stage:'run'};
       return folderRun(folderJob);
     }
     // The 「打开文件夹」 button: runs inside the click, which is what lets the browser show its prompt.
@@ -3134,7 +3203,9 @@
       const prompt=String(op.prompt||'').trim()||(info.pagePrompt.trim()!==turnStalePrompt?info.pagePrompt.trim():'')||message;
       // "好，生成吧" after the prompt was written: that text goes out untouched.
       const ready=asIs&&op.action==='image_generate'&&!!info.pagePrompt.trim();
-      const ok=ready||await prepareOnlineCurrentDrawingPrompt(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,plannerBrief:!!String(op.prompt||'').trim(),requirements:message,...workspace}});
+      const removal=!ready&&op.action==='image_generate'&&rt?.state?.mode==='img2img'?removalInstruction(message):'';
+      const typed=removal?typeDrawingPrompt(removal):false;
+      const ok=ready||typed||await prepareOnlineCurrentDrawingPrompt(message,{recordMessage:false,source:{status:'ready',source:'conversation',prompt,plannerBrief:!!String(op.prompt||'').trim(),requirements:message,...workspace}});
       state.pending=true;
       if(!ok)throw Error(state.error||'提示词优化未完成');
       if(op.action!=='image_generate')return {action:op.action,phase:'applied',plannerPrompt:true,prompt:String(rt?.state?.prompt||''),message:'提示词已优化并写入绘图输入框。'};
