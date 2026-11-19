@@ -128,8 +128,10 @@
   function acceptsKind(destination, kind) {
     return Boolean(destination && destination.accepts.includes(kind));
   }
+  const DRAW_PICTURE=/(?:^|[，,。！!；;\s]|帮我|给我|请|再|来|就)画(?![面风质布板廊])/;
   function question(text) {
-    return /[?？]|吗[。！!]?\s*$/.test(text);
+    // "这张图里有什么" is a question too (live: a picture brought with it was made into a video on the video page).
+    return /[?？]|吗[。！!]?\s*$|(?:里|上|中)(?:面|边)?(?:有|是)(?:什么|啥|哪些)|(?:画|拍|写)的(?:是)?(?:什么|啥)|这是(?:什么|啥|谁)/.test(text);
   }
   // "放进参考图" names the drawing reference slot unless a video was named.
   // "@参考图1" is a picture's label, not a place: "做一个1秒动画，@参考图1变成@参考图2" asks for a video
@@ -196,6 +198,9 @@
   }
   // Words that carry no request of their own: a greeting, thanks, a bare "好的".
   function smallTalk(message){
+    const said=String(message||'').trim();
+    if(/^(?:你|小桃)?(?:能|会|可以)(?:做|干|帮我做)?(?:什么|啥|哪些)|^你是谁|有(?:什么|哪些)功能|能帮我(?:做)?(?:什么|啥)/.test(said)&&said.length<=20)return true;
+    if(/^(?:好的?|可以|行|嗯+|ok)[，,。.!！\s]*(?:谢谢|多谢|感谢|辛苦了?)[\s，,。.!！~～啊呀]*$/i.test(said))return true;
     return /^(?:你好|您好|嗨|哈喽|在吗|hi|hello|谢谢|多谢|感谢|辛苦了?|好的?|好吧|好哒|行|可以|嗯+|哦+|噢|ok|okay|收到|明白了?|知道了|了解|不错|挺好的?|很好|厉害|真棒|太棒了|哈+|再见|拜拜|晚安)[\s，,。.!！~～啊呀哦呢吧]*$/i.test(String(message||'').trim());
   }
   // "开始吧 / 继续 / 就按这个来": go ahead with what is already prepared. `strong` ones name the doing;
@@ -225,7 +230,9 @@
     const animationExport=/导出/.test(positive)&&(/骨骼动画|Spine|(?:当前|现有|这个|idle).{0,8}动画/i.test(positive)||previousSurface==='animation'&&!/美工|图层|画布|图片|UI设计|PNG压缩|JPG压缩|工具版块|音视|视频(?:版块|编辑|剪辑)|首尾帧|多参|图生视频|文生视频/.test(positive));
     const animationAuthoring=animationExport||/骨骼|蒙皮|权重|关键帧|\broot\b|(?:动画|Spine).{0,8}(?:工程|版块|模块)|Spine\s*编辑/i.test(positiveTaskText(text))&&!/视频|音视|音频|音效|首尾帧|图生|文生|多参/.test(positiveTaskText(text));
     const artTool=/美工|图层|画布扩展|姿势参考|智能补图|局部编辑|去背|UI设计/.test(positive)&&!/视频|音频|音效|音乐/.test(positive);
-    const imageEdit = artTool||drawingReferenceRequest(positive)||/换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(positive);
+    const imageEdit = artTool||drawingReferenceRequest(positive)||/换.{0,5}背景|背景.{0,5}(?:换|改)|(?:修改|更换|替换|改变|去掉|去除|移除).{0,8}(?:背景|画风|颜色|服装)|抠图|重绘|修图|图生图/.test(positive)
+      // Taking things out of a picture is a picture edit wherever the person is (live 2.0.407: "去掉UI和人物，只保留背景").
+      ||/(?:去掉|去除|移除|删掉|删除|抹掉|擦掉|清除).{0,12}(?:人物|人|角色|UI|界面|按钮|文字|字|水印|logo|LOGO|物体|东西|前景)|只(?:保留|留下?)(?:背景|场景)|(?:人物|人|角色|UI|界面|按钮|文字|水印|logo|LOGO|物体|前景).{0,4}(?:去掉|去除|删掉|删除|抹掉|擦掉)/.test(positive);
     const video = VIDEO_OUTPUT.test(positive);
     const audio = /音频|音效|音乐|配乐|音轨|声音|人声|降噪/.test(positive);
     // Writing a video prompt without generating still uses the attached pictures.
@@ -233,7 +240,7 @@
     // A picture brought with "换成这张再做一个" names no kind of work: in the middle of a video task, or on the video page,
     // it is material for the video; only elsewhere is it a picture to edit (live 2.0.376: it went to the drawing page).
     const pictureWork=previousSurface==='video'||!previous&&page?.surface==='video'?'video':'image';
-    let surface = imageEdit && !/视频|片段/.test(positive) ? 'image' : audio&&!/视频|动画|动效|动态|首尾帧|多参/.test(positive)?'audio':video ? 'video' : audio ? 'audio'
+    let surface = imageEdit && !/视频|片段/.test(positive) ? 'image' : DRAW_PICTURE.test(positive)&&!VIDEO_OUTPUT.test(positive)&&!audio ? 'image' : audio&&!/视频|动画|动效|动态|首尾帧|多参/.test(positive)?'audio':video ? 'video' : audio ? 'audio'
       : /生图|出图|做图|画图|绘图|静态图|海报|插画|(?:画|做|生成|制作|设计).{0,8}(?:图片|一张图|张图)/.test(positive) ? 'image' : kinds.includes('image') && /换|改|加|做|生成|制作|设计|变成/.test(positive) ? pictureWork : 'chat';
     if(imageEdit&&!video&&!audio&&/调用|请|帮我|换|改|抠图|去背|拆图|放大|扩图|裁切|导出/.test(positive)&&!question(text)&&!/怎么|如何|为什么|能否|是否|(?:只|仅).{0,8}(?:分析|看看|方案|讨论|解释)|(?:不要|不用|别|先不|暂不|不)执行/.test(text))discussion=false;
     if(animationAuthoring)surface='animation';
@@ -245,7 +252,7 @@
     if(fromPage)surface=page.surface;
     const newTask=/新建|新的任务|另一个任务|另外做|重新开始|不要原来|独立制作/.test(text);
     const feedback=missedResult||/不符合|不满意|性格|凶悍|凶一点|需要|重新做|重做|换|改|调整|优化|提示词|表情|动作|呲牙|龇牙|刚才|这个|再来|继续|导出|还是|不对|效果|更.{0,8}(?:点|一些|一点)/.test(text);
-    const explicitImage=artTool||/图生图|生图|出图|静态图|(?:画|生成|制作).{0,5}(?:一张|图片|张图)/.test(positive);
+    const explicitImage=artTool||DRAW_PICTURE.test(positive)&&!VIDEO_OUTPUT.test(positive)||/图生图|生图|出图|静态图|(?:画|生成|制作).{0,5}(?:一张|图片|张图)/.test(positive);
     const explicitVideo=!animationAuthoring&&/视频|动画|动效|动态/.test(positive)&&!(previousSurface==='animation'&&!/视频|首尾帧|多参|图生|文生/.test(positiveTaskText(text)));
     // "把音频1换成这个" inside a 多参 task swaps a slot; it is not a new audio job.
     const swapsMaterial=previousSurface==='video'&&previous?.mode==='multi_reference'&&/(?:图|视频|音频)\s*[1-9].{0,6}(?:换|替换|改用)|(?:换|替换).{0,6}(?:图|视频|音频)\s*[1-9]/.test(positive);

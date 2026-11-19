@@ -978,7 +978,7 @@
     let currentSubject = null;
     const imageRunPlans = new WeakMap();
     let turnPlacements = [];
-    let stagedSeq = 0, deferredDrawing = [], carryAttachments = null, carryAsk = null, carryMemory = null, lastUploads = [], lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
+    let stagedSeq = 0, deferredDrawing = [], carryAttachments = null, carryAsk = null, carryMemory = null, lastUploads = [], lastUploadsRequest='', lastPreparedTask='', pendingIntent=null, pendingPromptSource=null;
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
     const communityUploads = () => communityAttachmentMetadata(state.modelId,state.staged,lastUploads);
     // Read only the active surface's current prompt. A source-choice question
@@ -1075,7 +1075,23 @@
     let turnReading=null;
     // Measured on the live models with the 49 understanding cases (2026-11-17): rules 40, DeepSeek 49, 豆包 49.
     // localStorage foart.xiaotao.brain-reads = 0 switches it off for a comparison run.
-    const brainReadsTurn=()=>{try{return !!root.FoartXiaotaoIntent&&root.localStorage?.getItem('foart.xiaotao.brain-reads')!=='0';}catch{return !!root.FoartXiaotaoIntent;}};
+    // Off (2026-11-19, Dylan): a separate model call before every sentence doubled the wait and is no answer for a free
+    // or local brain. The chosen model understands and acts in its one call; localStorage foart.xiaotao.brain-reads = 1
+    // turns the separate reading back on for a comparison run.
+    const brainReadsTurn=()=>{try{return !!root.FoartXiaotaoIntent&&root.localStorage?.getItem('foart.xiaotao.brain-reads')==='1';}catch{return false;}};
+    // The reading only needs to see what is in a picture, not its pixels: the full file went up three times per reading
+    // (quote, prepare, execute), which is what kept "小桃正在理解这句话…" on screen (live 2.0.407, phone-size PNGs).
+    async function readerThumb(dataUrl){
+      if(typeof root.Image!=='function'||!root.document?.createElement||!/^data:image\//.test(String(dataUrl)))return dataUrl;
+      try{
+        const image=await new Promise((done,fail)=>{const img=new root.Image();img.onload=()=>done(img);img.onerror=fail;img.src=dataUrl;});
+        const scale=Math.min(1,512/Math.max(image.naturalWidth||1,image.naturalHeight||1));
+        if(scale>=1&&String(dataUrl).length<200000)return dataUrl;
+        const canvas=root.document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+        const g=canvas.getContext('2d');g.fillStyle='#ffffff';g.fillRect(0,0,canvas.width,canvas.height);g.drawImage(image,0,0,canvas.width,canvas.height);
+        return canvas.toDataURL('image/jpeg',0.82);
+      }catch{return dataUrl;}
+    }
     async function readTurn(message,uploads,asked=null){
       const reader=root.FoartXiaotaoIntent,chat=api()?.artAgentChat,pictures=uploads.filter(item=>item.kind==='image'&&(item.previewUrl||item.dataUrl));
       if(!reader||typeof chat!=='function'||state.provider!=='api'||uploads.length>3||pictures.length!==uploads.length)return null;
@@ -1087,14 +1103,23 @@
         :info.surface==='audio'?{surface:'audio'}:{surface:'image',mode:rt?.state?.mode,refs:Array.from(rt?.references?.()||[]).filter(Boolean).map(ref=>ref.name||'已有图片'),prompt:info.pagePrompt};
       const last=task?{surface:task.surface,mode:task.mode,loop:task.loop,request:task.baseRequest,outputs:(task.outputs||[]).map(output=>output?.name).filter(Boolean)}:null;
       const id=root.crypto.randomUUID(),billing={id:root.crypto.randomUUID(),modelId:state.modelId,owner:billingOwner(),confirmed:0,confirmedCount:0,quoted:0,allQuoted:true,unknown:false,inFlight:false,decimal:onlineOperationDecimalConfirmed()};
-      const call=Promise.resolve(chat({requestId:id,provider:'api',...selectedModelPayload(state.modelId),...pricing,mode:'chat',promptLanguage:'en',
-        message:reader.buildQuestion({message,history:state.history||[],page,last,pictureCount:pictures.length,asked}),history:[],artContext:{},
-        images:pictures.map((item,index)=>({dataUrl:item.previewUrl||item.dataUrl,role:'attachment',source:index+1,name:item.name})),uploads:[],
-        ...(pictures.length?{imageSessionGuard:guard,confirmImageUpload:async()=>guard()===true}:{})})).catch(()=>null);
-      const answer=await Promise.race([call,new Promise(resolve=>root.setTimeout(()=>resolve(null),45000))]);
+      const thumbs=await Promise.all(pictures.map(item=>readerThumb(item.previewUrl||item.dataUrl)));
+      // A reading refused before it reached the model (the previous step still winding down) is sent once more: without
+      // it the rules took over, and in a run of five pictures one came back with its person kept (live 2.0.407).
+      const ask=async()=>{const first=await Promise.resolve(chat(requestBody())).catch(()=>null);
+        if(first&&first.ok!==true&&first.providerSubmitted!==true){await new Promise(done=>root.setTimeout(done,1500));currentId=root.crypto.randomUUID();return Promise.resolve(chat({...requestBody(),requestId:currentId})).catch(()=>null);}
+        return first;};
+      const requestBody=()=>({requestId:id,provider:'api',...selectedModelPayload(state.modelId),...pricing,mode:'chat',promptLanguage:'en',
+        message:reader.buildQuestion({message,history:state.history||[],page,last,pictureCount:pictures.length,asked,facts:[memoryApi()?.summaryText?.()||'',chargeFacts().replace(/^\s+/,'')].filter(Boolean).join('\n')}),history:[],artContext:{},readingOnly:true,
+        images:pictures.map((item,index)=>({dataUrl:thumbs[index],role:'attachment',source:index+1,name:item.name})),uploads:[],
+        ...(pictures.length?{imageSessionGuard:guard,confirmImageUpload:async()=>guard()===true}:{})});
+      let currentId=id;const call=ask();
+      // A reading that is not back in time is dropped and the rules answer instead. The rules misread a question about a
+      // picture as "make a video of it" (live: "这张图里有什么" after a 15 s cut), so a turn with pictures waits longer.
+      const answer=await Promise.race([call,new Promise(resolve=>root.setTimeout(()=>resolve(null),pictures.length?30000:12000))]);
       if(!answer){
         // Stopped, then left to wind down: the page runs one online request at a time.
-        await api()?.artAgentStop?.({requestId:id,provider:'api'});
+        await api()?.artAgentStop?.({requestId:currentId,provider:'api'});
         const late=await Promise.race([call,new Promise(resolve=>root.setTimeout(()=>resolve(null),30000))]);
         if(late)collectBilling(billing,late);return null;
       }
@@ -1308,12 +1333,15 @@
       if (!ready.length) return true;
       state.uploading=true;state.error='';state.status='正在根据需求准备素材…';notify();
       try {
+      lastUploadsRequest=message;
       lastUploads = ready.map(item => ({kind:item.kind, name:item.name, file:item.file, mimeType:item.mimeType, ...imageDimensions(item), ...(item.kind === 'image' && item.previewUrl ? {dataUrl:item.previewUrl} : {})}));
       const uploads = uploadApi(); if (!uploads) {state.error = '上传模块未加载'; notify(); return false;}
       const taskText=uploads.positiveTaskText?.(message)??message;
       const nativeArtRequest=/抠图|拆图|钢笔|放大|扩图|画布|去背|姿势参考|智能补图|局部编辑|蒙版|对象替换/.test(taskText)&&!/视频|音视|音频|音效|音乐/.test(taskText);
       const productionRequest=nativeArtRequest||uploads.effectsPanelRequest?.(message)===true||uploads.toolRequest?.(message)===true||ready.some(item=>item.kind==='tool')||['tools','effects','particle','animation'].includes(state.activeTask?.surface);
-      const plan = !place?{place:[],reject:[]}:turnReading?.kind==='make'&&typeof uploads.routeTo==='function'?uploads.routeTo(ready,turnReading):productionRequest?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask,pageTask());
+      // A question about a picture is answered by looking at it; it is not put into the page (live 2.0.407: "这张图里有什么"
+      // on the video page dropped the picture into the 图生视频 slot and stopped on "参考图片仍未导入完成").
+      const plan = !place||turnReading?.kind==='talk'?{place:[],reject:[]}:turnReading?.kind==='make'&&typeof uploads.routeTo==='function'?uploads.routeTo(ready,turnReading):productionRequest?{place:[],reject:[]}:uploads.planRoutes(message, ready,state.activeTask,pageTask());
       const notes = []; let failed = plan.reject.length > 0;
       deferredDrawing = deferDrawing ? plan.place.filter(item => item.destination?.id === 'img2img') : [];
       for (const item of plan.place) {
@@ -2230,6 +2258,38 @@
       if(job.stage==='ask'){folderJob=null;folderAskDone();}
       return null;
     }
+    // Several pictures with one instruction for each of them ("分别把这5张图的UI和人物都去掉"): each picture is its own job,
+    // made one after another with only that picture, through the same queue a folder uses. It is not one generation
+    // with five references (live 2.0.407: "一次最多用 3 张参考图，请告诉我用哪 3 张", then one job carrying two pictures).
+    const EACH_PICTURE=/分别|各自|逐张|逐个|挨个|一张一张|每(?:一)?张|批量|(?:全|都)(?:部)?(?:去掉|去除|删掉|删除|换成|换掉|改成|抠|放大|处理|做成|修)/;
+    const NOT_EACH=/视频|动画|动起来|首尾帧|循环|待机|多参|变成|过渡|合成一张|合成为一张|拼成|拼到一起|放在一起/;
+    function eachPictureRequest(message,count){
+      const text=uploadApi()?.positiveTaskText?.(message)??message;
+      return count>=2&&EACH_PICTURE.test(text)&&!NOT_EACH.test(text);
+    }
+    function eachPictureInstruction(message){
+      return String(message)
+        .replace(/(?:这|那)?\s*(?:[0-9０-９]+|[一二两三四五六七八九十几些]+)\s*张\s*(?:图片|图)?/g,'这张图')
+        .replace(/分别|各自|逐张|逐个|挨个|一张一张(?:地)?|每(?:一)?张(?:图片?)?都?|批量/g,'')
+        .replace(/都(?=去掉|去除|删掉|删除|换成|换掉|改成|抠|放大|处理|做成|修)/g,'')
+        .replace(/[，,]\s*[，,]/g,'，').replace(/^[，,\s]+/,'').trim();
+    }
+    async function pictureBatchTurn(message,carried){
+      if(state.provider!=='api'||folderJob)return null;
+      const said=message;
+      const staged=state.staged.filter(item=>item.status==='ready'&&item.kind==='image'&&item.file);
+      const items=(staged.length?staged:carried).map(item=>({name:item.name,kind:'image',file:item.file})).filter(item=>item.file);
+      // Pictures carried over from an unanswered turn bring the request they came with.
+      if(!staged.length&&carried.length&&lastUploadsRequest&&lastUploadsRequest!==message)message=lastUploadsRequest+'。'+message;
+      if(!eachPictureRequest(message,items.length))return null;
+      if(staged.length)carryAttachments=staged.map(item=>({name:item.name,kind:'image',dataUrl:item.previewUrl,mimeType:item.mimeType}));
+      pushUser(said);
+      const instruction=eachPictureInstruction(message);
+      folderJob={name:'这 '+items.length+' 张图',items,left:0,kinds:['image'],instruction:()=>instruction,stage:'run'};
+      lastUploads=[];lastPreparedTask='';
+      state.messages.push({role:'assistant',content:'好的，这 '+items.length+' 张图我一张一张做，每张只用它自己。'});notify();
+      return folderRun(folderJob);
+    }
     // The 「打开文件夹」 button: runs inside the click, which is what lets the browser show its prompt.
     async function openFolder() {
       const job=folderJob;if(retired||!job||job.stage!=='ask'||job.opening)return false;
@@ -2306,6 +2366,8 @@
         if(retired)return false;
         // 小桃 asks back on the very first file: the answer is for the whole folder, so keep the question.
         if(!ok&&i===0&&pendingIntent&&!job.stop&&!job.extra){asked=true;break;}
+        // Why an item was not made, in the words the person would have seen: said once in the summary.
+        if(!ok&&!job.stop&&!job.why)job.why=String(state.error||(pendingIntent?state.messages.slice(mark).filter(row=>row.role==='assistant').map(row=>row.content).pop():'')||'').replace(/\s+/g,' ').slice(0,120);
         state.messages.splice(mark);state.error='';pendingIntent=null;
         if(ok){done.push(item.name);misses=0;}else if(!job.stop){skipped.push(item.name);if(++misses>=3)break;}
       }
@@ -2315,7 +2377,7 @@
       folderJob=null;
       const rest=total-done.length-skipped.length,used=spent(),names=skipped.slice(0,6).join('、')+(skipped.length>6?' 等':'');
       const reply='「'+job.name+'」'+(done.length?'做完了 '+done.length+' 个':'没有做成')+(skipped.length?'，'+skipped.length+' 个没做成：'+names:'')
-        +(rest>0?job.stop?'。已按你的要求停下，还有 '+rest+' 个没做':'。连着几个都没做成，我先停下了，还有 '+rest+' 个没做':'')+(job.left?'。另外 '+job.left+' 个不是工程、图片、视频或音频，没有动':'')
+        +(rest>0?job.stop?'。已按你的要求停下，还有 '+rest+' 个没做':'。连着几个都没做成，我先停下了，还有 '+rest+' 个没做':'')+(job.left?'。另外 '+job.left+' 个不是工程、图片、视频或音频，没有动':'')+(skipped.length&&job.why?'。没做成的原因：'+job.why.replace(/[。.]$/,''):'')
         +'。'+(done.length?job.items.some(item=>item.kind==='project')?'工程都留在动画里，原文件没有改动。':'结果在仓库里，原文件没有改动。':'')+(used>0?'这次一共用了 '+used+' 积分。':'');
       state.status='';return folderSay(reply);
     }
@@ -2326,12 +2388,16 @@
       // While the tool loop runs, a new message must not bump `serial` under it; 停止 is the way out.
       if (state.pending || state.generating || state.applying || loopRunning()) return false;
       message = String(message || '').trim();
+      // The pictures of a turn that ended in 小桃's question or in a failure were never used: they stay for the next
+      // sentence (live 2.0.407: after "本地", "用本地模型分别做出来" was answered with "请把5张图上传给我").
+      const priorOpen=!folderItem&&(!!pendingIntent||!!state.error);
       if(!folderItem){if(folderJob?.stage==='run'||folderJob?.stage==='list')return false;const routed=await folderTurn(message);if(routed!==null)return routed;}
+      if(!folderItem&&String(message||'').trim()){const carried=priorOpen?lastUploads.filter(item=>item.kind==='image'&&item.file):[];const batch=await pictureBatchTurn(String(message).trim(),carried);if(batch!==null)return batch;}
       if(message && state.promptSourceCancelledNotice){state.status=state.status.replace(state.promptSourceCancelledNotice,'').trim();state.promptSourceCancelledNotice='';}
       if (!message) {if ((state.staged || []).length) {state.messages.push({role:'assistant',content:'请先说明这些文件的用途，再发送'}); state.error = ''; notify();} return false;}
       // 附件只属于发送它的那一条消息：新一条消息不再暗中带上之前发过的附件。
       // 只有在回答小桃刚才的提问时，才继续使用那条消息的附件。
-      if(!answersQuestion(message)){lastUploads=[];lastPreparedTask='';}
+      if(!answersQuestion(message)&&!(priorOpen&&!state.staged.length&&lastUploads.length)){lastUploads=[];lastPreparedTask='';}
       const explicitResultRequested=includeResult;
       const explicitNewQwenImage=state.modelId==='qwen3.5-9b-heretic' && state.staged.some(item=>item.kind==='image');
       
@@ -2470,6 +2536,16 @@
           pendingIntent={surface:'foart',mode:'',foart:true,asked:true,question:reading.ask,message};state.error='';state.status='等待补充需求';notify();return true;
         }
         if(reading&&reading.kind!=='prompt'){turnReading=reading;task=taskFromReading(reading,task);}
+        // A turn answered in words is answered by the reading itself: the second request it used to wait for doubled the
+        // time of every question (live 2.0.407: 14–16 s for "这个要多少积分").
+        if(reading?.kind==='talk'&&reading.reply&&!pendingIntent){
+          const staged=state.staged.filter(item=>item.status==='ready');
+          if(staged.length){carryAttachments=staged.map(item=>({name:item.name,kind:item.kind,dataUrl:item.kind==='image'?item.previewUrl:'',mimeType:item.mimeType}));releasePreviews(state.staged.filter(item=>item.kind!=='image'));state.staged=[];}
+          if(recordMessage)pushUser(message);
+          state.messages.push({role:'assistant',content:reading.reply});
+          state.history=[...withoutMemory(state.history||[]),{role:'user',content:message},{role:'assistant',content:reading.reply}].slice(-12);
+          state.error='';state.status='已回复';notify();return true;
+        }
       }
       // The local model only chats and rewrites prompts; every software
       // operation belongs to an online model.
@@ -2586,7 +2662,7 @@
         const uploadModel=state.modelId;
         const uploadCurrent=()=>operation===serial&&!stopped&&state.provider==='api'&&state.modelId===uploadModel&&typeof uploadOwner?.current==='function'&&uploadOwner.current()===true;
         activeChatHasImages=mode==='chat' && images.length>0;
-        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage+(turnReading?.kind==='talk'&&state.provider==='api'?chargeFacts():''), history:capabilityOnly&&!promptConversation?[]:memoryHistory(copy(state.history)), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.filter(file=>!reverseImage||images.some(image=>image.name===file.name)).map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
+        const payload = {requestId:activeRequest, provider:state.provider, ...selectedModelPayload(state.modelId), ...selectedPricingPayload(), mode, promptLanguage:mode==='creation'?'zh-CN':'en', conversationId:capabilityOnly?undefined:state.conversationId || undefined, message:requestMessage+((turnReading?.kind==='talk'||/积分|多少钱|扣了|扣费|费用|价格|收费|花了/.test(message))&&state.provider==='api'?chargeFacts():''), history:capabilityOnly&&!promptConversation?[]:memoryHistory(copy(state.history)), artContext:operationTextOnly?{}:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:capabilityOnly?[]:requestUploads.filter(file=>!reverseImage||images.some(image=>image.name===file.name)).map(({kind, name}) => ({kind, name}))} : communityUploads() ? {uploads:qwenUsesUploads ? communityUploads() : []} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(operationVision&&images.length?{imageSessionGuard:uploadCurrent,confirmImageUpload:async info=>uploadCurrent()&&await onlineBusinessUi(uploadModel).confirmImageUpload(info)&&uploadCurrent()}:{})};
         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新官网页面并检查 Foart状态');
         const deviceEpoch=localCapabilityEpoch;
         if(state.provider==='local' && state.modelId==='qwen3.5-9b-heretic')state.qwenExecutionDevice=null;

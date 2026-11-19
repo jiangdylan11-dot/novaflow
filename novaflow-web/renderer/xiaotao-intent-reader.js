@@ -38,7 +38,9 @@
       + (last.request ? '，当时的要求：' + clip(last.request, 200) : '') + (last.outputs && last.outputs.length ? '，成品：' + last.outputs.slice(-2).join('、') : '') + '。';
   }
   // asked: 小桃 already asked one question about this request ({original, question}); `message` is the person's answer.
-  function buildQuestion({message, history = [], page = null, last = null, pictureCount = 0, asked = null} = {}) {
+  // facts: what 小桃 knows that the page does not show (the person's saved preferences, what has been charged), for a
+  // turn that is answered in words: the reading then answers it itself and no second request is made.
+  function buildQuestion({message, history = [], page = null, last = null, pictureCount = 0, asked = null, facts = ''} = {}) {
     const talk = history.slice(-6).map(item => (item.role === 'user' ? '用户：' : '小桃：') + clip(item.content, 220)).join('\n');
     return [
       '你是 Foart 里的助手小桃。下面是用户刚说的一句话，以及你作为同事坐在他屏幕前能看到的一切。请像人一样理解他真正要什么，然后只输出一个 JSON，不要解释。',
@@ -46,6 +48,7 @@
       '【页面】' + describePage(page),
       '【上一个任务】' + describeLast(last),
       talk ? '【之前的对话】\n' + talk : '【之前的对话】无',
+      ...(facts ? ['【小桃知道的事实，回答时用得上才用】' + String(facts).slice(0, 1200)] : []),
       '【这一句带的图片】' + (pictureCount ? pictureCount + ' 张，按顺序是 图1' + (pictureCount > 1 ? ' 到 图' + pictureCount : '') + '，你能直接看到它们。' : '没有带图片。'),
       asked ? '【用户原来的要求】' + clip(asked.original, 1000) + '\n【小桃刚才问】' + clip(asked.question, 200) + '\n【用户的回答】' + clip(message, 600)
         : '【用户这一句】' + clip(message, 1200),
@@ -73,7 +76,8 @@
       'JSON 字段（按这个顺序写：先定 sure，再写理解）：',
       '{"sure":true|false,"ask":"sure 为 false 时要问用户的那一句话，否则留空","kind":"make|prompt|operate|talk","surface":"video|image|audio|other","mode":"text_video|image_video|first_last|multi_reference|txt2img|img2img|music|sfx|",',
       '"first":"new1|new2|new3|keep|none","last":"new1|new2|new3|keep|first|none","loop":true|false,"seconds":数字或null,"width":数字或null,"height":数字或null,',
-      '"pictures":["图1里实际有什么（不超过五十字）", …],"brief":"用一两句话复述他要的成品画面和动作，只写画面内容"}',
+      (pictureCount ? '"pictures":["图1里实际有什么（不超过三十字）", …],' : '') + '"brief":"不超过三十字，只写成品画面和动作；不是 make 就留空",',
+      '"reply":"只有 kind 是 talk 时才写：你作为小桃直接回答用户这句话（中文，简洁，像同事说话，只说 Foart 和他的制作；不知道的数字不要编）；其他情况留空"}',
     ].join('\n');
   }
 
@@ -95,7 +99,10 @@
     // Not sure, and it said what it needs to know: 小桃 asks that one question before doing anything.
     if (data.sure === false && data.kind !== 'talk' && clip(data.ask, 160).length > 3) return {kind: 'ask', ask: clip(data.ask, 160)};
     const reading = {kind: data.kind};
-    if (data.kind === 'talk') return reading;
+    if (data.kind === 'talk') {
+      const reply = String(data.reply == null ? '' : data.reply).trim().slice(0, 2000);
+      return reply ? {...reading, reply} : reading;
+    }
     const surface = SURFACES.includes(data.surface) ? data.surface : 'other';
     reading.surface = surface;
     if (data.kind === 'operate') return reading;

@@ -17,7 +17,7 @@ const ROUTES={foartOperationStart:'planner',artAgentChat:'chat',promptAssistantV
 // frame: the first picture in the video page's slot ({width,height}); controls: native fields the planner may set.
 export async function probe({page='drawing',prompt='',task=null,genType='text_video',plans=[],pending=null,frame=null,controls=[],draftFailures=0,reading=null}={}) {
   const root={console:{...console,warn(){},debug(){}},crypto:webcrypto,AbortController,setTimeout,clearTimeout,btoa:value=>Buffer.from(value,'binary').toString('base64')};
-  root.window=root;createContext(root);
+  root.window=root;if(reading)root.localStorage={getItem:key=>key==='foart.xiaotao.brain-reads'?'1':null};createContext(root);
   // reading: what the brain answers when it reads the turn (an object, or a function of the question); without it the rules decide.
   for(const file of ['xiaotao-prompt-source.js','xiaotao-upload.js',...(reading?['xiaotao-intent-reader.js']:[]),'xiaotao-art-agent.js'])runInContext(read(file),root);
   const rtState={active:page==='drawing',prompt:page==='drawing'?prompt:'',mode:'txt2img',count:1};
