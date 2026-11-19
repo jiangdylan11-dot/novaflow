@@ -2285,6 +2285,52 @@
     // Several pictures, each to have things taken out: no planning round per picture. Each one goes alone into the drawing
     // page's 图生图 slot with the removal instruction and the page's selected line runs it (live: 20-25 s a picture,
     // against 60-90 s with a planning round that sometimes reached for 局部编辑 and painted a new scene).
+    // The figure in a picture, as a mask: the art page's own cut-out of the main subject. null when it finds none, or
+    // something too big to be a figure (then nothing is removed rather than half the picture).
+    async function figureMask(dataUrl){
+      // The cut-out refuses while the node still lists the previous run; wait for the queue to clear.
+      let cut=null;
+      for(let attempt=0;attempt<15&&!cut;attempt++){
+        try{cut=await root.NovaFlowSpineSplitBridge?.extractUiObject?.(dataUrl);}
+        catch(error){if(!/运行或排队|队列/.test(String(error?.message||error))||attempt===14)throw error;await new Promise(ok=>root.setTimeout(ok,2000));}
+      }
+      if(typeof cut!=='string'||!cut.startsWith('data:image/'))return null;
+      const load=src=>new Promise((ok,no)=>{const image=new root.Image();image.onload=()=>ok(image);image.onerror=no;image.src=src;});
+      const [source,figure]=await Promise.all([load(dataUrl),load(cut)]);
+      const width=source.naturalWidth,height=source.naturalHeight,doc=root.document,canvas=()=>{const c=doc.createElement('canvas');c.width=width;c.height=height;return c;};
+      const solid=canvas(),sg=solid.getContext('2d');sg.filter='blur(6px)';sg.drawImage(figure,0,0,width,height);sg.filter='none';
+      const pixels=sg.getImageData(0,0,width,height);let count=0;
+      for(let i=0;i<pixels.data.length;i+=4){const on=pixels.data[i+3]>8;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=255;pixels.data[i+3]=on?255:0;if(on)count++;}
+      sg.putImageData(pixels,0,0);
+      const share=count/(width*height);if(share<0.003||share>0.45)return null;
+      const grown=canvas(),gg=grown.getContext('2d');const reach=Math.max(8,Math.round(Math.min(width,height)*0.014));
+      for(const [dx,dy] of [[0,0],[reach,0],[-reach,0],[0,reach],[0,-reach],[reach,reach],[-reach,reach],[reach,-reach],[-reach,-reach]])gg.drawImage(solid,dx,dy);
+      return {source,mask:grown,width,height,canvas};
+    }
+    // Takes the figure out: its place is greyed, the edit model fills the grey, and only that place is taken from its picture.
+    async function removeFigure(page,dataUrl,name){
+      const found=await figureMask(dataUrl);if(!found)return null;
+      const {source,mask,width,height,canvas}=found;
+      const holed=canvas(),hg=holed.getContext('2d');hg.drawImage(source,0,0);
+      const grey=canvas(),eg=grey.getContext('2d');eg.drawImage(mask,0,0);eg.globalCompositeOperation='source-in';eg.fillStyle='#808080';eg.fillRect(0,0,width,height);hg.drawImage(grey,0,0);
+      const holedUrl=holed.toDataURL('image/png');
+      if(page.state.mode!=='img2img')page.setMode('img2img');
+      Array.from(page.references?.()||[]).forEach((ref,at)=>{if(ref)page.setReference(at,null);});
+      page.setReference(0,{dataUrl:holedUrl,name,fileName:name,w:width,h:height,width,height,drawingRole:'subject'});page.refreshReferences?.();page.render?.();
+      await new Promise(ok=>root.setTimeout(ok,600));
+      if(!typeDrawingPrompt('画面里灰色的块是被抹掉的部分，把它补成和周围一致的背景，和周围自然连起来；不要画任何人物或新东西，其余画面保持不变。'))throw Error('绘图输入框没有准备好');
+      const before=new Set(Array.from(page.state.results||[],row=>row?.id));
+      await page.run();
+      if(page.state.error)throw Error(page.state.error);
+      const row=Array.from(page.state.results||[]).find(item=>item&&!before.has(item.id));
+      if(!row)throw Error('没有拿到结果');
+      const filled=await new Promise((ok,no)=>{const image=new root.Image();image.onload=()=>ok(image);image.onerror=no;image.src=row.imageUrl;});
+      const out=canvas(),og=out.getContext('2d');og.drawImage(source,0,0);
+      const patch=canvas(),pg=patch.getContext('2d');pg.drawImage(filled,0,0,width,height);pg.globalCompositeOperation='destination-in';pg.filter='blur(8px)';pg.drawImage(mask,0,0);
+      og.drawImage(patch,0,0);
+      row.imageUrl=out.toDataURL('image/png');page.render?.();
+      return row;
+    }
     async function removalBatch(items,steps,name){
       const tools=root.NovaFlowFoartTools,rt=()=>root.__NovaFlowArtGenerate;
       try{await tools?.execute?.({action:'open',surface:'drawing'},{snapshot:tools.capture()});}catch{}
@@ -2299,6 +2345,11 @@
         try{
           const page=rt();let dataUrl=await readPreview(item.file),previous=null;
           for(const instruction of steps){
+            if(instruction?.people){
+              const row=await removeFigure(page,dataUrl,item.name);
+              if(row){if(previous){const at=page.state.results.indexOf(previous);if(at>=0)page.state.results.splice(at,1);}previous=row;dataUrl=row.imageUrl;page.render?.();}
+              continue;
+            }
             if(page.state.mode!=='img2img')page.setMode('img2img');
             Array.from(page.references?.()||[]).forEach((ref,at)=>{if(ref)page.setReference(at,null);});
             const size=await new Promise(ok=>{const image=new root.Image();image.onload=()=>ok({w:image.naturalWidth,h:image.naturalHeight});image.onerror=()=>ok({});image.src=dataUrl;});
@@ -2354,8 +2405,11 @@
       const instruction=eachPictureInstruction(message);
       lastUploads=[];lastPreparedTask='';
       state.messages.push({role:'assistant',content:'好的，这 '+items.length+' 张图我一张一张做，每张只用它自己。'});notify();
-      const removal=removalInstruction(instruction),people=removal&&/人物角色/.test(removal)?removalInstruction('去掉人物'):'';
-      if(removal){releasePreviews(state.staged);state.staged=[];const made=await removalBatch(items,[removal,...(people&&people!==removal?[people]:[])],'这 '+items.length+' 张图');if(made!==null)return made;}
+      // UI is taken out by words; people by a mask of the figure (the edit model kept the fairy, the pirate and the pharaoh
+      // when told in words, live 2.0.408): the figure is cut out, its place greyed and filled, and only that place changes.
+      const removal=removalInstruction(instruction),people=!!removal&&/人物角色/.test(removal);
+      const uiOnly=people?removalInstruction(instruction.replace(/[和与及、]?(?:人物|角色|人(?!物))[和与及、]?/g,'')):removal;
+      if(removal){releasePreviews(state.staged);state.staged=[];const made=await removalBatch(items,[...(uiOnly&&!/人物角色/.test(uiOnly)?[uiOnly]:[]),...(people?[{people:true}]:[])],'这 '+items.length+' 张图');if(made!==null)return made;}
       folderJob={name:'这 '+items.length+' 张图',items,left:0,kinds:['image'],instruction:()=>instruction,stage:'run'};
       return folderRun(folderJob);
     }
