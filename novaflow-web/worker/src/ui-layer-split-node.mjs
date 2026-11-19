@@ -1,16 +1,14 @@
 // UI 拆图 on a compute node: confirmed boxes in, complete layers out.
 //
-// The split needs no language model: SAM3 and ViTMatte cut, the image service fills what was hidden. It therefore
-// runs as one Python process per request (prompt_assistant/ui_layer_split_cli.py) beside the brain service, not
-// through it, and a node without a local brain can still do it. The process exits when done, which hands its
-// graphics memory back.
+// Recognition has already produced the confirmed regions. The Python worker uses the local image
+// service for transparent atlases and background reconstruction, independently of the brain service.
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export const UI_LAYER_SPLIT_CAPABILITY = 'foart-ui-layer-split-v1';
+export const UI_LAYER_SPLIT_CAPABILITY = 'foart-ui-layer-atlas-v1';
 export const UI_LAYER_SPLIT_SCOPE = 'layer-split-v1';
 const CLI_MODULE = 'prompt_assistant.ui_layer_split_cli';
 const size = path => { try { return statSync(path).size; } catch { return -1; } };
@@ -19,16 +17,16 @@ const size = path => { try { return statSync(path).size; } catch { return -1; } 
 export function uiLayerSplitFiles({ python, serviceScript, runtimeJson }) {
   let runtime = {};
   try { runtime = JSON.parse(readFileSync(runtimeJson, 'utf8').replace(/^﻿/, '')); } catch { return { ok: false, missing: 'runtime' }; }
-  const install = String(runtime.installPath || dirname(runtimeJson));
   const models = String(runtime.modelsPath || (runtime.assetsPath ? join(runtime.assetsPath, 'models') : ''));
-  const comfyRoot = process.env.NOVAFLOW_COMFY_ROOT || join(install, 'engine', 'ComfyUI');
   const scripts = dirname(String(serviceScript || ''));
   const needs = [
     ['python', size(python) > 0],
     ['split-script', size(join(scripts, 'prompt_assistant', 'ui_layer_split.py')) > 0 && size(join(scripts, 'prompt_assistant', 'ui_layer_split_cli.py')) > 0],
-    ['segment-component', existsSync(join(comfyRoot, 'custom_nodes', 'ComfyUI-RMBG', 'sam3'))],
-    ['segment-model', Boolean(models) && size(join(models, 'sam3', 'sam3.pt')) > 1024 ** 3],
-    ['edge-model', Boolean(models) && size(join(models, 'vitmatte', 'model.safetensors')) > 1024 ** 2]
+    ['atlas-script', size(join(scripts, 'prompt_assistant', 'ui_split_atlas.py')) > 0],
+    ['atlas-workflow', size(join(scripts, 'prompt_assistant', 'ui_split_qwen21.json')) > 0],
+    ['image-model', ['diffusion_models', 'unet'].some(dir => models && size(join(models, dir, 'Qwen-Image-2.1-Turbo-INT8-ConvRot-comfy.safetensors')) > 1024 ** 3)],
+    ['image-encoder', ['text_encoders', 'clip'].some(dir => models && size(join(models, dir, 'qwen3vl_8b_bf16_heretic.safetensors')) > 1024 ** 3)],
+    ['image-vae', models && size(join(models, 'vae', 'qwen_image_2.1_vae_bf16.safetensors')) > 1024 ** 2]
   ];
   const missing = needs.find(([, present]) => !present);
   return missing ? { ok: false, missing: missing[0] } : { ok: true };

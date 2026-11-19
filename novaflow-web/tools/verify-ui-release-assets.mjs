@@ -29,6 +29,7 @@ export async function verifyUiReleaseAssets({ webRoot, workerSrcRoot, workerRend
   if (editorEntry !== 'index.html') await verifyScriptReferences(webRoot, 'index.html');
   const { scripts } = await verifyScriptReferences(webRoot, editorEntry);
   const requirements = [
+    [desktopRoot, 'prompt_assistant/ui_split_atlas.py'], [desktopRoot, 'prompt_assistant/ui_split_qwen21.json'],
     ...UI_BROWSER_DEPENDENCIES.map(name => [webRoot, name]),
     [workerSrcRoot, 'prompt-assistant.mjs'], [workerSrcRoot, 'complete-ui-draft.mjs'], [workerSrcRoot, 'native-ui-draft.mjs'], [workerSrcRoot, 'ui-catalog-planner.mjs'], [workerSrcRoot, 'ui-layer-split-node.mjs'],
     [workerRendererRoot, 'spine-split-runtime.js'], [workerRendererRoot, 'art-generate-reference-drop.tool.js'],

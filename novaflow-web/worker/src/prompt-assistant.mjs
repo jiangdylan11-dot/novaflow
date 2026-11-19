@@ -770,10 +770,10 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         if (!files.ok) return { ok: false, error: '当前算力节点缺少拆图所需的组件', errorCode: 'ui-layer-split-unavailable', missing: files.missing };
         const handoff = await releaseRuntimes();
         if (!handoff.ok) return { ok: false, error: handoff.error, errorCode: handoff.errorCode, retryable: true };
-        const { images, visualSchema, regions } = normalized.request;
+        const { images, visualSchema, regions, requirements } = normalized.request;
         const started = Date.now();
         const result = await runUiLayerSplit({ python: cfg.pythonPath, serviceScript: cfg.serviceScript, runtimeJson: cfg.runtimeJsonPath,
-          payload: { visualSchema, images, regions, ...(comfyUrls[0] ? { comfyUrl: String(comfyUrls[0]).replace(/\/+$/, '') } : {}) },
+          payload: { visualSchema, images, regions, requirements, ...(comfyUrls[0] ? { comfyUrl: String(comfyUrls[0]).replace(/\/+$/, '') } : {}) },
           isCancelled: () => taskIsCancelled(), onProgress: stage => log('ui layer split', { stage }) });
         log(result.ok ? 'ui layer split completed' : 'ui layer split failed', { ms: Date.now() - started, regions: regions.length, ...(result.ok ? { layers: result.data.layers.length } : { error: result.error }) });
         return result;

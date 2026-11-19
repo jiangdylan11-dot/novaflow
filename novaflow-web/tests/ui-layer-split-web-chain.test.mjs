@@ -83,11 +83,9 @@ test('other prompt requests keep their own refusal', async () => {
   assert.match(result.error, /提示词助手在 Web 版通过智能 AI 提供/);
 });
 
-test('the panel crops the boxes itself on a refusal and says so', () => {
-  assert.match(panel, /result\.errorCode === 'ui-split-node-unavailable' \|\| result\.errorCode === 'flash-model-missing' \|\| result\.errorCode === 'ui-layer-split-unavailable' \|\| String\(result\.error \|\| ''\)\.startsWith\('当前没有可用的拆图节点'\)\)\) unfilled = '当前没有可用的拆图节点'/);
-  assert.match(panel, /unfilled \+ '，改为按识别框直接裁切（未补全）…'/, 'the working dialog shows the switch while it runs');
-  assert.match(panel, /unfilled \? unfilled \+ '，已按识别框直接裁切（未补全）：'/, 'and the closing note states the result is not filled in');
-  assert.doesNotMatch(panel, /\/拆图\|分割\|去除\|图像服务\|模型\//, 'a refusal that merely mentions 模型 is not a failed split');
+test('a failed or legacy split preserves the editable proposal', () => {
   const split = panel.slice(panel.indexOf('async function split()'), panel.indexOf("overlay.addEventListener('wheel'"));
-  assert.ok(split.indexOf("unfilled = '当前没有可用的拆图节点'") < split.indexOf('core.extract(next.source, work'));
+  assert.doesNotMatch(split, /core\.extract\(/);
+  assert.match(split, /result\?\.ok === false\) throw new Error/);
+  assert.ok(split.indexOf("data?.method !== 'qwen21-rgba-atlas-v1'") < split.indexOf('importUiLayerProject(project'));
 });

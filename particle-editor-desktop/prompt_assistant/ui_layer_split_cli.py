@@ -1,7 +1,7 @@
 """UI layer split as one process per request, for a compute node.
 
-The node's brain service is not involved: the split needs SAM3, ViTMatte and the image service only. This process
-loads them, writes the answer to a file and exits, which also gives the graphics memory back.
+The editor supplies confirmed regions. This process generates layers via the local image service,
+writes the answer to a file and exits.
 
 stdin : {"payload": the 'ui-layer-split' request, "runtimeJson": path of the runtime's runtime.json, "result": output file}
 stderr: one line per stage ("progress <text>")

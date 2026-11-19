@@ -920,7 +920,7 @@ export function createWorker(options) {
       // UI 拆图 needs its own files plus the image-service models that fill what the UI covered.
       let uiSplit={ok:false,missing:'assistant'};
       try { uiSplit=assistant?.probeUiLayerSplit?.() || uiSplit; } catch { /* fail closed */ }
-      const uiSplitNeeds=[FLUX_REMOVAL_CAPABILITY,SEETHROUGH_LAMA_CAPABILITY,'qwen-image-2.1-turbo'].find(id=>!models.some(model=>model.model_id===id && model.status==='ready'));
+      const uiSplitNeeds=models.some(model=>model.model_id==='qwen-image-2.1-turbo' && model.status==='ready') ? '' : 'qwen-image-2.1-turbo';
       const uiSplitReady=uiSplit.ok===true && !uiSplitNeeds;
       models.push({model_id:UI_LAYER_SPLIT_CAPABILITY,model_version:'1',status:uiSplitReady?'ready':'missing',detail:uiSplitReady?{}:{reason:uiSplit.ok===true?'image_models_missing:'+uiSplitNeeds:'ui_layer_split_files_missing:'+uiSplit.missing}});
       const qwenReady = qwenCpuAdvertisable(status, state.currentTaskId);

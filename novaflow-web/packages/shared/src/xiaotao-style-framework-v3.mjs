@@ -20,14 +20,15 @@ const UI_LAYERS_SYSTEM_TEXT = "You prepare game UI screenshots for an artist who
 const UI_LAYERS_QUESTION = [
   'You are preparing a game UI screenshot for an artist who needs every art asset as its own layer.',
   'List EVERY independent visual asset, one entry per asset, at the granularity an artist would cut it:',
-  '- each slot/reel symbol or item icon is ONE asset (a gem cluster with its WILD/SCATTER caption and its frame is one asset; never list single stones, facets or letters)',
-  '- each button is ONE asset together with its icon and label; each small caption under a button is its own asset',
+  '- list each reel symbol body once. For a framed symbol list the complete decorated backing as panel, its subject as element and its WILD/SCATTER caption as text, using the backing as parent. Include overhanging parts. Identify all multiplier choices individually.',
+  '- list each complete button base as panel (retain its bevel, rim and material together), its foreground icon as element, and its label as text. Identify translucent panels in their names.',
   '- each plate, bar, panel, banner, jackpot box, reel board or frame that holds other things is ONE asset of kind "panel"',
   '- each character, vehicle, creature or large scene prop standing in the scene (a train, a pile of ore) is ONE asset of kind "prop"',
   '- stand-alone art text or numbers on a plate (a jackpot amount, a title, a balance) are assets of kind "text"; text = exactly the words or numbers it shows',
-  'Do not list the background scenery itself. Do not skip repeated symbols: list each occurrence.',
+  'Keep worn or held accessories with their character, and a coin pile together. List visible cast shadows, steam and reflections as independent prop assets with descriptive names. When a window reveals a distinct exterior, identify the surrounding interior architecture as a separate prop, keeping the exterior as background. List each occurrence of repeated symbols using unique names.',
   'bbox = an array of FOUR integers [x1, y1, x2, y2] (left, top, right, bottom) on a 0-1000 scale of the image width and height, tight around the asset; never a single number or a string.',
-  'parent = the name of the panel asset it sits on, or "" when it sits directly on the scene.',
+  'Also return a top-level string "scene" describing the background behind the removable assets: indoor and outdoor surfaces, perspective, horizon, floor reflections, lighting and what continues behind occlusions. Only use evidence from the reference.',
+  'parent = the unique name of the panel asset it sits on, or "" when it sits directly on the scene.',
   'name is snake_case English; kind is one of panel, element, prop, text. Return JSON only, for example: {"assets":[{"name":"spin_button","kind":"element","bbox":[412,820,588,905],"parent":"","text":""}]}',
 ].join('\n');
 const UI_LAYER_KINDS={panel:'panel',element:'object',object:'object',icon:'object',symbol:'object',item:'object',button:'object',prop:'prop',character:'prop',text:'text'};
@@ -182,7 +183,13 @@ export function canonicalizeXiaotaoV3StyleIntent(raw) {
 export function inspectXiaotaoV3StyleReply({kind,reply}) {
   if(typeof reply!=='string'||!reply.trim()||reply.length>(kind==='ui-layers'?40000:12000))fail();
   if(kind==='rig-layers') {const kinds=rigLayerKinds(reply);if(!Object.keys(kinds).length)fail();return {kinds};}
-  if(kind==='ui-layers') {const regions=uiLayerRegions(reply);if(!regions.length)fail();return {proposal:{schema:'nf.ui.split.v1',style:'',regions}};}
+  if(kind==='ui-layers') {
+    const regions=uiLayerRegions(reply);
+    if(!regions.length)fail();
+    let scene='';
+    try { scene=JSON.parse(String(reply).replace(/^`{3}(?:json)?\s*|\s*`{3}$/gi,'')).scene; } catch {}
+    return {proposal:{schema:'nf.ui.split.v1',style:typeof scene==='string'?codepoints(flat(scene),1200):'',regions}};
+  }
   if(kind==='style') {
     const rawStyle=codepoints(flat(reply),800);
     let value=flat(cleanText(reply));if(value.startsWith('{')){try {const obj=JSON.parse(value);if(obj&&!Array.isArray(obj)&&typeof obj==='object')value=Object.values(obj).find(x=>typeof x==='string'&&x.trim())?.trim()||value;}catch{}}

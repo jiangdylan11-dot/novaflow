@@ -35,12 +35,20 @@
     const layers = list.map((layer, index) => {
       if (!groupNames[layer?.group] || typeof layer.dataUrl !== 'string' || !layer.dataUrl.startsWith('data:image/png;base64,') || ![layer.x, layer.y, layer.width, layer.height].every(Number.isInteger) || layer.width < 1 || layer.height < 1) throw new Error('拆图结果里有无效图层，原图和原图层保留')
       const background = layer.group === 'background', region = proposal.regions.find(r => r.id === layer.id)
+      const atlas = result.method === 'qwen21-rgba-atlas-v1'
       const sourceBox = { x: layer.x, y: layer.y, width: layer.width, height: layer.height }
       return { id: source.proposalId + '_' + (background ? 'background' : String(layer.id).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) + '_' + index), type: 'image', name: background ? '背景' : groupNames[layer.group] + ' / ' + String(layer.name || layer.id).slice(0, 120), kind: background ? 'background' : 'asset', ...sourceBox, visible: true, opacity: 1, dataUrl: layer.dataUrl,
-        uiSplit: { ...origin, regionId: background ? '' : String(layer.id), regionKind: background ? 'background' : layer.group, parentId: String(layer.parentId || region?.parentId || ''), sourceBox, maskRecipe: 'node-layer-split', ...(layer.text ? { text: String(layer.text).slice(0, 200) } : {}) },
+        uiSplit: { ...origin, regionId: background ? '' : String(layer.id), regionKind: background ? 'background' : layer.group, parentId: String(layer.parentId || region?.parentId || ''), sourceBox, maskRecipe: atlas ? result.method : 'node-layer-split', ...(layer.text ? { text: String(layer.text).slice(0, 200) } : {}) },
         provenance: { kind: 'ui-layer-split', automaticProposal: region ? region.origin !== 'manual' : false, proposalScope: region?.origin || '', confirmedByUser: true, maskRecipe: 'node-layer-split', inferredHiddenPixels: true } }
     })
     if (layers[0].kind !== 'background') throw new Error('拆图结果缺少背景层，原图和原图层保留')
+    if (result.method === 'qwen21-rgba-atlas-v1') {
+      const expected = new Set(proposal.regions.filter(r => r.kind !== 'group').map(r => r.id))
+      if (width !== source.width || height !== source.height ||
+          !list.slice(1).every(layer => layer.group !== 'background' && expected.delete(layer.id)) || expected.size) {
+        throw new Error('拆图结果与确认的原图尺寸或素材清单不一致，请重新拆图')
+      }
+    }
     const groups = copy(proposal.groups || proposal.regions.filter(r => r.kind === 'group').map(r => ({ id: r.id, name: r.name, box: r.box, pixelLayer: false })))
     return { version: 1, width, height, layers, uiSplitGroups: groups, uiSplitOriginal: { ...origin, originalDataUrl: source.dataUrl }, uiSplitFailures: [], uiSplitManualEdits: manualEdits }
   }

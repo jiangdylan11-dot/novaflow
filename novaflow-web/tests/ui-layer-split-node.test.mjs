@@ -18,7 +18,7 @@ const run = (body, extra = {}) => runUiLayerSplit({ python: 'python', serviceScr
   payload: { visualSchema: 'nf.ui.layers.v1', regions: [{ id: 'r1' }] }, spawnProcess: standIn(body), ...extra });
 
 test('names stay off the retired prefixes', () => {
-  assert.equal(UI_LAYER_SPLIT_CAPABILITY, 'foart-ui-layer-split-v1');
+  assert.equal(UI_LAYER_SPLIT_CAPABILITY, 'foart-ui-layer-atlas-v1');
   assert.equal(UI_LAYER_SPLIT_SCOPE, 'layer-split-v1');
 });
 
@@ -68,7 +68,9 @@ test('the capability is reported only when every piece is on disk', async () => 
   await mkdir(join(scripts, 'prompt_assistant'), { recursive: true });
   await writeFile(join(scripts, 'prompt_assistant', 'ui_layer_split.py'), 'x');
   await writeFile(join(scripts, 'prompt_assistant', 'ui_layer_split_cli.py'), 'x');
-  assert.equal(probe().missing, 'segment-component');
-  await mkdir(join(install, 'engine', 'ComfyUI', 'custom_nodes', 'ComfyUI-RMBG', 'sam3'), { recursive: true });
-  assert.equal(probe().missing, 'segment-model');
+  assert.equal(probe().missing, 'atlas-script');
+  await writeFile(join(scripts, 'prompt_assistant', 'ui_split_atlas.py'), 'x');
+  assert.equal(probe().missing, 'atlas-workflow');
+  await writeFile(join(scripts, 'prompt_assistant', 'ui_split_qwen21.json'), '{}');
+  assert.equal(probe().missing, 'image-model');
 });

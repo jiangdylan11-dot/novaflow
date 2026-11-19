@@ -44,7 +44,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.409";
+const RELEASE_VERSION = "2.0.410";
 
 // ===== xiaotao-memory.mjs ============================================
 // GENERATED COPY - do not edit here.
@@ -1382,7 +1382,7 @@ function runtimeFor(modelId) {
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 12000;
 const UI_CPU_CAPABILITY = 'foart-ui-cpu-compiler-v1';
-const UI_LAYER_SPLIT_CAPABILITY = 'foart-ui-layer-split-v1';
+const UI_LAYER_SPLIT_CAPABILITY = 'foart-ui-layer-atlas-v1';
 const UI_LAYER_SPLIT_SCOPE = 'layer-split-v1';
 const QWEN21_NATIVE_REWRITE_V3_CAPABILITY = 'qwen3.5-9b-heretic-qwen21-native-rewrite-v3';
 const QWEN_PLAN_SCOPE = 'qwen-foart-plan-v1';

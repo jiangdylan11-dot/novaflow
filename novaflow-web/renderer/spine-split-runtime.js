@@ -13467,16 +13467,26 @@
     const composite = await imageDataFromUrl(preview || await previewDataUrl(), size.width, size.height)
     const compositePlanes = splitPlanes(composite.data)
     const layers = []
+    let groupName = ''
+    const section = (name, type) => ({ id: name, section: type, x: 0, y: 0, width: 0, height: 0, channels: [], visible: true })
     for (const part of partsForPsdStack(state.parts)) {
-      const data = await imageDataFromUrl(part.dataUrl, part.width, part.height)
-      const planes = splitPlanes(data.data)
+      const ui = part.metadata?.legacyUiLayer?.uiSplit
+      const atlas = ui?.maskRecipe === 'qwen21-rgba-atlas-v1'
+      const nextGroup = atlas && ui.regionKind !== 'background' ? String(part.name).split(' / ')[0] : ''
+      if (nextGroup !== groupName) {
+        if (groupName) layers.push(section(groupName, 2))
+        if (nextGroup) layers.push(section('</Layer group>', 3))
+        groupName = nextGroup
+      }
       const maskUrl = layerMaskDataUrl(part)
+      const data = await imageDataFromUrl(atlas && maskUrl ? layerImageDataUrl(part) : part.dataUrl, part.width, part.height)
+      const planes = splitPlanes(data.data)
       let maskPlane = null
       if (maskUrl) {
         try {
           const maskData = await imageDataFromUrl(maskUrl, data.width, data.height)
           maskPlane = maskPlaneFromImageData(maskData.data)
-        } catch {}
+        } catch (error) { if (atlas) throw error }
       }
       const channels = maskPlane ? [
         { id: 0, plane: planes[0] },
@@ -13490,8 +13500,9 @@
         { id: 2, plane: planes[2] },
         { id: -1, plane: planes[3] }
       ]
-      layers.push({ id: psdName(part.name || part.id), x: Math.round(part.x), y: Math.round(part.y), width: data.width, height: data.height, channels, hasMask: !!maskPlane, visible: part.visible !== false })
+      layers.push({ id: part.name || part.id, x: Math.round(part.x), y: Math.round(part.y), width: data.width, height: data.height, channels, hasMask: !!maskPlane, visible: part.visible !== false })
     }
+    if (groupName) layers.push(section(groupName, 2))
     if (!layers.length) throw new Error('没有可导出的 PSD 图层')
 
     const records = makeWriter()
@@ -13528,6 +13539,17 @@
       }
       extra.u32(0)
       extra.bytes(pascalName(layer.id))
+      extra.ascii('8BIM')
+      extra.ascii('luni')
+      extra.u32(4 + layer.id.length * 2)
+      extra.u32(layer.id.length)
+      for (let i = 0; i < layer.id.length; i++) extra.u16(layer.id.charCodeAt(i))
+      if (layer.section) {
+        extra.ascii('8BIM')
+        extra.ascii('lsct')
+        extra.u32(4)
+        extra.u32(layer.section)
+      }
       records.u32(extra.length)
       records.bytes(extra.concat())
     }

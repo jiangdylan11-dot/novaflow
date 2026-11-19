@@ -154,6 +154,22 @@
       const raster = await composite({ width: bounds.width, height: bounds.height, layers: [{ ...layer, x: layer.x - bounds.x, y: layer.y - bounds.y, visible: true }] }, doc)
       const dataUrl = raster.toDataURL('image/png')
       parts.push({ id: layer.id, name: layer.name, label: layer.name, prompt: layer.prompt, x: bounds.x, y: bounds.y, width: raster.width, height: raster.height, layer: index, manualLayer: true, visible: layer.visible, locked: layer.locked, pivot: { x: 0.5, y: 0.5 }, dataUrl, imageDataUrl: dataUrl, needsInpaint: false, metadata: { kind: 'legacy-ui-project', legacyLayerIndex: index, legacyUiLayer: clone(layer), legacyNativeBounds: bounds, legacyRenderedDataUrl: dataUrl } })
+      if (layer.uiSplit?.maskRecipe === 'qwen21-rgba-atlas-v1' && layer.kind !== 'background') {
+        const ctx = raster.getContext('2d')
+        const pixels = ctx.getImageData(0, 0, raster.width, raster.height)
+        const matte = ctx.createImageData(raster.width, raster.height)
+        for (let p = 0; p < pixels.data.length; p += 4) {
+          const alpha = pixels.data[p + 3]
+          matte.data[p] = matte.data[p + 1] = matte.data[p + 2] = alpha
+          matte.data[p + 3] = 255
+          pixels.data[p + 3] = alpha ? 255 : 0
+        }
+        const part = parts[parts.length - 1]
+        ctx.putImageData(pixels, 0, 0)
+        part.imageDataUrl = raster.toDataURL('image/png')
+        ctx.putImageData(matte, 0, 0)
+        part.layerMaskDataUrl = raster.toDataURL('image/png')
+      }
     }
     return { width: project.width, height: project.height, parts, previewDataUrl: (await composite(project, doc)).toDataURL('image/png'), originalProject: clone(value) }
   }

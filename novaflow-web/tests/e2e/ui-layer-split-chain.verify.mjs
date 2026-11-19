@@ -59,6 +59,9 @@ try {
   const data = result?.data || result || {};
   assert.equal(result?.ok !== false, true, String(result?.error || ''));
   assert.equal(data.visualSchema, 'nf.ui.layers.v1');
+  assert.equal(data.method, 'qwen21-rgba-atlas-v1', 'the page received a generated atlas from the current helper');
+  const requested = regions.filter(region => region.kind !== 'group').map(region => region.id).sort();
+  assert.deepEqual(data.layers.filter(layer => layer.group !== 'background').map(layer => layer.id).sort(), requested);
   assert.ok(Array.isArray(data.layers) && data.layers.some(layer => layer.group === 'background'));
   assert.ok(events.includes('ui layer split completed'), 'the node ran the split itself');
   let z = 0;

@@ -73,7 +73,7 @@ class Comfy:
             raise SplitError("图像服务没有接受任务：%s" % json.dumps(out, ensure_ascii=False)[:600])
         return out["prompt_id"]
 
-    def result(self, prompt_id, node, timeout=900):
+    def result(self, prompt_id, node, timeout=900, mode="RGB"):
         t0 = time.time()
         while time.time() - t0 < timeout:
             item = json.loads(self._request("/history/%s" % prompt_id).decode("utf-8")).get(prompt_id)
@@ -85,7 +85,8 @@ class Comfy:
                 if images:
                     im = images[0]
                     q = urllib.parse.urlencode({"filename": im["filename"], "subfolder": im.get("subfolder", ""), "type": im.get("type", "output")})
-                    return Image.open(io.BytesIO(self._request("/view?" + q))).convert("RGB")
+                    image = Image.open(io.BytesIO(self._request("/view?" + q)))
+                    return image.convert(mode) if mode else image.copy()
                 if status.get("completed"):
                     raise SplitError("图像服务没有返回图片")
             time.sleep(0.25)
@@ -751,7 +752,9 @@ def split_request(payload, comfy_root, models_dir, progress=None):
         raise ValueError("拆图需要一张原图")
     comfy_url = str(payload.get("comfyUrl") or os.environ.get("NOVAFLOW_COMFY_URL") or "http://127.0.0.1:8188")
     image = Image.open(io.BytesIO(base64.b64decode(images[0]["dataUrl"].split(",", 1)[1])))
-    result = split(image, payload.get("regions"), comfy_url, comfy_root, models_dir, seed=payload.get("seed"), progress=progress)
+    from .ui_split_atlas import split_generated
+    result = split_generated(image, payload.get("regions"), comfy_url, seed=payload.get("seed"), progress=progress,
+                             scene=str(payload.get("requirements") or "")[:1200])
     for layer in result["layers"]:
         layer["dataUrl"] = "data:image/png;base64," + base64.b64encode(layer.pop("png")).decode("ascii")
     return {"visualSchema": "nf.ui.layers.v1", "maskProduced": True, **result}
