@@ -4165,8 +4165,10 @@
     try {
       for (const entry of entries) {
         const src = entry.src
+        // 跟舞台一样找图；图集里没被任何附件用到的旧页（删掉或重新生成的粒子 / 扫光帧，保存时不写盘）缺图不算错
+        const used = usedProjectImagePages(src.json, src.atlasText, src.projectImageRefs)
         const atlas = new spine.TextureAtlas(src.atlasText, (name) => {
-          if (!src.images.has(lower(name)) && !src.images.has(lower(baseName(name)))) throw new Error(`${entry.name} 缺少图片：${name}`)
+          if (!pageEntry(src.images, name) && used.has(lower(name))) throw new Error(`${entry.name} 缺少图片：${name}`)
           return pageTexture(gl, pageImageFrom(src.images, name), pagePma(src.images, name, src.pma))
         })
         const data = readProjectData(src.json, atlas, gl, src.images), skeleton = new spine.Skeleton(data)
