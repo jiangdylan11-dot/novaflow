@@ -11,7 +11,12 @@
     const dataUrl = original?.originalDataUrl || resource?.dataUrl
     return dataUrl ? { ...context, originalDataUrl: dataUrl } : null
   }
-  function mount({ leftHost }) {
+  function mount(options) {
+    const { leftHost } = options
+    const host = root.location?.hostname || ''
+    if (['localhost','127.0.0.1','[::1]'].includes(host) && root.NovaFlowUiAtlasSplit?.mount) {
+      return root.NovaFlowUiAtlasSplit.mount(options)
+    }
     const doc = leftHost.ownerDocument, accordion = root.NovaFlowLeftPanelAccordion
     const panel = doc.createElement('section')
     panel.setAttribute('class', 'nf-panel')
