@@ -3706,12 +3706,61 @@
     }
   }
 
+  // <video> cannot play a GIF (or APNG), so an animated image is decoded frame
+  // by frame, resampled onto the sequence frame rate by its own frame delays,
+  // and recorded as a black-background clip like a PNG sequence.
+  const ANIMATED_IMAGE_TYPES = /^image\/(gif|apng)$|\.(gif|apng)$/i
+  const animatedImageToBlackClip = async (file) => {
+    if (typeof window.ImageDecoder !== 'function') throw new Error('AI 特效：当前环境无法读取 GIF 动图')
+    const type = /\.apng$/i.test(file.name || '') || file.type === 'image/apng' ? 'image/apng' : 'image/gif'
+    const decoder = new window.ImageDecoder({ data: await file.arrayBuffer(), type })
+    const frames = []
+    try {
+      await decoder.tracks.ready
+      await decoder.completed
+      const count = Math.min(SEQUENCE_MAX_FRAMES * 4, decoder.tracks.selectedTrack?.frameCount || 0)
+      if (!count) throw new Error('AI 特效：素材解码失败')
+      setStatus('正在合成', '把动图 ' + count + ' 帧合成黑底视频…')
+      refreshUi()
+      const starts = []
+      let total = 0
+      for (let index = 0; index < count; index += 1) {
+        const { image } = await decoder.decode({ frameIndex: index })
+        // Browsers play 0/10 ms GIF delays at 100 ms; do the same.
+        const ms = Number(image.duration) / 1000
+        const canvas = document.createElement('canvas')
+        canvas.width = image.displayWidth
+        canvas.height = image.displayHeight
+        canvas.getContext('2d').drawImage(image, 0, 0)
+        image.close()
+        frames.push(canvas)
+        starts.push(total)
+        total += Number.isFinite(ms) && ms > 10 ? ms : 100
+      }
+      const outCount = Math.max(2, Math.min(SEQUENCE_MAX_FRAMES, Math.round(total / 1000 * SEQUENCE_FPS)))
+      const timeline = []
+      for (let index = 0, source = 0; index < outCount; index += 1) {
+        // Real time, so a clip past the frame cap is cut, never sped up.
+        const at = (index + 0.5) * 1000 / SEQUENCE_FPS
+        while (source + 1 < starts.length && starts[source + 1] <= at) source += 1
+        timeline.push(frames[source])
+      }
+      return await recordClip(timeline, frames[0].width, frames[0].height, SEQUENCE_FPS)
+    } finally {
+      try { decoder.close() } catch (_) {}
+    }
+  }
+
   // One entry point for the dropzone and the file picker: a clip goes straight
   // in, a pile of stills is composited first.
   const adoptTemplateFiles = async (list) => {
     const files = Array.from(list || [])
     if (!files.length) throw new Error('AI 特效：请拖入一段视频素材，或一组序列帧')
-    const clip = firstFileOf(files, CLIP_TYPES)
+    const clip = firstFileOf(files, CLIP_TYPES) || firstFileOf(files, ANIMATED_IMAGE_TYPES)
+    if (clip && (ANIMATED_IMAGE_TYPES.test(clip.type) || ANIMATED_IMAGE_TYPES.test(clip.name))) {
+      const blob = await animatedImageToBlackClip(clip)
+      return adoptSource(blob, String(clip.name || 'clip').replace(/\.[a-z0-9]+$/i, '') + '.webm')
+    }
     if (clip) return adoptSource(clip, clip.name)
     const stills = files.filter(file => SEQUENCE_TYPES.test(file.type) || SEQUENCE_TYPES.test(file.name))
     if (!stills.length) throw new Error('AI 特效：请拖入一段视频素材，或一组序列帧')
