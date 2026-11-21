@@ -228,6 +228,11 @@
   .float .tg[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
   .float .tg[aria-pressed="true"]:hover:not(:disabled){background:#235242;color:#b8f0dd}   /* picked stays green under the mouse */
   .float .zoom{min-width:44px;text-align:center;color:#bdbdbd;font-size:11px}
+  .float .bd-size{display:flex;align-items:center;gap:3px;color:#8c8c8c;font-size:11px}
+  .float .bd-size[hidden]{display:none}
+  .float .bd-size i{font-style:normal}
+  .float .bd-size input{width:50px;height:22px;padding:0 4px;border:0;border-radius:4px;background:#2a2a2a;color:#e6e6e6;font-size:12px;text-align:center;outline:none;-moz-appearance:textfield}
+  .float .bd-size input::-webkit-inner-spin-button,.float .bd-size input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
   .tl{left:10px;top:10px}
   .tr{right:10px;top:10px}
   .pickbar{left:50%;top:52px;transform:translateX(-50%);padding:6px 6px 6px 12px;gap:8px;white-space:nowrap;max-width:calc(100% - 20px);font-size:12px;border-color:#2c604f;color:#9be4cd}
@@ -637,6 +642,8 @@
       <div class="float modebar" id="modebar"></div>
       <div class="float tr">
         <span class="zoom" id="zoomText">100%</span>
+        <button class="tg" id="boardBtn" aria-pressed="false" title="画板：只显示画板里面，视频和序列帧按画板尺寸导出（动画工程导出不受影响）。画板居中在原点；在舞台上拖画板的边改大小，或直接输入宽高">画板</button>
+        <span class="bd-size" id="boardSize" hidden><input id="boardW" type="number" min="16" max="8192" step="2" title="宽（像素）"><i>×</i><input id="boardH" type="number" min="16" max="8192" step="2" title="高（像素）"></span>
         <button class="tg" id="fit">自动适配</button>
         <button class="tg" id="pvOpen" title="预览：单独播放动画（可多轨道混合）">预览</button>
       </div>

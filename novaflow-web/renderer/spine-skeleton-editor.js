@@ -459,6 +459,7 @@
   function clearReplacedWorkspace() {
     for (const project of projects) dropProjectRuntime(project.id)
     projects.length = 0; activeProject = -1
+    artboard = null; if (typeof syncBoardUi === 'function') syncBoardUi()
     detachProjectFile()
     watchImageFolder(false)
     imgSeen.folder = null; imgSeen.names.clear()
@@ -681,6 +682,11 @@
   // Saves always write .foart with the Foart format id; older .nfproj files (legacy format id)
   // still open, and saving one writes a new .foart beside it instead of overwriting the old file.
   const PROJECT_FILE_FORMAT = 'foart-spine-projects'
+  // 画板（工作区共用，只有宽高，偶数像素）：固定居中在原点（当前工程的 0, 0），不能移动。null = 不用画板。
+  // 跟 .foart 一起保存（顶层 artboard），打开到空工作区或替换时恢复。
+  let artboard = null
+  const evenPx = (v) => Math.min(8192, Math.max(16, Math.round(v / 2) * 2))
+  const boardFrom = (b) => b && [b.w, b.h].every((v) => Number.isFinite(Number(v)) && Number(v) > 0) ? { w: evenPx(Number(b.w)), h: evenPx(Number(b.h)) } : null
   const PROJECT_FILE_FORMATS = [PROJECT_FILE_FORMAT, 'novaflow-spine-projects']
   const PROJECT_EXT = '.foart'
   const PROJECT_FILE_RE = /\.(?:foart|nfproj)$/i
@@ -918,7 +924,7 @@
       list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, audio: [...(s.audio || [])], audioPath: s.audioFolder?.path || '', images, imagePath, ...(externalFolder ? { externalFolder: true } : {}), pma: !!s.pma, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, exported: projects[i].exported !== false, folderKey: s.folderKey || '' })
     }
     if (!list.length) throw new Error('没有可保存的工程')
-    const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 2, active: Math.max(0, activeProject), projects: list })
+    const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 2, active: Math.max(0, activeProject), projects: list, ...(artboard ? { artboard: { ...artboard } } : {}) })
     const gz = new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip')))
     return { bytes: new Uint8Array(await gz.arrayBuffer()), count: list.length, missing }
   }
@@ -1483,6 +1489,7 @@
     // opened into an empty tree, the tree is that file: 保存工程 / Ctrl+S write back to it
     // (added to projects already open, the tree keeps the file it already had)
     if (handle && (wasEmpty || operation === 'replace')) { projectFile = handle; projectSaveDirectory = projectDirectory }
+    if (wasEmpty || operation === 'replace') { artboard = boardFrom(d.artboard); if (typeof syncBoardUi === 'function') syncBoardUi() }
     const hidden = projects[activeProject].visible === false
       ? `；当前工程「${state.name}」已隐藏，请点击工程树左侧的显示圆点恢复` : ''
     const attachmentAnimations = Object.entries(state.json.animations || {}).filter(([, a]) =>
@@ -4154,7 +4161,7 @@
     status(`已分别导出 ${results.length} 个工程，文件名和图集名使用工程名`, 'ok')
     return { canceled: false, projects: results }
   }
-  function createMediaRenderer(entries) {
+  function createMediaRenderer(entries, board) {
     const canvas = document.createElement('canvas')
     const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true })
     if (!gl) throw new Error('无法创建导出画布')
@@ -4179,7 +4186,9 @@
       const duration = Math.max(1 / FPS, ...actors.map((a) => a.animation ? a.animation.duration : 0)), count = Math.max(1, Math.round(duration * FPS))
       const poseAt = (time) => { for (const a of actors) { a.skeleton.setToSetupPose(); if (a.animation) a.animation.apply(a.skeleton, 0, Math.min(time, a.animation.duration), false, null, 1, spine.MixBlend.setup, spine.MixDirection.mixIn); a.skeleton.updateWorldTransform() } }
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
-      for (let f = 0; f <= count; f++) {
+      // 画板：输出就是画板的尺寸和位置，画板外的内容不出现
+      if (board) { const c = boardCenter(entries); x0 = c.x - board.w / 2; x1 = c.x + board.w / 2; y0 = c.y - board.h / 2; y1 = c.y + board.h / 2 }
+      else for (let f = 0; f <= count; f++) {
         poseAt(f / FPS)
         for (const a of actors) {
           const p = new spine.Vector2(), size = new spine.Vector2(); a.skeleton.getBounds(p, size, [])
@@ -4189,7 +4198,8 @@
         }
       }
       if (!Number.isFinite(x0)) throw new Error('勾选的工程没有可导出的可见图片')
-      canvas.width = Math.max(2, Math.ceil((x1 - x0 + 2) / 2) * 2); canvas.height = Math.max(2, Math.ceil((y1 - y0 + 2) / 2) * 2)
+      if (board) { canvas.width = board.w; canvas.height = board.h }
+      else { canvas.width = Math.max(2, Math.ceil((x1 - x0 + 2) / 2) * 2); canvas.height = Math.max(2, Math.ceil((y1 - y0 + 2) / 2) * 2) }
       if (canvas.width > gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || canvas.height > gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)) throw new Error('导出画布超出显卡支持的尺寸')
       return { canvas, count, duration, dispose, render(time) {
         poseAt(time); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT)
@@ -4208,7 +4218,7 @@
     const token = progress && progress.begin({ title: options.kind === 'video' ? '导出视频' : '导出序列帧', detail: '准备勾选的工程…' })
     try {
       for (const plan of plans) {
-        const scene = createMediaRenderer(plan.entries), output = document.createElement('canvas')
+        const scene = createMediaRenderer(plan.entries, artboard), output = document.createElement('canvas')
         output.width = scene.canvas.width; output.height = scene.canvas.height
         const g = output.getContext('2d', { willReadFrequently: true })
         let temp
@@ -4445,7 +4455,11 @@
     if (pfx && pfx.partReady && !composited) pfxComposite(gl)
     if (state.opt.imgVis) for (let i = activeProject + 1; i < projects.length; i++) drawOtherProject(i)
     if (activeShown) drawOverlay()
-    else $('#overlay').getContext('2d').clearRect(0, 0, $('#overlay').width, $('#overlay').height)
+    else {
+      const ctx = $('#overlay').getContext('2d')
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, $('#overlay').width, $('#overlay').height)
+      if (rt.skeleton) { ctx.setTransform(rt.dpr, 0, 0, rt.dpr, 0, 0); drawArtboard(ctx) }
+    }
     $('#zoomText').textContent = rt.skeleton ? Math.round(100 / rt.cam.zoom) + '%' : ''
   }
 
@@ -5725,12 +5739,90 @@
   }
   const num0 = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
 
+  // ---------------------------------------------------------------- 画板
+  // 像蒙版：舞台只显示画板里面；视频 / 序列帧按画板的尺寸和位置导出，动画工程导出不受影响。
+  // 舞台上直接改：拖边 / 角改大小（对边不动），拖左上角的名字移动；工具栏的宽高可直接输入。
+  /** 画板中心 = 原点：舞台上是当前工程的 (0, 0)；合并导出取当前工程（不在勾选里就取第一个）的原点，独立导出各自的原点 */
+  function boardCenter(entries) {
+    if (!entries) return { x: state.offset.x, y: state.offset.y }
+    const id = projects[activeProject] && projects[activeProject].id
+    const e = entries.find((x) => x.id === id) || entries[0]
+    return { x: e.src.offset.x || 0, y: e.src.offset.y || 0 }
+  }
+  const boardUi = { hover: null, drag: null }
+  function boardScreen() {
+    const [cx, cy] = toScreen(0, 0), hw = artboard.w / 2 / rt.cam.zoom, hh = artboard.h / 2 / rt.cam.zoom
+    return { l: cx - hw, r: cx + hw, t: cy - hh, b: cy + hh, cx, cy }
+  }
+  /** 开画板：以原点为中心，刚好框住当前画面里的内容；没有内容就是 1920 × 1080 */
+  function defaultArtboard() {
+    if (rt.skeleton) {
+      const p = new spine.Vector2(), size = new spine.Vector2(); rt.skeleton.getBounds(p, size, [])
+      if (Number.isFinite(p.x) && Number.isFinite(size.x) && size.x > 0 && size.y > 0) return boardFrom({ w: 2 * Math.max(Math.abs(p.x), Math.abs(p.x + size.x)) + 2, h: 2 * Math.max(Math.abs(p.y), Math.abs(p.y + size.y)) + 2 })
+    }
+    return { w: 1920, h: 1080 }
+  }
+  function syncBoardUi() {
+    const btn = $('#boardBtn'); if (!btn) return
+    btn.setAttribute('aria-pressed', String(!!artboard))
+    $('#boardSize').hidden = !artboard
+    if (artboard) for (const [id, v] of [['#boardW', artboard.w], ['#boardH', artboard.h]]) { const i = $(id); if (document.activeElement !== i) i.value = v }
+  }
+  function bindArtboard() {
+    $('#boardBtn').onclick = () => {
+      if (!state.json) return
+      artboard = artboard ? null : defaultArtboard()
+      syncBoardUi(); refresh()
+      status(artboard ? `画板 ${artboard.w} × ${artboard.h}（居中在原点）：画板外不显示，视频和序列帧按画板导出` : '已关闭画板，视频和序列帧按内容范围导出', 'ok')
+    }
+    for (const [id, key] of [['#boardW', 'w'], ['#boardH', 'h']]) {
+      const i = $(id)
+      i.addEventListener('change', () => { const v = Number(i.value); if (artboard && Number.isFinite(v) && v > 0) { artboard = { ...artboard, [key]: evenPx(v) }; refresh() } syncBoardUi() })
+      i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') i.blur() })
+    }
+    syncBoardUi()
+  }
+  function drawArtboard(ctx) {
+    if (!artboard) return
+    const s = boardScreen(), L = Math.round(s.l), T = Math.round(s.t), R = Math.round(s.r), B = Math.round(s.b)
+    ctx.save()
+    ctx.fillStyle = '#141414'
+    ctx.beginPath(); ctx.rect(0, 0, rt.w, rt.h); ctx.rect(L, T, R - L, B - T); ctx.fill('evenodd')
+    const hot = boardUi.hover || (boardUi.drag && boardUi.drag.part)
+    ctx.strokeStyle = hot ? '#1EA672' : 'rgba(255,255,255,.4)'; ctx.lineWidth = 1
+    ctx.strokeRect(L - .5, T - .5, R - L + 1, B - T + 1)
+    ctx.font = '11px Inter, "Microsoft YaHei", sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'
+    ctx.fillStyle = '#a8a8a8'
+    ctx.fillText(`画板 ${artboard.w} × ${artboard.h}`, L, T - 4)
+    ctx.restore()
+  }
+  /** 画板的边 / 角（l r t b 组合）：拖动改大小，中心始终在原点，两边一起变 */
+  function boardHit(sx, sy) {
+    if (!artboard) return null
+    const s = boardScreen(), tol = 5
+    if (sx < s.l - tol || sx > s.r + tol || sy < s.t - tol || sy > s.b + tol) return null
+    let part = ''
+    if (Math.abs(sx - s.l) <= tol) part += 'l'; else if (Math.abs(sx - s.r) <= tol) part += 'r'
+    if (Math.abs(sy - s.t) <= tol) part += 't'; else if (Math.abs(sy - s.b) <= tol) part += 'b'
+    return part || null
+  }
+  const boardCursor = (part) => !part ? '' : part.length === 2 ? (part === 'lt' || part === 'rb' ? 'nwse-resize' : 'nesw-resize') : /[lr]/.test(part) ? 'ew-resize' : 'ns-resize'
+  function boardDragMove(d, sx, sy) {
+    d.moved = d.moved || Math.hypot(sx - d.sx, sy - d.sy) > 2
+    const s = boardScreen(), next = { ...artboard }
+    if (/[lr]/.test(d.part)) next.w = evenPx(2 * Math.abs(sx - s.cx) * rt.cam.zoom)
+    if (/[tb]/.test(d.part)) next.h = evenPx(2 * Math.abs(sy - s.cy) * rt.cam.zoom)
+    artboard = next
+    syncBoardUi()
+  }
+
   function drawOverlay() {
     const c = $('#overlay')
     const ctx = c.getContext('2d')
     ctx.setTransform(rt.dpr, 0, 0, rt.dpr, 0, 0)
     ctx.clearRect(0, 0, rt.w, rt.h)
     if (!rt.skeleton) return
+    drawArtboard(ctx)
     // Spine's axes: a thin cross through the world origin (0, 0)
     const [ox, oy] = toScreen(0, 0)
     ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1
@@ -6644,6 +6736,14 @@
         capturePointer(e)
         return
       }
+      // 画板的边 / 角：拖动改大小（居中不动）
+      const bp = !state.pick && !state.creating && boardHit(sx, sy)
+      if (bp) {
+        drag = { kind: 'artboard', part: bp, sx, sy, moved: false }
+        boardUi.drag = drag
+        capturePointer(e)
+        return
+      }
       // an X / Y handle of the picked item: drag limited to that axis
       const hh = !state.pick && !e.ctrlKey && !e.metaKey && hitHandle(sx, sy)
       if (hh) {
@@ -6825,6 +6925,7 @@
         if (Math.hypot(sx - state.creating.sx, sy - state.creating.sy) >= 4) state.creating.p1 = toWorld(sx, sy)
         return
       }
+      if (drag && drag.kind === 'artboard') { boardDragMove(drag, sx, sy); return }
       if (state.meshEdit || state.weightEdit) state.meshPointer = [sx, sy]
       if (drag && drag.kind === 'wbox') { state.wbox.x1 = sx; state.wbox.y1 = sy; return }
       if (drag && drag.kind === 'meshEdge') { state.meshEdgeDraft = { from: drag.from, p: [sx, sy] }; return }
@@ -6857,6 +6958,11 @@
         return
       }
       if (state.pickHover) { state.pickHover = null; c.style.cursor = '' }
+      if (!drag && !state.pick) {
+        const bp = boardHit(sx, sy)
+        if (bp !== boardUi.hover) { boardUi.hover = bp; c.style.cursor = boardCursor(bp) }
+        if (bp) { state.hover = null; state.hoverImg = null; return }
+      }
       if (!drag) {
         const hov = rt.skeleton && state.opt.boneSel ? hitBone(sx, sy) : null
         if (hov !== state.hover) state.hover = hov
@@ -6908,6 +7014,7 @@
       if (!drag) return
       const d = drag
       drag = null
+      if (d.kind === 'artboard') { boardUi.drag = null; if (d.moved) status(`画板 ${artboard.w} × ${artboard.h}`, 'ok'); return }
       if (d.kind === 'pan') {
         // 绑定 on: a right click (no drag) finishes it, like the 绑定 button (user 2026-10-13)
         if (!d.moved && state.weightEdit && state.weightEdit.binding) { weightAction('bind'); return }
@@ -13432,6 +13539,7 @@
     $('#railExport').onclick = openExportDialog
     bindPreview()
     $('#fit').onclick = fit
+    bindArtboard()
     $('#pickCancel').onclick = endPick
     $('#play').onclick = togglePlay
     // 首帧 shows frame 0 at the left edge; 尾帧 puts the last frame at the right edge of the

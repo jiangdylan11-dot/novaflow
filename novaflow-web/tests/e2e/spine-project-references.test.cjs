@@ -949,3 +949,19 @@ test('a legacy .nfproj opens, and saving writes a new .foart with the Foart form
   await vm.runInContext('saveProjectFileNow()', f.c)
   assert.equal(picks, 1, 'later Ctrl+S overwrites the new .foart without a dialog')
 })
+
+test('the 画板 size saves with the .foart, reopens into a fresh workspace, and a replace without one clears it', async () => {
+  const d = disk(), f = fixture()
+  await d.put('pic.png', 'pixels')
+  vm.runInContext('artboard = { w: 1280, h: 720 }', f.c)
+  const out = await f.save(d.root)
+  assert.deepEqual(out.artboard, { w: 1280, h: 720 })
+  const g = fixture()
+  await g.open(new File([await gzip(out)], 'scene.foart'), null, { directory: { handle: d.root } })
+  assert.equal(vm.runInContext('JSON.stringify(artboard)', g.c), '{"w":1280,"h":720}')
+  const plain = { ...out }; delete plain.artboard
+  await g.open(new File([await gzip(plain)], 'other.foart'), null, { directory: { handle: d.root }, operation: 'replace' })
+  assert.equal(vm.runInContext('artboard', g.c), null)
+  vm.runInContext('artboard = null', f.c)
+  assert.equal((await f.save(d.root)).artboard, undefined)
+})
