@@ -60175,7 +60175,7 @@
           input instanceof HTMLInputElement && input.type !== "range" && input.type !== "checkbox"
         ));
         const buttons = Array.from(row.querySelectorAll("button")).filter((node) => (
-          node instanceof HTMLButtonElement && /^(\u64e6\u9664|\u4fee\u590d)$/.test(normalizeText(node.textContent || ""))
+          node instanceof HTMLButtonElement && /^(\u64e6\u9664|\u4fee\u590d|\u53bb\u8272)$/.test(normalizeText(node.textContent || ""))
         ));
         const first = row.firstElementChild;
         const firstText = first instanceof HTMLElement ? normalizeText(first.textContent || "") : "";

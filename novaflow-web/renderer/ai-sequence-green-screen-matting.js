@@ -272,13 +272,13 @@
     // 边缘净化 is a post-pass on the chroma result; off, every byte is unchanged.
     const polish = r => options.cleanEdges ? cleanEdges(frame, r, options) : r;
     // The same frame without the AI mask (what 色键抠图 gives), for light the mask covers.
-    const plainOf = () => matteScreen(frame, { ...options, screen, subjectMask: null, requireSubjectMask: false, cleanEdges: false, preserveShadow: true });
+    const plainOf = () => matteScreen(frame, { ...options, screen, subjectMask: null, requireSubjectMask: false, cleanEdges: false, edgeDecolor: false, preserveShadow: true });
     if ((kind === "black" || kind === "white") && options.requireSubjectMask && !options.subjectMask?.data) return null;
     if (kind === "black" || kind === "white") return finishShadow(frame, matteNeutral(frame, screen, options), options);
     if (kind === "green") {
       const refined = refineChromaMaterial(frame, matteGreen(frame, { ...options, screen }), options);
       const before = options.cleanEdges && refined ? { data: new Uint8ClampedArray(refined.data), alpha: new Uint8ClampedArray(refined.alpha) } : null;
-      return finishShadow(frame, lightThroughSubject(frame, solidLitSubject(frame, subjectByMask(frame, polish(refined), options, before), options, before), options, plainOf, before), options);
+      return finishShadow(frame, decolorEdges(frame, lightThroughSubject(frame, solidLitSubject(frame, subjectByMask(frame, polish(refined), options, before), options, before), options, plainOf, before), options), options);
     }
     // Reuse the validated chroma/glow solution with blue and green exchanged.
     const swapped = new Uint8ClampedArray(frame.data);
@@ -290,7 +290,7 @@
     result.screen = screen;
     const refined = refineChromaMaterial(frame, result, options);
     const before = options.cleanEdges && refined ? { data: new Uint8ClampedArray(refined.data), alpha: new Uint8ClampedArray(refined.alpha) } : null;
-    return finishShadow(frame, lightThroughSubject(frame, solidLitSubject(frame, subjectByMask(frame, polish(refined), options, before), options, before), options, plainOf, before), options);
+    return finishShadow(frame, decolorEdges(frame, lightThroughSubject(frame, solidLitSubject(frame, subjectByMask(frame, polish(refined), options, before), options, before), options, plainOf, before), options), options);
   }
 
   function nearestSeeds(seeds, w, h) {
@@ -1338,6 +1338,101 @@
     return result;
   }
 
+  // 边缘去色 (default on in AI抠图, 光效 on and off): the subject's soft rim (fine fur outside the AI
+  // mask) keeps the screen's colour mixed in, a yellow-green fringe over any other backdrop. Each rim
+  // pixel takes the hue of the nearest solid subject colour at its own brightness (white fur ->
+  // a pale fur rim; a jade medallion keeps a green rim). Only colour changes, never opacity. Frames with a substantial light effect outside the
+  // subject are left as they are (a glow's colour is the light's own).
+  function decolorEdgePixels(frame, data, alpha, screen, options) {
+    const { width: w, height: h } = frame, src = frame.data, n = w * h;
+    const mask = subjectOpacity(options.subjectMask, w, h);
+    if (!mask || !screen?.rgb) return false;
+    const kind = screen.kind || screenKind(screen.rgb);
+    if (kind !== "green" && kind !== "blue") return false;
+    const key = kind === "blue" ? 2 : 1, o1 = 0, o2 = key === 1 ? 2 : 1, rgb = screen.rgb;
+    let strong = 0;
+    const limit = Math.max(60, n * 6e-5);
+    for (let p = 0, i = 0; p < n && strong < limit; p++, i += 4) {
+      if (mask[p] < .1 && alpha[p] >= 128 && Math.max(src[i + o1] - rgb[o1], src[i + o2] - rgb[o2]) >= 40) strong++;
+    }
+    if (strong >= limit) return false;
+    const seeds = new Uint8Array(n);
+    let any = 0;
+    // Reference colours from a few pixels inside the subject: its outermost solid pixels still carry
+    // the screen's spill and would hand it back to the rim.
+    const outside = new Uint8Array(n);
+    for (let p = 0; p < n; p++) if (mask[p] < .98) outside[p] = 1;
+    const depth = nearestSeeds(outside, w, h).distance, inset = Math.max(3, Math.round(Math.min(w, h) / 250));
+    for (let p = 0; p < n; p++) if (mask[p] >= .98 && alpha[p] >= 250 && depth[p] >= inset) { seeds[p] = 1; any++; }
+    if (!any) return false;
+    const near = nearestSeeds(seeds, w, h), reach = options.reach ?? Math.max(8, Math.round(Math.min(w, h) / 50));
+    // The background around the subject (reached from the frame border), so the rim is the outline
+    // only: a blue gem the mask is unsure about, held inside the subject, is not rim.
+    const background = new Uint8Array(n), stack = [];
+    for (let x = 0; x < w; x++) stack.push(x, (h - 1) * w + x);
+    for (let y = 0; y < h; y++) stack.push(y * w, y * w + w - 1);
+    while (stack.length) {
+      const p = stack.pop();
+      if (background[p] || mask[p] >= .5) continue;
+      background[p] = 1;
+      const x = p % w;
+      if (x > 0) stack.push(p - 1); if (x < w - 1) stack.push(p + 1); if (p >= w) stack.push(p - w); if (p < n - w) stack.push(p + w);
+    }
+    const fromBackground = nearestSeeds(background, w, h).distance, ring = Math.max(2, Math.round(Math.min(w, h) / 400));
+    let changed = false;
+    const lum = (j) => .299 * data[j] + .587 * data[j + 1] + .114 * data[j + 2];
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      // The rim is everything between the solid inside and the outside: the soft fringe beyond the
+      // mask and the mask's own outermost pixels, which in browser-decoded frames are opaque and still
+      // half screen (a green outline round the dark hands, user 2026-11-21).
+      if (!alpha[p] || seeds[p] || near.distance[p] > reach) continue;
+      if (mask[p] >= .5 ? fromBackground[p] > ring : !background[p]) continue;
+      // Only screen colour goes: the pixel leans further to the key than the subject next to it
+      // does. A rim light or a different colour that does not lean to the screen stays.
+      const q = near.owner[p] * 4, top = Math.max(data[i + o1], data[i + o2]), refTop = Math.max(data[q + o1], data[q + o2]);
+      // A pixel that does not lean to the screen itself (a pale leaf next to gold) is left alone.
+      let weight = smooth(4, 24, (data[i + key] - top) - (data[q + key] - refTop)) * smooth(-4, 12, data[i + key] - top);
+      if (weight <= 0) continue;
+      // …and never on light: a mix of that subject colour and the screen is no brighter than the
+      // brighter of the two, while a glow round a gem held up, or the gem's own facets, is (the first
+      // version painted the glow beside the hands brown, green_win 2026-11-21).
+      const srcLum = (.299 * src[i] + .587 * src[i + 1] + .114 * src[i + 2]) / 255;
+      const mixTop = Math.max(.299 * src[q] + .587 * src[q + 1] + .114 * src[q + 2], .299 * rgb[0] + .587 * rgb[1] + .114 * rgb[2]) / 255;
+      weight *= 1 - smooth(.03, .1, srcLum - mixTop);
+      if (weight <= 0) continue;
+      // It takes the hue of that subject colour at its own brightness (holding the key channel down
+      // alone left a yellow/orange fringe on light fur).
+      const own = lum(i), ref = lum(q);
+      for (let c = 0; c < 3; c++) {
+        const target = ref >= 16 ? data[q + c] * own / ref : own;
+        data[i + c] += (target - data[i + c]) * weight;
+      }
+      changed = true;
+    }
+    return changed;
+  }
+
+  function decolorEdges(frame, result, options) {
+    if (!result || !options.edgeDecolor || !options.subjectMask?.data) return result;
+    decolorEdgePixels(frame, result.data, result.alpha, result.screen, options);
+    return result;
+  }
+
+  // 光效 off: the frame's own colours under the AI cut. Straight RGBA with the rim decoloured; every
+  // soft pixel counts as rim there (a cast shadow kept by the mask was dark green as well).
+  function decolorFrame(frame, alpha, options = {}) {
+    const out = new Uint8ClampedArray(frame.data);
+    for (let p = 0, i = 3; p < alpha.length; p++, i += 4) out[i] = alpha[p];
+    const screen = options.screen || detectScreen(frame);
+    if (screen && options.edgeDecolor !== false) decolorEdgePixels(frame, out, alpha, screen, { reach: Infinity, ...options });
+    const brush = options.brushDecolor;
+    if (screen && brush && brush.length === alpha.length) {
+      const key = (screen.kind || screenKind(screen.rgb)) === "blue" ? 2 : 1, o1 = 0, o2 = key === 1 ? 2 : 1;
+      for (let p = 0, i = 0; p < brush.length; p++, i += 4) if (brush[p] > 0) despillPixel(out, i, key, o1, o2, brush[p]);
+    }
+    return typeof ImageData === "function" ? new ImageData(out, frame.width, frame.height) : { width: frame.width, height: frame.height, data: out };
+  }
+
   function finishShadow(frame, result, options) {
     if (options.preserveShadow !== false) return result;
     const alpha = removeShadowAlpha(frame, result.alpha, { ...options, screen: result.screen, foregroundData: result.data });
@@ -1470,12 +1565,27 @@
     return { width, height, data: out, alpha, screen, kept };
   }
 
+  // 去色 strokes share the brush overlay as pure green painted behind the grey erase/restore marks:
+  // the green share of a pixel is the 去色 strength, the rest keeps its grey meaning.
+  function brushShare(overlay, i) {
+    const k = Math.max(0, overlay[i + 1] - Math.max(overlay[i], overlay[i + 2])) / 255;
+    return k > 0 ? { k, value: Math.min(1, (overlay[i] + overlay[i + 2]) / 510 / Math.max(.001, 1 - k)) } : { k: 0, value: (overlay[i] + overlay[i + 1] + overlay[i + 2]) / 765 };
+  }
+  // Screen colour out of one pixel, its brightness kept (the edge-decolour rule without a reference).
+  function despillPixel(data, i, key, o1, o2, strength) {
+    const top = Math.max(data[i + o1], data[i + o2]), excess = data[i + key] - top;
+    if (excess <= 0 || strength <= 0) return;
+    const cut = excess * Math.min(1, strength), lift = cut * (key === 1 ? .587 : .114);
+    data[i + key] = data[i + key] - cut + lift; data[i + o1] += lift; data[i + o2] += lift;
+  }
+
   function applyBrush(result, overlay, original) {
     if (!overlay || overlay.length !== result.data.length) return result;
+    const key = result.screen?.kind === "blue" ? 2 : 1, o1 = 0, o2 = key === 1 ? 2 : 1;
     for (let p = 0, i = 0; p < result.alpha.length; p++, i += 4) {
-      const coverage = overlay[i + 3] / 255;
-      if (!coverage) continue;
-      const value = (overlay[i] + overlay[i + 1] + overlay[i + 2]) / 765;
+      const covered = overlay[i + 3] / 255;
+      if (!covered) continue;
+      const { k, value } = brushShare(overlay, i), coverage = covered * (1 - k);
       const old = result.alpha[p];
       const next = value < .5 ? old * (1 - (1 - 2 * value) * coverage) : Math.max(old, (2 * value - 1) * coverage * 255);
       result.alpha[p] = result.data[i + 3] = Math.round(clamp(next, 0, 255));
@@ -1489,6 +1599,7 @@
         const share = clamp((next - old) / Math.max(1, 255 - old));
         for (let c = 0; c < 3; c++) result.data[i + c] = Math.round(result.data[i + c] * (1 - share) + original[i + c] * share);
       }
+      if (k > 0) despillPixel(result.data, i, key, o1, o2, k * covered);
     }
     return result;
   }
@@ -1587,7 +1698,7 @@
     const result = await new Promise((resolve,reject) => {
       workerQueue.push({id:++taskSerial, profile, profileId:profile ? profileIds.get(profile) : 0,
         frame:{data:pixels,width:frame.width,height:frame.height},
-        options:{preserveShadow:options.preserveShadow,cleanEdges:!!options.cleanEdges,sheerMaterial:!!options.sheerMaterial,normalizeGlow:options.normalizeGlow,screen:options.screen,
+        options:{preserveShadow:options.preserveShadow,cleanEdges:!!options.cleanEdges,sheerMaterial:!!options.sheerMaterial,edgeDecolor:!!options.edgeDecolor,normalizeGlow:options.normalizeGlow,screen:options.screen,
           fallbackScreen:options.fallbackScreen,keepUndetected:!!options.keepUndetected,keyTune:options.keyTune || null,
           requireSubjectMask:options.requireSubjectMask,subjectMask:maskData ? {data:maskData,width:mask.width,height:mask.height} : null},
         buffers:maskData ? [pixels.buffer,maskData.buffer] : [pixels.buffer],resolve,reject});
@@ -1655,5 +1766,5 @@
       return new Uint8Array(await blob.arrayBuffer());
     })().catch(error=>{rawCalibration=null;throw error;});
   }
-  return { detectScreen, detectSequenceScreen, matte, tuneMask, removeShadowAlpha, applyBrush, render, renderAsync, workerStats, parallelism, createFrameCache,referenceFrameIndices,prepareSequenceReference,registerPreparedFrame,rawEncodeCalibration };
+  return { detectScreen, detectSequenceScreen, matte, decolorFrame, tuneMask, removeShadowAlpha, applyBrush, render, renderAsync, workerStats, parallelism, createFrameCache,referenceFrameIndices,prepareSequenceReference,registerPreparedFrame,rawEncodeCalibration };
 });

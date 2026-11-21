@@ -43,7 +43,7 @@
       const right = sr && sr.left > r.left + 200 && sr.left < r.right ? sr.left - 10 : r.right
       return { cx: (r.left + right) / 2, top: r.top + 8 }
     },
-    modeButtons() { const p = this.panel(); return p ? Array.from(p.querySelectorAll('button')).filter((b) => /^(擦除|修复)$/.test(text(b))) : [] },
+    modeButtons() { const p = this.panel(); return p ? Array.from(p.querySelectorAll('button')).filter((b) => /^(擦除|修复|去色)$/.test(text(b))) : [] },
     modes() {
       return this.modeButtons().map((b) => ({ label: text(b), disabled: b.disabled,
         active: b.getAttribute('data-novaflow-ai-cutout-brush-mode-active') === '1' || b.getAttribute('aria-pressed') === 'true', pick: () => b.click() }))

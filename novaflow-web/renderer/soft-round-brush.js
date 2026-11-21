@@ -55,9 +55,21 @@
     } else if (stroke.composite === 'destination-out') {
       const next = Math.round(before[offset + 3] * (1 - a))
       dirty = data[offset + 3] !== next; data[offset + 3] = next
-    } else {
-      const oldAlpha = before[offset + 3] / 255, nextAlpha = a + oldAlpha * (1 - a), colour = stroke.white ? 255 : 0
+    } else if (stroke.composite === 'destination-over') {
+      // Painted behind what is there (视频抠图 去色: an erased or restored spot keeps its mark).
+      // `white` may be an RGB colour here.
+      const oldAlpha = before[offset + 3] / 255, nextAlpha = oldAlpha + a * (1 - oldAlpha)
       for (let c = 0; c < 3; c++) {
+        const colour = Array.isArray(stroke.white) ? stroke.white[c] : stroke.white ? 255 : 0
+        const next = nextAlpha ? Math.round((before[offset + c] * oldAlpha + colour * a * (1 - oldAlpha)) / nextAlpha) : 0
+        dirty = dirty || data[offset + c] !== next; data[offset + c] = next
+      }
+      const next = Math.round(nextAlpha * 255)
+      dirty = dirty || data[offset + 3] !== next; data[offset + 3] = next
+    } else {
+      const oldAlpha = before[offset + 3] / 255, nextAlpha = a + oldAlpha * (1 - a)
+      for (let c = 0; c < 3; c++) {
+        const colour = Array.isArray(stroke.white) ? stroke.white[c] : stroke.white ? 255 : 0
         const next = nextAlpha ? Math.round((colour * a + before[offset + c] * oldAlpha * (1 - a)) / nextAlpha) : 0
         dirty = dirty || data[offset + c] !== next; data[offset + c] = next
       }

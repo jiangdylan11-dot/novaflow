@@ -32,7 +32,7 @@ test('cutout passes a stable pointer-stroke id to both the saved mask and live p
     'Dn.current={strokeId:Sn.current}',
     'strokeId:Dn.current?.strokeId??Sn.current',
     'a,t.strokeId].join',
-    'e.feather,e.mode!==`erase`,t.strokeId,t.s0,t.s1)',
+    'e.feather,e.mode===`decolor`?[0,255,0]:e.mode!==`erase`,t.strokeId,t.s0,t.s1)',
     'f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId,e.s0,e.s1)'
     ,'s0:c.nfP??nfP,s1:nfP'
   ]) assert.ok(bundle.includes(text), text);

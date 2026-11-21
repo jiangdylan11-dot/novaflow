@@ -112,7 +112,7 @@ test('the bundle runs 色键 on the verified AI frames, without AI, mask or old 
   assert.ok(bundle.includes('"data-novaflow-key-tune":`1`') && !bundle.includes('nfKeySolid') && !bundle.includes('children:`实心`'), '实心 is gone');
   assert.equal(bundle.split('children:`去底`').length - 1, 2, '去底 in both panels');
   assert.ok(bundle.includes('nfCutoutMode!==`key`&&(0,X.jsxs)(`button`,{type:`button`,role:`switch`,"aria-label":`边缘净化`'), '边缘净化 hidden in 色键');
-  assert.equal(bundle.split('nfPreserveShadow,nfCleanEdges,nfSheer,nfCutoutMode,nfKeyFloor,nfKeyFeather').length - 1, 4, 'cache key and effect dependencies');
+  assert.equal(bundle.split('nfPreserveShadow,nfCleanEdges,nfSheer,nfEdgeDecolor,nfCutoutMode,nfKeyFloor,nfKeyFeather').length - 1, 4, 'cache key and effect dependencies');
   // AI抠图, 光效透明保留 off: the bare mask with 去底 / 羽化, then the bundle's own 修边.
   assert.ok(bundle.includes('let b=nfGreenScreen?bt(yt(d.getImageData(0,0,r,i)),je,Ne):window.NovaFlowGreenScreenMatting.tuneMask('), 'mask mode uses the shared sliders');
   const legacyAt = bundle.indexOf('!nfGreenScreen&&(0,X.jsxs)(`div`,{"data-novaflow-soft-green-active"');
