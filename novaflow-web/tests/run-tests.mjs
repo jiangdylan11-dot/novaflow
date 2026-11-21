@@ -19,6 +19,7 @@ const SUITES = [
   { name: 'cutout-sheer-material', file: 'e2e/cutout-sheer-material.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'cutout-key-entry', file: 'e2e/cutout-key-entry.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'cutout-light-hue', file: 'e2e/cutout-light-hue.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'cutout-shadow-neutral', file: 'e2e/cutout-shadow-neutral.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'cutout-subject-edge', file: 'e2e/cutout-subject-edge.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'cutout-frame-capture', file: 'e2e/cutout-frame-capture.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'video-merge-alpha-decode', file: 'e2e/video-merge-alpha-decode.test.mjs', needs: [], timeoutMs: 60000 },

@@ -63,7 +63,14 @@
         const i = (y * w + x) * 4;
         for (let c = 0; c < 3; c++) samples[c].push(data[i + c] / 255);
       }
-      const b = samples.map(v => { v.sort((a, b) => a - b); return (v[15] + v[16]) / 2; });
+      let b = samples.map(v => [...v].sort((a, b) => a - b)).map(v => (v[15] + v[16]) / 2);
+      // A cast shadow reaching one border darkened that side's samples, and with them the whole
+      // row's screen: the shadow came out lighter along those rows, a horizontal streak (user,
+      // 2026-11-21). A shadow only darkens, so when the two borders disagree the brighter side is
+      // the screen.
+      const side = s => samples.map(v => { const part = v.filter((_, k) => k % 2 === s).sort((a, b) => a - b); return (part[7] + part[8]) / 2; });
+      const left = side(0), right = side(1);
+      if (Math.abs(left[key] - right[key]) > .03) b = left[key] > right[key] ? left : right;
       const valid = Math.max(...b.map((v, c) => Math.abs(v - bg[c]))) < .16
         && b[key] - Math.max(...other.map(c => b[c])) > .5 * (bg[key] - Math.max(...other.map(c => bg[c])));
       rows.set(valid ? b : bg, y * 3);
@@ -520,6 +527,15 @@
       const emit = Math.max(r - rows[y * 3 + c0], b - rows[y * 3 + c1]);
       if (m < .15 && emit > .16 && emit > absorb + .035) lights[p] = 1;
     }
+    // A light effect outside the subject: thousands of strongly opaque emitting pixels (DivinePower
+    // 7k-62k), against at most ~100 stray ones (feather tips the mask missed) in a plain clip.
+    let litPixels = 0; for (let p = 0; p < n; p++) if (lights[p] && result.alpha[p] >= 128) litPixels++;
+    const litFrame = litPixels >= Math.max(200, n * .0002);
+    // Pixels within a few pixels of the AI subject are its contour (fur, a frame's edge), not shadow.
+    const nearR = Math.max(3, Math.round(Math.min(w, h) / 200)), nearStride = w + 1, nearSum = new Int32Array(nearStride * (h + 1));
+    for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += coverage[y * w + x] > .02 ? 1 : 0; nearSum[(y + 1) * nearStride + x + 1] = row + nearSum[y * nearStride + x + 1]; } }
+    const nearSubject = (x, y) => { const x0 = Math.max(0, x - nearR), x1 = Math.min(w, x + nearR + 1), y0 = Math.max(0, y - nearR), y1 = Math.min(h, y + nearR + 1);
+      return nearSum[y1 * nearStride + x1] - nearSum[y0 * nearStride + x1] - nearSum[y1 * nearStride + x0] + nearSum[y0 * nearStride + x0] > 0; };
     const body = nearestSeeds(solid, w, h), fabric = paleCount && translucentCount > 8 ? nearestSeeds(pale, w, h) : null;
     const fabricSupport = fabric ? nearestSeeds(translucent, w, h) : null;
     const tintStride=w+1,tintIntegral=new Float32Array((w+1)*(h+1));
@@ -857,8 +873,18 @@
         } else if (m < .15 && absorbC > emitC) {
           // A dark halo or shadow outside the subject: the residual key channel is the screen's
           // share nobody can measure, and unassociated it painted the halo olive. A shadow is dark
-          // and neutral; the key channel never exceeds the mean of the other two.
+          // and neutral; the key channel never exceeds the mean of the other two. Rendered shadows are
+          // cool-tinted, so the other two carry a blue (or red) residue too: wherever the ground-shadow
+          // fit did not take over (outside the reference frame's shadow), the shadow came out blue
+          // in the outline of another pose, and the residue left parts of it lighter than a dark
+          // backdrop, as if hollowed out (user, 2026-11-21). A shadow only takes light away: translucent
+          // shade is black, as opaque as the share of the screen's light it blocks. A nearly opaque
+          // dark pixel the mask missed, and the subject's own rim just outside the mask (fur, the edge
+          // of green leaves), keep their colour. A frame with a light effect is left as it was: the
+          // dark haze between its sparkles is part of the light.
           P[key] = Math.min(P[key], a * (f0 + f1) / 2);
+          const neutral = litFrame || nearSubject(x, y) ? 0 : 1 - smooth(.5, .85, a);
+          if (neutral > 0) { a += (absorbC - a) * neutral; for (const c of [c0, c1, key]) P[c] *= 1 - neutral; }
         }
       }
       result.alpha[p] = out[i + 3] = Math.round(clamp(a) * 255);
