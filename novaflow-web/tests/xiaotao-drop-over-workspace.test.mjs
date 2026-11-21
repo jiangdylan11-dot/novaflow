@@ -25,3 +25,8 @@ test('小桃 accepts drops on its whole panel, not only the input footer',()=>{
   assert.match(agent,/listen\(panel,'dragover'/);assert.match(agent,/listen\(panel,'drop'/);
   assert.doesNotMatch(agent,/listen\(footer,'drop'/);
 });
+test('a 资源列表 card dropped on 小桃 is attached by its resource file',()=>{
+  assert.match(agent,/includes\('application\/x-novaflow-ai-generated'\)/);
+  assert.match(agent,/NovaFlowAiSequenceAssetBridge\.resolveMediaResource\(id\)/);
+  assert.match(agent,/const id=resourceDropId\(event\?\.dataTransfer\);if\(id\)\{void takeResource\(id\);return;\}/);
+});

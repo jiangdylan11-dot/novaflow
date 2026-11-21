@@ -3743,7 +3743,17 @@
     const listen=(node,type,fn)=>{if(typeof node.addEventListener==='function')node.addEventListener(type,fn);else node['on'+type]=fn;};
     const takeFiles=list=>{if(list?.length)void controller.stageUploads(list);};
     listen(panel,'dragover',event=>{if(event?.dataTransfer)event.preventDefault?.();});
-    listen(panel,'drop',event=>{event?.preventDefault?.();takeFiles(Array.from(event?.dataTransfer?.files||[]));});
+    // A card dragged from the 资源列表 carries only its resource id: read the resource's own file and attach it like an upload.
+    const resourceDropId=dt=>{try{if(dt?.files?.length||!Array.from(dt?.types||[]).includes('application/x-novaflow-ai-generated'))return '';return String(dt.getData('application/x-novaflow-ai-generated')||root.__nf_ai_seq_drag_id||'').trim();}catch{return String(root.__nf_ai_seq_drag_id||'').trim();}};
+    const resourceFile=async id=>{
+      const found=await root.NovaFlowAiSequenceAssetBridge.resolveMediaResource(id),name=String(found.fileName||'资源');
+      let blob=found.blob||found.file||root.NovaFlowWebRuntime?.fileForToken?.(found.localPath)||null;
+      if(!blob&&found.objectUrl)blob=await (await root.fetch(found.objectUrl)).blob();
+      if(!blob)throw new Error('missing');
+      return blob instanceof root.File&&blob.name?blob:new root.File([blob],name,{type:found.mimeType||blob.type||''});
+    };
+    const takeResource=async id=>{try{takeFiles([await resourceFile(id)]);}catch{if(sessionRetired)return;controller.state.error='资源读取失败，请重新拖入';render(controller.state);}};
+    listen(panel,'drop',event=>{event?.preventDefault?.();const id=resourceDropId(event?.dataTransfer);if(id){void takeResource(id);return;}takeFiles(Array.from(event?.dataTransfer?.files||[]));});
     listen(input,'paste',event=>{const files=Array.from(event?.clipboardData?.files||[]);if(files.length){event.preventDefault?.();takeFiles(files);}});
     for (const b of [newConversation, stop]) b.type = 'button'; iconButton(newConversation,'newChat','新对话（清空当前聊天记录）'); iconButton(stop,'stop','停止'); iconButton(send,'send','发送'); send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.setAttribute('data-idle','1'); providers.append(modelSelect);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); const inputBox=el('div','nf-xiaotao-input-box'),inputField=el('div','nf-xiaotao-input-field');inputField.append(input);inputBox.append(stagedRow,inputField);footer.append(inputBox,footerActions);
     providers.append(modelTrigger);
